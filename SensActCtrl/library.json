@@ -1,0 +1,60 @@
+{
+  "name": "SensActCtrl",
+  "version": "0.1.0",
+  "description": "Sensor/Actuator/Controller library for ESP32. Local and remote (MQTT/ESP-Now) primitives behind a unified API.",
+  "keywords": "esp32, sensors, actuators, pid, mqtt, automation",
+  "authors": [
+    {
+      "name": "SensActCtrl Contributors"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "headers": "SensActCtrl.h",
+  "dependencies": [
+    {
+      "name": "OneWire",
+      "owner": "paulstoffregen",
+      "version": "^2.3.7"
+    },
+    {
+      "name": "DallasTemperature",
+      "owner": "milesburton",
+      "version": "^3.11.0"
+    },
+    {
+      "name": "Adafruit BME280 Library",
+      "owner": "adafruit",
+      "version": "^2.2.4"
+    },
+    {
+      "name": "Adafruit Unified Sensor",
+      "owner": "adafruit",
+      "version": "^1.1.14"
+    },
+    {
+      "name": "Adafruit BusIO",
+      "owner": "adafruit",
+      "version": "^1.16.1"
+    },
+    {
+      "name": "AutoTunePID",
+      "version": "https://github.com/lily-osp/AutoTunePID.git#v1.1.6"
+    },
+    {
+      "name": "PubSubClient",
+      "owner": "knolleary",
+      "version": "^2.8"
+    },
+    {
+      "name": "ArduinoJson",
+      "owner": "bblanchon",
+      "version": "^7.0.4"
+    }
+  ],
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src"
+  }
+}

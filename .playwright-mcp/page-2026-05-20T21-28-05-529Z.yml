@@ -1,0 +1,7 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "BrewControl" [level=1] [ref=e5]
+    - generic [ref=e6]:
+      - button "+ Add Item" [ref=e7]
+      - button "Reset WiFi" [ref=e8]
+  - paragraph [ref=e9]: Loading…

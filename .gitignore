@@ -1,0 +1,15 @@
+# PlatformIO build artifacts
+.pio/
+
+# Node.js
+node_modules/
+
+# Vite build output
+web/dist/
+
+# Environment files
+.env.local
+.env*.local
+
+# Claude Code local settings
+**/.claude/settings.local.json

@@ -1,0 +1,65 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "BrewControl" [level=1] [ref=e5]
+    - generic [ref=e6]:
+      - button "+ Add Item" [ref=e7]
+      - button "Reset WiFi" [ref=e8]
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - heading "Sensors" [level=2] [ref=e13]
+        - generic [ref=e14]: "1"
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - heading "mash_temp" [level=3] [ref=e17]
+          - generic [ref=e18]:
+            - generic [ref=e19]: Temperature
+            - button "×" [active] [ref=e20]
+        - generic [ref=e21]:
+          - generic [ref=e22]: —
+          - generic [ref=e23]: °C
+          - generic [ref=e24]: stale
+        - generic [ref=e26]:
+          - generic [ref=e27]: "-55"
+          - generic [ref=e28]: "125"
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - heading "Controllers" [level=2] [ref=e31]
+        - generic [ref=e32]: "1"
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - heading "mash_pid" [level=3] [ref=e35]
+          - generic [ref=e36]:
+            - generic [ref=e37]: "live: 65.00"
+            - button "×" [ref=e38]
+        - generic [ref=e39]:
+          - generic [ref=e40]: Setpoint
+          - generic [ref=e41]:
+            - spinbutton [ref=e42]: "65"
+            - button "Apply" [ref=e43]
+        - generic [ref=e44]:
+          - generic [ref=e45]: Params (JSON)
+          - textbox [ref=e46]: "{ \"setpoint\": 65, \"Kp\": 8, \"Ki\": 0.2, \"Kd\": 0.5, \"Ku\": 0, \"Tu\": 0, \"min\": 0, \"max\": 1, \"autotuneMethod\": \"ZieglerNichols\", \"autotuneState\": \"idle\" }"
+          - button "Apply" [ref=e47]
+    - generic [ref=e48]:
+      - generic [ref=e49]:
+        - heading "Actuators" [level=2] [ref=e50]
+        - generic [ref=e51]: "1"
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - heading "heater" [level=3] [ref=e54]
+          - generic [ref=e55]:
+            - generic [ref=e56]: Continuous
+            - button "×" [ref=e57]
+        - generic [ref=e59]:
+          - slider [ref=e60]: "0"
+          - generic [ref=e61]:
+            - generic [ref=e62]: "0"
+            - generic [ref=e63]: "0.00"
+            - generic [ref=e64]: "1"
+  - generic [ref=e130]:
+    - heading "Delete \"mash_temp\"?" [level=2] [ref=e131]
+    - paragraph [ref=e133]: This will permanently remove the item and update the SD config.
+    - generic [ref=e134]:
+      - button "Cancel" [ref=e135]
+      - button "Delete" [ref=e136]

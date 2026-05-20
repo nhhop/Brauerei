@@ -1,0 +1,59 @@
+#pragma once
+
+#include <Arduino.h>
+#include <ESPAsyncWebServer.h>
+#include <FS.h>
+#include <SensActCtrl.h>
+
+#include "DynamicItems.h"
+
+namespace BrewControl {
+
+// Browser-facing HTTP + SSE layer for a SensActCtrl Registry.
+//
+// Routes:
+//   GET  /api/snapshot                      — current registry state (JSON)
+//   GET  /api/events                        — SSE; "snapshot" event on
+//                                             connect, every 1 s, and after
+//                                             every write or add/remove
+//   POST /api/sensors                       — create dynamic sensor
+//   POST /api/actuators                     — create dynamic actuator
+//   POST /api/controllers                   — create dynamic controller
+//   DELETE /api/sensors/<id>               — remove dynamic sensor
+//   DELETE /api/actuators/<id>             — remove dynamic actuator (405 if static)
+//   DELETE /api/controllers/<id>           — remove dynamic controller (405 if static)
+//   POST /api/actuators/<id>               — {"v":<float>} → Actuator::write
+//   POST /api/controllers/<id>/setpoint    — {"v":<float>}
+//   POST /api/controllers/<id>/params      — raw controller-params JSON
+//   POST /api/admin/wifi-reset             — clear WiFi creds, reboot
+//   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
+//   GET  /*                                — SD static (default index.html)
+//
+// Concurrency: serializeRegistry runs from the AsyncTCP task while
+// Registry::tick runs from loopTask. Reading values are non-atomic — a
+// torn read is theoretically possible but tolerated for the dashboard use.
+class WebUI {
+ public:
+  WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
+        uint16_t port = 80);
+
+  // Must be called after registry.begin() and dynamicItems.markInitialized().
+  void begin();
+
+  // Call once per loop() iteration. Broadcasts a fresh snapshot every 1 s.
+  void tick();
+
+ private:
+  void pushSnapshot_();
+  void sendSnapshotTo_(AsyncEventSourceClient* client);
+
+  SensActCtrl::Registry& reg_;
+  fs::FS& fs_;
+  DynamicItems& items_;
+  AsyncWebServer server_;
+  AsyncEventSource events_;
+  uint32_t lastPushMs_ = 0;
+  uint32_t rebootAtMs_ = 0;
+};
+
+}  // namespace BrewControl

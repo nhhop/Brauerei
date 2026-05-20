@@ -1,0 +1,26 @@
+{
+  "name": "brewcontrol-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "build:sd": "vite build && node scripts/gzip-dist.js"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "preact": "^10.25.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

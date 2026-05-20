@@ -1,0 +1,103 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "BrewControl" [level=1] [ref=e5]
+    - generic [ref=e6]:
+      - button "+ Add Item" [ref=e7]
+      - button "Reset WiFi" [ref=e8]
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - heading "Sensors" [level=2] [ref=e13]
+        - generic [ref=e14]: "1"
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - heading "mash_temp" [level=3] [ref=e17]
+          - generic [ref=e18]:
+            - generic [ref=e19]: Temperature
+            - button "×" [ref=e20]
+        - generic [ref=e21]:
+          - generic [ref=e22]: —
+          - generic [ref=e23]: °C
+          - generic [ref=e24]: stale
+        - generic [ref=e26]:
+          - generic [ref=e27]: "-55"
+          - generic [ref=e28]: "125"
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - heading "Controllers" [level=2] [ref=e31]
+        - generic [ref=e32]: "1"
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - heading "mash_pid" [level=3] [ref=e35]
+          - generic [ref=e36]:
+            - generic [ref=e37]: "live: 65.00"
+            - button "×" [ref=e38]
+        - generic [ref=e39]:
+          - generic [ref=e40]: Setpoint
+          - generic [ref=e41]:
+            - spinbutton [ref=e42]: "65"
+            - button "Apply" [ref=e43]
+        - generic [ref=e44]:
+          - generic [ref=e45]: Params (JSON)
+          - textbox [ref=e46]: "{ \"setpoint\": 65, \"Kp\": 8, \"Ki\": 0.2, \"Kd\": 0.5, \"Ku\": 0, \"Tu\": 0, \"min\": 0, \"max\": 1, \"autotuneMethod\": \"ZieglerNichols\", \"autotuneState\": \"idle\" }"
+          - button "Apply" [ref=e47]
+    - generic [ref=e48]:
+      - generic [ref=e49]:
+        - heading "Actuators" [level=2] [ref=e50]
+        - generic [ref=e51]: "1"
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - heading "heater" [level=3] [ref=e54]
+          - generic [ref=e55]:
+            - generic [ref=e56]: Continuous
+            - button "×" [ref=e57]
+        - generic [ref=e59]:
+          - slider [ref=e60]: "0"
+          - generic [ref=e61]:
+            - generic [ref=e62]: "0"
+            - generic [ref=e63]: "0.00"
+            - generic [ref=e64]: "1"
+  - generic [ref=e66]:
+    - heading "Add Item" [level=2] [ref=e67]
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - generic [ref=e70]: Type
+        - generic [ref=e71]:
+          - button "Sensor" [ref=e72]
+          - button "Actuator" [ref=e73]
+          - button "Controller" [active] [ref=e74]
+      - generic [ref=e75]:
+        - generic [ref=e76]: ID
+        - textbox "e.g. kettle_temp" [ref=e77]
+      - generic [ref=e94]:
+        - generic [ref=e95]:
+          - generic [ref=e96]: Sensor
+          - combobox [ref=e97]:
+            - option "mash_temp" [selected]
+        - generic [ref=e98]:
+          - generic [ref=e99]: Actuator
+          - combobox [ref=e100]:
+            - option "heater" [selected]
+      - generic [ref=e101]:
+        - generic [ref=e102]: Setpoint
+        - spinbutton [ref=e103]: "65"
+      - generic [ref=e104]:
+        - generic [ref=e105]:
+          - generic [ref=e106]: Kp
+          - spinbutton [ref=e107]: "8"
+        - generic [ref=e108]:
+          - generic [ref=e109]: Ki
+          - spinbutton [ref=e110]: "0.2"
+        - generic [ref=e111]:
+          - generic [ref=e112]: Kd
+          - spinbutton [ref=e113]: "0.5"
+      - generic [ref=e114]:
+        - generic [ref=e115]:
+          - generic [ref=e116]: Min output
+          - spinbutton [ref=e117]: "0"
+        - generic [ref=e118]:
+          - generic [ref=e119]: Max output
+          - spinbutton [ref=e120]: "1"
+      - generic [ref=e83]:
+        - button "Cancel" [ref=e84]
+        - button "Create" [ref=e85]
