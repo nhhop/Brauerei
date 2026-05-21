@@ -10,9 +10,9 @@
 using namespace SensActCtrl;
 
 BME280Bus bus(0x76);
-BME280Sensor ambT("amb_t", bus, BME280Sensor::Channel::Temperature);
-BME280Sensor ambH("amb_h", bus, BME280Sensor::Channel::Humidity);
-BME280Sensor ambP("amb_p", bus, BME280Sensor::Channel::Pressure);
+BME280Sensor ambT("amb_t", bus, BME280Sensor::Measurement::Temperature);
+BME280Sensor ambH("amb_h", bus, BME280Sensor::Measurement::Humidity);
+BME280Sensor ambP("amb_p", bus, BME280Sensor::Measurement::Pressure);
 
 Registry registry;
 uint32_t nextLogMs = 0;
@@ -37,9 +37,9 @@ void loop() {
   const uint32_t now = millis();
   if (now >= nextLogMs) {
     nextLogMs = now + 1000;
-    const auto t = ambT.lastReading();
-    const auto h = ambH.lastReading();
-    const auto p = ambP.lastReading();
+    const auto t = ambT.channel(0).reading;
+    const auto h = ambH.channel(0).reading;
+    const auto p = ambP.channel(0).reading;
     Serial.printf("t=%lu T=%.2f\xc2\xb0""C  RH=%.1f%%  P=%.2fhPa  valid=%d\n",
                   (unsigned long)now, t.value, h.value, p.value, t.valid);
   }
