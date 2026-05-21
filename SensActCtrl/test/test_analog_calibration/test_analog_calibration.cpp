@@ -22,8 +22,8 @@ void test_ph_calibration() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 14.0f, a.rawToValue(3000.0f));
   // Midpoint raw 1550 → pH 7
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 7.0f, a.rawToValue(1550.0f));
-  TEST_ASSERT_EQUAL_STRING("pH", a.meta().unit);
-  TEST_ASSERT_EQUAL(Quantity::pH, a.meta().quantity);
+  TEST_ASSERT_EQUAL_STRING("pH", a.channel(0).meta.unit);
+  TEST_ASSERT_EQUAL(Quantity::pH, a.channel(0).meta.quantity);
 }
 
 void test_extrapolation_outside_calibration_range() {

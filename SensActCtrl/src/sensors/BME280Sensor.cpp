@@ -39,21 +39,21 @@ bool BME280Bus::sample() {
   return true;
 }
 
-BME280Sensor::BME280Sensor(const char* id, BME280Bus& bus, Channel channel)
-    : id_(id), bus_(&bus), channel_(channel) {}
+BME280Sensor::BME280Sensor(const char* id, BME280Bus& bus, Measurement measurement)
+    : id_(id), bus_(&bus), measurement_(measurement) {}
 
-Channel BME280Sensor::channel(size_t) const {
+SensActCtrl::Channel BME280Sensor::channel(size_t) const {
   SensorMeta m{};
-  switch (channel_) {
-    case BME280Sensor::Channel::Temperature:
+  switch (measurement_) {
+    case BME280Sensor::Measurement::Temperature:
       m = SensorMeta{ValueKind::Continuous, Quantity::Temperature,
                      "\xc2\xb0""C", -40.0f, 85.0f, 0.01f};
       break;
-    case BME280Sensor::Channel::Humidity:
+    case BME280Sensor::Measurement::Humidity:
       m = SensorMeta{ValueKind::Continuous, Quantity::Humidity,
                      "%RH", 0.0f, 100.0f, 0.01f};
       break;
-    case BME280Sensor::Channel::Pressure:
+    case BME280Sensor::Measurement::Pressure:
       m = SensorMeta{ValueKind::Continuous, Quantity::Pressure,
                      "hPa", 300.0f, 1100.0f, 0.01f};
       break;
@@ -69,10 +69,10 @@ void BME280Sensor::tick() {
   // sample() just refreshes the cache each time tick() arrives.
   bus_->sample();
   if (!bus_->valid()) return;
-  switch (channel_) {
-    case Channel::Temperature: last_.value = bus_->lastTempC(); break;
-    case Channel::Humidity:    last_.value = bus_->lastHumidity(); break;
-    case Channel::Pressure:    last_.value = bus_->lastPressureHpa(); break;
+  switch (measurement_) {
+    case Measurement::Temperature: last_.value = bus_->lastTempC(); break;
+    case Measurement::Humidity:    last_.value = bus_->lastHumidity(); break;
+    case Measurement::Pressure:    last_.value = bus_->lastPressureHpa(); break;
   }
   last_.valid = true;
   last_.timestampMs = millis();

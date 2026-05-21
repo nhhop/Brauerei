@@ -23,11 +23,11 @@ static ActuatorMeta switchMeta() {
 
 void test_meta_kind_and_quantity() {
   MockSensor s("t1", tempMeta());
-  TEST_ASSERT_EQUAL(ValueKind::Continuous, s.meta().kind);
-  TEST_ASSERT_EQUAL(Quantity::Temperature, s.meta().quantity);
-  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", s.meta().unit);
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, -55.0f, s.meta().min);
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 125.0f, s.meta().max);
+  TEST_ASSERT_EQUAL(ValueKind::Continuous, s.channel(0).meta.kind);
+  TEST_ASSERT_EQUAL(Quantity::Temperature, s.channel(0).meta.quantity);
+  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", s.channel(0).meta.unit);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -55.0f, s.channel(0).meta.min);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 125.0f, s.channel(0).meta.max);
 }
 
 void test_registry_tick_order_sensor_then_actuator() {
@@ -68,7 +68,7 @@ void test_registry_reading_propagates() {
   s.value = 42.5f;
   reg.tick();
 
-  auto r = s.lastReading();
+  auto r = s.channel(0).reading;
   TEST_ASSERT_TRUE(r.valid);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 42.5f, r.value);
 }

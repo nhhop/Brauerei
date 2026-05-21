@@ -10,7 +10,7 @@ using SensActCtrl::Reading;
 void test_meta_temperature_range() {
   MAX31865Sensor s("pt", 5, MAX31865Sensor::Wires::Two,
                    MAX31865Sensor::RtdType::PT100, 430.0f);
-  SensorMeta m = s.meta();
+  SensorMeta m = s.channel(0).meta;
   TEST_ASSERT_EQUAL(ValueKind::Continuous, m.kind);
   TEST_ASSERT_EQUAL(Quantity::Temperature, m.quantity);
   TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", m.unit);
@@ -22,7 +22,7 @@ void test_meta_temperature_range() {
 void test_default_reading_invalid() {
   MAX31865Sensor s("pt", 5, MAX31865Sensor::Wires::Three,
                    MAX31865Sensor::RtdType::PT1000, 4300.0f);
-  Reading r = s.lastReading();
+  Reading r = s.channel(0).reading;
   TEST_ASSERT_FALSE(r.valid);
   TEST_ASSERT_EQUAL(0u, r.timestampMs);
 }

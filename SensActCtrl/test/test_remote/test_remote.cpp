@@ -44,9 +44,9 @@ void test_sensor_state_round_trip() {
   remote.begin();  // retained meta replays into remote immediately
 
   // Meta should have arrived via retained replay.
-  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", remote.meta().unit);
+  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", remote.channel(0).meta.unit);
   TEST_ASSERT_EQUAL(static_cast<int>(Quantity::Temperature),
-                    static_cast<int>(remote.meta().quantity));
+                    static_cast<int>(remote.channel(0).meta.quantity));
 
   // Drive a reading through publisher → transport → remote.
   src.value = 42.5f;
@@ -54,7 +54,7 @@ void test_sensor_state_round_trip() {
   src.tick();
   pub.tick();
 
-  const auto r = remote.lastReading();
+  const auto r = remote.channel(0).reading;
   TEST_ASSERT_TRUE(r.valid);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 42.5f, r.value);
 }
@@ -110,9 +110,9 @@ void test_meta_retained_replay_for_late_subscriber() {
   RemoteSensor late(tx, "node-d", "amb_t");
   late.begin();
 
-  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", late.meta().unit);
-  TEST_ASSERT_TRUE(late.lastReading().valid);
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 23.7f, late.lastReading().value);
+  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", late.channel(0).meta.unit);
+  TEST_ASSERT_TRUE(late.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 23.7f, late.channel(0).reading.value);
 }
 
 void test_controller_tune_round_trip() {

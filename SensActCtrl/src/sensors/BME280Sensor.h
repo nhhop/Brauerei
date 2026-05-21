@@ -19,20 +19,20 @@ namespace SensActCtrl {
 //
 // Typical use:
 //   BME280Bus bus(/*i2cAddress=*/0x76);
-//   BME280Sensor temp("amb_t", bus, BME280Sensor::Channel::Temperature);
-//   BME280Sensor hum ("amb_h", bus, BME280Sensor::Channel::Humidity);
-//   BME280Sensor pres("amb_p", bus, BME280Sensor::Channel::Pressure);
+//   BME280Sensor temp("amb_t", bus, BME280Sensor::Measurement::Temperature);
+//   BME280Sensor hum ("amb_h", bus, BME280Sensor::Measurement::Humidity);
+//   BME280Sensor pres("amb_p", bus, BME280Sensor::Measurement::Pressure);
 class BME280Bus;
 
 class BME280Sensor : public Sensor {
  public:
-  enum class Channel : uint8_t { Temperature, Humidity, Pressure };
+  enum class Measurement : uint8_t { Temperature, Humidity, Pressure };
 
-  BME280Sensor(const char* id, BME280Bus& bus, Channel channel);
+  BME280Sensor(const char* id, BME280Bus& bus, Measurement measurement);
 
   const char* id() const override { return id_; }
-  size_t  channelCount()      const override { return 1; }
-  Channel channel(size_t)     const override;
+  size_t  channelCount()           const override { return 1; }
+  SensActCtrl::Channel channel(size_t) const override;
 
   void begin() override;
   void tick() override;
@@ -40,7 +40,7 @@ class BME280Sensor : public Sensor {
  private:
   const char* id_;
   BME280Bus* bus_;
-  Channel channel_;
+  Measurement measurement_;
   Reading last_{};
 };
 
