@@ -65,7 +65,7 @@ export function AddItemModal({ open, snap, onClose }: {
       setSensorId(snap?.sensors[0]?.id ?? '');
       setActuatorId(snap?.actuators[0]?.id ?? '');
     }
-  }, [open, snap]);
+  }, [open]);
 
   if (!open) return null;
 
