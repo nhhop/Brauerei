@@ -29,6 +29,37 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     } else {
       e->ptr = std::make_unique<DS18B20Sensor>(e->id.c_str(), pin);
     }
+  } else if (strcmp(type, "MAX31865") == 0) {
+    int cs = cfg["cs"] | -1;
+    if (cs < 0) return {false, "missing cs"};
+
+    int wires = cfg["wires"] | 2;
+    if (wires < 2 || wires > 4) return {false, "invalid wires (2/3/4)"};
+
+    const char* rtdStr = cfg["rtd"] | "PT100";
+    auto rtd = strcmp(rtdStr, "PT1000") == 0
+                   ? MAX31865Sensor::RtdType::PT1000
+                   : MAX31865Sensor::RtdType::PT100;
+
+    float defaultRref = (rtd == MAX31865Sensor::RtdType::PT100) ? 430.0f : 4300.0f;
+    float rref = cfg["rref"] | defaultRref;
+    if (rref <= 0) return {false, "invalid rref"};
+
+    auto wiresEnum = wires == 3 ? MAX31865Sensor::Wires::Three
+                   : wires == 4 ? MAX31865Sensor::Wires::Four
+                                : MAX31865Sensor::Wires::Two;
+
+    int clk = cfg["clk"] | -1;
+    if (clk >= 0) {
+      int miso = cfg["miso"] | -1;
+      int mosi = cfg["mosi"] | -1;
+      if (miso < 0 || mosi < 0) return {false, "clk set but miso/mosi missing"};
+      e->ptr = std::make_unique<MAX31865Sensor>(
+          e->id.c_str(), cs, clk, miso, mosi, wiresEnum, rtd, rref);
+    } else {
+      e->ptr = std::make_unique<MAX31865Sensor>(
+          e->id.c_str(), cs, wiresEnum, rtd, rref);
+    }
   } else {
     return {false, "unknown sensor type"};
   }

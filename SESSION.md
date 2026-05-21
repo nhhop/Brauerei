@@ -111,3 +111,57 @@ wurden vs. noch nicht gescannt. Nicht buggy, aber für Benutzer leicht verwirren
 
 **Screenshots:** `.playwright-mcp/` — `01_dashboard.png`, `02_add_modal_sensor.png`,
 `03_scan_no_devices.png`, `04_delete_confirm_modal.png`, `05_dashboard_final.png`
+
+---
+
+## 2026-05-21 — MAX31865 PT100/PT1000 Sensor + AddItemModal Redesign
+
+**Ausgangslage:** BrewControl unterstützte nur DS18B20 (OneWire) als dynamisch
+hinzufügbaren Temperatursensor. MAX31865 ist ein SPI-Chip für PT100/PT1000 RTD-Sensoren —
+präziser und in der Brauerei für Hochtemperaturmessungen üblich.
+
+**Änderungen in beiden Projekten:**
+
+- `SensActCtrl/src/sensors/MAX31865Sensor.{h,cpp}`: neue Klasse `MAX31865Sensor`,
+  implementiert `Sensor`-Interface. Liest synchron per SPI (~1 ms, kein State-Machine
+  nötig). Hardware-SPI (nur CS-Pin) und Software-SPI (CS + CLK + MISO + MOSI)
+  Konstruktoren. Enums `Wires` (Two/Three/Four) und `RtdType` (PT100/PT1000).
+  `#ifndef ARDUINO`-Guard mit vollständigem Stub für native Builds.
+- `SensActCtrl/test/test_max31865/test_max31865.cpp`: 3 Unity-Tests (meta, default
+  reading, id). Gesamtzahl nativer Tests: 31 → 34.
+- `SensActCtrl/library.json` + `library.properties`: `Adafruit MAX31865 library ^1.2.0`
+  als neue Abhängigkeit eingetragen.
+- `SensActCtrl/src/SensActCtrl.h`: `#include "sensors/MAX31865Sensor.h"` im
+  Umbrella-Header ergänzt.
+- `BrewControl/firmware/src/DynamicItems.cpp`: neuer Factory-Branch für `"MAX31865"` in
+  `addSensorNoBegin()` — liest `cs`, `wires`, `rtd`, `rref`, optional `clk`/`miso`/`mosi`
+  aus dem JSON-Config. Validierung: `cs >= 0`, `wires` 2–4, `rref > 0`, clk/miso/mosi
+  vollständig wenn custom SPI. Alle 3 Boards (esp32dev, lolin_s2_mini,
+  lilygo_t_display_s3_amoled) kompilieren.
+- `BrewControl/web/src/components/AddItemModal.tsx`: vollständiges Redesign mit
+  grupiertem `<optgroup>`-Dropdown für Sensortyp-Auswahl. DS18B20-Formular unverändert.
+  Neues MAX31865-Formular: CS-Pin, Wires-Segment-Buttons, RTD-Segment-Buttons, Rref
+  (auto-fill PT100↔PT1000, respektiert manuelle Änderungen via `rrefTouched`-Flag),
+  aufklappbarer Custom-SPI-Bereich (CLK/MISO/MOSI).
+
+**Wire-Format** für neuen Sensortyp:
+```json
+POST /api/sensors
+{ "type":"MAX31865","id":"boil_temp","cs":5,"wires":3,"rtd":"PT100","rref":430.0 }
+// mit custom SPI:
+{ "type":"MAX31865","id":"boil_temp","cs":5,"clk":14,"miso":12,"mosi":13,"wires":3,"rtd":"PT100","rref":430.0 }
+```
+
+**Rückwärtskompatibel:** DS18B20-Pfad in DynamicItems und AddItemModal unverändert.
+
+**Adafruit SW-SPI Konstruktor-Reihenfolge:** `(cs, mosi, miso, clk)` — nicht
+`(cs, clk, miso, mosi)`. Wurde im Code-Review verifiziert gegen die Adafruit-Header.
+
+**Design-Entscheidungen:**
+- Synchroner SPI-Read in `tick()` (~1 ms) — kein State-Machine nötig (anders als DS18B20)
+- Rref default: 430 Ω für PT100, 4300 Ω für PT1000 (entspricht Standard-Breakout-Boards)
+- Forward-Deklaration `class Adafruit_MAX31865;` im Header verhindert Adafruit-Header-Pull
+  in den Umbrella-Include
+
+Details: Spec `docs/superpowers/specs/2026-05-21-max31865-sensor-design.md`,
+Plan `docs/superpowers/plans/2026-05-21-max31865-sensor.md`.

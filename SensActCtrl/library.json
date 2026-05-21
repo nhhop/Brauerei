@@ -39,6 +39,11 @@
       "version": "^1.16.1"
     },
     {
+      "name": "Adafruit MAX31865 library",
+      "owner": "adafruit",
+      "version": "^1.2.0"
+    },
+    {
       "name": "AutoTunePID",
       "version": "https://github.com/lily-osp/AutoTunePID.git#v1.1.6"
     },
