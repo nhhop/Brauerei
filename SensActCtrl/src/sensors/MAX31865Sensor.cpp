@@ -75,11 +75,16 @@ void MAX31865Sensor::tick() {
   const float rnominal = (rtd_ == RtdType::PT1000) ? 1000.0f : 100.0f;
   const float t = max_->temperature(rnominal, rref_);
   const uint8_t fault = max_->readFault();
+  const uint32_t now = millis();
   if (fault) {
     max_->clearFault();
-    last_ = Reading{0.0f, millis(), false};
+    last_.value = 0.0f;
+    last_.timestampMs = now;
+    last_.valid = false;
   } else {
-    last_ = Reading{t, millis(), true};
+    last_.value = t;
+    last_.timestampMs = now;
+    last_.valid = true;
   }
 #endif
 }
