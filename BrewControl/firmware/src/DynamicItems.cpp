@@ -43,6 +43,7 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
 
     float defaultRref = (rtd == MAX31865Sensor::RtdType::PT100) ? 430.0f : 4300.0f;
     float rref = cfg["rref"] | defaultRref;
+    if (rref <= 0) return {false, "invalid rref"};
 
     auto wiresEnum = wires == 3 ? MAX31865Sensor::Wires::Three
                    : wires == 4 ? MAX31865Sensor::Wires::Four
