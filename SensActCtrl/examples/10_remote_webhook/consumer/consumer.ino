@@ -64,7 +64,7 @@ void loop() {
   const uint32_t now = millis();
   if (now >= nextLogMs) {
     nextLogMs = now + 1000;
-    const auto r = mashTemp.lastReading();
+    const auto r = mashTemp.channel(0).reading;
     Serial.printf("T_remote=%.2f valid=%d heater_state=%.2f sp=%.1f wifi=%d\n",
                   r.value, r.valid, heater.state(),
                   mashCtrl.setpoint(), tx.connected());

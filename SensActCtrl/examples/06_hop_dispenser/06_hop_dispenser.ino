@@ -35,7 +35,7 @@ void setup() {
 void loop() {
   registry.tick();
 
-  const bool pressed = button.lastReading().value > 0.5f;
+  const bool pressed = button.channel(0).reading.value > 0.5f;
   if (pressed && !prev) {
     dispenser.write(kHopsPerPress);
     Serial.printf("Queued %d hops; outstanding=%.0f\n",

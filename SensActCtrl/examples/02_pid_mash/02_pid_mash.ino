@@ -40,7 +40,7 @@ void loop() {
   const uint32_t now = millis();
   if (now >= nextLogMs) {
     nextLogMs = now + 1000;
-    const auto r = mashTemp.lastReading();
+    const auto r = mashTemp.channel(0).reading;
     Serial.printf("T=%.2f sp=%.2f duty=%.2f\n",
                   r.value, pid.setpoint(), heater.state());
   }

@@ -39,6 +39,6 @@ void loop() {
   const uint32_t now = millis();
   if (now >= nextLogMs) {
     nextLogMs = now + 500;
-    Serial.printf("pH=%.2f\n", ph.lastReading().value);
+    Serial.printf("pH=%.2f\n", ph.channel(0).reading.value);
   }
 }

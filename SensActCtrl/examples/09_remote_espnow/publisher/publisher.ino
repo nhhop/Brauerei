@@ -56,6 +56,6 @@ void loop() {
   if (now >= nextLogMs) {
     nextLogMs = now + 1000;
     Serial.printf("T=%.2f heater=%.2f link=%d\n",
-                  mashTemp.lastReading().value, heater.state(), tx.connected());
+                  mashTemp.channel(0).reading.value, heater.state(), tx.connected());
   }
 }

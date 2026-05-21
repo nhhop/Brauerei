@@ -34,7 +34,7 @@ void loop() {
   if (now >= nextLogMs) {
     nextLogMs = now + 500;
     Serial.printf("flow=%.2f l/min raw=%lu\n",
-                  flow.lastReading().value,
+                  flow.channel(0).reading.value,
                   (unsigned long)flow.rawCount());
   }
 }
