@@ -27,11 +27,11 @@ class AnalogInputSensor : public Sensor {
   AnalogInputSensor(const char* id, int pin);
 
   const char* id() const override { return id_; }
-  SensorMeta meta() const override { return meta_; }
+  size_t  channelCount()      const override { return 1; }
+  Channel channel(size_t)     const override { return {"", meta_, last_}; }
 
   void begin() override;
   void tick() override;
-  Reading lastReading() const override { return last_; }
 
   // Linear calibration: raw [rawMin..rawMax] → physical [valueMin..valueMax].
   void setCalibration(int rawMin, int rawMax, float valueMin, float valueMax);

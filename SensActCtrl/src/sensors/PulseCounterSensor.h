@@ -23,11 +23,11 @@ class PulseCounterSensor : public Sensor {
   PulseCounterSensor(const char* id, int pin, Mode mode, Edge edge = Edge::Rising);
 
   const char* id() const override { return id_; }
-  SensorMeta meta() const override;
+  size_t  channelCount()      const override { return 1; }
+  Channel channel(size_t)     const override { return {"", meta_, last_}; }
 
   void begin() override;
   void tick() override;
-  Reading lastReading() const override { return last_; }
 
   // Set how many raw pulses correspond to one physical unit. e.g. 450.0 →
   // a liter every 450 pulses; the reading then comes out in liters (Total)

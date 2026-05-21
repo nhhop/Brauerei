@@ -53,8 +53,6 @@ PulseCounterSensor::PulseCounterSensor(const char* id, int pin, Mode mode,
   }
 }
 
-SensorMeta PulseCounterSensor::meta() const { return meta_; }
-
 void PulseCounterSensor::setPulsesPerUnit(float pulsesPerUnit) {
   if (pulsesPerUnit > 0.0f) pulsesPerUnit_ = pulsesPerUnit;
 }

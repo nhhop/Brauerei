@@ -42,19 +42,23 @@ bool BME280Bus::sample() {
 BME280Sensor::BME280Sensor(const char* id, BME280Bus& bus, Channel channel)
     : id_(id), bus_(&bus), channel_(channel) {}
 
-SensorMeta BME280Sensor::meta() const {
+Channel BME280Sensor::channel(size_t) const {
+  SensorMeta m{};
   switch (channel_) {
-    case Channel::Temperature:
-      return SensorMeta{ValueKind::Continuous, Quantity::Temperature,
-                        "\xc2\xb0""C", -40.0f, 85.0f, 0.01f};
-    case Channel::Humidity:
-      return SensorMeta{ValueKind::Continuous, Quantity::Humidity, "%RH",
-                        0.0f, 100.0f, 0.01f};
-    case Channel::Pressure:
-      return SensorMeta{ValueKind::Continuous, Quantity::Pressure, "hPa",
-                        300.0f, 1100.0f, 0.01f};
+    case BME280Sensor::Channel::Temperature:
+      m = SensorMeta{ValueKind::Continuous, Quantity::Temperature,
+                     "\xc2\xb0""C", -40.0f, 85.0f, 0.01f};
+      break;
+    case BME280Sensor::Channel::Humidity:
+      m = SensorMeta{ValueKind::Continuous, Quantity::Humidity,
+                     "%RH", 0.0f, 100.0f, 0.01f};
+      break;
+    case BME280Sensor::Channel::Pressure:
+      m = SensorMeta{ValueKind::Continuous, Quantity::Pressure,
+                     "hPa", 300.0f, 1100.0f, 0.01f};
+      break;
   }
-  return SensorMeta{};
+  return {"", m, last_};
 }
 
 void BME280Sensor::begin() { bus_->begin(); }

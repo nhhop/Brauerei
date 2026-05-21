@@ -31,11 +31,11 @@ class BME280Sensor : public Sensor {
   BME280Sensor(const char* id, BME280Bus& bus, Channel channel);
 
   const char* id() const override { return id_; }
-  SensorMeta meta() const override;
+  size_t  channelCount()      const override { return 1; }
+  Channel channel(size_t)     const override;
 
   void begin() override;
   void tick() override;
-  Reading lastReading() const override { return last_; }
 
  private:
   const char* id_;

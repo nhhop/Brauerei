@@ -10,7 +10,7 @@ namespace SensActCtrl {
 // Sensor proxy for a remote node. Subscribes (on begin()) to the publisher's
 // state + meta topics. Until the first meta retained message arrives,
 // meta().unit is nullptr — frontends can treat that as "not yet known".
-// lastReading().valid stays false until the first state message arrives.
+// channel(0).reading.valid stays false until the first state message arrives.
 //
 // Topics built from (deviceId, sensorId) per src/remote/Topics.h.
 class RemoteSensor : public Sensor {
@@ -18,11 +18,11 @@ class RemoteSensor : public Sensor {
   RemoteSensor(ITransport& transport, const char* deviceId, const char* sensorId);
 
   const char* id() const override { return sensorId_.c_str(); }
-  SensorMeta meta() const override { return meta_; }
+  size_t  channelCount()      const override { return 1; }
+  Channel channel(size_t)     const override { return {"", meta_, last_}; }
 
   void begin() override;
   void tick() override {}
-  Reading lastReading() const override { return last_; }
 
  private:
   void onState(const char* payload, size_t length);

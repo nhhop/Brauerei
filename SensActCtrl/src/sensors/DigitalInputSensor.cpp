@@ -16,9 +16,9 @@ DigitalInputSensor::DigitalInputSensor(const char* id, int pin, bool pullup,
     : id_(id), pin_(pin), pullup_(pullup), invert_(invert),
       debounceMs_(debounceMs) {}
 
-SensorMeta DigitalInputSensor::meta() const {
-  return SensorMeta{ValueKind::Binary, Quantity::None, "",
-                    0.0f, 1.0f, 1.0f};
+Channel DigitalInputSensor::channel(size_t) const {
+  return {"", SensorMeta{ValueKind::Binary, Quantity::None, "",
+                          0.0f, 1.0f, 1.0f}, last_};
 }
 
 void DigitalInputSensor::begin() {

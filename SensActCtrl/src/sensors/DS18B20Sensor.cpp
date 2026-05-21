@@ -56,9 +56,9 @@ DS18B20Sensor::~DS18B20Sensor() {
   if (ownsBus_) delete bus_;
 }
 
-SensorMeta DS18B20Sensor::meta() const {
-  return SensorMeta{ValueKind::Continuous, Quantity::Temperature, "\xc2\xb0""C",
-                    -55.0f, 125.0f, 0.0625f};
+Channel DS18B20Sensor::channel(size_t) const {
+  return {"", SensorMeta{ValueKind::Continuous, Quantity::Temperature,
+                          "\xc2\xb0""C", -55.0f, 125.0f, 0.0625f}, last_};
 }
 
 void DS18B20Sensor::begin() {

@@ -35,10 +35,10 @@ class MAX31865Sensor : public Sensor {
   ~MAX31865Sensor() override;
 
   const char* id()            const override { return id_; }
-  SensorMeta  meta()          const override;
+  size_t  channelCount()      const override { return 1; }
+  Channel channel(size_t)     const override;
   void        begin()         override;
   void        tick()          override;
-  Reading     lastReading()   const override { return last_; }
 
  private:
   const char*      id_;

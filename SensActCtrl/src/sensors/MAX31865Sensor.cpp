@@ -39,13 +39,11 @@ MAX31865Sensor::MAX31865Sensor(const char* id, int csPin,
 
 MAX31865Sensor::~MAX31865Sensor() { delete max_; }
 
-// ── SensorMeta ────────────────────────────────────────────────────────────
+// ── Channel ───────────────────────────────────────────────────────────────
 
-SensorMeta MAX31865Sensor::meta() const {
-  // PT100 and PT1000 share the same temperature range (-200..850 °C).
-  // Resolution: 15-bit ADC → ~0.03125 °C per LSB.
-  return SensorMeta{ValueKind::Continuous, Quantity::Temperature,
-                    "\xc2\xb0""C", -200.0f, 850.0f, 0.03125f};
+Channel MAX31865Sensor::channel(size_t) const {
+  return {"", SensorMeta{ValueKind::Continuous, Quantity::Temperature,
+                          "\xc2\xb0""C", -200.0f, 850.0f, 0.03125f}, last_};
 }
 
 // ── begin / tick ──────────────────────────────────────────────────────────
