@@ -237,7 +237,7 @@ void PIDController::tick() {
   // AutoTunePID's contract: don't call update() faster than every 100 ms.
   if (lastTickMs_ != 0 && elapsed < 100) return;
 
-  const Reading r = sensor_->lastReading();
+  const Reading r = sensor_->channel(0).reading;
   if (!r.valid) { lastTickMs_ = now; return; }
 
   // Detect autotune completion: started + backend left Tune mode → done.

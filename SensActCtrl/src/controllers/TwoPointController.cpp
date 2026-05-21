@@ -11,7 +11,7 @@ TwoPointController::TwoPointController(const char* id, Sensor& sensor,
     : id_(id), sensor_(&sensor), actuator_(&actuator) {}
 
 void TwoPointController::tick() {
-  const Reading r = sensor_->lastReading();
+  const Reading r = sensor_->channel(0).reading;
   if (!r.valid) return;  // no reading yet — leave actuator alone
 
   const float lowThresh = setpoint_ + hystLow_;

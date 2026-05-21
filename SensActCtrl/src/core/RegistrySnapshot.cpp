@@ -1,6 +1,7 @@
 #include "RegistrySnapshot.h"
 
 #include <ArduinoJson.h>
+#include <cstring>
 
 #include "Actuator.h"
 #include "Controller.h"
@@ -40,15 +41,28 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
 
   JsonArray sensorsArr = doc["sensors"].to<JsonArray>();
   for (Sensor* s : reg.sensors()) {
-    JsonObject obj = sensorsArr.add<JsonObject>();
-    obj["id"] = s->id();
-    writeMeta(obj["meta"].to<JsonObject>(), s->meta());
-
-    const Reading r = s->lastReading();
-    JsonObject state = obj["state"].to<JsonObject>();
-    state["v"]  = r.value;
-    state["t"]  = r.timestampMs;
-    state["ok"] = r.valid;
+    for (size_t i = 0; i < s->channelCount(); ++i) {
+      const Channel ch = s->channel(i);
+      char compositeId[64] = {};
+      const char* entryId = s->id();
+      if (ch.key[0] != '\0') {
+        const size_t idLen  = strlen(s->id());
+        const size_t keyLen = strlen(ch.key);
+        if (idLen + 1 + keyLen < sizeof(compositeId)) {
+          memcpy(compositeId, s->id(), idLen);
+          compositeId[idLen] = '.';
+          memcpy(compositeId + idLen + 1, ch.key, keyLen + 1);
+          entryId = compositeId;
+        }
+      }
+      JsonObject obj = sensorsArr.add<JsonObject>();
+      obj["id"] = entryId;
+      writeMeta(obj["meta"].to<JsonObject>(), ch.meta);
+      JsonObject state = obj["state"].to<JsonObject>();
+      state["v"]  = ch.reading.value;
+      state["t"]  = ch.reading.timestampMs;
+      state["ok"] = ch.reading.valid;
+    }
   }
 
   JsonArray actuatorsArr = doc["actuators"].to<JsonArray>();

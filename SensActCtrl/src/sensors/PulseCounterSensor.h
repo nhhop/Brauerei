@@ -14,7 +14,7 @@ namespace SensActCtrl {
 //          a Continuous value with quantity FlowRate / Frequency.
 //
 // Counting is done in an ISR — the counter is `volatile uint32_t`.
-// tick() snapshots the counter, computes rate, and updates lastReading().
+// tick() snapshots the counter, computes rate, and updates the internal Reading.
 class PulseCounterSensor : public Sensor {
  public:
   enum class Mode : uint8_t { Total, Rate };

@@ -49,7 +49,7 @@ void RemotePublisher::attach(Controller& c) {
 
 void RemotePublisher::publishSensorMeta(SensorEntry& e) {
   char buf[192];
-  size_t n = remote::serializeSensorMeta(e.sensor->meta(), buf, sizeof(buf));
+  size_t n = remote::serializeSensorMeta(e.sensor->channel(0).meta, buf, sizeof(buf));
   if (n == 0) return;
   if (transport_->publish(e.metaTopic.c_str(), buf, /*retained=*/true)) {
     e.metaSent = true;
@@ -57,7 +57,7 @@ void RemotePublisher::publishSensorMeta(SensorEntry& e) {
 }
 
 void RemotePublisher::publishSensorState(SensorEntry& e) {
-  const Reading r = e.sensor->lastReading();
+  const Reading r = e.sensor->channel(0).reading;
   char buf[96];
   size_t n = remote::serializeState(r.value, r.timestampMs, r.valid, buf, sizeof(buf));
   if (n == 0) return;
