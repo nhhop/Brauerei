@@ -165,3 +165,10 @@ POST /api/sensors
 
 Details: Spec `docs/superpowers/specs/2026-05-21-max31865-sensor-design.md`,
 Plan `docs/superpowers/plans/2026-05-21-max31865-sensor.md`.
+
+**Bugfix (nach Merge):** `useEffect`-Dependency in `AddItemModal.tsx` war durch Code-Review
+fälschlicherweise auf `[open, snap]` geändert worden. `snap` ändert sich bei jedem
+SSE-Event vom ESP32 — das resettet das komplette Formular (inkl. `sensorType` zurück zu
+'DS18B20') solange das Modal offen ist. Revert auf `[open]`. Die Controller-Dropdown-
+Optionen werden ohnehin live aus `snap` im JSX gerendert; nur der initiale Selektionswert
+(`sensorId`/`actuatorId`) wird beim Öffnen gesetzt — das ist korrekt. (commit `c5ba31c`)
