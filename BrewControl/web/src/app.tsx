@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { Snapshot } from './types';
-import { getSnapshot, subscribeEvents, wifiReset, deleteSensor, deleteActuator, deleteController } from './api';
+import { getSnapshot, subscribeEvents, wifiReset, deleteSensor, deleteActuator, deleteController, resetFlowVolume } from './api';
 import { SensorCard } from './components/SensorCard';
 import { ActuatorCard } from './components/ActuatorCard';
 import { ControllerCard } from './components/ControllerCard';
@@ -142,7 +142,8 @@ function Dashboard({ onReset }: { onReset: () => void }) {
         <Column title="Sensors" count={snap.sensors.length}>
           {snap.sensors.map((s) => (
             <SensorCard key={s.id} sensor={s}
-              onDelete={() => setDeleteTarget({ role: 'sensor', id: s.id })} />
+              onDelete={() => setDeleteTarget({ role: 'sensor', id: s.id })}
+              onReset={s.meta.kind === 'Cumulative' ? () => resetFlowVolume(s.id) : undefined} />
           ))}
         </Column>
         <Column title="Controllers" count={snap.controllers.length}>
