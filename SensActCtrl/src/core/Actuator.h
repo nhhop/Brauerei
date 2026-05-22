@@ -24,6 +24,7 @@ class Actuator {
   virtual void tick() = 0;
   virtual void write(float value) = 0;
   virtual float state() const = 0;
+  virtual const char* fault() const { return nullptr; }
 };
 
 }  // namespace SensActCtrl

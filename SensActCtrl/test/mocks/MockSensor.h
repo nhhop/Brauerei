@@ -24,6 +24,8 @@ class MockSensor : public Sensor {
   float    value     = 0.0f;
   bool     valid     = true;
   uint32_t tickCount = 0;
+  const char* faultMsg = nullptr;
+  const char* fault() const override { return faultMsg; }
 
  private:
   const char* id_;

@@ -22,6 +22,8 @@ class MockActuator : public Actuator {
 
   std::vector<float> writes;
   uint32_t tickCount = 0;
+  const char* faultMsg = nullptr;
+  const char* fault() const override { return faultMsg; }
 
  private:
   const char* id_;

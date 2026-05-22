@@ -21,6 +21,7 @@ class Sensor {
   virtual void begin() {}
   virtual void end()   {}
   virtual void tick()  = 0;
+  virtual const char* fault() const { return nullptr; }
 };
 
 }  // namespace SensActCtrl
