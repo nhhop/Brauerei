@@ -172,3 +172,47 @@ SSE-Event vom ESP32 — das resettet das komplette Formular (inkl. `sensorType` 
 'DS18B20') solange das Modal offen ist. Revert auf `[open]`. Die Controller-Dropdown-
 Optionen werden ohnehin live aus `snap` im JSX gerendert; nur der initiale Selektionswert
 (`sensorId`/`actuatorId`) wird beim Öffnen gesetzt — das ist korrekt. (commit `c5ba31c`)
+
+---
+
+## 2026-05-21/22 — Multi-Channel Sensor Interface + YF-S201
+
+**Ausgangslage:** Das `Sensor`-Interface lieferte genau einen `float`-Wert pro Instanz.
+Sensoren wie der YF-S201 (Durchfluss + Gesamtvolumen) konnten nicht sauber abgebildet werden.
+
+**Architektur-Änderung:**
+- Neues `Channel`-Struct (`key`, `SensorMeta`, `Reading`) in `SensActCtrl/src/core/Channel.h`
+- `Sensor`-Interface: `meta()` + `lastReading()` → `channelCount()` + `channel(size_t idx)` (Breaking Change)
+- `RegistrySnapshot`: Single-Loop → Doppel-Loop mit Composite-ID (`"flow.rate"`, `"flow.volume"`)
+- `BME280Sensor::Channel`-Enum → `BME280Sensor::Measurement` (Konflikt mit neuem `SensActCtrl::Channel`-Struct)
+
+**Neue Klasse `YF_S201Sensor`:**
+- 2 Kanäle: `"rate"` (FlowRate, L/min, Continuous) + `"volume"` (Volume, L, Cumulative)
+- Kalibrierung: `kHzPerLiterPerMin = 7.5f` → 450 Impulse/Liter
+- ISR-Sharing: statischer Pin-Pool (`PinState[4]`) — mehrere Instanzen auf demselben Pin teilen einen ISR-Zähler
+- `resetVolume()`: setzt `volumeBaseCount_` auf aktuellen Zählerstand
+- Native-Build-Guard: `millis()`-Stub mit Zeitfortschritt (+1000ms/Aufruf) damit Rate-Window in Tests feuert
+
+**Firmware (BrewControl):**
+- `DynamicItems`: `SensorEntry` erhält `std::function<void()> resetFn`, neuer `resetSensor()`-Endpunkt
+- `WebUI`: `POST /api/sensors/:id/reset` (extrahiert Sensor-ID zwischen Prefix und `/reset`-Suffix)
+- `POST /api/sensors { "type":"YF-S201", "id":"flow", "pin":4 }` optional `calibration`-Feld
+
+**Web-Frontend:**
+- `api.ts`: `resetFlowVolume(id)` → `POST /api/sensors/:id/reset`
+- `AddItemModal.tsx`: `SensorType` um `'YF-S201'` erweitert, neues Formular (Pin + Infotext zu dual channels)
+
+**Tests:** 34 → 41 native Tests grün (6 neue YF_S201-Tests inkl. Rate-Kalibrierung + Snapshot-Expansion)
+
+**Nebenfixes:**
+- Alle 13 Beispiel-Sketches auf neue `channel()`-API migriert
+- `SensActCtrl/src/core/Sensor.h`: `#include <stddef.h>` ergänzt (latenter `size_t`-Fehler auf ESP32-Targets)
+- `gcc`-Pfad für native Tests auf diesem System: `C:\Users\nhhop\.platformio\mingw64\bin`
+
+**Offene Punkte (Folge-Sessions):**
+- Reset-Button in SensorCard (UI-Trigger für `resetFlowVolume`)
+- BME280 auf 3 Kanäle erweitern (Temperatur + Luftfeuchtigkeit + Druck)
+- `RemotePublisher` publiziert nur `channel(0)` — Multi-Channel via MQTT/ESP-NOW nicht abgedeckt
+- `examples/05_flow_meter` noch auf `PulseCounterSensor` — Folge-Beispiel mit `YF_S201Sensor` fehlt
+
+Commits: `b8f76f0` → `7ca6bb2` (10 Commits, gepusht auf `origin/main`)
