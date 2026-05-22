@@ -4,6 +4,7 @@
 #include <FS.h>
 #include <OneWire.h>
 #include <SensActCtrl.h>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,6 +33,10 @@ class DynamicItems {
   Result removeActuator(const char* id, SensActCtrl::Registry& reg);
   Result removeController(const char* id, SensActCtrl::Registry& reg);
 
+  // Reset a sensor's accumulated state (e.g. YF_S201Sensor::resetVolume()).
+  // Returns {false, reason} if sensor not found or does not support reset.
+  Result resetSensor(const char* id);
+
   // Parse /config/registry.json and register items WITHOUT calling begin().
   // Call before registry.begin() so registry.begin() handles all items.
   void loadFromSD(fs::FS& sd, SensActCtrl::Registry& reg);
@@ -48,6 +53,7 @@ class DynamicItems {
     std::string id;
     std::string cfgJson;
     std::unique_ptr<SensActCtrl::Sensor> ptr;
+    std::function<void()> resetFn;  // non-null only for sensors that support reset
   };
   struct ActuatorEntry {
     std::string id;

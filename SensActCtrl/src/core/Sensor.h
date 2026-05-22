@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include "Channel.h"
 
 namespace SensActCtrl {

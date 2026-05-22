@@ -145,6 +145,23 @@ void WebUI::begin() {
         req->send(204);
       }));
 
+  // ── Reset sensor accumulated state (e.g. YF-S201 volume) ──────────────────
+  server_.addHandler(new BodyPrefixHandler("/api/sensors/",
+      [this](AsyncWebServerRequest* req, const uint8_t*, size_t) {
+        const String url = req->url();
+        if (!url.endsWith("/reset")) {
+          req->send(405, "text/plain", "method not allowed");
+          return;
+        }
+        // Extract sensor id: between "/api/sensors/" and "/reset"
+        String path = url.substring(strlen("/api/sensors/"));
+        String id   = path.substring(0, path.length() - strlen("/reset"));
+        auto r = items_.resetSensor(id.c_str());
+        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        pushSnapshot_();
+        req->send(204);
+      }));
+
   // ── Write actuator (prefix, body) ────────────────────────────────────────
   // Replaces the old per-item exact-match handlers so dynamic items work
   // without re-registering routes. Runtime registry lookup handles both

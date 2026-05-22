@@ -60,6 +60,16 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
       e->ptr = std::make_unique<MAX31865Sensor>(
           e->id.c_str(), cs, wiresEnum, rtd, rref);
     }
+  } else if (strcmp(type, "YF-S201") == 0) {
+    int pin = cfg["pin"] | -1;
+    if (pin < 0) return {false, "missing pin"};
+    float cal = cfg["calibration"] | YF_S201Sensor::kHzPerLiterPerMin;
+    if (cal <= 0.0f) return {false, "invalid calibration"};
+    auto sensor = std::make_unique<YF_S201Sensor>(e->id.c_str(), pin);
+    if (cal != YF_S201Sensor::kHzPerLiterPerMin) sensor->setCalibration(cal);
+    YF_S201Sensor* rawPtr = sensor.get();
+    e->ptr = std::move(sensor);
+    e->resetFn = [rawPtr]() { rawPtr->resetVolume(); };
   } else {
     return {false, "unknown sensor type"};
   }
@@ -74,6 +84,17 @@ DynamicItems::Result DynamicItems::addSensor(const JsonObject& cfg,
   auto r = addSensorNoBegin(cfg, reg);
   if (r.ok && initialized_) sensors_.back()->ptr->begin();
   return r;
+}
+
+DynamicItems::Result DynamicItems::resetSensor(const char* id) {
+  for (auto& e : sensors_) {
+    if (e->id == id) {
+      if (!e->resetFn) return {false, "sensor does not support reset"};
+      e->resetFn();
+      return {true};
+    }
+  }
+  return {false, "sensor not found"};
 }
 
 // ── Actuator ──────────────────────────────────────────────────────────────
