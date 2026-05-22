@@ -125,6 +125,18 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
     if (mode == DigitalOutputActuator::Mode::TimeProportional)
       a->setPeriodMs(cfg["period_ms"] | 2000u);
     e->ptr.reset(a);
+  } else if (strcmp(type, "IDS1") == 0 || strcmp(type, "IDS2") == 0) {
+    int pinW = cfg["pin_white"]     | -1;
+    int pinY = cfg["pin_yellow"]    | -1;
+    int pinI = cfg["pin_interrupt"] | -1;
+    if (pinW < 0 || pinY < 0 || pinI < 0)
+      return {false, "missing pin_white / pin_yellow / pin_interrupt"};
+    auto itype = strcmp(type, "IDS1") == 0 ? IdsType::IDS1 : IdsType::IDS2;
+    e->ptr = std::make_unique<IdsActuator>(
+        e->id.c_str(), itype,
+        static_cast<uint8_t>(pinW),
+        static_cast<uint8_t>(pinY),
+        static_cast<uint8_t>(pinI));
   } else {
     return {false, "unknown actuator type"};
   }

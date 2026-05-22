@@ -4,6 +4,9 @@
 #include <FS.h>
 #include <OneWire.h>
 #include <SensActCtrl.h>
+#ifdef ARDUINO
+#include <actuators/IdsActuator.h>
+#endif
 #include <functional>
 #include <memory>
 #include <string>
