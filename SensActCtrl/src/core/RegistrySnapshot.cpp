@@ -62,6 +62,9 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
       state["v"]  = ch.reading.value;
       state["t"]  = ch.reading.timestampMs;
       state["ok"] = ch.reading.valid;
+
+      const char* f = s->fault();
+      if (f) obj["fault"] = f;
     }
   }
 
@@ -75,6 +78,9 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
     state["v"]  = a->state();
     state["t"]  = millis();
     state["ok"] = true;
+
+    const char* f = a->fault();
+    if (f) obj["fault"] = f;
   }
 
   JsonArray ctrlArr = doc["controllers"].to<JsonArray>();

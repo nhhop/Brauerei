@@ -129,6 +129,35 @@ void test_snapshot_returns_zero_on_too_small_buffer() {
   TEST_ASSERT_EQUAL(0u, n);
 }
 
+void test_snapshot_actuator_fault_absent_when_null() {
+  MockActuator heater("heater", switchMeta());  // faultMsg is nullptr by default
+  Registry reg;
+  reg.add(&heater);
+
+  char buf[512];
+  serializeRegistry(reg, buf, sizeof(buf));
+  JsonDocument doc;
+  deserializeJson(doc, buf);
+
+  JsonObject a0 = doc["actuators"].as<JsonArray>()[0];
+  TEST_ASSERT_TRUE(a0["fault"].isNull());
+}
+
+void test_snapshot_actuator_fault_present_when_set() {
+  MockActuator heater("heater", switchMeta());
+  heater.faultMsg = "E0: Kein Topf";
+  Registry reg;
+  reg.add(&heater);
+
+  char buf[512];
+  serializeRegistry(reg, buf, sizeof(buf));
+  JsonDocument doc;
+  deserializeJson(doc, buf);
+
+  JsonObject a0 = doc["actuators"].as<JsonArray>()[0];
+  TEST_ASSERT_EQUAL_STRING("E0: Kein Topf", a0["fault"].as<const char*>());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -138,5 +167,7 @@ int main(int, char**) {
   RUN_TEST(test_snapshot_includes_sensor_and_actuator_meta_plus_state);
   RUN_TEST(test_snapshot_controller_params_are_nested_object);
   RUN_TEST(test_snapshot_returns_zero_on_too_small_buffer);
+  RUN_TEST(test_snapshot_actuator_fault_absent_when_null);
+  RUN_TEST(test_snapshot_actuator_fault_present_when_set);
   return UNITY_END();
 }
