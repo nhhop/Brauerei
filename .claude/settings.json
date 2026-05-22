@@ -6,5 +6,14 @@
     "feature-dev@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true
-  }
+  },
+   "allowedTools": [
+    "Bash",
+    "Edit",
+    "Write",
+    "Read",
+    "Glob",
+    "Grep",
+    "PowerShell"
+  ]
 }

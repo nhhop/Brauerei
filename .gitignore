@@ -13,3 +13,6 @@ web/dist/
 
 # Claude Code local settings
 **/.claude/settings.local.json
+
+# Playwright test artifacts
+.playwright-mcp/
