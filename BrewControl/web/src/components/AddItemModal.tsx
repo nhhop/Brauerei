@@ -408,7 +408,7 @@ export function AddItemModal({ open, snap, onClose }: {
                       <label class={lbl}>{label}</label>
                       <input type="number" value={val}
                         onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
-                        placeholder="GPIO" class={inp} />
+                        placeholder="GPIO" class={inp} required />
                     </div>
                   ))}
                 </div>
