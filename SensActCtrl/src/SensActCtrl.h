@@ -18,6 +18,9 @@
 
 #include "actuators/DigitalOutputActuator.h"
 #include "actuators/PulseOutputActuator.h"
+#ifdef ARDUINO
+#include "actuators/IdsActuator.h"
+#endif
 
 #include "sensors/DigitalInputSensor.h"
 #include "sensors/AnalogInputSensor.h"
