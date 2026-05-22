@@ -8,7 +8,8 @@
   static void     pinMode(int, int) {}
   static int      digitalPinToInterrupt(int p) { return p; }
   static void     attachInterrupt(int, void(*)(), int) {}
-  static uint32_t millis() { return 0; }
+  static uint32_t g_millisCounter = 0;
+  static uint32_t millis() { return (g_millisCounter += 1000); }
   enum { INPUT_PULLUP = 2, RISING = 1 };
 #endif
 
@@ -137,6 +138,7 @@ void YF_S201Sensor::injectPulseForTest() {
 void YF_S201Sensor::resetForTest() {
   pinStateCount_ = 0;
   for (auto& ps : pinStates_) { ps.pin = -1; ps.count = 0; }
+  g_millisCounter = 0;
 }
 #endif
 

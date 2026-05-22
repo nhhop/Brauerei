@@ -45,6 +45,16 @@ void test_default_readings_invalid_before_tick() {
   TEST_ASSERT_FALSE(s.channel(1).reading.valid);
 }
 
+void test_rate_calculates_correctly() {
+  YF_S201Sensor s("flow", 4);
+  s.begin();
+  // 75 pulses in 1-second window → 75 Hz → 75/7.5 = 10 L/min
+  pulse(s, 75);
+  s.tick();
+  TEST_ASSERT_TRUE(s.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 10.0f, s.channel(0).reading.value);
+}
+
 void test_volume_accumulates() {
   YF_S201Sensor s("flow", 4);
   s.begin();
@@ -104,6 +114,7 @@ int main(int, char**) {
   RUN_TEST(test_channel_count_and_keys);
   RUN_TEST(test_channel_meta);
   RUN_TEST(test_default_readings_invalid_before_tick);
+  RUN_TEST(test_rate_calculates_correctly);
   RUN_TEST(test_volume_accumulates);
   RUN_TEST(test_reset_volume);
   RUN_TEST(test_snapshot_multi_channel_expansion);

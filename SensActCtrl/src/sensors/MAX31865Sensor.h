@@ -17,8 +17,8 @@ namespace SensActCtrl {
 // Hardware-SPI: pass only csPin; CLK/MISO/MOSI use ESP32 VSPI defaults.
 // Software-SPI: pass all four pins.
 //
-// Native (non-Arduino) builds: begin() and tick() are no-ops; lastReading()
-// returns {0, 0, false}. No hardware test possible without real chip.
+// Native (non-Arduino) builds: begin() and tick() are no-ops;
+// channel(0).reading returns {0, 0, false}. No hardware test possible without real chip.
 class MAX31865Sensor : public Sensor {
  public:
   enum class Wires   : uint8_t { Two = 2, Three = 3, Four = 4 };
