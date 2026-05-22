@@ -60,6 +60,9 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
       e->ptr = std::make_unique<MAX31865Sensor>(
           e->id.c_str(), cs, wiresEnum, rtd, rref);
     }
+  } else if (strcmp(type, "BME280") == 0) {
+    uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x76);
+    e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), addr);
   } else if (strcmp(type, "YF-S201") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};

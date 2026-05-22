@@ -3,7 +3,7 @@ import type { Snapshot, ScannedDevice } from '../types';
 import { createSensor, createActuator, createController, scanOneWireBus } from '../api';
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 
@@ -29,6 +29,9 @@ export function AddItemModal({ open, snap, onClose }: {
   const [scanning, setScanning] = useState(false);
   const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
   const [selectedAddress, setSelectedAddress] = useState('');
+
+  // BME280
+  const [i2cAddr, setI2cAddr] = useState<number>(0x76);
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -59,6 +62,7 @@ export function AddItemModal({ open, snap, onClose }: {
       setId(''); setPin(''); setErr(null);
       setScanning(false); setScannedDevices([]); setSelectedAddress('');
       setSensorType('DS18B20');
+      setI2cAddr(0x76);
       setCsPin(''); setWiresCount(2); setRtdType('PT100');
       setRref(DEFAULT_RREF.PT100); setRrefTouched(false);
       setShowCustomSpi(false); setClkPin(''); setMisoPin(''); setMosiPin('');
@@ -107,6 +111,8 @@ export function AddItemModal({ open, snap, onClose }: {
           const pinNum = parseInt(pin, 10);
           if (isNaN(pinNum) || pinNum < 0) { setErr('Ungültiger Pin'); setPending(false); return; }
           await createSensor({ type: 'YF-S201', id: trimId, pin: pinNum });
+        } else if (sensorType === 'BME280') {
+          await createSensor({ type: 'BME280', id: trimId, address: i2cAddr });
         }
       } else if (role === 'actuator') {
         const p = parseInt(pin, 10);
@@ -173,7 +179,7 @@ export function AddItemModal({ open, snap, onClose }: {
                   <option value="MAX31865">MAX31865 (PT100/PT1000, SPI)</option>
                 </optgroup>
                 <optgroup label="Feuchte / Druck">
-                  <option disabled>BME280 (I²C)</option>
+                  <option value="BME280">BME280 (T/H/P, I²C)</option>
                 </optgroup>
                 <optgroup label="Analog / Digital">
                   <option disabled>AnalogInput</option>
@@ -319,6 +325,24 @@ export function AddItemModal({ open, snap, onClose }: {
               <p class="text-xs text-stone-400">
                 Liefert zwei Kanäle: <strong>flow.rate</strong> (L/min) und{' '}
                 <strong>flow.volume</strong> (L). Kalibrierung: 7,5 Hz/L·min.
+              </p>
+            </div>
+          )}
+
+          {/* BME280 fields */}
+          {role === 'sensor' && sensorType === 'BME280' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>I²C Address</label>
+                <div class="flex gap-2">
+                  {[0x76, 0x77].map((a) => (
+                    <button key={a} type="button" onClick={() => setI2cAddr(a)}
+                      class={segBtn(i2cAddr === a)}>0x{a.toString(16)}</button>
+                  ))}
+                </div>
+              </div>
+              <p class="text-xs text-stone-400">
+                Liefert 3 Kanäle: <strong>id.temp</strong> (°C), <strong>id.hum</strong> (%RH), <strong>id.pres</strong> (hPa).
               </p>
             </div>
           )}
