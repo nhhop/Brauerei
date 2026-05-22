@@ -3,7 +3,7 @@ import type { Snapshot, ScannedDevice } from '../types';
 import { createSensor, createActuator, createController, scanOneWireBus } from '../api';
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 
@@ -88,7 +88,7 @@ export function AddItemModal({ open, snap, onClose }: {
             type: 'DS18B20', id: trimId, pin: p,
             ...(selectedAddress ? { address: selectedAddress } : {}),
           });
-        } else {
+        } else if (sensorType === 'MAX31865') {
           const cs = parseInt(csPin, 10);
           if (isNaN(cs)) throw new Error('CS pin required');
           const rrefVal = parseFloat(rref);
@@ -103,6 +103,10 @@ export function AddItemModal({ open, snap, onClose }: {
             wires: wiresCount, rtd: rtdType, rref: rrefVal,
             ...customSpi,
           });
+        } else if (sensorType === 'YF-S201') {
+          const pinNum = parseInt(pin, 10);
+          if (isNaN(pinNum) || pinNum < 0) { setErr('Ungültiger Pin'); setPending(false); return; }
+          await createSensor({ type: 'YF-S201', id: trimId, pin: pinNum });
         }
       } else if (role === 'actuator') {
         const p = parseInt(pin, 10);
@@ -176,6 +180,7 @@ export function AddItemModal({ open, snap, onClose }: {
                   <option disabled>DigitalInput</option>
                 </optgroup>
                 <optgroup label="Durchfluss">
+                  <option value="YF-S201">YF-S201 (Durchfluss)</option>
                   <option disabled>PulseCounter</option>
                 </optgroup>
               </select>
@@ -296,6 +301,26 @@ export function AddItemModal({ open, snap, onClose }: {
                 )}
               </div>
             </>
+          )}
+
+          {/* YF-S201 fields */}
+          {role === 'sensor' && sensorType === 'YF-S201' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>GPIO-Pin</label>
+                <input
+                  type="number"
+                  placeholder="z.B. 4"
+                  value={pin}
+                  onInput={e => setPin((e.target as HTMLInputElement).value)}
+                  class={inp}
+                />
+              </div>
+              <p class="text-xs text-stone-400">
+                Liefert zwei Kanäle: <strong>flow.rate</strong> (L/min) und{' '}
+                <strong>flow.volume</strong> (L). Kalibrierung: 7,5 Hz/L·min.
+              </p>
+            </div>
           )}
 
           {/* Actuator fields */}

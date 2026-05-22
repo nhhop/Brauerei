@@ -75,6 +75,10 @@ export function deleteSensor(id: string): Promise<void> {
   return deleteItem(`/api/sensors/${encodeURIComponent(id)}`);
 }
 
+export function resetFlowVolume(id: string): Promise<void> {
+  return postJson(`/api/sensors/${encodeURIComponent(id)}/reset`, {});
+}
+
 export function deleteActuator(id: string): Promise<void> {
   return deleteItem(`/api/actuators/${encodeURIComponent(id)}`);
 }
