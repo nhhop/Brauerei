@@ -6,6 +6,7 @@ type Role = 'sensor' | 'actuator' | 'controller';
 type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
+type ActuatorType = 'DigitalOutput' | 'IDS1' | 'IDS2';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -46,6 +47,10 @@ export function AddItemModal({ open, snap, onClose }: {
 
   // actuator
   const [mode, setMode] = useState<'Binary' | 'TimeProportional'>('TimeProportional');
+  const [actuatorType, setActuatorType] = useState<ActuatorType>('DigitalOutput');
+  const [pinWhite, setPinWhite] = useState('14');
+  const [pinYellow, setPinYellow] = useState('12');
+  const [pinInterrupt, setPinInterrupt] = useState('13');
 
   // controller
   const [sensorId, setSensorId] = useState('');
@@ -68,6 +73,8 @@ export function AddItemModal({ open, snap, onClose }: {
       setShowCustomSpi(false); setClkPin(''); setMisoPin(''); setMosiPin('');
       setSensorId(snap?.sensors[0]?.id ?? '');
       setActuatorId(snap?.actuators[0]?.id ?? '');
+      setActuatorType('DigitalOutput');
+      setPinWhite('14'); setPinYellow('12'); setPinInterrupt('13');
     }
   }, [open]);
 
@@ -115,9 +122,20 @@ export function AddItemModal({ open, snap, onClose }: {
           await createSensor({ type: 'BME280', id: trimId, address: i2cAddr });
         }
       } else if (role === 'actuator') {
-        const p = parseInt(pin, 10);
-        if (isNaN(p)) throw new Error('invalid pin');
-        await createActuator({ type: 'DigitalOutput', id: trimId, pin: p, mode });
+        if (actuatorType === 'IDS1' || actuatorType === 'IDS2') {
+          const pw = parseInt(pinWhite, 10);
+          const py = parseInt(pinYellow, 10);
+          const pi = parseInt(pinInterrupt, 10);
+          if (isNaN(pw) || isNaN(py) || isNaN(pi)) throw new Error('invalid pin');
+          await createActuator({
+            type: actuatorType, id: trimId,
+            pin_white: pw, pin_yellow: py, pin_interrupt: pi,
+          });
+        } else {
+          const p = parseInt(pin, 10);
+          if (isNaN(p)) throw new Error('invalid pin');
+          await createActuator({ type: 'DigitalOutput', id: trimId, pin: p, mode });
+        }
       } else {
         if (!sensorId || !actuatorId) throw new Error('select sensor and actuator');
         await createController({
@@ -351,20 +369,50 @@ export function AddItemModal({ open, snap, onClose }: {
           {role === 'actuator' && (
             <>
               <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={pin}
-                  onInput={(e) => setPin((e.target as HTMLInputElement).value)}
-                  placeholder="e.g. 16" class={inp} required />
-              </div>
-              <div>
-                <label class={lbl}>Mode</label>
-                <select value={mode}
-                  onChange={(e) => setMode((e.target as HTMLSelectElement).value as typeof mode)}
+                <label class={lbl}>Actuator Type</label>
+                <select value={actuatorType} title="Actuator Type"
+                  onChange={(e) => setActuatorType((e.target as HTMLSelectElement).value as ActuatorType)}
                   class={inp}>
-                  <option value="Binary">Binary (on/off)</option>
-                  <option value="TimeProportional">Time-Proportional (TPO/SSR)</option>
+                  <option value="DigitalOutput">DigitalOutput (GPIO)</option>
+                  <option value="IDS1">IDS1 – Induktion (10 Stufen)</option>
+                  <option value="IDS2">IDS2 – Induktion (5 Stufen)</option>
                 </select>
               </div>
+              {actuatorType === 'DigitalOutput' && (
+                <>
+                  <div>
+                    <label class={lbl}>GPIO Pin</label>
+                    <input type="number" value={pin}
+                      onInput={(e) => setPin((e.target as HTMLInputElement).value)}
+                      placeholder="e.g. 16" class={inp} required />
+                  </div>
+                  <div>
+                    <label class={lbl}>Mode</label>
+                    <select value={mode} title="Mode"
+                      onChange={(e) => setMode((e.target as HTMLSelectElement).value as typeof mode)}
+                      class={inp}>
+                      <option value="Binary">Binary (on/off)</option>
+                      <option value="TimeProportional">Time-Proportional (TPO/SSR)</option>
+                    </select>
+                  </div>
+                </>
+              )}
+              {(actuatorType === 'IDS1' || actuatorType === 'IDS2') && (
+                <div class="grid grid-cols-3 gap-2">
+                  {([
+                    ['White (Relais)', pinWhite, setPinWhite],
+                    ['Yellow (Cmd)', pinYellow, setPinYellow],
+                    ['Interrupt', pinInterrupt, setPinInterrupt],
+                  ] as const).map(([label, val, setter]) => (
+                    <div key={label}>
+                      <label class={lbl}>{label}</label>
+                      <input type="number" value={val}
+                        onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
+                        placeholder="GPIO" class={inp} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 

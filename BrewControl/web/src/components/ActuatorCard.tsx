@@ -47,6 +47,11 @@ export function ActuatorCard({ actuator, onDelete }: { actuator: Actuator; onDel
         )}
       </div>
       {err && <p class="mt-2 text-xs text-red-600">{err}</p>}
+      {actuator.fault && (
+        <span class="mt-2 inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+          ⚠ {actuator.fault}
+        </span>
+      )}
     </div>
   );
 }

@@ -45,6 +45,11 @@ export function SensorCard({ sensor, onDelete, onReset }: { sensor: Sensor; onDe
         <span>{meta.min}</span>
         <span>{meta.max}</span>
       </div>
+      {sensor.fault && (
+        <span class="mt-2 inline-block text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+          ⚠ {sensor.fault}
+        </span>
+      )}
     </div>
   );
 }

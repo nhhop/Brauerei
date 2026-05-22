@@ -43,12 +43,14 @@ export interface Sensor {
   id: string;
   meta: ItemMeta;
   state: ItemState;
+  fault?: string;
 }
 
 export interface Actuator {
   id: string;
   meta: ItemMeta;
   state: ItemState;
+  fault?: string;
 }
 
 export interface Controller {
