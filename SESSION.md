@@ -216,3 +216,70 @@ Sensoren wie der YF-S201 (Durchfluss + Gesamtvolumen) konnten nicht sauber abgeb
 - `examples/05_flow_meter` noch auf `PulseCounterSensor` — Folge-Beispiel mit `YF_S201Sensor` fehlt
 
 Commits: `b8f76f0` → `7ca6bb2` (10 Commits, gepusht auf `origin/main`)
+
+---
+
+## 2026-05-22/23 — IDS Induktionskocher als Aktor
+
+**Ausgangslage:** BrewControl unterstützte als dynamischen Aktor nur `DigitalOutput` (GPIO
+on/off / TPO). IDS-Induktionskochfelder werden über ein proprietäres Infrarot-ähnliches
+Protokoll (Timing-Bits via GPIO) angesteuert — eine bestehende Arduino-Library
+`IdsInductionCooker` (Repo `C:\Users\nhhop\repos\IdsInductionCooker`) existiert, war aber
+ESP8266-only und hatte keine öffentlichen Fehler-Getter.
+
+**Änderungen in beiden Projekten:**
+
+### IdsInductionCooker Library (separates Repo, Commit `bf5be40`)
+- ISR-Attribut: `ICACHE_RAM_ATTR` → `#ifdef ESP8266 ICACHE_RAM_ATTR #else IRAM_ATTR #endif`
+- Constructor-Body aktiviert (Zuweisung `IDS_TYPE`, `PIN_WHITE`, `PIN_YELLOW`, `PIN_INTERRUPT`)
+- Pin-Defaults korrigiert: `14/12/13` (NodeMCU D5/D6/D7, tatsächliche GPIO-Nummern)
+- `Serial.*`-Debug-Ausgaben entfernt
+- Neue Public-Getter: `int getErrorCode() const` + `const String& getError() const`
+
+### SensActCtrl (Commits `87effa2` → `7b31f94`)
+- `Sensor.h` + `Actuator.h`: nicht-brechende Default-Methode `virtual const char* fault() const { return nullptr; }`
+- `RegistrySnapshot.cpp`: emittiert `"fault"` im JSON nur wenn `fault() != nullptr`
+- `test/mocks/MockSensor.h` + `MockActuator.h`: `faultMsg`-Feld + `fault()`-Override
+- `test/test_snapshot/`: 2 neue Tests (`fault_absent_when_null`, `fault_present_when_set`)
+- Neue Klasse `IdsActuator` (`.h` + `.cpp`):
+  - Wraps `std::unique_ptr<IdsCooker>` (Singleton-Problem mit value-Member gelöst)
+  - `write(float v)`: 0.0–1.0, quantisiert auf gültige IDS-Stufen
+  - `tick()`: ruft `cooker_->Update(power_)` max. 2×/s auf (500 ms Rate-Limit)
+  - `fault()`: gibt `getError().c_str()` zurück wenn `getErrorCode() != 0`
+  - `#ifdef ARDUINO`-Guard: unsichtbar für native Builds (kein Arduino.h-Pullback)
+- `SensActCtrl.h`: `#include "actuators/IdsActuator.h"` unter `#ifdef ARDUINO`
+
+**Neue Sensortypen:** keine. Neue Aktoren: `IdsActuator` (IDS1 = 10 Stufen, IDS2 = 5 Stufen).
+
+**Wire-Format** für neuen Aktor:
+```json
+POST /api/actuators
+{ "type":"IDS1", "id":"cooker", "pin_white":14, "pin_yellow":12, "pin_interrupt":13 }
+```
+
+### BrewControl Firmware (Commit `2df3eaa`)
+- `platformio.ini`: `symlink://../../../IdsInductionCooker` als zusätzliche lib_dep im `[common]`-Block
+- `DynamicItems.h`: `#include <actuators/IdsActuator.h>` unter `#ifdef ARDUINO`
+- `DynamicItems.cpp`: neuer Factory-Branch `"IDS1"` / `"IDS2"` in `addActuatorNoBegin()` — liest `pin_white`, `pin_yellow`, `pin_interrupt` (Default -1, Fehler wenn fehlend)
+
+### BrewControl Web-Frontend (Commits `9d0125c`, `69521a3`)
+- `types.ts`: `fault?: string` auf `Sensor`- und `Actuator`-Interface
+- `SensorCard.tsx` + `ActuatorCard.tsx`: gelbes Warning-Badge wenn `fault` gesetzt
+- `AddItemModal.tsx`:
+  - `ActuatorType = 'DigitalOutput' | 'IDS1' | 'IDS2'`
+  - Actuator-Type-Dropdown (statt bisheriger direkter GPIO-Eingabe)
+  - IDS-Formular: 3 Pin-Felder (`White/Relais`, `Yellow/Cmd`, `Interrupt`) mit Defaults 14/12/13
+
+**Tests:** 41 → 43 native Tests grün.
+
+**Design-Entscheidungen:**
+- `std::unique_ptr<IdsCooker>` statt Value-Member: `IdsCooker::staticInduction`-Singleton wird bei Move/Copy nicht ungültig
+- `#ifdef ARDUINO`-Guard um IdsActuator: native Tests bleiben ohne Arduino.h-Dependency kompilierbar
+- `fault()` gibt `nullptr` zurück (statt leeren String) damit `RegistrySnapshot` das Feld korrekt weglässt
+- Pin-Defaults 14/12/13 (D5/D6/D7 NodeMCU) statt 5/6/7 aus originaler Library
+
+**Offene Punkte:**
+- E2E-Test mit echtem IDS-Induktionskochfeld ausstehend
+- Nur `tick()` aufgerufen, wenn `millis() >= nextTickMs_` — bei blockierendem `sendCommand()` (~246 ms) kann das bei sehr schnellen Loops zweimal pro Sekunde auftreten (bewusste Akzeptanz)
+
+Commits: `bf5be40` (IdsInductionCooker), `87effa2` → `69521a3` (Brauerei, 6 Commits)
