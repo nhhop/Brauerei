@@ -1,26 +1,19 @@
-// Flow meter: hall-effect sensor (e.g. YF-S201, ~450 pulses/litre) on
-// GPIO27 reports volumetric flow in l/min.
+// Flow meter: YF-S201 hall-effect sensor on GPIO27.
+// channel(0): flow rate in L/min (key="rate")
+// channel(1): cumulative volume in L (key="volume")
 
 #include <SensActCtrl.h>
 using namespace SensActCtrl;
 
 constexpr int kFlowPin = 27;
 
-PulseCounterSensor flow("flow", kFlowPin,
-                        PulseCounterSensor::Mode::Rate,
-                        PulseCounterSensor::Edge::Rising);
+YF_S201Sensor flow("flow", kFlowPin);
 Registry registry;
 uint32_t nextLogMs = 0;
 
 void setup() {
   Serial.begin(115200);
   delay(200);
-
-  // YF-S201: 7.5 Hz per l/min ≈ 450 pulses/l. Set pulsesPerUnit so the
-  // reading comes out in l/s; multiply by 60 for l/min in the print.
-  flow.setPulsesPerUnit(7.5f);  // Hz → l/min directly when window=1000 ms
-  flow.setRateWindowMs(1000);
-  flow.setMeta(Quantity::FlowRate, "l/min", 30.0f, 0.01f);
 
   registry.add(&flow);
   registry.begin();
@@ -33,8 +26,8 @@ void loop() {
   const uint32_t now = millis();
   if (now >= nextLogMs) {
     nextLogMs = now + 500;
-    Serial.printf("flow=%.2f l/min raw=%lu\n",
-                  flow.channel(0).reading.value,
-                  (unsigned long)flow.rawCount());
+    const auto rate   = flow.channel(0).reading;
+    const auto volume = flow.channel(1).reading;
+    Serial.printf("flow=%.2f L/min  vol=%.3f L\n", rate.value, volume.value);
   }
 }

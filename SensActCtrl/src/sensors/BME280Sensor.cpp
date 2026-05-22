@@ -19,63 +19,46 @@
 
 namespace SensActCtrl {
 
-BME280Bus::BME280Bus(uint8_t i2cAddress) : address_(i2cAddress) {}
+BME280Sensor::BME280Sensor(const char* id, uint8_t i2cAddress)
+    : id_(id), address_(i2cAddress) {}
 
-BME280Bus::~BME280Bus() { delete dev_; }
+BME280Sensor::~BME280Sensor() { delete dev_; }
 
-void BME280Bus::begin() {
+void BME280Sensor::begin() {
   if (initialized_) return;
   dev_ = new Adafruit_BME280();
   dev_->begin(address_);
   initialized_ = true;
 }
 
-bool BME280Bus::sample() {
-  if (!initialized_ || !dev_) return false;
-  tempC_ = dev_->readTemperature();
-  humidity_ = dev_->readHumidity();
-  pressureHpa_ = dev_->readPressure() / 100.0f;
-  valid_ = true;
-  return true;
-}
-
-BME280Sensor::BME280Sensor(const char* id, BME280Bus& bus, Measurement measurement)
-    : id_(id), bus_(&bus), measurement_(measurement) {}
-
-SensActCtrl::Channel BME280Sensor::channel(size_t) const {
-  SensorMeta m{};
-  switch (measurement_) {
-    case BME280Sensor::Measurement::Temperature:
-      m = SensorMeta{ValueKind::Continuous, Quantity::Temperature,
-                     "\xc2\xb0""C", -40.0f, 85.0f, 0.01f};
-      break;
-    case BME280Sensor::Measurement::Humidity:
-      m = SensorMeta{ValueKind::Continuous, Quantity::Humidity,
-                     "%RH", 0.0f, 100.0f, 0.01f};
-      break;
-    case BME280Sensor::Measurement::Pressure:
-      m = SensorMeta{ValueKind::Continuous, Quantity::Pressure,
-                     "hPa", 300.0f, 1100.0f, 0.01f};
-      break;
+Channel BME280Sensor::channel(size_t idx) const {
+  switch (idx) {
+    case 0: return {"temp",
+        SensorMeta{ValueKind::Continuous, Quantity::Temperature,
+                   "\xc2\xb0""C", -40.0f, 85.0f, 0.01f},
+        tempReading_};
+    case 1: return {"hum",
+        SensorMeta{ValueKind::Continuous, Quantity::Humidity,
+                   "%RH", 0.0f, 100.0f, 0.01f},
+        humReading_};
+    default: return {"pres",
+        SensorMeta{ValueKind::Continuous, Quantity::Pressure,
+                   "hPa", 300.0f, 1100.0f, 0.01f},
+        presReading_};
   }
-  return {"", m, last_};
 }
-
-void BME280Sensor::begin() { bus_->begin(); }
 
 void BME280Sensor::tick() {
-  // First channel to tick in a given loop iteration triggers a single chip
-  // sample; downstream channels read from the cache. Cheap to over-call —
-  // sample() just refreshes the cache each time tick() arrives.
-  bus_->sample();
-  if (!bus_->valid()) return;
-  switch (measurement_) {
-    case Measurement::Temperature: last_.value = bus_->lastTempC(); break;
-    case Measurement::Humidity:    last_.value = bus_->lastHumidity(); break;
-    case Measurement::Pressure:    last_.value = bus_->lastPressureHpa(); break;
-  }
-  last_.valid = true;
-  last_.timestampMs = millis();
+  if (!initialized_ || !dev_) return;
+
+  const uint32_t now = millis();
+  const float t = dev_->readTemperature();
+  const float h = dev_->readHumidity();
+  const float p = dev_->readPressure() / 100.0f;
+
+  tempReading_ = {t, now, true};
+  humReading_  = {h, now, true};
+  presReading_ = {p, now, true};
 }
 
 }  // namespace SensActCtrl

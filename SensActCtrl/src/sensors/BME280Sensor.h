@@ -11,65 +11,35 @@ namespace SensActCtrl {
 
 // BME280 combined T/H/P sensor.
 //
-// One physical device exposes three measurements; this library models that
-// as three independent Sensor instances sharing a single Adafruit_BME280
-// handle. Construct one Channel sensor per quantity you care about — they
-// share state and an internal mutable cache so only one I2C transaction
-// per tick().
+// One instance exposes three channels:
+//   channel(0): Temperature  "°C"   (key="temp")
+//   channel(1): Humidity     "%RH"  (key="hum")
+//   channel(2): Pressure     "hPa"  (key="pres")
 //
 // Typical use:
-//   BME280Bus bus(/*i2cAddress=*/0x76);
-//   BME280Sensor temp("amb_t", bus, BME280Sensor::Measurement::Temperature);
-//   BME280Sensor hum ("amb_h", bus, BME280Sensor::Measurement::Humidity);
-//   BME280Sensor pres("amb_p", bus, BME280Sensor::Measurement::Pressure);
-class BME280Bus;
-
+//   BME280Sensor bme("amb", 0x76);
+//   registry.add(&bme);
 class BME280Sensor : public Sensor {
  public:
-  enum class Measurement : uint8_t { Temperature, Humidity, Pressure };
+  explicit BME280Sensor(const char* id, uint8_t i2cAddress = 0x76);
+  ~BME280Sensor();
 
-  BME280Sensor(const char* id, BME280Bus& bus, Measurement measurement);
-
-  const char* id() const override { return id_; }
-  size_t  channelCount()           const override { return 1; }
-  SensActCtrl::Channel channel(size_t) const override;
+  const char* id()                const override { return id_; }
+  size_t      channelCount()      const override { return 3; }
+  Channel     channel(size_t idx) const override;
 
   void begin() override;
-  void tick() override;
+  void tick()  override;
 
  private:
-  const char* id_;
-  BME280Bus* bus_;
-  Measurement measurement_;
-  Reading last_{};
-};
+  const char*      id_;
+  uint8_t          address_;
+  Adafruit_BME280* dev_     = nullptr;
+  bool             initialized_ = false;
 
-// Shared handle for the underlying chip. Pass the I2C address (0x76 or
-// 0x77 on most breakouts). begin() is invoked the first time any of the
-// Sensor channels has its begin() called.
-class BME280Bus {
- public:
-  explicit BME280Bus(uint8_t i2cAddress = 0x76);
-  ~BME280Bus();
-
-  void begin();
-  // Re-read the chip; cached by all three channels until next sample().
-  // Returns true on a successful read.
-  bool sample();
-
-  float lastTempC() const { return tempC_; }
-  float lastHumidity() const { return humidity_; }
-  float lastPressureHpa() const { return pressureHpa_; }
-  bool valid() const { return valid_; }
-
- private:
-  uint8_t address_;
-  Adafruit_BME280* dev_ = nullptr;
-  bool initialized_ = false;
-  bool valid_ = false;
-  float tempC_ = 0.0f;
-  float humidity_ = 0.0f;
-  float pressureHpa_ = 0.0f;
+  Reading tempReading_{};
+  Reading humReading_{};
+  Reading presReading_{};
 };
 
 }  // namespace SensActCtrl

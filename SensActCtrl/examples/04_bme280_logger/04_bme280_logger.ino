@@ -1,18 +1,13 @@
-// BME280 logger: one I2C chip exposed as three Sensor channels
-// (temperature, humidity, pressure). No actuator, no controller — pure
-// sensorik. Default ESP32 I2C pins (SDA=21, SCL=22), default BME280
-// address 0x76 (some breakouts strap SDO HIGH → 0x77; pass that to the
-// BME280Bus ctor if so).
+// BME280 logger: one sensor instance with three channels
+// (temperature, humidity, pressure). Default ESP32 I2C pins (SDA=21, SCL=22).
+// Some breakouts strap SDO HIGH → address 0x77; pass that to the constructor.
 
 #include <Wire.h>
 
 #include <SensActCtrl.h>
 using namespace SensActCtrl;
 
-BME280Bus bus(0x76);
-BME280Sensor ambT("amb_t", bus, BME280Sensor::Measurement::Temperature);
-BME280Sensor ambH("amb_h", bus, BME280Sensor::Measurement::Humidity);
-BME280Sensor ambP("amb_p", bus, BME280Sensor::Measurement::Pressure);
+BME280Sensor bme("amb", 0x76);
 
 Registry registry;
 uint32_t nextLogMs = 0;
@@ -23,9 +18,7 @@ void setup() {
 
   Wire.begin();
 
-  registry.add(&ambT);
-  registry.add(&ambH);
-  registry.add(&ambP);
+  registry.add(&bme);
   registry.begin();
 
   Serial.println(F("04_bme280_logger ready"));
@@ -37,9 +30,9 @@ void loop() {
   const uint32_t now = millis();
   if (now >= nextLogMs) {
     nextLogMs = now + 1000;
-    const auto t = ambT.channel(0).reading;
-    const auto h = ambH.channel(0).reading;
-    const auto p = ambP.channel(0).reading;
+    const auto t = bme.channel(0).reading;
+    const auto h = bme.channel(1).reading;
+    const auto p = bme.channel(2).reading;
     Serial.printf("t=%lu T=%.2f\xc2\xb0""C  RH=%.1f%%  P=%.2fhPa  valid=%d\n",
                   (unsigned long)now, t.value, h.value, p.value, t.valid);
   }
