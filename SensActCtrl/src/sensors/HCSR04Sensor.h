@@ -12,6 +12,7 @@ class HCSR04Sensor : public Sensor {
   static constexpr int      kMaxSensors = 4;   // max simultaneous instances
 
   HCSR04Sensor(const char* id, int trigPin, int echoPin);
+  ~HCSR04Sensor();
 
   // Enable derived channel: derived = distance * factor + offset.
   // unit is copied internally into a 16-byte buffer (max 15 chars + '\0').

@@ -140,7 +140,11 @@ export function AddItemModal({ open, snap, onClose }: {
             const f = parseFloat(scaleFactor);
             if (isNaN(f)) throw new Error('Faktor ungültig');
             body.factor = f;
-            if (scaleOffset !== '') body.offset = parseFloat(scaleOffset) || 0;
+            if (scaleOffset !== '') {
+              const o = parseFloat(scaleOffset);
+              if (isNaN(o)) throw new Error('Offset ungültig');
+              body.offset = o;
+            }
             if (scaleUnit   !== '') body.unit   = scaleUnit;
           }
           await createSensor(body);

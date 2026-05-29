@@ -66,6 +66,20 @@ void HCSR04Sensor::onEcho(int idx) {
 HCSR04Sensor::HCSR04Sensor(const char* id, int trigPin, int echoPin)
     : id_(id), trigPin_(trigPin), echoPin_(echoPin) {}
 
+HCSR04Sensor::~HCSR04Sensor() {
+#ifdef ARDUINO
+  if (slotIdx_ >= 0) {
+    detachInterrupt(digitalPinToInterrupt(echoPin_));
+    instances_[slotIdx_] = nullptr;
+  }
+#else
+  // In native test environment, just clear the slot.
+  if (slotIdx_ >= 0) {
+    instances_[slotIdx_] = nullptr;
+  }
+#endif
+}
+
 // ── begin() ──────────────────────────────────────────────────────────────────
 
 void HCSR04Sensor::begin() {
