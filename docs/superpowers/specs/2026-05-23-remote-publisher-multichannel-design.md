@@ -176,6 +176,44 @@ No composite JSON (which would have exceeded the limit for 3-channel sensors) is
 
 ---
 
+## Configurable topic prefix (`setPrefix`)
+
+`"sensactctrl"` is hardcoded in `Topics.h:base()`. To allow bridging to existing
+MQTT infrastructures with different root namespaces, both `RemotePublisher` and
+`RemoteSensor` gain a `setPrefix(const char*)` method (default `"sensactctrl"`).
+
+The prefix is stored as a `std::string prefix_` member and passed into all
+`Topics.h` helpers. Topic strings are (re-)built lazily at `begin()` time, so
+`setPrefix()` must be called before `begin()`.
+
+```cpp
+RemotePublisher pub(tx, "brew");
+pub.setPrefix("home/brewery");   // topics: home/brewery/brew/sensor/…
+pub.attach(bme);
+pub.begin();
+
+RemoteSensor ambTemp(tx, "brew", "ambient", "temp");
+ambTemp.setPrefix("home/brewery");
+ambTemp.begin();
+```
+
+`Topics.h` helpers gain an optional `prefix` parameter (default `"sensactctrl"`):
+
+```cpp
+inline std::string base(const char* device, const char* kind, const char* id,
+                        const char* prefix = "sensactctrl") {
+    return std::string(prefix) + "/" + device + "/" + kind + "/" + id;
+}
+```
+
+All existing callers without a prefix argument continue to work unchanged.
+
+One additional test: `test_custom_prefix_roundtrip` — publisher and remote sensor
+both use a custom prefix `"myapp"`, verify state round-trip succeeds and no message
+appears on the default `sensactctrl/…` topic.
+
+---
+
 ## Out of scope
 
 - Multi-channel actuators (none exist yet)
@@ -189,9 +227,9 @@ No composite JSON (which would have exceeded the limit for 3-channel sensors) is
 
 | File | Change |
 |------|--------|
-| `SensActCtrl/src/remote/Topics.h` | +2 helpers |
-| `SensActCtrl/src/remote/RemotePublisher.h` | +`channelIdx` field in `SensorEntry` |
-| `SensActCtrl/src/remote/RemotePublisher.cpp` | expand `attach(Sensor&)`, fix `channel(0)` |
-| `SensActCtrl/src/remote/RemoteSensor.h` | +`channelKey` ctor param + member |
-| `SensActCtrl/src/remote/RemoteSensor.cpp` | topic routing based on `channelKey_` |
-| `SensActCtrl/test/test_remote/test_remote.cpp` | +`MockMultiSensor` + 3 new tests |
+| `SensActCtrl/src/remote/Topics.h` | +2 channel helpers, +`prefix` param to `base()` |
+| `SensActCtrl/src/remote/RemotePublisher.h` | +`channelIdx` in `SensorEntry`, +`setPrefix()` |
+| `SensActCtrl/src/remote/RemotePublisher.cpp` | expand `attach(Sensor&)`, fix `channel(0)`, use `prefix_` |
+| `SensActCtrl/src/remote/RemoteSensor.h` | +`channelKey` ctor param, +`setPrefix()` |
+| `SensActCtrl/src/remote/RemoteSensor.cpp` | topic routing based on `channelKey_` + `prefix_` |
+| `SensActCtrl/test/test_remote/test_remote.cpp` | +`MockMultiSensor` + 4 new tests |
