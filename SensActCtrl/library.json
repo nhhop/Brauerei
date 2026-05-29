@@ -56,6 +56,10 @@
       "name": "ArduinoJson",
       "owner": "bblanchon",
       "version": "^7.0.4"
+    },
+    {
+      "name": "IdsInductionCooker",
+      "version": "https://github.com/nhhop/IdsInductionCooker.git#bf5be40"
     }
   ],
   "build": {

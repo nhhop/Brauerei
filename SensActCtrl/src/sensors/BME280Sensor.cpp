@@ -56,9 +56,9 @@ void BME280Sensor::tick() {
   const float h = dev_->readHumidity();
   const float p = dev_->readPressure() / 100.0f;
 
-  tempReading_ = {t, now, true};
-  humReading_  = {h, now, true};
-  presReading_ = {p, now, true};
+  tempReading_ = Reading{t, now, true};
+  humReading_  = Reading{h, now, true};
+  presReading_ = Reading{p, now, true};
 }
 
 }  // namespace SensActCtrl
