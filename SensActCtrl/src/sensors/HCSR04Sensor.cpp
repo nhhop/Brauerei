@@ -87,6 +87,8 @@ void HCSR04Sensor::tick() {
 
   const uint32_t now = millis();
 
+  // Safe on single-core ESP32: ISR cannot preempt between these two reads.
+  // A dual-core port would need noInterrupts()/interrupts() around the snapshot.
   if (state_ == State::Done) {
     const float dist         = static_cast<float>(durationUs_) / 58.0f;
     distReading_.value       = dist;
