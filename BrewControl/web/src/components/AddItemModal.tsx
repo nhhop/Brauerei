@@ -3,7 +3,7 @@ import type { Snapshot, ScannedDevice } from '../types';
 import { createSensor, createActuator, createController, scanOneWireBus } from '../api';
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 type ActuatorType = 'DigitalOutput' | 'IDS1' | 'IDS2';
@@ -33,6 +33,14 @@ export function AddItemModal({ open, snap, onClose }: {
 
   // BME280
   const [i2cAddr, setI2cAddr] = useState<number>(0x76);
+
+  // HCSR04
+  const [trigPin, setTrigPin] = useState('');
+  const [echoPin, setEchoPin] = useState('');
+  const [showScale, setShowScale] = useState(false);
+  const [scaleFactor, setScaleFactor] = useState('');
+  const [scaleOffset, setScaleOffset] = useState('');
+  const [scaleUnit, setScaleUnit] = useState('');
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -71,6 +79,8 @@ export function AddItemModal({ open, snap, onClose }: {
       setCsPin(''); setWiresCount(2); setRtdType('PT100');
       setRref(DEFAULT_RREF.PT100); setRrefTouched(false);
       setShowCustomSpi(false); setClkPin(''); setMisoPin(''); setMosiPin('');
+      setTrigPin(''); setEchoPin('');
+      setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
       setSensorId(snap?.sensors[0]?.id ?? '');
       setActuatorId(snap?.actuators[0]?.id ?? '');
       setActuatorType('DigitalOutput');
@@ -120,6 +130,20 @@ export function AddItemModal({ open, snap, onClose }: {
           await createSensor({ type: 'YF-S201', id: trimId, pin: pinNum });
         } else if (sensorType === 'BME280') {
           await createSensor({ type: 'BME280', id: trimId, address: i2cAddr });
+        } else if (sensorType === 'HCSR04') {
+          const trig = parseInt(trigPin, 10);
+          const echo = parseInt(echoPin, 10);
+          if (isNaN(trig) || trig < 0) throw new Error('TRIG Pin ungültig');
+          if (isNaN(echo) || echo < 0) throw new Error('ECHO Pin ungültig');
+          const body: Record<string, unknown> = { type: 'HCSR04', id: trimId, trig, echo };
+          if (scaleFactor !== '') {
+            const f = parseFloat(scaleFactor);
+            if (isNaN(f)) throw new Error('Faktor ungültig');
+            body.factor = f;
+            if (scaleOffset !== '') body.offset = parseFloat(scaleOffset) || 0;
+            if (scaleUnit   !== '') body.unit   = scaleUnit;
+          }
+          await createSensor(body);
         }
       } else if (role === 'actuator') {
         if (actuatorType === 'IDS1' || actuatorType === 'IDS2') {
@@ -206,6 +230,9 @@ export function AddItemModal({ open, snap, onClose }: {
                 <optgroup label="Durchfluss">
                   <option value="YF-S201">YF-S201 (Durchfluss)</option>
                   <option disabled>PulseCounter</option>
+                </optgroup>
+                <optgroup label="Distanz">
+                  <option value="HCSR04">HC-SR04 (Ultraschall)</option>
                 </optgroup>
               </select>
             </div>
@@ -343,6 +370,59 @@ export function AddItemModal({ open, snap, onClose }: {
               <p class="text-xs text-stone-400">
                 Liefert zwei Kanäle: <strong>flow.rate</strong> (L/min) und{' '}
                 <strong>flow.volume</strong> (L). Kalibrierung: 7,5 Hz/L·min.
+              </p>
+            </div>
+          )}
+
+          {/* HCSR04 fields */}
+          {role === 'sensor' && sensorType === 'HCSR04' && (
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class={lbl}>TRIG Pin (GPIO)</label>
+                  <input type="number" value={trigPin}
+                    onInput={(e) => setTrigPin((e.target as HTMLInputElement).value)}
+                    placeholder="z.B. 5" class={inp} required />
+                </div>
+                <div>
+                  <label class={lbl}>ECHO Pin (GPIO)</label>
+                  <input type="number" value={echoPin}
+                    onInput={(e) => setEchoPin((e.target as HTMLInputElement).value)}
+                    placeholder="z.B. 18" class={inp} required />
+                </div>
+              </div>
+              <div>
+                <button type="button"
+                  onClick={() => setShowScale(!showScale)}
+                  class="text-xs text-stone-500 hover:text-stone-700">
+                  {showScale ? '▼' : '▶'} Ableitung (optional)
+                </button>
+                {showScale && (
+                  <div class="mt-2 grid grid-cols-3 gap-2">
+                    <div>
+                      <label class={lbl}>Faktor</label>
+                      <input type="number" step="any" value={scaleFactor}
+                        onInput={(e) => setScaleFactor((e.target as HTMLInputElement).value)}
+                        placeholder="1.0" class={inp} />
+                    </div>
+                    <div>
+                      <label class={lbl}>Offset</label>
+                      <input type="number" step="any" value={scaleOffset}
+                        onInput={(e) => setScaleOffset((e.target as HTMLInputElement).value)}
+                        placeholder="0.0" class={inp} />
+                    </div>
+                    <div>
+                      <label class={lbl}>Einheit</label>
+                      <input type="text" value={scaleUnit}
+                        onInput={(e) => setScaleUnit((e.target as HTMLInputElement).value)}
+                        placeholder="cm" class={inp} />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p class="text-xs text-stone-400">
+                Liefert 2 Kanäle: <strong>id.distance</strong> (cm) und optional{' '}
+                <strong>id.derived</strong> (via linearer Transformation).
               </p>
             </div>
           )}
