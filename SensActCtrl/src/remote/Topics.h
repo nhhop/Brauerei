@@ -6,8 +6,8 @@ namespace SensActCtrl {
 namespace remote {
 
 // Topic builders for the SensActCtrl wire protocol. The prefix defaults to
-// "sensactctrl" but can be overridden via RemotePublisher::setPrefix() /
-// RemoteSensor::setPrefix(). All other parameters are device/kind/id.
+// "sensactctrl" but can be overridden via RemotePublisher::setPrefix().
+// All other parameters are device/kind/id.
 //
 // Flat schema  (single-channel, empty key):
 //   <prefix>/<device>/sensor/<id>           state  (retained)

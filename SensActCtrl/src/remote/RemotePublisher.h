@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -38,7 +39,10 @@ class RemotePublisher {
   void setStateIntervalMs(uint32_t ms) { stateIntervalMs_ = ms; }
 
   // Must be called before attach(). Overrides the default "sensactctrl" root.
-  void setPrefix(const char* p) { prefix_ = p; }
+  void setPrefix(const char* p) {
+    assert(sensors_.empty() && actuators_.empty() && controllers_.empty());
+    prefix_ = p;
+  }
 
   void begin();
   void tick();

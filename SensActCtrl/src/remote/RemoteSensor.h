@@ -13,6 +13,9 @@ namespace SensActCtrl {
 // channel(0).reading.valid stays false until the first state message arrives.
 //
 // Topics built from (deviceId, sensorId) per src/remote/Topics.h.
+//
+// Subscribes to a single (flat-topic) channel. For multi-channel sensors,
+// construct one RemoteSensor per channel using the channelKey parameter.
 class RemoteSensor : public Sensor {
  public:
   RemoteSensor(ITransport& transport, const char* deviceId, const char* sensorId);
