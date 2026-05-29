@@ -23,6 +23,7 @@ enum class Quantity : uint8_t {
   Duration,
   DutyCycle,
   Count,
+  Distance,
   Custom,
 };
 
@@ -44,6 +45,7 @@ inline const char* toString(Quantity q) {
     case Quantity::Duration:    return "Duration";
     case Quantity::DutyCycle:   return "DutyCycle";
     case Quantity::Count:       return "Count";
+    case Quantity::Distance:    return "Distance";
     case Quantity::Custom:      return "Custom";
   }
   return "Unknown";
