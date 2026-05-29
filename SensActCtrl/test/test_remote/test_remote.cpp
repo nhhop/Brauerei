@@ -226,6 +226,26 @@ void test_single_channel_flat_topic_unchanged() {
   TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-o/sensor/t_flat/meta").empty());
 }
 
+void test_multichannel_remote_sensor_subscribes_channel() {
+  MockTransport tx;
+  MockMultiSensor src("mc2");
+  RemotePublisher pub(tx, "node-n");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.valueA = 42.5f;
+  src.tick();
+  pub.tick();
+
+  // Late subscriber — meta + state replayed from retained cache.
+  RemoteSensor remote(tx, "node-n", "mc2", "a");
+  remote.begin();
+
+  TEST_ASSERT_EQUAL_STRING("\xc2\xb0""C", remote.channel(0).meta.unit);
+  TEST_ASSERT_TRUE(remote.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 42.5f, remote.channel(0).reading.value);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -239,5 +259,6 @@ int main(int, char**) {
   RUN_TEST(test_multichannel_both_channels_published);
   RUN_TEST(test_multichannel_channel_values_correct);
   RUN_TEST(test_single_channel_flat_topic_unchanged);
+  RUN_TEST(test_multichannel_remote_sensor_subscribes_channel);
   return UNITY_END();
 }

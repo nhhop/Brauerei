@@ -18,7 +18,8 @@ namespace SensActCtrl {
 // construct one RemoteSensor per channel using the channelKey parameter.
 class RemoteSensor : public Sensor {
  public:
-  RemoteSensor(ITransport& transport, const char* deviceId, const char* sensorId);
+  RemoteSensor(ITransport& transport, const char* deviceId, const char* sensorId,
+               const char* channelKey = "");
 
   const char* id() const override { return sensorId_.c_str(); }
   size_t  channelCount()      const override { return 1; }
@@ -26,6 +27,9 @@ class RemoteSensor : public Sensor {
 
   void begin() override;
   void tick() override {}
+
+  // Must be called before begin(). Overrides the default "sensactctrl" root.
+  void setPrefix(const char* p) { prefix_ = p; }
 
  private:
   void onState(const char* payload, size_t length);
@@ -37,6 +41,8 @@ class RemoteSensor : public Sensor {
   std::string stateTopic_;
   std::string metaTopic_;
   std::string unitStorage_;
+  std::string channelKey_;
+  std::string prefix_ = "sensactctrl";
   SensorMeta meta_{};
   Reading last_{};
 };
