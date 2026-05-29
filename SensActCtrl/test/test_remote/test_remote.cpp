@@ -24,6 +24,36 @@ using SensActCtrl::test::MockActuator;
 using SensActCtrl::test::MockSensor;
 using SensActCtrl::test::MockTransport;
 
+// Two-channel sensor for multi-channel tests. Keys "a" (Temperature) and
+// "b" (Humidity). Values set via valueA / valueB before tick().
+class MockMultiSensor : public SensActCtrl::Sensor {
+ public:
+  explicit MockMultiSensor(const char* id) : id_(id) {}
+  const char* id() const override { return id_; }
+  size_t channelCount() const override { return 2; }
+  SensActCtrl::Channel channel(size_t idx) const override {
+    static const SensActCtrl::SensorMeta metaA{
+        SensActCtrl::ValueKind::Continuous, SensActCtrl::Quantity::Temperature,
+        "\xc2\xb0""C", -55.0f, 125.0f, 0.01f};
+    static const SensActCtrl::SensorMeta metaB{
+        SensActCtrl::ValueKind::Continuous, SensActCtrl::Quantity::Humidity,
+        "%", 0.0f, 100.0f, 0.01f};
+    if (idx == 0) return {"a", metaA, readA_};
+    return {"b", metaB, readB_};
+  }
+  void tick() override {
+    readA_ = {valueA, ++ts_, true};
+    readB_ = {valueB, ts_, true};
+  }
+  float valueA = 20.0f;
+  float valueB = 50.0f;
+ private:
+  const char* id_;
+  SensActCtrl::Reading readA_{};
+  SensActCtrl::Reading readB_{};
+  uint32_t ts_ = 0;
+};
+
 static SensorMeta tempMeta() {
   return SensorMeta{ValueKind::Continuous, Quantity::Temperature, "\xc2\xb0""C",
                     -55.0f, 125.0f, 0.0625f};
@@ -141,6 +171,61 @@ void test_controller_tune_round_trip() {
   TEST_ASSERT_TRUE(meta.find("75") != std::string::npos);
 }
 
+void test_multichannel_both_channels_published() {
+  MockTransport tx;
+  MockMultiSensor src("mc");
+  RemotePublisher pub(tx, "node-m");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.tick();
+  pub.tick();
+
+  // Both channel state topics must exist
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-m/sensor/mc/a").empty());
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-m/sensor/mc/b").empty());
+  // Flat (single-channel) topic must NOT be used for multi-channel sensor
+  TEST_ASSERT_TRUE(tx.lastPayload("sensactctrl/node-m/sensor/mc").empty());
+  // Retained meta for both channels
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-m/sensor/mc/a/meta").empty());
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-m/sensor/mc/b/meta").empty());
+}
+
+void test_multichannel_channel_values_correct() {
+  MockTransport tx;
+  MockMultiSensor src("mc3");
+  RemotePublisher pub(tx, "node-q");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.valueA = 42.5f;
+  src.valueB = 77.0f;
+  src.tick();
+  pub.tick();
+
+  // Channel "a" payload must contain 42.5, channel "b" must contain 77
+  const std::string payA = tx.lastPayload("sensactctrl/node-q/sensor/mc3/a");
+  const std::string payB = tx.lastPayload("sensactctrl/node-q/sensor/mc3/b");
+  TEST_ASSERT_TRUE(payA.find("42.5") != std::string::npos);
+  TEST_ASSERT_TRUE(payB.find("77") != std::string::npos);
+}
+
+void test_single_channel_flat_topic_unchanged() {
+  MockTransport tx;
+  MockSensor src("t_flat", tempMeta());  // single-channel, empty key
+  RemotePublisher pub(tx, "node-o");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.value = 25.0f;
+  src.tick();
+  pub.tick();
+
+  // Must use flat topic — no channel key suffix
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-o/sensor/t_flat").empty());
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-o/sensor/t_flat/meta").empty());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -151,5 +236,8 @@ int main(int, char**) {
   RUN_TEST(test_actuator_state_round_trip);
   RUN_TEST(test_meta_retained_replay_for_late_subscriber);
   RUN_TEST(test_controller_tune_round_trip);
+  RUN_TEST(test_multichannel_both_channels_published);
+  RUN_TEST(test_multichannel_channel_values_correct);
+  RUN_TEST(test_single_channel_flat_topic_unchanged);
   return UNITY_END();
 }

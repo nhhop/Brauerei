@@ -37,16 +37,20 @@ class RemotePublisher {
   // every tick(). Default 1000 ms.
   void setStateIntervalMs(uint32_t ms) { stateIntervalMs_ = ms; }
 
+  // Must be called before attach(). Overrides the default "sensactctrl" root.
+  void setPrefix(const char* p) { prefix_ = p; }
+
   void begin();
   void tick();
 
  private:
   struct SensorEntry {
-    Sensor* sensor;
+    Sensor*     sensor;
+    size_t      channelIdx;   // which channel this entry represents
     std::string metaTopic;
     std::string stateTopic;
-    uint32_t lastPublishMs;
-    bool metaSent;
+    uint32_t    lastPublishMs;
+    bool        metaSent;
   };
   struct ActuatorEntry {
     Actuator* actuator;
@@ -77,6 +81,7 @@ class RemotePublisher {
   std::vector<ActuatorEntry> actuators_;
   std::vector<ControllerEntry> controllers_;
   uint32_t stateIntervalMs_ = 1000;
+  std::string prefix_ = "sensactctrl";
   bool prevConnected_ = false;
 };
 

@@ -16,40 +16,55 @@ RemotePublisher::RemotePublisher(ITransport& transport, const char* deviceId)
     : transport_(&transport), deviceId_(deviceId) {}
 
 void RemotePublisher::attach(Sensor& s) {
-  SensorEntry e;
-  e.sensor = &s;
-  e.metaTopic = remote::sensorMeta(deviceId_.c_str(), s.id());
-  e.stateTopic = remote::sensorState(deviceId_.c_str(), s.id());
-  e.lastPublishMs = 0;
-  e.metaSent = false;
-  sensors_.push_back(std::move(e));
+  const size_t n = s.channelCount();
+  const char*  p = prefix_.c_str();
+  for (size_t i = 0; i < n; ++i) {
+    const Channel ch = s.channel(i);
+    SensorEntry e;
+    e.sensor        = &s;
+    e.channelIdx    = i;
+    e.lastPublishMs = 0;
+    e.metaSent      = false;
+    const bool flat = (n == 1 && ch.key[0] == '\0');
+    if (flat) {
+      e.metaTopic  = remote::sensorMeta(deviceId_.c_str(), s.id(), p);
+      e.stateTopic = remote::sensorState(deviceId_.c_str(), s.id(), p);
+    } else {
+      e.metaTopic  = remote::sensorChannelMeta(deviceId_.c_str(), s.id(), ch.key, p);
+      e.stateTopic = remote::sensorChannelState(deviceId_.c_str(), s.id(), ch.key, p);
+    }
+    sensors_.push_back(std::move(e));
+  }
 }
 
 void RemotePublisher::attach(Actuator& a) {
+  const char* p = prefix_.c_str();
   ActuatorEntry e;
-  e.actuator = &a;
-  e.metaTopic = remote::actuatorMeta(deviceId_.c_str(), a.id());
-  e.stateTopic = remote::actuatorState(deviceId_.c_str(), a.id());
-  e.setTopic = remote::actuatorSet(deviceId_.c_str(), a.id());
+  e.actuator   = &a;
+  e.metaTopic  = remote::actuatorMeta(deviceId_.c_str(), a.id(), p);
+  e.stateTopic = remote::actuatorState(deviceId_.c_str(), a.id(), p);
+  e.setTopic   = remote::actuatorSet(deviceId_.c_str(), a.id(), p);
   e.lastPublishMs = 0;
-  e.metaSent = false;
+  e.metaSent   = false;
   e.subscribed = false;
   actuators_.push_back(std::move(e));
 }
 
 void RemotePublisher::attach(Controller& c) {
+  const char* p = prefix_.c_str();
   ControllerEntry e;
   e.controller = &c;
-  e.metaTopic = remote::controllerMeta(deviceId_.c_str(), c.id());
-  e.tuneTopic = remote::controllerTune(deviceId_.c_str(), c.id());
-  e.metaSent = false;
+  e.metaTopic  = remote::controllerMeta(deviceId_.c_str(), c.id(), p);
+  e.tuneTopic  = remote::controllerTune(deviceId_.c_str(), c.id(), p);
+  e.metaSent   = false;
   e.subscribed = false;
   controllers_.push_back(std::move(e));
 }
 
 void RemotePublisher::publishSensorMeta(SensorEntry& e) {
   char buf[192];
-  size_t n = remote::serializeSensorMeta(e.sensor->channel(0).meta, buf, sizeof(buf));
+  size_t n = remote::serializeSensorMeta(
+      e.sensor->channel(e.channelIdx).meta, buf, sizeof(buf));
   if (n == 0) return;
   if (transport_->publish(e.metaTopic.c_str(), buf, /*retained=*/true)) {
     e.metaSent = true;
@@ -57,7 +72,7 @@ void RemotePublisher::publishSensorMeta(SensorEntry& e) {
 }
 
 void RemotePublisher::publishSensorState(SensorEntry& e) {
-  const Reading r = e.sensor->channel(0).reading;
+  const Reading r = e.sensor->channel(e.channelIdx).reading;
   char buf[96];
   size_t n = remote::serializeState(r.value, r.timestampMs, r.valid, buf, sizeof(buf));
   if (n == 0) return;
