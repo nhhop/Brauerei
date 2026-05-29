@@ -93,10 +93,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - Heizung (SSR) unter Last mit Oszilloskop verifizieren
 - OTA-Firmware-Update (noch nicht implementiert)
 - QEMU/Simulation: nicht viable (kein WiFi-Emulation für ESP32)
-- Reset-Button in SensorCard (UI-Trigger für `resetFlowVolume`)
-- BME280 auf 3 Kanäle erweitern (Temp + Humidity + Pressure)
-- `RemotePublisher` publiziert nur `channel(0)` — Multi-Channel via MQTT/ESP-NOW fehlt
-- `examples/05_flow_meter` noch auf `PulseCounterSensor` — Beispiel mit `YF_S201Sensor` fehlt
+- `RemotePublisher` Multi-Channel via MQTT/ESP-NOW ✓ (2026-05-29)
 - IDS-Induktionskocher E2E-Test mit echter Hardware ausstehend
 
 ## Weiterentwicklung

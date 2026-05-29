@@ -210,8 +210,6 @@ Sensoren wie der YF-S201 (Durchfluss + Gesamtvolumen) konnten nicht sauber abgeb
 - `gcc`-Pfad für native Tests auf diesem System: `C:\Users\nhhop\.platformio\mingw64\bin`
 
 **Offene Punkte (Folge-Sessions):**
-- Reset-Button in SensorCard (UI-Trigger für `resetFlowVolume`)
-- BME280 auf 3 Kanäle erweitern (Temperatur + Luftfeuchtigkeit + Druck)
 - `RemotePublisher` publiziert nur `channel(0)` — Multi-Channel via MQTT/ESP-NOW nicht abgedeckt
 - `examples/05_flow_meter` noch auf `PulseCounterSensor` — Folge-Beispiel mit `YF_S201Sensor` fehlt
 
@@ -283,3 +281,67 @@ POST /api/actuators
 - Nur `tick()` aufgerufen, wenn `millis() >= nextTickMs_` — bei blockierendem `sendCommand()` (~246 ms) kann das bei sehr schnellen Loops zweimal pro Sekunde auftreten (bewusste Akzeptanz)
 
 Commits: `bf5be40` (IdsInductionCooker), `87effa2` → `69521a3` (Brauerei, 6 Commits)
+
+---
+
+## 2026-05-29 — RemotePublisher Multi-Channel + konfigurierbares Topic-Prefix
+
+**Ausgangslage:** `RemotePublisher` publizierte für alle Sensoren nur `channel(0)` hardcoded.
+Sensoren mit mehreren Kanälen (BME280: temp/hum/pres, YF_S201: rate/volume) wurden damit
+unvollständig über MQTT/ESP-NOW veröffentlicht. `RemoteSensor` konnte nur einen einzigen
+Kanal (Flat-Topic) abonnieren.
+
+**Änderungen in SensActCtrl (6 Commits, `2a1acab` → `f1a247e`):**
+
+### Topics.h
+- Optionaler `prefix`-Parameter (Default `"sensactctrl"`) auf `base()` und allen bestehenden
+  Helpers (`sensorState/Meta`, `actuatorState/Meta/Set`, `controllerMeta/Tune`)
+- Zwei neue Helpers: `sensorChannelState(d, id, key, prefix)` und
+  `sensorChannelMeta(d, id, key, prefix)` → Schema: `<prefix>/<device>/sensor/<id>/<key>`
+
+### RemotePublisher
+- `SensorEntry` erhält Feld `size_t channelIdx`
+- `attach(Sensor&)` iteriert jetzt alle Kanäle (`channelCount()`), erstellt einen `SensorEntry`
+  pro Kanal. Backward-Compat-Regel: `channelCount()==1 && key[0]=='\0'` → Flat-Topic (alte
+  Sensor-Typen unverändert); sonst per-Channel-Topic
+- `publishSensorMeta/State` nutzen `channel(channelIdx)` statt `channel(0)`
+- Neue Methode `setPrefix(const char*)` — muss vor `attach()` aufgerufen werden; `assert()`
+  fängt falsche Reihenfolge
+
+### RemoteSensor
+- Optionaler 4th Constructor-Parameter `const char* channelKey = ""` (bestehende 3-Arg-Calls
+  unverändert)
+- Neue Methode `setPrefix(const char*)` — muss vor `begin()` aufgerufen werden
+- Topic-Aufbau aus Konstruktor in `begin()` verschoben; routed auf Flat- oder Channel-Topic
+  je nach `channelKey_`
+
+**Consumer-Usage (Beispiel):**
+```cpp
+RemotePublisher pub(t, "brew");
+pub.setPrefix("home/brewery");   // optional
+pub.attach(bme280);              // → home/brewery/brew/sensor/ambient/temp|hum|pres
+pub.begin();
+
+RemoteSensor ambTemp(t, "brew", "ambient", "temp");
+ambTemp.setPrefix("home/brewery");
+ambTemp.begin();
+```
+
+**Tests:** 43 → 48 native Tests grün. Neue Tests:
+- `test_multichannel_both_channels_published`
+- `test_multichannel_channel_values_correct`
+- `test_single_channel_flat_topic_unchanged`
+- `test_multichannel_remote_sensor_subscribes_channel`
+- `test_custom_prefix_roundtrip`
+
+**Nebenfixes (pre-existing, gefunden beim ESP32-Compile-Check):**
+- `SensActCtrl/src/core/Reading.h`: expliziter `Reading(float, uint32_t, bool)`-Konstruktor
+  ergänzt — GCC 8.4 (ESP32, C++11) lehnte Brace-Init bei Struct mit Default-Member-Initializern ab
+- `SensActCtrl/library.json`: `IdsInductionCooker` als Git-Dep eingetragen (war bisher nur via
+  BrewControl-Symlink verfügbar, fehlte für Standalone-`pio ci`-Builds)
+
+**Dokumentation aktualisiert:**
+- `PLAN.md` (Root): `RemotePublisher Multi-Channel`-Eintrag als erledigt markiert,
+  `examples/05_flow_meter`-Punkt gestrichen (war bereits mit `YF_S201Sensor` implementiert)
+
+Commits: `2a1acab` → `f1a247e` (6 Commits, lokal auf `main`, noch nicht gepusht)
