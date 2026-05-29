@@ -65,16 +65,17 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 | lolin_s2_mini | Single-core, USB-CDC (TinyUSB), ARDUINO_USB_CDC_ON_BOOT=1 |
 | lilygo_t_display_s3_amoled | S3 dual-core, 8 MB PSRAM, SD auf HSPI (38/41/39/40) |
 
-## Aktueller Status (Stand 2026-05-23)
+## Aktueller Status (Stand 2026-05-30)
 
 ### SensActCtrl
 - **Phase 1–3 abgeschlossen**: alle Abstraktionen, Sensor-/Aktor-/Regler-Implementierungen, drei Transporte
 - **Multi-Channel Interface**: `Channel`-Struct, `channelCount()` / `channel(idx)` ersetzen `meta()` / `lastReading()`
-- **43/43 native Tests grün**
+- **56/56 native Tests grün**
 - **13 Beispiel-Sketches** bauen für esp32dev (auf neue `channel()`-API migriert)
-- Neue Sensoren: `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss + Volumen, 2 Kanäle)
+- Neue Sensoren: `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss + Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle: distance + derived)
 - Neuer Aktor: `IdsActuator` (IDS1 = 10 Stufen, IDS2 = 5 Stufen, wraps `IdsInductionCooker`)
 - `fault()`-Interface: nicht-brechende Default-Methode auf `Sensor` + `Actuator`; `RegistrySnapshot` emittiert `"fault"` nur wenn gesetzt
+- `Quantity::Distance` neu (zwischen `Count` und `Custom`)
 - Details: `SensActCtrl/PLAN.md`, `SensActCtrl/session.md`
 
 ### BrewControl
@@ -82,7 +83,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - **E2E verifiziert** auf LOLIN S2 Mini und LilyGo T-Display-S3-AMOLED-1.43
 - Laufzeit-Registry (Add/Remove) implementiert und getestet
 - OneWire Bus-Scan (`GET /api/bus/scan`), Sensor-Reset (`POST /api/sensors/:id/reset`)
-- AddItemModal unterstützt DS18B20 (mit Scan), MAX31865, YF-S201, IDS1/IDS2 (Induktion)
+- AddItemModal unterstützt DS18B20 (mit Scan), MAX31865, YF-S201, IDS1/IDS2 (Induktion), HC-SR04 (Ultraschall)
 - Fault-Badge in `SensorCard` + `ActuatorCard` (gelb, wenn `fault` im Snapshot gesetzt)
 - Build-Footprint: ~11 KB gzipped (Web), ~76 % Flash (Firmware, nach IDS-Dep)
 - Details: `BrewControl/PLAN.md`, `BrewControl/SESSION.md`
