@@ -29,6 +29,7 @@
 #include "sensors/BME280Sensor.h"
 #include "sensors/MAX31865Sensor.h"
 #include "sensors/YF_S201Sensor.h"
+#include "sensors/HCSR04Sensor.h"
 
 #include "transport/ITransport.h"
 #include "transport/MqttTransport.h"
