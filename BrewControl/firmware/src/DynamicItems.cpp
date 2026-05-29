@@ -73,6 +73,19 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     YF_S201Sensor* rawPtr = sensor.get();
     e->ptr = std::move(sensor);
     e->resetFn = [rawPtr]() { rawPtr->resetVolume(); };
+  } else if (strcmp(type, "HCSR04") == 0) {
+    int trig = cfg["trig"] | -1;
+    int echo = cfg["echo"] | -1;
+    if (trig < 0) return {false, "missing trig"};
+    if (echo < 0) return {false, "missing echo"};
+    auto sensor = std::make_unique<HCSR04Sensor>(e->id.c_str(), trig, echo);
+    if (!cfg["factor"].isNull()) {
+      float       factor = cfg["factor"].as<float>();
+      float       offset = cfg["offset"] | 0.0f;
+      const char* unit   = cfg["unit"]   | "";
+      sensor->setScale(factor, offset, unit);
+    }
+    e->ptr = std::move(sensor);
   } else {
     return {false, "unknown sensor type"};
   }
