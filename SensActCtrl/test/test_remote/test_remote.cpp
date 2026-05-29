@@ -246,6 +246,31 @@ void test_multichannel_remote_sensor_subscribes_channel() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 42.5f, remote.channel(0).reading.value);
 }
 
+void test_custom_prefix_roundtrip() {
+  MockTransport tx;
+  MockSensor src("temp", tempMeta());
+  RemotePublisher pub(tx, "node-p");
+  pub.setPrefix("myapp");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.value = 55.0f;
+  src.tick();
+  pub.tick();
+
+  // Custom prefix must be used
+  TEST_ASSERT_FALSE(tx.lastPayload("myapp/node-p/sensor/temp").empty());
+  // Default prefix must NOT appear
+  TEST_ASSERT_TRUE(tx.lastPayload("sensactctrl/node-p/sensor/temp").empty());
+
+  // RemoteSensor with same prefix receives the state via retained replay.
+  RemoteSensor remote(tx, "node-p", "temp");
+  remote.setPrefix("myapp");
+  remote.begin();
+  TEST_ASSERT_TRUE(remote.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 55.0f, remote.channel(0).reading.value);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -260,5 +285,6 @@ int main(int, char**) {
   RUN_TEST(test_multichannel_channel_values_correct);
   RUN_TEST(test_single_channel_flat_topic_unchanged);
   RUN_TEST(test_multichannel_remote_sensor_subscribes_channel);
+  RUN_TEST(test_custom_prefix_roundtrip);
   return UNITY_END();
 }
