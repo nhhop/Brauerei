@@ -48,6 +48,10 @@ class DS18B20Sensor : public Sensor {
   // Arduino-only; always returns 0 in native (non-hardware) builds.
   static uint8_t scanBus(int pin, uint8_t out[][8], uint8_t maxDevices);
 
+  // Overload for callers that already own a OneWire instance on the pin.
+  // Avoids creating a second conflicting driver on the same GPIO.
+  static uint8_t scanBus(OneWire& bus, uint8_t out[][8], uint8_t maxDevices);
+
  private:
   enum class State : uint8_t { Idle, Converting };
 

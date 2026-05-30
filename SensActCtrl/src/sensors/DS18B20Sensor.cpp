@@ -98,15 +98,24 @@ void DS18B20Sensor::tick() {
   }
 }
 
-uint8_t DS18B20Sensor::scanBus(int pin, uint8_t out[][8], uint8_t maxDevices) {
+uint8_t DS18B20Sensor::scanBus(OneWire& bus, uint8_t out[][8], uint8_t maxDevices) {
 #if defined(ARDUINO)
-  OneWire ow(pin);
-  DallasTemperature dt(&ow);
+  DallasTemperature dt(&bus);
   dt.begin();
   uint8_t n = dt.getDeviceCount();
   if (n > maxDevices) n = maxDevices;
   for (uint8_t i = 0; i < n; ++i) dt.getAddress(out[i], i);
   return n;
+#else
+  (void)bus; (void)out; (void)maxDevices;
+  return 0;
+#endif
+}
+
+uint8_t DS18B20Sensor::scanBus(int pin, uint8_t out[][8], uint8_t maxDevices) {
+#if defined(ARDUINO)
+  OneWire ow(pin);
+  return scanBus(ow, out, maxDevices);
 #else
   (void)pin; (void)out; (void)maxDevices;
   return 0;

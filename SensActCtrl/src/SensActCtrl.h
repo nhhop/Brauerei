@@ -18,6 +18,7 @@
 
 #include "actuators/DigitalOutputActuator.h"
 #include "actuators/PulseOutputActuator.h"
+#include "actuators/AnalogOutputActuator.h"
 #ifdef ARDUINO
 #include "actuators/IdsActuator.h"
 #endif
@@ -30,6 +31,7 @@
 #include "sensors/MAX31865Sensor.h"
 #include "sensors/YF_S201Sensor.h"
 #include "sensors/HCSR04Sensor.h"
+#include "sensors/HX711LoadCellSensor.h"
 
 #include "transport/ITransport.h"
 #include "transport/MqttTransport.h"
