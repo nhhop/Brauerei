@@ -449,3 +449,17 @@ Sensor `hlt` — GPIO 21, ROM `28ff19c6a11605d3` — war bereits auf dem Gerät 
 | `pio run -e lilygo_t_display_s3_amoled` | SUCCESS (war vorher FAILED wegen dacWrite) |
 | Flash + Scan GPIO 21 (leer) | `{"devices":[]}` — kein Fehler mehr |
 | Flash + Scan GPIO 1 (Sensor drauf) | ROM-Adresse gefunden, Sensor liest weiterhin korrekt |
+
+---
+
+## 2026-05-30 — WebUI Handler-Reihenfolge: Aktor-Write-Bug
+
+**Problem:** `POST /api/actuators/:id` (Aktor-Write aus dem UI, z.B. Relais-Toggle) lieferte `400 missing id`. Ursache: `AsyncCallbackJsonWebHandler("/api/actuators")` matcht intern via `startsWith("/api/actuators/")` und greift dadurch auf Sub-Pfade wie `/api/actuators/heater` zu — bevor der korrekte `BodyPrefixHandler` in der Handler-Liste erreicht wird.
+
+**Fix:** `BrewControl/firmware/src/WebUI.cpp` — Registrierungsreihenfolge umgestellt:
+- Delete- und BodyPrefixHandler (Write/Reset/Setpoint) **vor** den `AsyncCallbackJsonWebHandlers` registriert
+- Mit Trailing-Slash greift `startsWith("/api/actuators/")` nicht für das reine `/api/actuators` (Create) → saubere Abgrenzung
+
+**Commit:** `2202ff7`
+
+**Verifikation:** Relais auf GPIO 2 toggle ✅
