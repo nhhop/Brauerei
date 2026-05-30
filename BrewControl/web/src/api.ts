@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -85,6 +85,18 @@ export function deleteActuator(id: string): Promise<void> {
 
 export function deleteController(id: string): Promise<void> {
   return deleteItem(`/api/controllers/${encodeURIComponent(id)}`);
+}
+
+// ── Config (original cfgJson — used by edit UI) ──────────────────────────────
+
+export async function getConfig(): Promise<ConfigSnapshot> {
+  const r = await fetch('/api/config');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()) as ConfigSnapshot;
+}
+
+export function enableController(id: string, enabled: boolean): Promise<void> {
+  return setControllerParams(id, { enabled });
 }
 
 // ── Bus discovery ────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import type { Snapshot } from './types';
-import { getSnapshot, subscribeEvents, wifiReset, deleteSensor, deleteActuator, deleteController, resetFlowVolume } from './api';
+import type { Snapshot, ItemConfig } from './types';
+import { getSnapshot, subscribeEvents, wifiReset, deleteSensor, deleteActuator, deleteController, resetFlowVolume, getConfig } from './api';
 import { SensorCard } from './components/SensorCard';
 import { ActuatorCard } from './components/ActuatorCard';
 import { ControllerCard } from './components/ControllerCard';
@@ -40,8 +40,9 @@ function Dashboard({ onReset }: { onReset: () => void }) {
   const [resetPending, setResetPending] = useState(false);
   const [resetErr, setResetErr] = useState<string | null>(null);
 
-  // Add item
+  // Add / Edit item
   const [addOpen, setAddOpen] = useState(false);
+  const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
 
   // Delete item
   const [deleteTarget, setDeleteTarget] = useState<{ role: Role; id: string } | null>(null);
@@ -75,13 +76,34 @@ function Dashboard({ onReset }: { onReset: () => void }) {
     setDeletePending(false);
   }
 
+  async function startEdit(role: Role, id: string) {
+    try {
+      const config = await getConfig();
+      const list = role === 'sensor' ? config.sensors
+                 : role === 'actuator' ? config.actuators
+                 : config.controllers;
+      const cfg = list.find((c) => c.id === id);
+      if (cfg) {
+        setEditItem({ role, cfg });
+        setAddOpen(true);
+      }
+    } catch {
+      // ignore — edit simply won't open
+    }
+  }
+
+  function closeModal() {
+    setAddOpen(false);
+    setEditItem(null);
+  }
+
   const header = (
     <header class="mb-4 flex items-center justify-between gap-3">
       <h1 class="text-xl font-medium tracking-tight">BrewControl</h1>
       <div class="flex items-center gap-2">
         <button type="button" onClick={() => setAddOpen(true)}
           class="rounded-md bg-stone-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-700">
-          + Add Item
+          + Hinzufügen
         </button>
         <button type="button" onClick={() => setResetOpen(true)}
           class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100">
@@ -93,29 +115,35 @@ function Dashboard({ onReset }: { onReset: () => void }) {
 
   const modals = (
     <>
-      <ConfirmModal open={resetOpen} title="Reset WiFi credentials?" destructive
-        confirmLabel="Reset & reboot" pending={resetPending}
+      <ConfirmModal open={resetOpen} title="WiFi-Zugangsdaten zurücksetzen?" destructive
+        confirmLabel="Zurücksetzen & Neustart" pending={resetPending}
         onCancel={() => { setResetOpen(false); setResetErr(null); }}
         onConfirm={doReset}>
         <p>
-          This clears the stored WiFi credentials and reboots the device into
-          the setup portal. You'll need to reconnect via the
+          Dies löscht die gespeicherten WiFi-Zugangsdaten und startet das Gerät neu in
+          den Setup-Modus. Danach über
           <code class="mx-1 rounded bg-stone-100 px-1 font-mono">BrewControl-Setup</code>
-          access point afterwards.
+          neu verbinden.
         </p>
         {resetErr && <p class="mt-2 text-red-600">{resetErr}</p>}
       </ConfirmModal>
 
       <ConfirmModal open={deleteTarget !== null}
-        title={`Delete "${deleteTarget?.id}"?`}
-        destructive confirmLabel="Delete" pending={deletePending}
+        title={`"${deleteTarget?.id}" löschen?`}
+        destructive confirmLabel="Löschen" pending={deletePending}
         onCancel={() => { setDeleteTarget(null); setDeleteErr(null); }}
         onConfirm={doDelete}>
-        <p>This will permanently remove the item and update the SD config.</p>
+        <p>Das Item wird dauerhaft entfernt und die SD-Konfiguration aktualisiert.</p>
         {deleteErr && <p class="mt-2 text-red-600">{deleteErr}</p>}
       </ConfirmModal>
 
-      <AddItemModal open={addOpen} snap={snap} onClose={() => setAddOpen(false)} />
+      <AddItemModal
+        open={addOpen}
+        snap={snap}
+        onClose={closeModal}
+        editConfig={editItem?.cfg}
+        editRole={editItem?.role}
+      />
     </>
   );
 
@@ -130,7 +158,7 @@ function Dashboard({ onReset }: { onReset: () => void }) {
   if (!snap) return (
     <div class="min-h-screen bg-stone-50 p-6 text-stone-900">
       {header}
-      <p class="text-sm text-stone-500">Loading…</p>
+      <p class="text-sm text-stone-500">Laden…</p>
       {modals}
     </div>
   );
@@ -139,26 +167,34 @@ function Dashboard({ onReset }: { onReset: () => void }) {
     <div class="min-h-screen bg-stone-50 p-4 text-stone-900 md:p-6">
       {header}
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Column title="Sensors" count={snap.sensors.length}>
+        <Column title="Sensoren" count={snap.sensors.length}>
           {snap.sensors.map((s) => {
-            const sensorId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+            const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
             return (
               <SensorCard key={s.id} sensor={s}
-                onDelete={() => setDeleteTarget({ role: 'sensor', id: sensorId })}
-                onReset={s.meta.kind === 'Cumulative' ? () => resetFlowVolume(sensorId) : undefined} />
+                onEdit={() => startEdit('sensor', baseId)}
+                onDelete={() => setDeleteTarget({ role: 'sensor', id: baseId })}
+                onReset={s.meta.kind === 'Cumulative' ? () => resetFlowVolume(baseId) : undefined}
+              />
             );
           })}
         </Column>
-        <Column title="Controllers" count={snap.controllers.length}>
+        <Column title="Regler" count={snap.controllers.length}>
           {snap.controllers.map((c) => (
             <ControllerCard key={c.id} controller={c}
-              onDelete={() => setDeleteTarget({ role: 'controller', id: c.id })} />
+              sensors={snap.sensors}
+              actuators={snap.actuators}
+              onEdit={() => startEdit('controller', c.id)}
+              onDelete={() => setDeleteTarget({ role: 'controller', id: c.id })}
+            />
           ))}
         </Column>
-        <Column title="Actuators" count={snap.actuators.length}>
+        <Column title="Aktoren" count={snap.actuators.length}>
           {snap.actuators.map((a) => (
             <ActuatorCard key={a.id} actuator={a}
-              onDelete={() => setDeleteTarget({ role: 'actuator', id: a.id })} />
+              onEdit={() => startEdit('actuator', a.id)}
+              onDelete={() => setDeleteTarget({ role: 'actuator', id: a.id })}
+            />
           ))}
         </Column>
       </div>
@@ -171,11 +207,11 @@ function RebootingView() {
   return (
     <div class="flex min-h-screen items-center justify-center bg-stone-50 p-6 text-stone-900">
       <div class="max-w-md text-center">
-        <h1 class="text-xl font-medium tracking-tight">Rebooting…</h1>
+        <h1 class="text-xl font-medium tracking-tight">Neustart…</h1>
         <p class="mt-3 text-sm text-stone-600">
-          The device is restarting into setup-portal mode. Connect to the
+          Das Gerät startet in den Setup-Modus. Mit dem WLAN
           <code class="mx-1 rounded bg-stone-100 px-1 font-mono">BrewControl-Setup</code>
-          WiFi network to configure new credentials.
+          verbinden um neue Zugangsdaten einzutragen.
         </p>
       </div>
     </div>

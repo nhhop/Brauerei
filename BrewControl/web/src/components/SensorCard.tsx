@@ -1,6 +1,6 @@
 import type { Sensor } from '../types';
 
-export function SensorCard({ sensor, onDelete, onReset }: { sensor: Sensor; onDelete?: () => void; onReset?: () => void }) {
+export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sensor; onDelete?: () => void; onReset?: () => void; onEdit?: () => void }) {
   const { id, meta, state } = sensor;
   const v = state.v;
   const live = state.ok && v != null && isFinite(v);
@@ -14,6 +14,10 @@ export function SensorCard({ sensor, onDelete, onReset }: { sensor: Sensor; onDe
         <h3 class="font-medium text-stone-900">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-stone-500">{meta.quantity}</span>
+          {onEdit && (
+            <button type="button" onClick={onEdit} title="Bearbeiten"
+              class="text-stone-400 hover:text-stone-700 leading-none text-sm">✎</button>
+          )}
           {onReset && (
             <button type="button" onClick={onReset} title="Reset volume"
               class="text-stone-400 hover:text-blue-600 leading-none text-sm">↺</button>

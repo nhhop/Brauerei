@@ -53,17 +53,46 @@ export interface Actuator {
   fault?: string;
 }
 
+export interface ControllerParams {
+  // Both PID and TwoPoint
+  sensor?: string;
+  actuator?: string;
+  enabled?: boolean;
+  // PID
+  Kp?: number;
+  Ki?: number;
+  Kd?: number;
+  min?: number;
+  max?: number;
+  autotuneMethod?: string;
+  autotuneState?: string;
+  // TwoPoint
+  hystLow?: number;
+  hystHigh?: number;
+  inverted?: boolean;
+  [key: string]: unknown;
+}
+
 export interface Controller {
   id: string;
   setpoint: number;
-  // Nested object; absent if the controller has no exposed params.
-  params?: Record<string, unknown>;
+  enabled: boolean;
+  params?: ControllerParams;
 }
 
 export interface Snapshot {
   sensors: Sensor[];
   actuators: Actuator[];
   controllers: Controller[];
+}
+
+// Wire format of GET /api/config
+export type ItemConfig = Record<string, unknown>;
+
+export interface ConfigSnapshot {
+  sensors: ItemConfig[];
+  actuators: ItemConfig[];
+  controllers: ItemConfig[];
 }
 
 // Wire format of GET /api/bus/scan

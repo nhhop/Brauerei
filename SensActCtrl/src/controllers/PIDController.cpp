@@ -232,6 +232,7 @@ bool PIDController::isAutotuneDone() const {
 }
 
 void PIDController::tick() {
+  if (!enabled()) return;
   const uint32_t now = millis();
   const uint32_t elapsed = (lastTickMs_ == 0) ? 100 : (now - lastTickMs_);
   // AutoTunePID's contract: don't call update() faster than every 100 ms.
@@ -312,6 +313,14 @@ static bool extractFloat(const char* json, const char* key, float* out) {
   return true;
 }
 
+static bool extractBool(const char* json, const char* key, bool* out) {
+  const char* v = nullptr;
+  if (!jsonFindKey(json, key, &v)) return false;
+  if (strncmp(v, "true", 4) == 0)  { *out = true;  return true; }
+  if (strncmp(v, "false", 5) == 0) { *out = false; return true; }
+  return false;
+}
+
 static bool extractString(const char* json, const char* key,
                           const char** valOut, size_t* lenOut) {
   const char* v = nullptr;
@@ -333,10 +342,14 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,"
                          "\"Kd\":%.4f,\"Ku\":%.4f,\"Tu\":%.4f,"
                          "\"min\":%.4f,\"max\":%.4f,"
+                         "\"sensor\":\"%s\",\"actuator\":\"%s\","
+                         "\"enabled\":%s,"
                          "\"autotuneMethod\":\"%s\","
                          "\"autotuneState\":\"%s\"}",
                          setpoint_, kp_, ki_, kd_, ku_, tu_,
                          minOutput_, maxOutput_,
+                         sensor_->id(), actuator_->id(),
+                         enabled() ? "true" : "false",
                          tuningMethodName(tuningMethod_), state);
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;
   return static_cast<size_t>(n);
@@ -359,6 +372,8 @@ bool PIDController::setParamsJson(const char* json) {
     if (parseTuningMethod(mStr, mLen, &tm)) tuningMethod_ = tm;
   }
   // min/max are construction-time only; ignored on parse.
+  bool b = true;
+  if (extractBool(json, "enabled", &b)) setEnabled(b);
   return true;
 }
 

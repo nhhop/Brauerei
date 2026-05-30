@@ -88,8 +88,9 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
     JsonObject obj = ctrlArr.add<JsonObject>();
     obj["id"]       = c->id();
     obj["setpoint"] = c->setpoint();
+    obj["enabled"]  = c->enabled();
 
-    char paramsBuf[256];
+    char paramsBuf[512];
     const size_t plen = c->paramsJson(paramsBuf, sizeof(paramsBuf));
     if (plen > 0) {
       JsonDocument paramsDoc;

@@ -38,6 +38,12 @@ class Controller {
 
   virtual size_t paramsJson(char* buf, size_t bufSize) const = 0;
   virtual bool setParamsJson(const char* json) = 0;
+
+  virtual void setEnabled(bool e) { enabled_ = e; }
+  virtual bool enabled() const { return enabled_; }
+
+ private:
+  bool enabled_ = true;
 };
 
 }  // namespace SensActCtrl

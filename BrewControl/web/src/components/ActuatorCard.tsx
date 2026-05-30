@@ -2,7 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import type { Actuator } from '../types';
 import { writeActuator } from '../api';
 
-export function ActuatorCard({ actuator, onDelete }: { actuator: Actuator; onDelete?: () => void }) {
+export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuator; onDelete?: () => void; onEdit?: () => void }) {
   const { id, meta, state } = actuator;
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -21,8 +21,12 @@ export function ActuatorCard({ actuator, onDelete }: { actuator: Actuator; onDel
         <h3 class="font-medium text-stone-900">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-stone-500">{meta.kind}</span>
+          {onEdit && (
+            <button type="button" onClick={onEdit} title="Bearbeiten"
+              class="text-stone-400 hover:text-stone-700 leading-none text-sm">✎</button>
+          )}
           {onDelete && (
-            <button type="button" onClick={onDelete} title="Delete"
+            <button type="button" onClick={onDelete} title="Löschen"
               class="text-stone-400 hover:text-red-600 leading-none">×</button>
           )}
         </div>

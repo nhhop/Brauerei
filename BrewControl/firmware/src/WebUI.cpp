@@ -256,6 +256,11 @@ void WebUI::begin() {
     req->send(200, "application/json", out);
   });
 
+  // ── Config (original cfgJson for all dynamic items — used by edit UI) ────
+  server_.on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", items_.serializeConfig());
+  });
+
   server_.serveStatic("/", fs_, "/")
       .setDefaultFile("index.html")
       .setCacheControl("max-age=600");

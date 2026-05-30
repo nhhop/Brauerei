@@ -11,6 +11,7 @@ TwoPointController::TwoPointController(const char* id, Sensor& sensor,
     : id_(id), sensor_(&sensor), actuator_(&actuator) {}
 
 void TwoPointController::tick() {
+  if (!enabled()) return;
   const Reading r = sensor_->channel(0).reading;
   if (!r.valid) return;  // no reading yet — leave actuator alone
 
@@ -75,9 +76,13 @@ size_t TwoPointController::paramsJson(char* buf, size_t bufSize) const {
   if (!buf || bufSize == 0) return 0;
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"hystLow\":%.4f,"
-                         "\"hystHigh\":%.4f,\"inverted\":%s}",
+                         "\"hystHigh\":%.4f,\"inverted\":%s,"
+                         "\"sensor\":\"%s\",\"actuator\":\"%s\","
+                         "\"enabled\":%s}",
                          setpoint_, hystLow_, hystHigh_,
-                         inverted_ ? "true" : "false");
+                         inverted_ ? "true" : "false",
+                         sensor_->id(), actuator_->id(),
+                         enabled() ? "true" : "false");
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;
   return static_cast<size_t>(n);
 }
@@ -90,6 +95,8 @@ bool TwoPointController::setParamsJson(const char* json) {
   if (extractFloat(json, "hystHigh", &f)) hystHigh_ = f;
   bool b = false;
   if (extractBool(json, "inverted", &b)) inverted_ = b;
+  b = true;
+  if (extractBool(json, "enabled", &b)) setEnabled(b);
   return true;
 }
 

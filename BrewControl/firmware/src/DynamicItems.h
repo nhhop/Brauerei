@@ -51,6 +51,9 @@ class DynamicItems {
   // Write current dynamic item set to /config/registry.json.
   void saveToSD(fs::FS& sd) const;
 
+  // Serialize original config JSON for all dynamic items — used by GET /api/config.
+  String serializeConfig() const;
+
   // Scan a OneWire bus for DS18B20 ROM addresses. Reuses an existing bus
   // instance managed by DynamicItems if the pin is already in use, to avoid
   // creating a second conflicting OneWire driver on the same GPIO.

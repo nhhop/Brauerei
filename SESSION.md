@@ -452,6 +452,62 @@ Sensor `hlt` — GPIO 21, ROM `28ff19c6a11605d3` — war bereits auf dem Gerät 
 
 ---
 
+## 2026-05-30 — UI-Verbesserungen: Edit, ControllerCard, TwoPoint, Enable/Disable, Demo-Items
+
+**Ausgangslage:** BrewControl hatte kein Edit-Interface (nur Add/Delete), ControllerCard zeigte nur ein JSON-Params-Textarea, kein Zweipunkt-Regler und drei hardcodierte Demo-Items in `main.cpp`.
+
+### 1 — Bearbeitungsfunktion (Edit via Delete + POST)
+
+**Ansatz:** Registry besitzt keine Update-Methode — Edit = DELETE altes Item + POST neue Config.
+
+- `DynamicItems.cpp`: neue Methode `serializeConfig()` — liefert `{"sensors":[...],"actuators":[...],"controllers":[...]}` als JSON aus den gespeicherten `cfgJson`-Strings aller Items
+- `DynamicItems.h`: Deklaration `String serializeConfig() const`
+- `WebUI.cpp`: neuer Handler `GET /api/config` vor Static-Serve registriert
+- `api.ts`: neue Funktion `getConfig(): Promise<ConfigSnapshot>`
+- `types.ts`: Interface `ItemConfig = Record<string, unknown>`, `ConfigSnapshot`
+- `app.tsx`: State `editItem: { role: Role; cfg: ItemConfig } | null`, Funktion `startEdit(role, id)` — ruft `getConfig()` auf, extrahiert cfgJson, setzt `editItem`
+- `AddItemModal.tsx`: Props `editConfig?`, `editRole?`; `isEdit`-Flag; Felder vorbelegt aus cfgJson; Typ-/Rolle-Selector in Edit-Modus deaktiviert; Submit-Logik: DELETE → POST; Button-Labels Deutsch ("Erstellen"/"Speichern"/"Abbrechen")
+- `SensorCard.tsx`, `ActuatorCard.tsx`: `onEdit?`-Prop + ✎-Schaltfläche
+
+### 2 — ControllerCard: Ist-Wert, Ausgang, kein params-Textarea
+
+- `ControllerCard.tsx` komplett neu: empfängt `sensors: Sensor[]` + `actuators: Actuator[]`
+- Sensor-ID aus `params?.sensor` → live `linkedSensor.state.v` anzeigen (Ist-Wert)
+- Aktor-ID aus `params?.actuator` → live `linkedActuator.state.v` formatiert anzeigen (Ausgang)
+- params-JSON-Textarea entfernt
+- `app.tsx`: `ControllerCard` erhält `sensors={snap.sensors}` + `actuators={snap.actuators}`
+
+### 3 — Zweipunkt-Regler (TwoPoint)
+
+**Library:** `TwoPointController` war bereits implementiert; `paramsJson()` um `sensor`/`actuator`/`enabled` erweitert; `setParamsJson()` liest `enabled`; `tick()` Guard `if (!enabled()) return`
+
+**Firmware:** `DynamicItems.cpp` — neuer Branch `"TwoPoint"` in `addControllerNoBegin()`: liest `sensor`, `actuator`, `hyst_low`, `hyst_high`, `inverted`, `setpoint`
+
+**Frontend:** `AddItemModal.tsx` — Controller-Typ-Buttons (PID / Zweipunkt), Felder `hystLow`, `hystHigh`, `inverted`-Checkbox
+
+### 4 — Controller Enable/Disable
+
+- `SensActCtrl/src/core/Controller.h`: `setEnabled(bool)` + `enabled()` mit `private bool enabled_ = true`
+- `PIDController.cpp` + `TwoPointController.cpp`: Guard `if (!enabled()) return;` am Tick-Anfang; `enabled`-Key in `paramsJson()` + `setParamsJson()` (incl. `extractBool`-Helper in PID)
+- `RegistrySnapshot.cpp`: `obj["enabled"] = c->enabled()` je Controller; `paramsBuf` 256 → 512 Bytes
+- `api.ts`: `enableController(id, enabled)` — nutzt bestehenden `POST /api/controllers/:id/params`
+- `ControllerCard.tsx`: ⏻-Button (grün=aktiv, grau=inaktiv), `opacity-60` wenn disabled
+
+### 5 — Hardcodierte Demo-Items entfernt
+
+- `main.cpp`: globale Objekte `DS18B20Sensor mashTemp`, `DigitalOutputActuator heater`, `PIDController pid` und alle zugehörigen Konstanten + setup()-Aufrufe entfernt
+- Registry startet leer; `dynamicItems.loadFromSD(SD, registry)` füllt sie aus SD-Persistenz
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 80/80 PASSED |
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+| `pio run -e lilygo_t_display_s3_amoled` | SUCCESS, RAM 14.7 %, Flash 14.5 % |
+
+---
+
 ## 2026-05-30 — WebUI Handler-Reihenfolge: Aktor-Write-Bug
 
 **Problem:** `POST /api/actuators/:id` (Aktor-Write aus dem UI, z.B. Relais-Toggle) lieferte `400 missing id`. Ursache: `AsyncCallbackJsonWebHandler("/api/actuators")` matcht intern via `startsWith("/api/actuators/")` und greift dadurch auf Sub-Pfade wie `/api/actuators/heater` zu — bevor der korrekte `BodyPrefixHandler` in der Handler-Liste erreicht wird.

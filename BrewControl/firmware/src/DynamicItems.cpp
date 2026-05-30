@@ -229,6 +229,25 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     e->sensorId   = sId;
     e->actuatorId = aId;
     e->ptr.reset(ctrl);
+  } else if (strcmp(type, "TwoPoint") == 0) {
+    const char* sId = cfg["sensor"]   | "";
+    const char* aId = cfg["actuator"] | "";
+    if (!sId[0]) return {false, "missing sensor"};
+    if (!aId[0]) return {false, "missing actuator"};
+    auto* s = reg.findSensor(sId);
+    auto* a = reg.findActuator(aId);
+    if (!s) return {false, "sensor not found"};
+    if (!a) return {false, "actuator not found"};
+    float hystLow  = cfg["hyst_low"]  | -0.5f;
+    float hystHigh = cfg["hyst_high"] | 0.5f;
+    bool  inverted = cfg["inverted"]  | false;
+    auto* ctrl = new TwoPointController(e->id.c_str(), *s, *a);
+    ctrl->setHysteresis(hystLow, hystHigh);
+    ctrl->setInverted(inverted);
+    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
+    e->sensorId   = sId;
+    e->actuatorId = aId;
+    e->ptr.reset(ctrl);
   } else {
     return {false, "unknown controller type"};
   }
@@ -333,6 +352,28 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
   }
   f.print("]}");
   f.close();
+}
+
+// ── Config serialization ──────────────────────────────────────────────────────
+
+String DynamicItems::serializeConfig() const {
+  String out = "{\"sensors\":[";
+  for (size_t i = 0; i < sensors_.size(); ++i) {
+    if (i) out += ',';
+    out += sensors_[i]->cfgJson.c_str();
+  }
+  out += "],\"actuators\":[";
+  for (size_t i = 0; i < actuators_.size(); ++i) {
+    if (i) out += ',';
+    out += actuators_[i]->cfgJson.c_str();
+  }
+  out += "],\"controllers\":[";
+  for (size_t i = 0; i < controllers_.size(); ++i) {
+    if (i) out += ',';
+    out += controllers_[i]->cfgJson.c_str();
+  }
+  out += "]}";
+  return out;
 }
 
 // ── Bus helpers ───────────────────────────────────────────────────────────────

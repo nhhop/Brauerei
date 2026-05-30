@@ -22,29 +22,15 @@ using namespace SensActCtrl;
 using BrewControl::WebUI;
 using BrewControl::WiFiSetupPortal;
 
-// Pin assignments — defaults for esp32dev/S2 dev boards. Board-specific
-// overrides via build_flags (see platformio.ini per-env BREWCTL_* macros).
-#ifndef BREWCTL_ONEWIRE_PIN
-#define BREWCTL_ONEWIRE_PIN 4
-#endif
-#ifndef BREWCTL_SSR_PIN
-#define BREWCTL_SSR_PIN 16
-#endif
+// Pin assignments — board-specific overrides via build_flags in platformio.ini.
 #ifndef BREWCTL_SD_CS
 #define BREWCTL_SD_CS 5
 #endif
-constexpr int kOneWirePin = BREWCTL_ONEWIRE_PIN;
-constexpr int kSsrPin = BREWCTL_SSR_PIN;
 constexpr int kSdCsPin = BREWCTL_SD_CS;  // ⚠ on esp32dev: strapping pin (MTDI) — see README
 constexpr int kBootButtonPin = 0;
 constexpr uint32_t kResetHoldMs = 5000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 30000;
 constexpr char kHostname[] = "brewcontrol";
-
-DS18B20Sensor mashTemp("mash_temp", kOneWirePin);
-DigitalOutputActuator heater("heater", kSsrPin,
-                             DigitalOutputActuator::Mode::TimeProportional);
-PIDController pid("mash_pid", mashTemp, heater, /*min=*/0.0f, /*max=*/1.0f);
 
 Registry registry;
 BrewControl::DynamicItems dynamicItems;
@@ -134,17 +120,6 @@ void setup() {
     Serial.println(F("SD mounted"));
   }
 
-  heater.setPeriodMs(2000);
-  pid.setTunings(/*Kp=*/8.0f, /*Ki=*/0.2f, /*Kd=*/0.5f);
-  pid.enableAntiWindup(true, 0.8f);
-  pid.setSetpoint(65.0f);
-
-  registry.add(&mashTemp);
-  registry.add(&heater);
-  registry.add(&pid);
-
-  // Load additional items persisted from the web UI. Called after the static
-  // items are registered so dynamic controllers can reference them by id.
   if (sdOk) dynamicItems.loadFromSD(SD, registry);
 
   registry.begin();

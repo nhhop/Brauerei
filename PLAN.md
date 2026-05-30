@@ -19,12 +19,13 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 │  - POST /api/sensors/:id/reset                      │
 │  - GET  /api/bus/scan?type=onewire&pin=N            │
 │  - POST /api/admin/wifi-reset                       │
+│  - GET  /api/config  (cfgJson aller Items, Edit-UI) │
 └────────────────────┬────────────────────────────────┘
                      │ WiFi / HTTP (ESPAsyncWebServer)
 ┌────────────────────▼────────────────────────────────┐
 │  ESP32 Firmware                                     │
 │  BrewControl/firmware/src/                          │
-│  main.cpp      Boot, WiFi, Demo-Registry            │
+│  main.cpp      Boot, WiFi (keine Demo-Items mehr)   │
 │  WebUI.h/cpp   HTTP-API, SSE, SD-Static-Serve       │
 │  WiFiSetup…    Captive Portal (erste Inbetriebnahme)│
 │  DynamicItems  Laufzeit Add/Remove von Registry     │
@@ -70,12 +71,13 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 ### SensActCtrl
 - **Phase 1–3 abgeschlossen**: alle Abstraktionen, Sensor-/Aktor-/Regler-Implementierungen, drei Transporte
 - **Multi-Channel Interface**: `Channel`-Struct, `channelCount()` / `channel(idx)` ersetzen `meta()` / `lastReading()`
-- **56/56 native Tests grün**
+- **80/80 native Tests grün**
 - **13 Beispiel-Sketches** bauen für esp32dev (auf neue `channel()`-API migriert)
-- Neue Sensoren: `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss + Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle: distance + derived)
-- Neuer Aktor: `IdsActuator` (IDS1 = 10 Stufen, IDS2 = 5 Stufen, wraps `IdsInductionCooker`)
+- Neue Sensoren: `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss + Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle: distance + derived), `HX711LoadCellSensor` (Wägezelle)
+- Neue Aktoren: `IdsActuator` (IDS1/IDS2), `AnalogOutputActuator` (PWM/DAC, `SENSACTCTRL_HAS_DAC`-Guard)
 - `fault()`-Interface: nicht-brechende Default-Methode auf `Sensor` + `Actuator`; `RegistrySnapshot` emittiert `"fault"` nur wenn gesetzt
 - `Quantity::Distance` neu (zwischen `Count` und `Custom`)
+- `Controller`-Basisklasse: `setEnabled(bool)` / `enabled()` — `PIDController` + `TwoPointController` respektieren Guard in `tick()`; `enabled` in `paramsJson` + `setParamsJson` + `RegistrySnapshot`
 - Details: `SensActCtrl/PLAN.md`, `SensActCtrl/session.md`
 
 ### BrewControl
@@ -83,9 +85,13 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - **E2E verifiziert** auf LOLIN S2 Mini und LilyGo T-Display-S3-AMOLED-1.43
 - Laufzeit-Registry (Add/Remove) implementiert und getestet
 - OneWire Bus-Scan (`GET /api/bus/scan`), Sensor-Reset (`POST /api/sensors/:id/reset`)
-- AddItemModal unterstützt DS18B20 (mit Scan), MAX31865, YF-S201, IDS1/IDS2 (Induktion), HC-SR04 (Ultraschall)
+- AddItemModal unterstützt DS18B20 (mit Scan), MAX31865, YF-S201, IDS1/IDS2 (Induktion), HC-SR04 (Ultraschall), HX711, AnalogOutput
 - Fault-Badge in `SensorCard` + `ActuatorCard` (gelb, wenn `fault` im Snapshot gesetzt)
-- Build-Footprint: ~11 KB gzipped (Web), ~76 % Flash (Firmware, nach IDS-Dep)
+- **Edit-Funktion (2026-05-30):** Alle Items (Sensor/Aktor/Regler) editierbar via DELETE+POST; `/api/config` liefert cfgJson; AddItemModal im Edit-Modus vorbelegt und Typ-Selector gesperrt
+- **ControllerCard (2026-05-30):** Ist-Wert (verlinkter Sensor), Reglerausgang (verlinkter Aktor), Enable/Disable-Toggle; params-Textarea entfernt
+- **TwoPoint-Regler (2026-05-30):** DynamicItems-Branch + Frontend-Formular (hystLow, hystHigh, inverted)
+- **Hardcodierte Demo-Items entfernt (2026-05-30):** `main.cpp` startet mit leerer Registry; SD-Konfiguration füllt sie
+- Build-Footprint: ~11 KB gzipped (Web), ~14.5 % Flash / ~14.7 % RAM (lilygo_t_display_s3_amoled, 2026-05-30)
 - Details: `BrewControl/PLAN.md`, `BrewControl/SESSION.md`
 
 ## Roadmap
