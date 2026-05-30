@@ -140,11 +140,14 @@ function Dashboard({ onReset }: { onReset: () => void }) {
       {header}
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Column title="Sensors" count={snap.sensors.length}>
-          {snap.sensors.map((s) => (
-            <SensorCard key={s.id} sensor={s}
-              onDelete={() => setDeleteTarget({ role: 'sensor', id: s.id })}
-              onReset={s.meta.kind === 'Cumulative' ? () => resetFlowVolume(s.id) : undefined} />
-          ))}
+          {snap.sensors.map((s) => {
+            const sensorId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+            return (
+              <SensorCard key={s.id} sensor={s}
+                onDelete={() => setDeleteTarget({ role: 'sensor', id: sensorId })}
+                onReset={s.meta.kind === 'Cumulative' ? () => resetFlowVolume(sensorId) : undefined} />
+            );
+          })}
         </Column>
         <Column title="Controllers" count={snap.controllers.length}>
           {snap.controllers.map((c) => (

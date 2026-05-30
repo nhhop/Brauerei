@@ -3,10 +3,10 @@ import type { Snapshot, ScannedDevice } from '../types';
 import { createSensor, createActuator, createController, scanOneWireBus } from '../api';
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
-type ActuatorType = 'DigitalOutput' | 'IDS1' | 'IDS2';
+type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -37,6 +37,11 @@ export function AddItemModal({ open, snap, onClose }: {
   // HCSR04
   const [trigPin, setTrigPin] = useState('');
   const [echoPin, setEchoPin] = useState('');
+
+  // HX711
+  const [hx711Dout, setHx711Dout] = useState('');
+  const [hx711Sck,  setHx711Sck]  = useState('');
+  const [hx711Scale, setHx711Scale] = useState('');
   const [showScale, setShowScale] = useState(false);
   const [scaleFactor, setScaleFactor] = useState('');
   const [scaleOffset, setScaleOffset] = useState('');
@@ -60,6 +65,14 @@ export function AddItemModal({ open, snap, onClose }: {
   const [pinYellow, setPinYellow] = useState('12');
   const [pinInterrupt, setPinInterrupt] = useState('13');
 
+  // AnalogOutput
+  const [analogPin, setAnalogPin] = useState('');
+  const [analogMode, setAnalogMode] = useState<'pwm' | 'dac'>('pwm');
+  const [analogShowRange, setAnalogShowRange] = useState(false);
+  const [analogMin, setAnalogMin] = useState('0');
+  const [analogMax, setAnalogMax] = useState('1');
+  const [analogUnit, setAnalogUnit] = useState('');
+
   // controller
   const [sensorId, setSensorId] = useState('');
   const [actuatorId, setActuatorId] = useState('');
@@ -81,10 +94,13 @@ export function AddItemModal({ open, snap, onClose }: {
       setShowCustomSpi(false); setClkPin(''); setMisoPin(''); setMosiPin('');
       setTrigPin(''); setEchoPin('');
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
+      setHx711Dout(''); setHx711Sck(''); setHx711Scale('');
       setSensorId(snap?.sensors[0]?.id ?? '');
       setActuatorId(snap?.actuators[0]?.id ?? '');
       setActuatorType('DigitalOutput');
       setPinWhite('14'); setPinYellow('12'); setPinInterrupt('13');
+      setAnalogPin(''); setAnalogMode('pwm'); setAnalogShowRange(false);
+      setAnalogMin('0'); setAnalogMax('1'); setAnalogUnit('');
     }
   }, [open]);
 
@@ -130,6 +146,18 @@ export function AddItemModal({ open, snap, onClose }: {
           await createSensor({ type: 'YF-S201', id: trimId, pin: pinNum });
         } else if (sensorType === 'BME280') {
           await createSensor({ type: 'BME280', id: trimId, address: i2cAddr });
+        } else if (sensorType === 'HX711') {
+          const dout = parseInt(hx711Dout, 10);
+          const sck  = parseInt(hx711Sck,  10);
+          if (isNaN(dout) || dout < 0) throw new Error('DOUT Pin ungültig');
+          if (isNaN(sck)  || sck  < 0) throw new Error('SCK Pin ungültig');
+          const body: Record<string, unknown> = { type: 'HX711', id: trimId, dout, sck };
+          if (hx711Scale.trim() !== '') {
+            const sc = parseFloat(hx711Scale);
+            if (isNaN(sc) || sc <= 0) throw new Error('Scale ungültig (muss > 0)');
+            body.scale = sc;
+          }
+          await createSensor(body);
         } else if (sensorType === 'HCSR04') {
           const trig = parseInt(trigPin, 10);
           const echo = parseInt(echoPin, 10);
@@ -159,6 +187,19 @@ export function AddItemModal({ open, snap, onClose }: {
             type: actuatorType, id: trimId,
             pin_white: pw, pin_yellow: py, pin_interrupt: pi,
           });
+        } else if (actuatorType === 'AnalogOutput') {
+          const p = parseInt(analogPin, 10);
+          if (isNaN(p)) throw new Error('invalid pin');
+          const body: Record<string, unknown> = { type: 'AnalogOutput', id: trimId, pin: p, mode: analogMode };
+          if (analogShowRange) {
+            const vmin = parseFloat(analogMin);
+            const vmax = parseFloat(analogMax);
+            if (isNaN(vmin) || isNaN(vmax) || vmin >= vmax) throw new Error('invalid range (min must be < max)');
+            body.value_min = vmin;
+            body.value_max = vmax;
+            if (analogUnit.trim()) body.unit = analogUnit.trim();
+          }
+          await createActuator(body);
         } else {
           const p = parseInt(pin, 10);
           if (isNaN(p)) throw new Error('invalid pin');
@@ -237,6 +278,9 @@ export function AddItemModal({ open, snap, onClose }: {
                 </optgroup>
                 <optgroup label="Distanz">
                   <option value="HCSR04">HC-SR04 (Ultraschall)</option>
+                </optgroup>
+                <optgroup label="Gewicht">
+                  <option value="HX711">HX711 (Wägezelle)</option>
                 </optgroup>
               </select>
             </div>
@@ -378,6 +422,36 @@ export function AddItemModal({ open, snap, onClose }: {
             </div>
           )}
 
+          {/* HX711 fields */}
+          {role === 'sensor' && sensorType === 'HX711' && (
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class={lbl}>DOUT Pin (GPIO)</label>
+                  <input type="number" value={hx711Dout}
+                    onInput={(e) => setHx711Dout((e.target as HTMLInputElement).value)}
+                    placeholder="z.B. 4" class={inp} required />
+                </div>
+                <div>
+                  <label class={lbl}>SCK Pin (GPIO)</label>
+                  <input type="number" value={hx711Sck}
+                    onInput={(e) => setHx711Sck((e.target as HTMLInputElement).value)}
+                    placeholder="z.B. 5" class={inp} required />
+                </div>
+              </div>
+              <div>
+                <label class={lbl}>Scale (g / count, optional)</label>
+                <input type="number" step="any" value={hx711Scale}
+                  onInput={(e) => setHx711Scale((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. 0.00427" class={inp} />
+              </div>
+              <p class="text-xs text-stone-400">
+                Nach dem Anlegen Tara über <strong>POST /api/sensors/:id/reset</strong> setzen.
+                Scale: Divide Referenzgewicht (g) durch Differenz der Rohwerte.
+              </p>
+            </div>
+          )}
+
           {/* HCSR04 fields */}
           {role === 'sensor' && sensorType === 'HCSR04' && (
             <div class="space-y-3">
@@ -457,7 +531,8 @@ export function AddItemModal({ open, snap, onClose }: {
                 <select value={actuatorType} title="Actuator Type"
                   onChange={(e) => setActuatorType((e.target as HTMLSelectElement).value as ActuatorType)}
                   class={inp}>
-                  <option value="DigitalOutput">DigitalOutput (GPIO)</option>
+                  <option value="DigitalOutput">DigitalOutput (GPIO on/off + TPO)</option>
+                  <option value="AnalogOutput">AnalogOutput (PWM / DAC)</option>
                   <option value="IDS1">IDS1 – Induktion (10 Stufen)</option>
                   <option value="IDS2">IDS2 – Induktion (5 Stufen)</option>
                 </select>
@@ -480,6 +555,57 @@ export function AddItemModal({ open, snap, onClose }: {
                     </select>
                   </div>
                 </>
+              )}
+              {actuatorType === 'AnalogOutput' && (
+                <div class="space-y-3">
+                  <div>
+                    <label class={lbl}>GPIO Pin</label>
+                    <input type="number" value={analogPin}
+                      onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
+                      placeholder="e.g. 25" class={inp} required />
+                  </div>
+                  <div>
+                    <label class={lbl}>Mode</label>
+                    <div class="flex gap-2">
+                      {(['pwm', 'dac'] as const).map((m) => (
+                        <button key={m} type="button" onClick={() => setAnalogMode(m)}
+                          class={segBtn(analogMode === m)}>{m.toUpperCase()}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <button type="button"
+                      onClick={() => setAnalogShowRange(!analogShowRange)}
+                      class="text-xs text-stone-500 hover:text-stone-700">
+                      {analogShowRange ? '▼' : '▶'} Custom Value Range (optional)
+                    </button>
+                    {analogShowRange && (
+                      <div class="mt-2 grid grid-cols-3 gap-2">
+                        <div>
+                          <label class={lbl}>Min</label>
+                          <input type="number" step="any" value={analogMin}
+                            onInput={(e) => setAnalogMin((e.target as HTMLInputElement).value)}
+                            placeholder="0" class={inp} />
+                        </div>
+                        <div>
+                          <label class={lbl}>Max</label>
+                          <input type="number" step="any" value={analogMax}
+                            onInput={(e) => setAnalogMax((e.target as HTMLInputElement).value)}
+                            placeholder="1" class={inp} />
+                        </div>
+                        <div>
+                          <label class={lbl}>Unit</label>
+                          <input type="text" value={analogUnit}
+                            onInput={(e) => setAnalogUnit((e.target as HTMLInputElement).value)}
+                            placeholder="e.g. V" class={inp} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <p class="text-xs text-stone-400">
+                    PWM: LEDC hardware PWM (5 kHz / 12-bit default). DAC: GPIO 25/26 only.
+                  </p>
+                </div>
               )}
               {(actuatorType === 'IDS1' || actuatorType === 'IDS2') && (
                 <div class="grid grid-cols-3 gap-2">

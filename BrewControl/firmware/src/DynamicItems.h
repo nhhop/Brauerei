@@ -51,6 +51,11 @@ class DynamicItems {
   // Write current dynamic item set to /config/registry.json.
   void saveToSD(fs::FS& sd) const;
 
+  // Scan a OneWire bus for DS18B20 ROM addresses. Reuses an existing bus
+  // instance managed by DynamicItems if the pin is already in use, to avoid
+  // creating a second conflicting OneWire driver on the same GPIO.
+  uint8_t scanOneWireBus(int pin, uint8_t out[][8], uint8_t maxDevices);
+
  private:
   struct SensorEntry {
     std::string id;

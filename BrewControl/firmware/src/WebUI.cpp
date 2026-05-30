@@ -227,7 +227,7 @@ void WebUI::begin() {
              });
 
   // ── Bus scan ──────────────────────────────────────────────────────────────
-  server_.on("/api/bus/scan", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server_.on("/api/bus/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {
     if (!req->hasParam("type") || !req->hasParam("pin")) {
       req->send(400, "text/plain", "missing type or pin");
       return;
@@ -239,7 +239,7 @@ void WebUI::begin() {
     int pin = req->getParam("pin")->value().toInt();
 
     uint8_t addrs[8][8] = {};
-    uint8_t n = SensActCtrl::DS18B20Sensor::scanBus(pin, addrs, 8);
+    uint8_t n = items_.scanOneWireBus(pin, addrs, 8);
 
     JsonDocument doc;
     doc["type"] = "onewire";

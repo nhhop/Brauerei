@@ -86,6 +86,17 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
       sensor->setScale(factor, offset, unit);
     }
     e->ptr = std::move(sensor);
+  } else if (strcmp(type, "HX711") == 0) {
+    int dout = cfg["dout"] | -1;
+    int sck  = cfg["sck"]  | -1;
+    if (dout < 0) return {false, "missing dout"};
+    if (sck  < 0) return {false, "missing sck"};
+    auto sensor = std::make_unique<HX711LoadCellSensor>(e->id.c_str(), dout, sck);
+    if (!cfg["scale"].isNull())
+      sensor->setScale(cfg["scale"].as<float>());
+    HX711LoadCellSensor* rawPtr = sensor.get();
+    e->ptr = std::move(sensor);
+    e->resetFn = [rawPtr]() { rawPtr->tare(); };
   } else {
     return {false, "unknown sensor type"};
   }
@@ -150,6 +161,25 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
         static_cast<uint8_t>(pinW),
         static_cast<uint8_t>(pinY),
         static_cast<uint8_t>(pinI));
+  } else if (strcmp(type, "AnalogOutput") == 0) {
+    int pin = cfg["pin"] | -1;
+    if (pin < 0) return {false, "missing pin"};
+    const char* modeStr = cfg["mode"] | "pwm";
+    auto mode = strcmp(modeStr, "dac") == 0
+                    ? AnalogOutputActuator::Mode::Dac
+                    : AnalogOutputActuator::Mode::Pwm;
+    auto* a = new AnalogOutputActuator(e->id.c_str(), pin, mode);
+    if (!cfg["freq"].isNull())
+      a->setFrequency(cfg["freq"] | 5000u);
+    if (!cfg["resolution_bits"].isNull())
+      a->setResolutionBits(static_cast<uint8_t>(cfg["resolution_bits"] | 12));
+    if (!cfg["unit"].isNull() || !cfg["value_min"].isNull() || !cfg["value_max"].isNull())
+      a->setRange(Quantity::Custom,
+                  cfg["unit"] | "",
+                  cfg["value_min"] | 0.0f,
+                  cfg["value_max"] | 1.0f,
+                  cfg["resolution"] | 0.01f);
+    e->ptr.reset(a);
   } else {
     return {false, "unknown actuator type"};
   }
@@ -306,6 +336,14 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
 }
 
 // ── Bus helpers ───────────────────────────────────────────────────────────────
+
+uint8_t DynamicItems::scanOneWireBus(int pin, uint8_t out[][8], uint8_t max) {
+  for (auto& e : onewireBuses_) {
+    if (e.pin == pin)
+      return DS18B20Sensor::scanBus(*e.ow, out, max);
+  }
+  return DS18B20Sensor::scanBus(pin, out, max);
+}
 
 OneWire& DynamicItems::getOrCreateBus(int pin) {
   for (auto& e : onewireBuses_)
