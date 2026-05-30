@@ -88,6 +88,24 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - Build-Footprint: ~11 KB gzipped (Web), ~76 % Flash (Firmware, nach IDS-Dep)
 - Details: `BrewControl/PLAN.md`, `BrewControl/SESSION.md`
 
+## Roadmap
+
+### Peripherie-Abstraktion (Rückgrat, zuerst)
+
+`Peripheral`-Interface (`id`, `type`, `begin`/`tick`/`end`) + `PeripheralRegistry`, das geteilte Busse (OneWire / I2C / SPI / CAN) beim ersten passenden Consumer automatisch anlegt. Sensoren/Aktoren referenzieren per Bus-Id oder hängen sich anhand der Pins automatisch an. Verallgemeinert die bestehende `getOrCreateBus`-Logik in `DynamicItems.cpp`, beseitigt die SPI-Pin-Duplizierung bei MAX31865. Port-Expander / CAN-Transceiver = spätere konkrete Peripherie auf derselben Naht (Hardware aktuell nicht vorhanden).
+
+### Pin-Manager (firmware, auf Peripherie aufbauend)
+
+Board-Capability-Map (per Board-Define ausgewählt): Input-only Pins 34–39, Strapping-Pins, Flash/PSRAM-belegte Pins (z.B. 33–37 auf S3-AMOLED), DAC-Pins 25/26, Default I2C/SPI/UART. `GET /api/pins` liefert frei/belegt; Belegung = Peripherie (geteilt/beitrittsfähig) + Items mit exklusiven Pins. Stufen: Tier 1 Belegung + Map → Tier 2 Constraint-Query (interrupt-/serial-/dac-fähig) → Tier 3 Protokoll-Vorschläge (bestehende Bus-Peripherie bevorzugen, ergibt sich aus Peripherie-Modell).
+
+### Interaktives LVGL-Display (firmware, board-spezifisch)
+
+Snapshot-Consumer (rendert Werte per LVGL) **und** Command-Quelle (Touch → `writeActuator` / `setSetpoint` über bestehende WebUI-Handler). Kein Aktor — eigene Klasse, LVGL gekapselt; stärkste Analogie ist `RemotePublisher`. Ziel-Board: LilyGo T-Display-S3-AMOLED. Größter Scope, eigene Spec vor Implementierung.
+
+**Sequenz:** Peripherie-Rückgrat → Pin-Manager → Display (größtenteils unabhängig, zuletzt).
+
+---
+
 ## Bekannte Einschränkungen / Offene Punkte
 
 - DS18B20 Live-Reads mit echter Sensorhardware ausstehend
@@ -96,6 +114,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - QEMU/Simulation: nicht viable (kein WiFi-Emulation für ESP32)
 - `RemotePublisher` Multi-Channel via MQTT/ESP-NOW ✓ (2026-05-29)
 - IDS-Induktionskocher E2E-Test mit echter Hardware ausstehend
+- **Frontend: gruppierte SensorCard für Multi-Channel-Sensoren** — HCSR04 und YF-S201 erzeugen je 2 separate Karten (`tank.distance` / `tank.derived`, `flow.rate` / `flow.volume`). Verbesserung: `app.tsx` gruppiert Snapshot-Einträge nach Base-ID, eine Karte pro logischem Sensor mit mehreren Kanal-Zeilen. Delete-Button und Zähler zeigen dann korrekt logische Sensoren statt Kanäle. Quick-Fix für korrektes Delete/Reset bereits angewendet (2026-05-30).
 
 ## Weiterentwicklung
 

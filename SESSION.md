@@ -345,3 +345,107 @@ ambTemp.begin();
   `examples/05_flow_meter`-Punkt gestrichen (war bereits mit `YF_S201Sensor` implementiert)
 
 Commits: `2a1acab` → `f1a247e` (6 Commits, lokal auf `main`, noch nicht gepusht)
+
+---
+
+## 2026-05-30 — AnalogOutputActuator + HX711LoadCellSensor + Roadmap
+
+**Ausgangslage:** SensActCtrl hatte keine Analogaktor-Klasse (PWM/DAC) und keinen Wägezellen-Sensor. BrewControl zeigte für Multi-Channel-Sensoren (HCSR04, YF-S201) zwei separate Delete/Reset-Buttons statt eines Buttons pro logischem Sensor.
+
+### Quick-Fix Multi-Channel-Delete (BrewControl Frontend)
+
+`BrewControl/web/src/app.tsx`: `sensorId`-Extraktion vor Basis-ID (Split am ersten `.`) — `onDelete`/`onReset` senden nun immer die Base-ID (`"tank"` statt `"tank.distance"`). Dokumentiert in PLAN.md als "Bekannte Einschränkungen" (gruppierte SensorCard als zukünftige Verbesserung).
+
+### Part A — AnalogOutputActuator (SensActCtrl + BrewControl)
+
+**Neue Dateien:**
+- `SensActCtrl/src/actuators/AnalogOutputActuator.h` + `.cpp`
+- `SensActCtrl/test/test_analog_output/test_analog_output.cpp` (14 Tests)
+
+**Design-Abweichung vom Plan:** Statt separatem `setCalibration()` + `setMeta()` ein einziges `setRange(Quantity, unit, min, max, resolution)` — setzt Advertise-Meta und value→duty-Mapping-Range gemeinsam (vermeidet Dual-Range-Footgun, Simplicity First).
+
+**Key-Details:**
+- `enum class Mode : uint8_t { Pwm, Dac }` — DAC-Modus fixiert rawMax auf 255 (GPIO25/26), PWM nutzt LEDC (8-16 bit einstellbar, default 12 bit / 5 kHz)
+- `static uint8_t nextChannel_` — simpels LEDC-Kanal-Pool (analogie HCSR04 ISR-Slot); langfristig in Pin-Manager
+- `unit_[16]`-Buffer mit `strncpy` — DynamicItems übergibt cfg-backed `const char*`, kein Dangling
+- `public valueToRaw(float) const` für native Tests (Spiegel von `AnalogInputSensor::rawToValue`)
+- LEDC-API Core 2.x (`ledcSetup` / `ledcAttachPin` / `ledcWrite`) — espressif32 6.3.2 verifiziert
+- Native-Stubs für `ledcSetup` / `ledcAttachPin` / `ledcWrite` / `dacWrite`
+
+**Integration:**
+- `SensActCtrl/src/SensActCtrl.h`: Include nach PulseOutputActuator
+- `DynamicItems.cpp`: `"AnalogOutput"`-Branch liest `pin`, `mode` ("pwm"/"dac"), optional `freq`, `resolution_bits`, `value_min`/`value_max`/`unit` → `setRange(Quantity::Custom, ...)` wenn Range-Keys vorhanden
+- `AddItemModal.tsx`: `'AnalogOutput'` in `ActuatorType`, PWM/DAC-Toggle, optionaler Custom-Range-Bereich (Min/Max/Unit)
+
+### Part B — HX711LoadCellSensor (SensActCtrl + BrewControl)
+
+**Neue Dateien:**
+- `SensActCtrl/src/sensors/HX711LoadCellSensor.h` + `.cpp`
+- `SensActCtrl/test/test_hx711/test_hx711.cpp` (10 Tests)
+
+**Key-Details:**
+- Eigener Bit-Bang-Treiber (kein externer Library-Dep), Gain 128 (25 SCK-Pulse)
+- Non-blocking `tick()`: ARDUINO-Pfad liest nur wenn `digitalRead(dout)==LOW`; nativer Pfad via `injectRawForTest`
+- `rawToMass(int32_t raw)` public für Tests: `(raw - offset_) * scale_`
+- `tare()` setzt `offset_ = lastRaw_`
+- `Quantity::Mass` bereits vorhanden (kein Enum-Change)
+- `injectRawForTest(int32_t)` + natives `g_millis_hx711` im `#ifndef ARDUINO`-Block
+
+**Integration:**
+- `SensActCtrl/src/SensActCtrl.h`: Include nach HCSR04Sensor
+- `DynamicItems.cpp`: `"HX711"`-Branch mit `dout`/`sck`/optional `scale`; `e->resetFn = [rawPtr]{ rawPtr->tare(); }` → `POST /api/sensors/:id/reset` löst Tare aus
+- `AddItemModal.tsx`: `'HX711'` in `SensorType`, Felder für DOUT/SCK/Scale
+
+**Hinweis:** Tare-Button im Frontend noch nicht sichtbar (nur API-Aufruf, `meta.kind` ist Continuous, nicht Cumulative). Folge-Aufgabe wenn UI-Ansicht benötigt.
+
+### Roadmap in PLAN.md
+
+Drei Roadmap-Einträge aufgenommen:
+1. **Peripherie-Abstraktion** — `Peripheral`-Interface + Auto-Registry für OneWire/I2C/SPI/CAN-Busse (verallgemeinert `getOrCreateBus`)
+2. **Pin-Manager** — Board-Capability-Map + `GET /api/pins` (auf Peripherie aufbauend)
+3. **Interaktives LVGL-Display** — Snapshot-Consumer + Touch-Command-Quelle (LilyGo T-Display-S3-AMOLED)
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 80/80 PASSED (56 alt + 14 neu AnalogOutput + 10 neu HX711) |
+| `pnpm typecheck` (BrewControl/web) | Keine TypeScript-Fehler |
+| `pio run -e esp32dev` (BrewControl/firmware) | SUCCESS, 77.3 % Flash |
+
+---
+
+## 2026-05-30 — DS18B20 Praxistest + Scan-Konflikt-Fix + DAC-Guard
+
+**Ausgangslage:** DS18B20-Live-Reads waren als "ausstehend" markiert. Beim Praxistest wurden zwei Bugs gefunden: Bus-Scan lieferte Fehler auf Pins mit aktiver DynamicItems-OneWire-Instanz; `AnalogOutputActuator` verlinkte `dacWrite` auf ESP32-S3 nicht.
+
+### DS18B20 Praxistest (LilyGo T-Display-S3-AMOLED, 192.168.178.87)
+
+Sensor `hlt` — GPIO 21, ROM `28ff19c6a11605d3` — war bereits auf dem Gerät persistiert und lieferte ~26–28 °C live (ok=true). Sensor `mash_temp` — GPIO 1 (Demo, kein Hardware-Sensor) — lieferte korrekt -127 °C (ok=false). Nach Umstecken auf GPIO 1: `mash_temp` = 24–25 °C ok=true, `hlt` = -127 ok=false (ROM nicht gefunden). Beide Modi (Skip-ROM und ROM-Adresse) **bestätigt**.
+
+### Fix A — OneWire-Scan-Konflikt (`/api/bus/scan`)
+
+**Problem:** `WebUI.cpp` rief `DS18B20Sensor::scanBus(pin, ...)` auf, das intern eine neue `OneWire(pin)`-Instanz anlegt. Wenn `DynamicItems` bereits eine aktive `OneWire` auf demselben Pin hält, laufen zwei Software-OneWire-Treiber gleichzeitig auf derselben GPIO → HTTP-Fehler / falsche Reads.
+
+**Fix (3 Dateien):**
+- `DS18B20Sensor`: neue `static scanBus(OneWire& bus, ...)` Überladung; pin-Variante delegiert dorthin (DRY)
+- `DynamicItems`: öffentliche `scanOneWireBus(pin, ...)` — sucht in `onewireBuses_` nach vorhandenem Bus für den Pin, nutzt ihn; sonst temporäre Instanz (kein Konflikt)
+- `WebUI.cpp`: Lambda `[]` → `[this]`, Aufruf auf `items_.scanOneWireBus(pin, addrs, 8)`
+
+**Verifikation:** Scan auf GPIO 21 (leer) → `{"devices":[]}` ✅; Scan auf GPIO 1 (Sensor drauf) → `{"address":"28ff19c6a11605d3"}` ✅; `mash_temp` liest danach weiterhin korrekt ✅.
+
+### Fix B — `AnalogOutputActuator` DAC auf ESP32-S3
+
+**Problem:** `dacWrite()` ist nur im Original-ESP32-Arduino-Core vorhanden (GPIO 25/26 DAC). ESP32-S2 und S3 haben kein DAC-Peripheral → Linker-Fehler beim `lilygo_t_display_s3_amoled`-Target.
+
+**Fix:** Compile-Zeit-Define `SENSACTCTRL_HAS_DAC` — gesetzt wenn `CONFIG_IDF_TARGET_ESP32` (Original-ESP32) oder native Build (Stubs). Auf S2/S3: `begin()` stuft `Mode::Dac` auf `Mode::Pwm` herunter; `dacWrite`-Aufruf in `write()` ist wegkompiliert.
+
+### Verifikation (gesamt)
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 80/80 PASSED |
+| `pio run -e esp32dev` | SUCCESS, 77.3 % Flash |
+| `pio run -e lilygo_t_display_s3_amoled` | SUCCESS (war vorher FAILED wegen dacWrite) |
+| Flash + Scan GPIO 21 (leer) | `{"devices":[]}` — kein Fehler mehr |
+| Flash + Scan GPIO 1 (Sensor drauf) | ROM-Adresse gefunden, Sensor liest weiterhin korrekt |
