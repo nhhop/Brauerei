@@ -86,35 +86,9 @@ void WebUI::begin() {
   events_.onConnect([this](AsyncEventSourceClient* c) { sendSnapshotTo_(c); });
   server_.addHandler(&events_);
 
-  // ── Create (exact URL, AsyncCallbackJsonWebHandler) ───────────────────────
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/sensors",
-      [this](AsyncWebServerRequest* req, JsonVariant& json) {
-        auto r = items_.addSensor(json.as<JsonObject>(), reg_);
-        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
-        items_.saveToSD(fs_);
-        pushSnapshot_();
-        req->send(204);
-      }));
-
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/actuators",
-      [this](AsyncWebServerRequest* req, JsonVariant& json) {
-        auto r = items_.addActuator(json.as<JsonObject>(), reg_);
-        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
-        items_.saveToSD(fs_);
-        pushSnapshot_();
-        req->send(204);
-      }));
-
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/controllers",
-      [this](AsyncWebServerRequest* req, JsonVariant& json) {
-        auto r = items_.addController(json.as<JsonObject>(), reg_);
-        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
-        items_.saveToSD(fs_);
-        pushSnapshot_();
-        req->send(204);
-      }));
-
   // ── Delete (prefix, no body) ──────────────────────────────────────────────
+  // Registered before AsyncCallbackJsonWebHandler to prevent startsWith
+  // collision: "/api/actuators" matches "/api/actuators/heater" internally.
   server_.addHandler(new DeletePrefixHandler("/api/sensors/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/sensors/"));
@@ -153,7 +127,6 @@ void WebUI::begin() {
           req->send(405, "text/plain", "method not allowed");
           return;
         }
-        // Extract sensor id: between "/api/sensors/" and "/reset"
         String path = url.substring(strlen("/api/sensors/"));
         String id   = path.substring(0, path.length() - strlen("/reset"));
         auto r = items_.resetSensor(id.c_str());
@@ -163,9 +136,6 @@ void WebUI::begin() {
       }));
 
   // ── Write actuator (prefix, body) ────────────────────────────────────────
-  // Replaces the old per-item exact-match handlers so dynamic items work
-  // without re-registering routes. Runtime registry lookup handles both
-  // static and dynamic actuators; removed actuators return 404 naturally.
   server_.addHandler(new BodyPrefixHandler("/api/actuators/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
         JsonDocument doc;
@@ -211,6 +181,35 @@ void WebUI::begin() {
             return;
           }
         }
+        pushSnapshot_();
+        req->send(204);
+      }));
+
+  // ── Create (AsyncCallbackJsonWebHandler — registered last so prefix
+  //    handlers above take priority for sub-paths like /api/actuators/:id) ──
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/sensors",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        auto r = items_.addSensor(json.as<JsonObject>(), reg_);
+        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        items_.saveToSD(fs_);
+        pushSnapshot_();
+        req->send(204);
+      }));
+
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/actuators",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        auto r = items_.addActuator(json.as<JsonObject>(), reg_);
+        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        items_.saveToSD(fs_);
+        pushSnapshot_();
+        req->send(204);
+      }));
+
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/controllers",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        auto r = items_.addController(json.as<JsonObject>(), reg_);
+        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);
       }));
