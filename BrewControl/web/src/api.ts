@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -75,7 +75,7 @@ export function deleteSensor(id: string): Promise<void> {
   return deleteItem(`/api/sensors/${encodeURIComponent(id)}`);
 }
 
-export function resetFlowVolume(id: string): Promise<void> {
+export function resetSensor(id: string): Promise<void> {
   return postJson(`/api/sensors/${encodeURIComponent(id)}/reset`, {});
 }
 
@@ -97,6 +97,34 @@ export async function getConfig(): Promise<ConfigSnapshot> {
 
 export function enableController(id: string, enabled: boolean): Promise<void> {
   return setControllerParams(id, { enabled });
+}
+
+// ── Dashboards ───────────────────────────────────────────────────────────────
+
+export async function getDashboards(): Promise<DashboardConfig[]> {
+  const r = await fetch('/api/dashboards');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json() as Promise<DashboardConfig[]>;
+}
+
+export async function createDashboard(cfg: Omit<DashboardConfig, 'id'>): Promise<string> {
+  const r = await fetch('/api/dashboards', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  const data = await r.json() as { id: string };
+  return data.id;
+}
+
+export function updateDashboard(id: string, cfg: Omit<DashboardConfig, 'id'>): Promise<void> {
+  return postJson(`/api/dashboards/${encodeURIComponent(id)}`, cfg);
+}
+
+export async function deleteDashboard(id: string): Promise<void> {
+  const r = await fetch(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
 }
 
 // ── Bus discovery ────────────────────────────────────────────────────────────

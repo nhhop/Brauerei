@@ -19,7 +19,8 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
               class="text-stone-400 hover:text-stone-700 leading-none text-sm">✎</button>
           )}
           {onReset && (
-            <button type="button" onClick={onReset} title="Reset volume"
+            <button type="button" onClick={onReset}
+              title={meta.quantity === 'Mass' ? 'Tare' : 'Reset volume'}
               class="text-stone-400 hover:text-blue-600 leading-none text-sm">↺</button>
           )}
           {onDelete && (

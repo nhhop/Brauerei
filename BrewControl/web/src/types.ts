@@ -95,6 +95,15 @@ export interface ConfigSnapshot {
   controllers: ItemConfig[];
 }
 
+// Wire format of GET /api/dashboards
+export interface DashboardConfig {
+  id: string;
+  name: string;
+  sensors: string[];      // base IDs (without sub-channel suffix)
+  actuators: string[];
+  controllers: string[];
+}
+
 // Wire format of GET /api/bus/scan
 export interface ScannedDevice {
   address: string; // 16 hex chars, e.g. "28ff64c8815604ef"

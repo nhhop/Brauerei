@@ -519,3 +519,116 @@ Sensor `hlt` — GPIO 21, ROM `28ff19c6a11605d3` — war bereits auf dem Gerät 
 **Commit:** `2202ff7`
 
 **Verifikation:** Relais auf GPIO 2 toggle ✅
+
+---
+
+## 2026-05-31 — Multi-Dashboard-Feature mit SD-Persistenz
+
+**Ausgangslage:** Die Browser-UI zeigte immer alle Sensoren/Aktoren/Regler in einer einzigen Ansicht. Für Brauabläufe (Maischen, Kochen, Gären) ist eine gefilterte Teilansicht pro Prozessschritt sinnvoll.
+
+**Design-Entscheidung:** SD-Persistenz unter `/config/dashboards.json` (spiegelt `registry.json`-Muster); IDs per `random(0x1000000)` (Arduino-`random()` nutzt intern `esp_random()`). Sensoren speichern Base-IDs (Multi-Channel-Sensoren wie `"distance.raw"` / `"distance.cm"` teilen eine Base-ID `"distance"`).
+
+### Backend (5 Dateien)
+
+- **`DashboardStore.h/cpp`** (neu): CRUD-Klasse mit `DashboardCfg`-Struct (`id`, `name`, `sensors`, `actuators`, `controllers` als `std::vector<std::string>`). Methoden: `loadFromSD`, `saveToSD`, `serialize` (via ArduinoJson — korrekte JSON-Escaping), `add` (gibt generierte ID zurück), `update`, `remove`.
+- **`WebUI.h/cpp`** (erweitert): Constructor nimmt `DashboardStore&`; 4 neue Routen:
+  - `GET /api/dashboards` → `store_.serialize()`
+  - `POST /api/dashboards` → `add()`, Response `201 {"id":"..."}`
+  - `POST /api/dashboards/:id` → `update()` via `BodyPrefixHandler`
+  - `DELETE /api/dashboards/:id` → `remove()` via `DeletePrefixHandler`
+  - Handler-Reihenfolge: Delete + BodyPrefix vor `AsyncCallbackJsonWebHandler` (bewährtes Muster)
+- **`main.cpp`** (erweitert): `BrewControl::DashboardStore dashboardStore` als Global; `dashboardStore.loadFromSD(SD)` im `if(sdOk)`-Block.
+
+### Frontend (5 Dateien)
+
+- **`types.ts`**: neues Interface `DashboardConfig` (`id`, `name`, `sensors[]`, `actuators[]`, `controllers[]`)
+- **`api.ts`**: 4 neue Funktionen (`getDashboards`, `createDashboard`, `updateDashboard`, `deleteDashboard`)
+- **`DashboardEditorModal.tsx`** (neu): Modal mit Name-Input + Checkbox-Listen pro Kategorie; Sensoren dedupliziert nach Base-ID; `useEffect` resettet auf `open`-Change; Button-Labels "Erstellen"/"Speichern"
+- **`app.tsx`** (überarbeitet):
+  - `type Tab = { kind: 'all' } | { kind: 'dashboard'; id: string }`
+  - `filterSnap(snap, dash)`: filtert Sensoren per Base-ID-Mapping (`s.id.split('.')[0]`), Aktoren/Regler per exakter ID
+  - Tab-Bar: "Alle" + Custom-Tabs (✎/×-Buttons) + "+ Neu"
+  - `TabBtn` als `<div role="button">` (kein `<button>`) — erlaubt `<button>`-Elemente für Edit/Delete-Aktionen innen
+  - `displaySnap = activeDash ? filterSnap(snap, activeDash) : snap` — ungefilterter `snap` weiterhin an `AddItemModal` + `DashboardEditorModal`
+
+### Settings-Tab (gleiche Session)
+
+`+ Hinzufügen` aus dem globalen Header entfernt und in einen neuen `⚙`-Tab (ganz rechts in der Tab-Bar) verschoben. Dashboard-Tabs sind damit reine Monitoring-Ansichten.
+
+**`app.tsx`:**
+- `Tab`-Typ um `{ kind: 'settings' }` erweitert
+- Header: nur noch `Reset WiFi`-Button
+- Tab-Bar: `⚙`-Tab mit `flex-1`-Spacer rechts positioniert
+- Settings-Inhalt: `+ Hinzufügen`-Button über dem Grid, nur wenn `activeTab.kind === 'settings'`
+
+**`AddItemModal.tsx`:** Optionaler `onCreated?: (role, id) => void`-Callback — wird nach jedem erfolgreichen Create aufgerufen (non-edit only).
+
+**`DashboardEditorModal.tsx`:** Embeds `AddItemModal` als Sub-Modal (`z-50`, erscheint über dem Editor-Dialog). `+ Neues Gerät erstellen`-Link unter den Checkbox-Sektionen. `onCreated`-Callback hakt das neue Gerät automatisch an; SSE-Snapshot bringt es in die Checkbox-Liste.
+
+**Hinweis:** HX711 Tare-Button war bereits implementiert via `s.meta.quantity === 'Mass'`-Bedingung in `app.tsx` — war fälschlicherweise noch als offen notiert.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+| Firmware-Compile-Smoke-Test | ausstehend |
+
+---
+
+## 2026-06-01 — Routing-Refactor + UI-Verbesserungen
+
+**Ausgangslage:** Das gesamte Dashboard-UI lebte in `app.tsx`. Settings war kein eigener Tab, sondern ein State-Toggle in derselben Komponente. Die × -Schaltfläche auf Cards löschte Geräte dauerhaft statt sie vom Dashboard zu entfernen.
+
+### 1 — Routing mit preact-router
+
+`preact-router@4.1.2` als Dependency hinzugefügt. Zwei echte Routen:
+
+- `/` → `Dashboard` (Tab-Bar, Cards, Modals)
+- `/settings` → `SettingsPage` (Geräteverwaltung)
+
+`app.tsx` auf ~45 Zeilen reduziert: nur `useSnapshot`-Hook, `App`-Komponente (Router-Shell), `RebootingView`.
+
+`useSnapshot` in `App` geliftet und als Prop an beide Pages übergeben — ein SSE-Kanal für beide Routen.
+
+**ESP32 SPA-Fallback:** `WebUI.cpp` registriert `onNotFound`-Handler vor `server_.begin()` — liefert `index.html` für alle GET-Requests die nicht mit `/api/` beginnen. Ermöglicht Hard-Refresh auf `/settings` (Preact-Router übernimmt dann client-seitig).
+
+### 2 — Code-Aufteilung in `src/pages/`
+
+- **`src/pages/Dashboard.tsx`** (neu): enthält alles Dashboard-spezifische — Tab-Bar, filterSnap, Column, TabBtn, alle Modals, alle States
+- **`src/pages/SettingsPage.tsx`** (neu): eigenständige Settings-Seite, Navigation zurück via `<a href="/">←</a>`
+
+### 3 — SettingsPage: DeviceRow statt Live-Cards
+
+Settings braucht keine Live-Werte, keine Regler-Steuerung. Eigene `DeviceRow`-Komponente:
+- Name + Typ-Badge (Sensor: `meta.quantity`, Aktor: `meta.kind`, Regler: `"sensor → actuator"`)
+- Edit (✎) + Delete (×)-Buttons
+
+`SensorCard`, `ActuatorCard`, `ControllerCard`, `resetSensor` vollständig aus SettingsPage entfernt.
+
+Multi-Channel-Sensoren dedupliziert nach Base-ID — `temp.0` + `temp.1` erscheinen als ein Eintrag `temp`.
+
+Vertikal gestapelte Sections (Sensoren / Regler / Aktoren) statt 3-Spalten-Grid; + Hinzufügen-Button im Header rechts.
+
+### 4 — Dashboard: × entfernt statt löscht
+
+`onDelete` auf SensorCard/ActuatorCard/ControllerCard ruft jetzt `removeFromDashboard(role, id)` auf statt `setDeleteTarget`. Die Funktion aktualisiert die Dashboard-Config via `updateDashboard` und lokalen State — das Gerät bleibt im System, wird nur aus der Ansicht entfernt.
+
+`deleteSensor`, `deleteActuator`, `deleteController` aus Dashboard-Imports entfernt. Löschen-`ConfirmModal` + zugehöriger State aus Dashboard entfernt.
+
+### 5 — Tab-Bar: globaler Bearbeiten-Button
+
+✎ und × wurden aus jedem Tab-Button entfernt (Tabs sind jetzt reine Klick-Targets).
+
+Neuer einzelner `✎ Bearbeiten`-Button rechts neben der Tab-Leiste — erscheint nur wenn ein Dashboard aktiv ist, öffnet `DashboardEditorModal` für das aktive Dashboard.
+
+### 6 — DashboardEditorModal: Löschen im Modal
+
+`onDelete?: () => void`-Prop hinzugefügt. Wenn übergeben: roter `Löschen`-Button links unten im Footer (nur beim Bearbeiten, nicht beim Erstellen). Klick löscht das Dashboard und schließt den Modal.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+| Firmware-Compile-Smoke-Test | ausstehend |

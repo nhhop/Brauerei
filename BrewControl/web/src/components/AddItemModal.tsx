@@ -15,12 +15,13 @@ type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
-export function AddItemModal({ open, snap, onClose, editConfig, editRole }: {
+export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCreated }: {
   open: boolean;
   snap: Snapshot | null;
   onClose: () => void;
   editConfig?: ItemConfig;
   editRole?: Role;
+  onCreated?: (role: Role, id: string) => void;
 }) {
   const isEdit = !!(editConfig && editRole);
 
@@ -320,6 +321,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole }: {
       }
 
       onClose();
+      if (!isEdit) onCreated?.(role, trimId);
     } catch (e) { setErr(String(e)); }
     setPending(false);
   }

@@ -20,6 +20,10 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 │  - GET  /api/bus/scan?type=onewire&pin=N            │
 │  - POST /api/admin/wifi-reset                       │
 │  - GET  /api/config  (cfgJson aller Items, Edit-UI) │
+│  - GET  /api/dashboards                             │
+│  - POST /api/dashboards (create, → 201 {id})        │
+│  - POST /api/dashboards/:id (update)                │
+│  - DELETE /api/dashboards/:id                       │
 └────────────────────┬────────────────────────────────┘
                      │ WiFi / HTTP (ESPAsyncWebServer)
 ┌────────────────────▼────────────────────────────────┐
@@ -29,6 +33,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 │  WebUI.h/cpp   HTTP-API, SSE, SD-Static-Serve       │
 │  WiFiSetup…    Captive Portal (erste Inbetriebnahme)│
 │  DynamicItems  Laufzeit Add/Remove von Registry     │
+│  DashboardStore  SD-Persistenz für Dashboards       │
 │                                                     │
 │  lib_dep: symlink://../../SensActCtrl               │
 │           symlink://../../../IdsInductionCooker    │
@@ -66,7 +71,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 | lolin_s2_mini | Single-core, USB-CDC (TinyUSB), ARDUINO_USB_CDC_ON_BOOT=1 |
 | lilygo_t_display_s3_amoled | S3 dual-core, 8 MB PSRAM, SD auf HSPI (38/41/39/40) |
 
-## Aktueller Status (Stand 2026-05-30)
+## Aktueller Status (Stand 2026-05-31)
 
 ### SensActCtrl
 - **Phase 1–3 abgeschlossen**: alle Abstraktionen, Sensor-/Aktor-/Regler-Implementierungen, drei Transporte
@@ -91,6 +96,8 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - **ControllerCard (2026-05-30):** Ist-Wert (verlinkter Sensor), Reglerausgang (verlinkter Aktor), Enable/Disable-Toggle; params-Textarea entfernt
 - **TwoPoint-Regler (2026-05-30):** DynamicItems-Branch + Frontend-Formular (hystLow, hystHigh, inverted)
 - **Hardcodierte Demo-Items entfernt (2026-05-30):** `main.cpp` startet mit leerer Registry; SD-Konfiguration füllt sie
+- **Multi-Dashboard (2026-05-31):** Benutzer-definierte Tabs; jedes Dashboard filtert Sensoren/Aktoren/Regler nach gewählter Teilmenge; SD-Persistenz unter `/config/dashboards.json`; `DashboardStore`-Klasse; 4 neue REST-Endpunkte; `DashboardEditorModal` im Frontend; `filterSnap()` mit Base-ID-Mapping für Multi-Channel-Sensoren
+- **Settings-Tab (2026-05-31):** `⚙`-Tab ganz rechts; `+ Hinzufügen` aus globalem Header entfernt und dort positioniert; Dashboard-Tabs sind reine Monitoring-Ansichten; `DashboardEditorModal` embeds `AddItemModal` als Sub-Modal mit `onCreated`-Auto-Check
 - Build-Footprint: ~11 KB gzipped (Web), ~14.5 % Flash / ~14.7 % RAM (lilygo_t_display_s3_amoled, 2026-05-30)
 - Details: `BrewControl/PLAN.md`, `BrewControl/SESSION.md`
 
@@ -114,7 +121,6 @@ Snapshot-Consumer (rendert Werte per LVGL) **und** Command-Quelle (Touch → `wr
 
 ## Bekannte Einschränkungen / Offene Punkte
 
-- DS18B20 Live-Reads mit echter Sensorhardware ausstehend
 - Heizung (SSR) unter Last mit Oszilloskop verifizieren
 - OTA-Firmware-Update (noch nicht implementiert)
 - QEMU/Simulation: nicht viable (kein WiFi-Emulation für ESP32)

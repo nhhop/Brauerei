@@ -18,9 +18,12 @@
     "vite": "^7.0.0"
   },
   "dependencies": {
-    "preact": "^10.25.0"
+    "preact": "^10.25.0",
+    "preact-router": "^4.1.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
