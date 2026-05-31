@@ -14,6 +14,7 @@
 #include <SensActCtrl.h>
 #include <WiFi.h>
 
+#include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "WebUI.h"
 #include "WiFiSetupPortal.h"
@@ -34,7 +35,8 @@ constexpr char kHostname[] = "brewcontrol";
 
 Registry registry;
 BrewControl::DynamicItems dynamicItems;
-WebUI webUI(registry, SD, dynamicItems);
+BrewControl::DashboardStore dashboardStore;
+WebUI webUI(registry, SD, dynamicItems, dashboardStore);
 
 static bool resetHeldAtBoot() {
   pinMode(kBootButtonPin, INPUT_PULLUP);
@@ -120,7 +122,10 @@ void setup() {
     Serial.println(F("SD mounted"));
   }
 
-  if (sdOk) dynamicItems.loadFromSD(SD, registry);
+  if (sdOk) {
+    dynamicItems.loadFromSD(SD, registry);
+    dashboardStore.loadFromSD(SD);
+  }
 
   registry.begin();
   dynamicItems.markInitialized();  // future add*() calls will call begin()

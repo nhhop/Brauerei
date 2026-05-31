@@ -69,8 +69,8 @@ class DeletePrefixHandler : public AsyncWebHandler {
 }  // namespace
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
-             uint16_t port)
-    : reg_(reg), fs_(fs), items_(items), server_(port), events_("/api/events") {}
+             DashboardStore& store, uint16_t port)
+    : reg_(reg), fs_(fs), items_(items), store_(store), server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -261,9 +261,60 @@ void WebUI::begin() {
     req->send(200, "application/json", items_.serializeConfig());
   });
 
+  // ── Dashboards ────────────────────────────────────────────────────────────
+  server_.on("/api/dashboards", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", store_.serialize());
+  });
+
+  // DELETE /api/dashboards/:id — registered before AsyncCallbackJsonWebHandler
+  server_.addHandler(new DeletePrefixHandler("/api/dashboards/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/dashboards/"));
+        if (!store_.remove(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        store_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/dashboards/:id — update (BodyPrefixHandler, before create handler)
+  server_.addHandler(new BodyPrefixHandler("/api/dashboards/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String id = req->url().substring(strlen("/api/dashboards/"));
+        if (!store_.update(id.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        store_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/dashboards — create (registered last so prefix handlers above win)
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/dashboards",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = store_.add(json.as<JsonObject>());
+        store_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
   server_.serveStatic("/", fs_, "/")
       .setDefaultFile("index.html")
       .setCacheControl("max-age=600");
+
+  // SPA fallback: serve index.html for unknown GET paths so client-side routes work
+  server_.onNotFound([this](AsyncWebServerRequest* req) {
+    if (req->method() == HTTP_GET && !req->url().startsWith("/api/")) {
+      req->send(fs_, "/index.html", "text/html");
+    } else {
+      req->send(404, "text/plain", "Not Found");
+    }
+  });
 
   server_.begin();
 }

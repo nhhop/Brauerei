@@ -5,6 +5,7 @@
 #include <FS.h>
 #include <SensActCtrl.h>
 
+#include "DashboardStore.h"
 #include "DynamicItems.h"
 
 namespace BrewControl {
@@ -35,7 +36,7 @@ namespace BrewControl {
 class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
-        uint16_t port = 80);
+        DashboardStore& store, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -50,6 +51,7 @@ class WebUI {
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
   DynamicItems& items_;
+  DashboardStore& store_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;
