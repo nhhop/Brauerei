@@ -28,10 +28,12 @@ export function AppearancePage({ path }: { path?: string }) {
   }, []);
 
   function update(partial: Partial<ThemeSettings>) {
-    const next = { ...settings, ...partial };
-    setSettings(next);
-    applyTheme(next);
-    updateSettings({ theme: next }).catch(() => {});
+    setSettings((prev) => {
+      const next = { ...prev, ...partial };
+      applyTheme(next);
+      updateSettings({ theme: next }).catch(() => {});
+      return next;
+    });
   }
 
   if (loading) return (
