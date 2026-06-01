@@ -1,9 +1,13 @@
+// BrewControl/web/src/app.tsx
 import { useEffect, useState } from 'preact/hooks';
 import { Router } from 'preact-router';
 import type { Snapshot } from './types';
-import { getSnapshot, subscribeEvents } from './api';
+import { getSnapshot, subscribeEvents, getSettings } from './api';
+import { applyTheme, loadCachedTheme } from './theme';
 import { Dashboard } from './pages/Dashboard';
-import { SettingsPage } from './pages/SettingsPage';
+import { SettingsIndex } from './pages/SettingsIndex';
+import { AppearancePage } from './pages/AppearancePage';
+import { DevicesPage } from './pages/DevicesPage';
 
 function useSnapshot() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -25,24 +29,34 @@ export function App() {
   const [rebooting, setRebooting] = useState(false);
   const { snap, err } = useSnapshot();
 
+  useEffect(() => {
+    const cached = loadCachedTheme();
+    if (cached) applyTheme(cached);
+    getSettings()
+      .then((s) => applyTheme(s.theme))
+      .catch(() => {});
+  }, []);
+
   if (rebooting) return <RebootingView />;
 
   return (
     <Router>
       <Dashboard path="/" snap={snap} err={err} onReset={() => setRebooting(true)} />
-      <SettingsPage path="/settings" snap={snap} />
+      <SettingsIndex path="/settings" />
+      <AppearancePage path="/settings/appearance" />
+      <DevicesPage path="/settings/devices" snap={snap} />
     </Router>
   );
 }
 
 function RebootingView() {
   return (
-    <div class="flex min-h-screen items-center justify-center bg-stone-50 p-6 text-stone-900">
+    <div class="flex min-h-screen items-center justify-center bg-bg p-6 text-fg">
       <div class="max-w-md text-center">
         <h1 class="text-xl font-medium tracking-tight">Neustart…</h1>
-        <p class="mt-3 text-sm text-stone-600">
+        <p class="mt-3 text-sm text-muted">
           Das Gerät startet in den Setup-Modus. Mit dem WLAN
-          <code class="mx-1 rounded bg-stone-100 px-1 font-mono">BrewControl-Setup</code>
+          <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
           verbinden um neue Zugangsdaten einzutragen.
         </p>
       </div>

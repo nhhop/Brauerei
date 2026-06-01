@@ -74,7 +74,8 @@ class DynamicItems {
   struct CtrlEntry {
     std::string id;
     std::string sensorId;
-    std::string actuatorId;
+    std::string actuatorId;      // heating actuator for dual-output controllers
+    std::string coolActuatorId;  // cooling actuator (DualStage / SplitRangePID)
     std::string cfgJson;
     std::unique_ptr<SensActCtrl::Controller> ptr;
   };

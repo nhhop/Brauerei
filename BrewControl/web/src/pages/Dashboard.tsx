@@ -131,11 +131,11 @@ export function Dashboard({ snap, err, onReset }: {
       <h1 class="text-xl font-medium tracking-tight">BrewControl</h1>
       <div class="flex items-center gap-2">
         <a href="/settings"
-          class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100">
+          class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
           ⚙
         </a>
         <button type="button" onClick={() => setResetOpen(true)}
-          class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-100">
+          class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
           Reset WiFi
         </button>
       </div>
@@ -144,7 +144,7 @@ export function Dashboard({ snap, err, onReset }: {
 
   // ── Tab bar ───────────────────────────────────────────────────────────────
   const tabBar = (
-    <div class="my-4 flex items-end gap-2 border-b border-stone-200">
+    <div class="my-4 flex items-end gap-2 border-b border-border">
       <div class="flex flex-1 overflow-x-auto">
         {dashboards.map(d => (
           <TabBtn key={d.id}
@@ -154,14 +154,14 @@ export function Dashboard({ snap, err, onReset }: {
           </TabBtn>
         ))}
         <button type="button"
-          class="shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 pb-2 pt-1.5 text-sm text-stone-500 hover:text-stone-800"
+          class="shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 pb-2 pt-1.5 text-sm text-muted hover:text-fg"
           onClick={openCreateDash}>
           + Neu
         </button>
       </div>
       {activeDash && (
         <button type="button"
-          class="mb-2 shrink-0 rounded-md border border-stone-300 bg-white px-3 py-1 text-xs text-stone-600 hover:bg-stone-100"
+          class="mb-2 shrink-0 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
           onClick={() => openEditDash(activeDash)}
           title="Dashboard bearbeiten">
           ✎ Bearbeiten
@@ -180,7 +180,7 @@ export function Dashboard({ snap, err, onReset }: {
         <p>
           Dies löscht die gespeicherten WiFi-Zugangsdaten und startet das Gerät neu in
           den Setup-Modus. Danach über
-          <code class="mx-1 rounded bg-stone-100 px-1 font-mono">BrewControl-Setup</code>
+          <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
           neu verbinden.
         </p>
         {resetErr && <p class="mt-2 text-red-600">{resetErr}</p>}
@@ -210,7 +210,7 @@ export function Dashboard({ snap, err, onReset }: {
   );
 
   if (err) return (
-    <div class="min-h-screen bg-stone-50 p-4 text-stone-900 md:p-6">
+    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
       {header}{tabBar}
       <p class="text-sm text-red-600">{err}</p>
       {modals}
@@ -218,15 +218,15 @@ export function Dashboard({ snap, err, onReset }: {
   );
 
   if (!displaySnap) return (
-    <div class="min-h-screen bg-stone-50 p-4 text-stone-900 md:p-6">
+    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
       {header}{tabBar}
-      <p class="text-sm text-stone-500">Laden…</p>
+      <p class="text-sm text-muted">Laden…</p>
       {modals}
     </div>
   );
 
   return (
-    <div class="min-h-screen bg-stone-50 p-4 text-stone-900 md:p-6">
+    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
       {header}
       {tabBar}
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -276,8 +276,8 @@ function TabBtn({ active, onClick, children }: {
     <div role="button" onClick={onClick}
       class={`flex shrink-0 cursor-pointer select-none items-center gap-0 whitespace-nowrap border-b-2 px-3 pb-2 pt-1.5 text-sm transition-colors
         ${active
-          ? 'border-stone-900 font-medium text-stone-900'
-          : 'border-transparent text-stone-500 hover:text-stone-800'}`}>
+          ? 'border-accent font-medium text-fg'
+          : 'border-transparent text-muted hover:text-fg'}`}>
       {children}
     </div>
   );
@@ -292,8 +292,8 @@ function Column({ title, count, children }: {
   return (
     <div class="space-y-3">
       <div class="flex items-baseline justify-between">
-        <h2 class="text-sm font-medium uppercase tracking-wider text-stone-500">{title}</h2>
-        <span class="text-xs text-stone-400">{count}</span>
+        <h2 class="text-sm font-medium uppercase tracking-wider text-muted">{title}</h2>
+        <span class="text-xs text-faint">{count}</span>
       </div>
       {children}
     </div>

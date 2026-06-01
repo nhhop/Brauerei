@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, AppSettings } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -133,4 +133,16 @@ export async function scanOneWireBus(pin: number): Promise<BusScanResult> {
   const r = await fetch(`/api/bus/scan?type=onewire&pin=${pin}`);
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json() as Promise<BusScanResult>;
+}
+
+// ── App Settings ─────────────────────────────────────────────────────────────
+
+export async function getSettings(): Promise<AppSettings> {
+  const r = await fetch('/api/settings');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()) as AppSettings;
+}
+
+export function updateSettings(patch: Partial<AppSettings>): Promise<void> {
+  return postJson('/api/settings', patch);
 }

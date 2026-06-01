@@ -8,7 +8,7 @@ import {
 
 type Role = 'sensor' | 'actuator' | 'controller';
 type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711';
-type ControllerType = 'PID' | 'TwoPoint';
+type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2';
@@ -96,6 +96,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [hystLow, setHystLow] = useState('-0.5');
   const [hystHigh, setHystHigh] = useState('0.5');
   const [inverted, setInverted] = useState(false);
+  // DualStage / SplitRangePID (dual-output heat/cool) — time fields in seconds
+  const [heatActuatorId, setHeatActuatorId] = useState('');
+  const [coolActuatorId, setCoolActuatorId] = useState('');
+  const [heatDiff, setHeatDiff] = useState('0.5');
+  const [coolDiff, setCoolDiff] = useState('0.5');
+  const [coolMinOnS, setCoolMinOnS] = useState('0');
+  const [coolMinOffS, setCoolMinOffS] = useState('0');
+  const [srDeadband, setSrDeadband] = useState('0.05');
+  const [changeoverS, setChangeoverS] = useState('0');
 
   useEffect(() => {
     if (!open) return;
@@ -176,6 +185,22 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setHystLow(String(editConfig.hyst_low ?? '-0.5'));
           setHystHigh(String(editConfig.hyst_high ?? '0.5'));
           setInverted(Boolean(editConfig.inverted ?? false));
+        } else if (t === 'DualStage') {
+          setHeatActuatorId(String(editConfig.heat_actuator ?? ''));
+          setCoolActuatorId(String(editConfig.cool_actuator ?? ''));
+          setHeatDiff(String(editConfig.heat_diff ?? '0.5'));
+          setCoolDiff(String(editConfig.cool_diff ?? '0.5'));
+          setCoolMinOnS(String((Number(editConfig.cool_min_on_ms ?? 0)) / 1000));
+          setCoolMinOffS(String((Number(editConfig.cool_min_off_ms ?? 0)) / 1000));
+          setChangeoverS(String((Number(editConfig.changeover_ms ?? 0)) / 1000));
+        } else if (t === 'SplitRangePID') {
+          setHeatActuatorId(String(editConfig.heat_actuator ?? ''));
+          setCoolActuatorId(String(editConfig.cool_actuator ?? ''));
+          setKp(String(editConfig.Kp ?? '2'));
+          setKi(String(editConfig.Ki ?? '0.1'));
+          setKd(String(editConfig.Kd ?? '0'));
+          setSrDeadband(String(editConfig.deadband ?? '0.05'));
+          setChangeoverS(String((Number(editConfig.changeover_ms ?? 0)) / 1000));
         }
       }
     } else {
@@ -200,6 +225,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setSetpoint('65');
       setKp('8'); setKi('0.2'); setKd('0.5'); setMinOut('0'); setMaxOut('1');
       setHystLow('-0.5'); setHystHigh('0.5'); setInverted(false);
+      setHeatActuatorId(snap?.actuators[0]?.id ?? '');
+      setCoolActuatorId(snap?.actuators[1]?.id ?? '');
+      setHeatDiff('0.5'); setCoolDiff('0.5');
+      setCoolMinOnS('0'); setCoolMinOffS('0');
+      setSrDeadband('0.05'); setChangeoverS('0');
     }
   }, [open]);
 
@@ -297,7 +327,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
         await createActuator(cfg);
 
       } else { // controller
-        if (!sensorId || !actuatorId) throw new Error('Sensor und Aktor auswählen');
+        const dualOutput = ctrlType === 'DualStage' || ctrlType === 'SplitRangePID';
+        if (!sensorId) throw new Error('Sensor auswählen');
+        if (!dualOutput && !actuatorId) throw new Error('Aktor auswählen');
+        if (dualOutput && !heatActuatorId && !coolActuatorId)
+          throw new Error('Heiz- oder Kühl-Aktor auswählen');
         if (ctrlType === 'PID') {
           cfg = {
             type: 'PID', id: trimId,
@@ -306,7 +340,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             Kp: parseFloat(kp) || 8, Ki: parseFloat(ki) || 0.2, Kd: parseFloat(kd) || 0.5,
             min: parseFloat(minOut) || 0, max: parseFloat(maxOut) || 1,
           };
-        } else {
+        } else if (ctrlType === 'TwoPoint') {
           cfg = {
             type: 'TwoPoint', id: trimId,
             sensor: sensorId, actuator: actuatorId,
@@ -314,6 +348,28 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             hyst_low: parseFloat(hystLow) || -0.5,
             hyst_high: parseFloat(hystHigh) || 0.5,
             inverted,
+          };
+        } else if (ctrlType === 'DualStage') {
+          cfg = {
+            type: 'DualStage', id: trimId,
+            sensor: sensorId,
+            heat_actuator: heatActuatorId, cool_actuator: coolActuatorId,
+            setpoint: parseFloat(setpoint) || 0,
+            heat_diff: parseFloat(heatDiff) || 0.5,
+            cool_diff: parseFloat(coolDiff) || 0.5,
+            cool_min_on_ms: Math.round((parseFloat(coolMinOnS) || 0) * 1000),
+            cool_min_off_ms: Math.round((parseFloat(coolMinOffS) || 0) * 1000),
+            changeover_ms: Math.round((parseFloat(changeoverS) || 0) * 1000),
+          };
+        } else { // SplitRangePID
+          cfg = {
+            type: 'SplitRangePID', id: trimId,
+            sensor: sensorId,
+            heat_actuator: heatActuatorId, cool_actuator: coolActuatorId,
+            setpoint: parseFloat(setpoint) || 0,
+            Kp: parseFloat(kp) || 2, Ki: parseFloat(ki) || 0.1, Kd: parseFloat(kd) || 0,
+            deadband: parseFloat(srDeadband) || 0.05,
+            changeover_ms: Math.round((parseFloat(changeoverS) || 0) * 1000),
           };
         }
         if (isEdit) await deleteController(String(editConfig!.id));
@@ -326,12 +382,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     setPending(false);
   }
 
-  const inp = 'w-full rounded border border-stone-300 px-2 py-1 font-mono text-sm';
-  const lbl = 'block text-xs text-stone-500 mb-1';
+  const inp = 'w-full rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-fg';
+  const lbl = 'block text-xs text-muted mb-1';
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' :
-      active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+      active ? 'bg-fg text-bg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
 
   return (
@@ -340,11 +396,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       onClick={() => { if (!pending) onClose(); }}
     >
       <div
-        class="w-full max-w-md overflow-y-auto rounded-lg bg-white p-5 shadow-xl"
+        class="w-full max-w-md overflow-y-auto rounded-lg bg-surface p-5 shadow-xl"
         style={{ maxHeight: '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 class="text-base font-medium text-stone-900">
+        <h2 class="text-base font-medium text-fg">
           {isEdit ? 'Item bearbeiten' : 'Item hinzufügen'}
         </h2>
 
@@ -411,13 +467,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           {role === 'controller' && (
             <div>
               <label class={lbl}>Regler-Typ</label>
-              <div class="flex gap-2">
-                {(['PID', 'TwoPoint'] as ControllerType[]).map((t) => (
+              <div class="flex flex-wrap gap-2">
+                {(['PID', 'TwoPoint', 'DualStage', 'SplitRangePID'] as ControllerType[]).map((t) => (
                   <button key={t} type="button"
                     onClick={() => { if (!isEdit) setCtrlType(t); }}
                     disabled={isEdit}
                     class={segBtn(ctrlType === t, isEdit)}>
-                    {t === 'TwoPoint' ? 'Zweipunkt' : 'PID'}
+                    {t === 'TwoPoint' ? 'Zweipunkt'
+                      : t === 'DualStage' ? 'Heizen/Kühlen (Zweipunkt)'
+                      : t === 'SplitRangePID' ? 'Heizen/Kühlen (PID)'
+                      : 'PID'}
                   </button>
                 ))}
               </div>
@@ -451,7 +510,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                       } catch (e) { setErr(String(e)); }
                       setScanning(false);
                     }}
-                    class="rounded-md bg-stone-100 px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-200 disabled:opacity-50">
+                    class="rounded-md bg-fg/5 px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10 disabled:opacity-50">
                     {scanning ? '…' : 'Scan'}
                   </button>
                 </div>
@@ -465,7 +524,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                         <input type="radio" name="addr" value={d.address}
                           checked={selectedAddress === d.address}
                           onChange={() => setSelectedAddress(d.address)} />
-                        <span class="font-mono text-xs text-stone-700">
+                        <span class="font-mono text-xs text-fg">
                           {d.address.match(/.{2}/g)!.join(':')}
                         </span>
                       </label>
@@ -474,7 +533,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 </div>
               )}
               {scannedDevices.length === 0 && pin && !scanning && (
-                <p class="text-xs text-stone-400">Scan ausführen um Geräte auf diesem Bus zu finden.</p>
+                <p class="text-xs text-faint">Scan ausführen um Geräte auf diesem Bus zu finden.</p>
               )}
             </>
           )}
@@ -514,7 +573,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div>
                 <button type="button" onClick={() => setShowCustomSpi(!showCustomSpi)}
-                  class="text-xs text-stone-500 hover:text-stone-700">
+                  class="text-xs text-muted hover:text-fg">
                   {showCustomSpi ? '▼' : '▶'} Custom SPI Pins (CLK / MISO / MOSI)
                 </button>
                 {showCustomSpi && (
@@ -543,7 +602,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
               </div>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-faint">
                 Liefert zwei Kanäle: <strong>flow.rate</strong> (L/min) und <strong>flow.volume</strong> (L).
               </p>
             </div>
@@ -594,7 +653,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div>
                 <button type="button" onClick={() => setShowScale(!showScale)}
-                  class="text-xs text-stone-500 hover:text-stone-700">
+                  class="text-xs text-muted hover:text-fg">
                   {showScale ? '▼' : '▶'} Ableitung (optional)
                 </button>
                 {showScale && (
@@ -635,7 +694,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   ))}
                 </div>
               </div>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-faint">
                 3 Kanäle: <strong>id.temp</strong> (°C), <strong>id.hum</strong> (%RH), <strong>id.pres</strong> (hPa).
               </p>
             </div>
@@ -682,7 +741,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div>
                 <button type="button" onClick={() => setAnalogShowRange(!analogShowRange)}
-                  class="text-xs text-stone-500 hover:text-stone-700">
+                  class="text-xs text-muted hover:text-fg">
                   {analogShowRange ? '▼' : '▶'} Custom Value Range (optional)
                 </button>
                 {analogShowRange && (
@@ -723,29 +782,64 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             </div>
           )}
 
-          {/* Controller: shared Sensor/Actuator dropdowns + Setpoint */}
+          {/* Controller: shared Sensor + Setpoint; actuator(s) depend on type */}
           {role === 'controller' && (
             <>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class={lbl}>Sensor</label>
-                  <select value={sensorId}
-                    onChange={(e) => setSensorId((e.target as HTMLSelectElement).value)}
-                    class={inp}>
-                    {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
-                    {!snap?.sensors.length && <option value="">— keine Sensoren —</option>}
-                  </select>
+              {(ctrlType === 'PID' || ctrlType === 'TwoPoint') && (
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class={lbl}>Sensor</label>
+                    <select value={sensorId} title="Sensor"
+                      onChange={(e) => setSensorId((e.target as HTMLSelectElement).value)}
+                      class={inp}>
+                      {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+                      {!snap?.sensors.length && <option value="">— keine Sensoren —</option>}
+                    </select>
+                  </div>
+                  <div>
+                    <label class={lbl}>Aktor</label>
+                    <select value={actuatorId} title="Aktor"
+                      onChange={(e) => setActuatorId((e.target as HTMLSelectElement).value)}
+                      class={inp}>
+                      {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
+                      {!snap?.actuators.length && <option value="">— keine Aktoren —</option>}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label class={lbl}>Aktor</label>
-                  <select value={actuatorId}
-                    onChange={(e) => setActuatorId((e.target as HTMLSelectElement).value)}
-                    class={inp}>
-                    {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
-                    {!snap?.actuators.length && <option value="">— keine Aktoren —</option>}
-                  </select>
-                </div>
-              </div>
+              )}
+              {(ctrlType === 'DualStage' || ctrlType === 'SplitRangePID') && (
+                <>
+                  <div>
+                    <label class={lbl}>Sensor</label>
+                    <select value={sensorId} title="Sensor"
+                      onChange={(e) => setSensorId((e.target as HTMLSelectElement).value)}
+                      class={inp}>
+                      {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+                      {!snap?.sensors.length && <option value="">— keine Sensoren —</option>}
+                    </select>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class={lbl}>Heiz-Aktor</label>
+                      <select value={heatActuatorId} title="Heiz-Aktor"
+                        onChange={(e) => setHeatActuatorId((e.target as HTMLSelectElement).value)}
+                        class={inp}>
+                        <option value="">— keiner —</option>
+                        {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label class={lbl}>Kühl-Aktor</label>
+                      <select value={coolActuatorId} title="Kühl-Aktor"
+                        onChange={(e) => setCoolActuatorId((e.target as HTMLSelectElement).value)}
+                        class={inp}>
+                        <option value="">— keiner —</option>
+                        {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
               <div>
                 <label class={lbl}>Setpoint</label>
                 <input type="number" step="any" value={setpoint}
@@ -801,14 +895,96 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                     placeholder="0.5" class={inp} />
                 </div>
               </div>
-              <label class="flex items-center gap-2 text-sm text-stone-700 cursor-pointer">
+              <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
                 <input type="checkbox" checked={inverted}
                   onChange={(e) => setInverted((e.target as HTMLInputElement).checked)} />
                 Invertiert (Kühlung statt Heizung)
               </label>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-faint">
                 Heizbetrieb: Aktor AN wenn Ist &lt; Sollwert + Hysterese unten,
                 AUS wenn Ist &gt; Sollwert + Hysterese oben.
+              </p>
+            </>
+          )}
+
+          {/* DualStage-specific fields */}
+          {role === 'controller' && ctrlType === 'DualStage' && (
+            <>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class={lbl}>Heiz-Differenzial</label>
+                  <input type="number" step="any" value={heatDiff}
+                    onInput={(e) => setHeatDiff((e.target as HTMLInputElement).value)}
+                    placeholder="0.5" class={inp} />
+                </div>
+                <div>
+                  <label class={lbl}>Kühl-Differenzial</label>
+                  <input type="number" step="any" value={coolDiff}
+                    onInput={(e) => setCoolDiff((e.target as HTMLInputElement).value)}
+                    placeholder="0.5" class={inp} />
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class={lbl}>Kühl-Mindestlaufzeit (s)</label>
+                  <input type="number" step="any" min="0" value={coolMinOnS}
+                    onInput={(e) => setCoolMinOnS((e.target as HTMLInputElement).value)}
+                    placeholder="0" class={inp} />
+                </div>
+                <div>
+                  <label class={lbl}>Kühl-Mindestpause (s)</label>
+                  <input type="number" step="any" min="0" value={coolMinOffS}
+                    onInput={(e) => setCoolMinOffS((e.target as HTMLInputElement).value)}
+                    placeholder="0" class={inp} />
+                </div>
+              </div>
+              <div>
+                <label class={lbl}>Umschalt-Totzeit (s, optional)</label>
+                <input type="number" step="any" min="0" value={changeoverS}
+                  onInput={(e) => setChangeoverS((e.target as HTMLInputElement).value)}
+                  placeholder="0" class={inp} />
+              </div>
+              <p class="text-xs text-faint">
+                Heizen AN unter Sollwert − Heiz-Differenzial, Kühlen AN über
+                Sollwert + Kühl-Differenzial; dazwischen beides AUS. Mindestlauf-
+                und Mindestpausenzeit schützen einen Kompressor vor Takten.
+              </p>
+            </>
+          )}
+
+          {/* SplitRangePID-specific fields */}
+          {role === 'controller' && ctrlType === 'SplitRangePID' && (
+            <>
+              <div class="grid grid-cols-3 gap-2">
+                {([['Kp', kp, setKp], ['Ki', ki, setKi], ['Kd', kd, setKd]] as const).map(
+                  ([label, val, setter]) => (
+                    <div key={label}>
+                      <label class={lbl}>{label}</label>
+                      <input type="number" step="any" value={val}
+                        onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
+                        class={inp} />
+                    </div>
+                  )
+                )}
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class={lbl}>Totband (Ausgang)</label>
+                  <input type="number" step="any" min="0" value={srDeadband}
+                    onInput={(e) => setSrDeadband((e.target as HTMLInputElement).value)}
+                    placeholder="0.05" class={inp} />
+                </div>
+                <div>
+                  <label class={lbl}>Umschalt-Totzeit (s, optional)</label>
+                  <input type="number" step="any" min="0" value={changeoverS}
+                    onInput={(e) => setChangeoverS((e.target as HTMLInputElement).value)}
+                    placeholder="0" class={inp} />
+                </div>
+              </div>
+              <p class="text-xs text-faint">
+                Bipolarer PID: Ausgang positiv heizt, negativ kühlt. Im Totband
+                um null bleibt beides AUS. Beide Aktoren müssen modulierbar sein
+                (PWM/SSR) — kein Kompressor.
               </p>
             </>
           )}
@@ -817,11 +993,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
 
           <div class="flex justify-end gap-2">
             <button type="button" onClick={onClose} disabled={pending}
-              class="rounded-md bg-stone-100 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-200 disabled:opacity-50">
+              class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/10 disabled:opacity-50">
               Abbrechen
             </button>
             <button type="submit" disabled={pending}
-              class="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+              class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg/80 disabled:opacity-50">
               {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
             </button>
           </div>

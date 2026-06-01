@@ -70,6 +70,17 @@ export interface ControllerParams {
   hystLow?: number;
   hystHigh?: number;
   inverted?: boolean;
+  // DualStage / SplitRangePID (dual-output heat/cool controllers)
+  heatActuator?: string;
+  coolActuator?: string;
+  heatDiff?: number;
+  coolDiff?: number;
+  coolMinOnMs?: number;
+  coolMinOffMs?: number;
+  deadband?: number;
+  changeoverMs?: number;
+  heatOut?: number;
+  coolOut?: number;
   [key: string]: unknown;
 }
 
@@ -114,4 +125,14 @@ export interface BusScanResult {
   type: string; // "onewire"
   pin: number;
   devices: ScannedDevice[];
+}
+
+export interface ThemeSettings {
+  mode: 'light' | 'dark' | 'system';
+  accent: string;
+  background: 'neutral' | 'warm' | 'cool';
+}
+
+export interface AppSettings {
+  theme: ThemeSettings;
 }

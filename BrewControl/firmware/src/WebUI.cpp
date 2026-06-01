@@ -69,8 +69,9 @@ class DeletePrefixHandler : public AsyncWebHandler {
 }  // namespace
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
-             DashboardStore& store, uint16_t port)
-    : reg_(reg), fs_(fs), items_(items), store_(store), server_(port), events_("/api/events") {}
+             DashboardStore& store, SettingsStore& settings, uint16_t port)
+    : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
+      server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -301,6 +302,40 @@ void WebUI::begin() {
         String id = store_.add(json.as<JsonObject>());
         store_.saveToSD(fs_);
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
+  // ── Settings ──────────────────────────────────────────────────────────────
+  server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", settings_.serialize());
+  });
+
+  // POST /api/settings — must be BEFORE serveStatic (pattern from rest of file)
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/settings",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        JsonObject obj = json.as<JsonObject>();
+        // Validate enum fields before storing
+        JsonObject theme = obj["theme"].as<JsonObject>();
+        if (!theme.isNull()) {
+          if (const char* m = theme["mode"]) {
+            if (strcmp(m,"light")!=0 && strcmp(m,"dark")!=0 && strcmp(m,"system")!=0) {
+              req->send(400, "text/plain", "invalid mode"); return;
+            }
+          }
+          if (const char* b = theme["background"]) {
+            if (strcmp(b,"neutral")!=0 && strcmp(b,"warm")!=0 && strcmp(b,"cool")!=0) {
+              req->send(400, "text/plain", "invalid background"); return;
+            }
+          }
+          if (const char* a = theme["accent"]) {
+            if (strlen(a) != 7 || a[0] != '#') {
+              req->send(400, "text/plain", "invalid accent"); return;
+            }
+          }
+        }
+        settings_.update(obj);
+        settings_.saveToSD(fs_);
+        req->send(204);
       }));
 
   server_.serveStatic("/", fs_, "/")

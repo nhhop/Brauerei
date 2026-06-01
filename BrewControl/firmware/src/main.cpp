@@ -16,6 +16,7 @@
 
 #include "DashboardStore.h"
 #include "DynamicItems.h"
+#include "SettingsStore.h"
 #include "WebUI.h"
 #include "WiFiSetupPortal.h"
 
@@ -36,7 +37,8 @@ constexpr char kHostname[] = "brewcontrol";
 Registry registry;
 BrewControl::DynamicItems dynamicItems;
 BrewControl::DashboardStore dashboardStore;
-WebUI webUI(registry, SD, dynamicItems, dashboardStore);
+BrewControl::SettingsStore settingsStore;
+WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore);
 
 static bool resetHeldAtBoot() {
   pinMode(kBootButtonPin, INPUT_PULLUP);
@@ -125,6 +127,7 @@ void setup() {
   if (sdOk) {
     dynamicItems.loadFromSD(SD, registry);
     dashboardStore.loadFromSD(SD);
+    settingsStore.loadFromSD(SD);
   }
 
   registry.begin();
