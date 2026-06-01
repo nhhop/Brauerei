@@ -1,5 +1,5 @@
 // BrewControl/web/src/pages/SettingsIndex.tsx
-export function SettingsIndex({ path }: { path?: string }) {
+export function SettingsIndex(_: { path?: string }) {
   return (
     <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
       <header class="flex items-center gap-3">

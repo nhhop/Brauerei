@@ -13,7 +13,7 @@ const ACCENT_PRESETS: { label: string; value: string }[] = [
   { label: 'Violett',   value: '#8b5cf6' },
 ];
 
-export function AppearancePage({ path }: { path?: string }) {
+export function AppearancePage(_: { path?: string }) {
   const [settings, setSettings] = useState<ThemeSettings>({
     mode: 'system',
     accent: '#d97706',

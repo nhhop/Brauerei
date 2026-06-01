@@ -327,6 +327,11 @@ void WebUI::begin() {
               req->send(400, "text/plain", "invalid background"); return;
             }
           }
+          if (const char* a = theme["accent"]) {
+            if (strlen(a) != 7 || a[0] != '#') {
+              req->send(400, "text/plain", "invalid accent"); return;
+            }
+          }
         }
         settings_.update(obj);
         settings_.saveToSD(fs_);
