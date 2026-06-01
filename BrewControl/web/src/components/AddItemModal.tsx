@@ -821,7 +821,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               Abbrechen
             </button>
             <button type="submit" disabled={pending}
-              class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg disabled:opacity-50">
+              class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg/80 disabled:opacity-50">
               {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
             </button>
           </div>
