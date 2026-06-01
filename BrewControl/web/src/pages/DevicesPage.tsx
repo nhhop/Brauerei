@@ -1,3 +1,4 @@
+// BrewControl/web/src/pages/DevicesPage.tsx
 import { useState } from 'preact/hooks';
 import type { Snapshot, ItemConfig } from '../types';
 import { deleteSensor, deleteActuator, deleteController, getConfig } from '../api';
@@ -6,7 +7,7 @@ import { AddItemModal } from '../components/AddItemModal';
 
 type Role = 'sensor' | 'actuator' | 'controller';
 
-export function SettingsPage({ snap }: { snap: Snapshot | null; path?: string }) {
+export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ role: Role; id: string } | null>(null);
@@ -19,7 +20,7 @@ export function SettingsPage({ snap }: { snap: Snapshot | null; path?: string })
       const list = role === 'sensor' ? config.sensors
                  : role === 'actuator' ? config.actuators
                  : config.controllers;
-      const cfg = list.find(c => c.id === id);
+      const cfg = list.find((c) => c.id === id);
       if (cfg) { setEditItem({ role, cfg }); setAddOpen(true); }
     } catch { /* ignore */ }
   }
@@ -39,33 +40,32 @@ export function SettingsPage({ snap }: { snap: Snapshot | null; path?: string })
     setDeletePending(false);
   }
 
-  // Deduplicate multi-channel sensors (e.g. temp.0 + temp.1 → temp)
   const sensors = snap ? snap.sensors.filter((s, i, arr) => {
     const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-    return arr.findIndex(x => (x.id.includes('.') ? x.id.split('.')[0] : x.id) === base) === i;
+    return arr.findIndex((x) => (x.id.includes('.') ? x.id.split('.')[0] : x.id) === base) === i;
   }) : [];
 
   return (
-    <div class="min-h-screen bg-stone-50 p-4 text-stone-900 md:p-6">
+    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
       <header class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
-          <a href="/" class="text-lg leading-none text-stone-500 hover:text-stone-900">←</a>
-          <h1 class="text-xl font-medium tracking-tight">Einstellungen</h1>
+          <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
+          <h1 class="text-xl font-medium tracking-tight">Geräte</h1>
         </div>
         <button type="button" onClick={() => setAddOpen(true)}
-          class="rounded-md bg-stone-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-700">
+          class="rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-fg/80">
           + Hinzufügen
         </button>
       </header>
 
       <div class="mt-6 space-y-6">
-        {!snap && <p class="text-sm text-stone-500">Laden…</p>}
+        {!snap && <p class="text-sm text-muted">Laden…</p>}
 
         {sensors.length > 0 && (
           <section>
-            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-stone-500">Sensoren</h2>
+            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-muted">Sensoren</h2>
             <div class="space-y-2">
-              {sensors.map(s => {
+              {sensors.map((s) => {
                 const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
                 return (
                   <DeviceRow key={base} label={base} badge={s.meta.quantity}
@@ -79,9 +79,9 @@ export function SettingsPage({ snap }: { snap: Snapshot | null; path?: string })
 
         {snap && snap.controllers.length > 0 && (
           <section>
-            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-stone-500">Regler</h2>
+            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-muted">Regler</h2>
             <div class="space-y-2">
-              {snap.controllers.map(c => (
+              {snap.controllers.map((c) => (
                 <DeviceRow key={c.id} label={c.id}
                   badge={c.params?.sensor && c.params?.actuator
                     ? `${c.params.sensor} → ${c.params.actuator}`
@@ -95,9 +95,9 @@ export function SettingsPage({ snap }: { snap: Snapshot | null; path?: string })
 
         {snap && snap.actuators.length > 0 && (
           <section>
-            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-stone-500">Aktoren</h2>
+            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-muted">Aktoren</h2>
             <div class="space-y-2">
-              {snap.actuators.map(a => (
+              {snap.actuators.map((a) => (
                 <DeviceRow key={a.id} label={a.id} badge={a.meta.kind}
                   onEdit={() => startEdit('actuator', a.id)}
                   onDelete={() => setDeleteTarget({ role: 'actuator', id: a.id })} />
@@ -116,36 +116,30 @@ export function SettingsPage({ snap }: { snap: Snapshot | null; path?: string })
         {deleteErr && <p class="mt-2 text-red-600">{deleteErr}</p>}
       </ConfirmModal>
 
-      <AddItemModal
-        open={addOpen}
-        snap={snap}
+      <AddItemModal open={addOpen} snap={snap}
         onClose={() => { setAddOpen(false); setEditItem(null); }}
         editConfig={editItem?.cfg}
-        editRole={editItem?.role}
-      />
+        editRole={editItem?.role} />
     </div>
   );
 }
 
 function DeviceRow({ label, badge, onEdit, onDelete }: {
-  label: string;
-  badge?: string;
-  onEdit: () => void;
-  onDelete: () => void;
+  label: string; badge?: string; onEdit: () => void; onDelete: () => void;
 }) {
   return (
-    <div class="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3">
+    <div class="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3">
       <div class="flex min-w-0 items-center gap-2">
-        <span class="truncate font-medium text-stone-900">{label}</span>
+        <span class="truncate font-medium">{label}</span>
         {badge && (
-          <span class="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500">{badge}</span>
+          <span class="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-muted">{badge}</span>
         )}
       </div>
       <div class="flex shrink-0 items-center gap-3">
         <button type="button" onClick={onEdit} title="Bearbeiten"
-          class="text-sm leading-none text-stone-400 hover:text-stone-700">✎</button>
+          class="text-sm leading-none text-faint hover:text-fg">✎</button>
         <button type="button" onClick={onDelete} title="Löschen"
-          class="leading-none text-stone-400 hover:text-red-600">×</button>
+          class="leading-none text-faint hover:text-red-600">×</button>
       </div>
     </div>
   );
