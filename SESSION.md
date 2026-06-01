@@ -722,3 +722,70 @@ Neuer einzelner `✎ Bearbeiten`-Button rechts neben der Tab-Leiste — erschein
 |---|---|
 | `pnpm typecheck` (BrewControl/web) | 0 Fehler |
 | Firmware-Compile-Smoke-Test | ausstehend |
+
+---
+
+## 2026-06-02 — Gärsteuerung: Dual-Output-Regler (Heizen + Kühlen)
+
+**Ausgangslage:** Das `Controller`-Modell war strikt 1 Sensor → 1 Aktor. Eine Gärsteuerung
+braucht 1 Sensor → 2 Aktoren (heizen + kühlen, Totband dazwischen). Frage des Nutzers: PID
+für die Gärsteuerung mit zwei Ausgängen.
+
+**Designweg (nach Diskussion):** Statt einer Klasse mit Modus-Schalter → **zwei
+eigenständige Reglerklassen** als Geschwister von `PIDController`/`TwoPointController` (kein
+gemeinsamer Basistyp, konsistent zum Library-Stil).
+
+### Library (SensActCtrl) — 2 neue Klassen + 21 Tests (80 → 101 grün)
+
+- **`DualStageController`** (`.h`/`.cpp`): Bang-Bang Heiz-+Kühlstufe. Heizen AN unter
+  `sp − heatDiff`, AUS bei `sp`; Kühlen AN über `sp + coolDiff`, AUS bei `sp`. Anti-Short-Cycle
+  auf der Kühlstufe (`coolMinOnMs`/`coolMinOffMs`, Kompressorschutz); ein per min-on gehaltener
+  Kompressor hat Vorrang vor frischer Heizanforderung.
+- **`SplitRangePIDController`** (`.h`/`.cpp`): selbst-enthaltener bipolarer PID (positional,
+  Clamping-Anti-Windup, Output `[−1,+1]`), positiv heizt / negativ kühlt, Output-Totband
+  `deadband`. **Kein** AutoTunePID, **kein** Refactor von `PIDController` (Surgical Changes).
+- **Schutz vor zeitgleichem Einschalten** (beide): (1) strukturelle Mutual-Exclusion,
+  (2) `heatDiff`/`coolDiff`/`deadband` auf ≥ 0 geklemmt, (3) harte Interlock-Schranke in
+  `tick()` → bei Widerspruch beide aus. Optionale **Umschalt-Totzeit** `changeoverMs` (Default 0).
+- **Fail-safe:** disabled oder ungültiges Reading → beide Aktoren auf 0 (kein hängender Heizer).
+- Beide Aktoren optional (`nullptr`) → Heiz-only / Kühl-only ohne Sonderpfad.
+- Native-Zeit-Hook (`dualStageSetMillisForTest` / `splitRangeSetMillisForTest`) für Cycle-/
+  Changeover-Tests. `SensActCtrl.h` um beide Includes ergänzt.
+
+### Firmware (BrewControl)
+
+- `DynamicItems.h`: `CtrlEntry.coolActuatorId` (heat bleibt `actuatorId`).
+- `DynamicItems.cpp`: zwei Factory-Branches `"DualStage"` / `"SplitRangePID"` (lesen `sensor`,
+  `heat_actuator`, `cool_actuator` (mind. einer), `setpoint` + typ-spezifische Felder +
+  `changeover_ms`). Lösch-Abhängigkeitsprüfung in `removeActuator` erweitert:
+  `actuatorId == id || coolActuatorId == id` → referenzierter Kühl-Aktor blockiert.
+- Neue Controller kommen über `#include <SensActCtrl.h>` mit; kein neuer Endpunkt.
+
+### Frontend (BrewControl/web)
+
+- `types.ts`: `ControllerParams` um `heatActuator`/`coolActuator`/`heatDiff`/`coolDiff`/
+  `coolMinOnMs`/`coolMinOffMs`/`deadband`/`changeoverMs`/`heatOut`/`coolOut` erweitert.
+- `AddItemModal.tsx`: `ControllerType` += `'DualStage' | 'SplitRangePID'`; zwei neue Typ-Buttons
+  („Heizen/Kühlen (Zweipunkt/PID)"); gemeinsamer Sensor-Dropdown + zwei Aktor-Dropdowns
+  (Heizung/Kühlung, je „— keiner —"); typ-spezifische Felder; Zeit-Felder im UI in **Sekunden**
+  (×1000 → ms beim Submit); Edit-Preload + Reset-Defaults; Submit-Validierung (Sensor + mind.
+  ein Aktor).
+- `ControllerCard.tsx`: bei `heatActuator`/`coolActuator` zwei Ausgänge („Heizen"/„Kühlen")
+  statt des einzelnen „Ausgang".
+
+### Wire-Format
+```json
+POST /api/controllers
+{ "type":"DualStage","id":"ferm","sensor":"ferm_temp",
+  "heat_actuator":"heat_pad","cool_actuator":"fridge","setpoint":20.0,
+  "heat_diff":0.5,"cool_diff":0.5,"cool_min_on_ms":120000,
+  "cool_min_off_ms":180000,"changeover_ms":0 }
+```
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 101/101 PASSED (80 alt + 12 DualStage + 9 SplitRange) |
+| `pio run -e esp32dev` (Firmware) | SUCCESS — 79.1 % Flash |
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |

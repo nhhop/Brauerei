@@ -248,6 +248,53 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     e->sensorId   = sId;
     e->actuatorId = aId;
     e->ptr.reset(ctrl);
+  } else if (strcmp(type, "DualStage") == 0) {
+    const char* sId = cfg["sensor"]        | "";
+    const char* hId = cfg["heat_actuator"] | "";
+    const char* cId = cfg["cool_actuator"] | "";
+    if (!sId[0]) return {false, "missing sensor"};
+    if (!hId[0] && !cId[0]) return {false, "missing actuator"};
+    auto* s = reg.findSensor(sId);
+    if (!s) return {false, "sensor not found"};
+    Actuator* h = nullptr;
+    Actuator* cl = nullptr;
+    if (hId[0]) { h = reg.findActuator(hId); if (!h) return {false, "heat actuator not found"}; }
+    if (cId[0]) { cl = reg.findActuator(cId); if (!cl) return {false, "cool actuator not found"}; }
+
+    auto* ctrl = new DualStageController(e->id.c_str(), *s, h, cl);
+    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
+    ctrl->setDifferentials(cfg["heat_diff"] | 0.5f, cfg["cool_diff"] | 0.5f);
+    ctrl->setCoolCycleLimits(cfg["cool_min_on_ms"]  | 0u,
+                             cfg["cool_min_off_ms"] | 0u);
+    ctrl->setChangeoverMs(cfg["changeover_ms"] | 0u);
+
+    e->sensorId       = sId;
+    e->actuatorId     = hId;
+    e->coolActuatorId = cId;
+    e->ptr.reset(ctrl);
+  } else if (strcmp(type, "SplitRangePID") == 0) {
+    const char* sId = cfg["sensor"]        | "";
+    const char* hId = cfg["heat_actuator"] | "";
+    const char* cId = cfg["cool_actuator"] | "";
+    if (!sId[0]) return {false, "missing sensor"};
+    if (!hId[0] && !cId[0]) return {false, "missing actuator"};
+    auto* s = reg.findSensor(sId);
+    if (!s) return {false, "sensor not found"};
+    Actuator* h = nullptr;
+    Actuator* cl = nullptr;
+    if (hId[0]) { h = reg.findActuator(hId); if (!h) return {false, "heat actuator not found"}; }
+    if (cId[0]) { cl = reg.findActuator(cId); if (!cl) return {false, "cool actuator not found"}; }
+
+    auto* ctrl = new SplitRangePIDController(e->id.c_str(), *s, h, cl);
+    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
+    ctrl->setTunings(cfg["Kp"] | 2.0f, cfg["Ki"] | 0.1f, cfg["Kd"] | 0.0f);
+    ctrl->setDeadband(cfg["deadband"] | 0.05f);
+    ctrl->setChangeoverMs(cfg["changeover_ms"] | 0u);
+
+    e->sensorId       = sId;
+    e->actuatorId     = hId;
+    e->coolActuatorId = cId;
+    e->ptr.reset(ctrl);
   } else {
     return {false, "unknown controller type"};
   }
@@ -284,7 +331,7 @@ DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
 DynamicItems::Result DynamicItems::removeActuator(const char* id,
                                                    Registry& reg) {
   for (auto& e : controllers_) {
-    if (e->actuatorId == id)
+    if (e->actuatorId == id || e->coolActuatorId == id)
       return {false, "actuator is referenced by a controller"};
   }
   for (auto it = actuators_.begin(); it != actuators_.end(); ++it) {

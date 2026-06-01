@@ -79,13 +79,14 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 ### SensActCtrl
 - **Phase 1–3 abgeschlossen**: alle Abstraktionen, Sensor-/Aktor-/Regler-Implementierungen, drei Transporte
 - **Multi-Channel Interface**: `Channel`-Struct, `channelCount()` / `channel(idx)` ersetzen `meta()` / `lastReading()`
-- **80/80 native Tests grün**
+- **101/101 native Tests grün**
 - **13 Beispiel-Sketches** bauen für esp32dev (auf neue `channel()`-API migriert)
 - Neue Sensoren: `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss + Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle: distance + derived), `HX711LoadCellSensor` (Wägezelle)
 - Neue Aktoren: `IdsActuator` (IDS1/IDS2), `AnalogOutputActuator` (PWM/DAC, `SENSACTCTRL_HAS_DAC`-Guard)
 - `fault()`-Interface: nicht-brechende Default-Methode auf `Sensor` + `Actuator`; `RegistrySnapshot` emittiert `"fault"` nur wenn gesetzt
 - `Quantity::Distance` neu (zwischen `Count` und `Custom`)
 - `Controller`-Basisklasse: `setEnabled(bool)` / `enabled()` — `PIDController` + `TwoPointController` respektieren Guard in `tick()`; `enabled` in `paramsJson` + `setParamsJson` + `RegistrySnapshot`
+- **Dual-Output-Regler (Gärsteuerung, 2026-06-02):** `DualStageController` (Bang-Bang Heizen+Kühlen, Totband über Heiz-/Kühl-Differenzial, Anti-Short-Cycle auf der Kühlstufe) + `SplitRangePIDController` (bipolarer PID −1..+1, positiv heizt / negativ kühlt, Output-Totband). Beide: 1 Sensor → 2 Aktoren (beide optional), Fail-safe→beide-aus bei dead sensor/disabled, strukturelle Mutual-Exclusion + harte Interlock-Schranke + optionale Umschalt-Totzeit `changeoverMs`. Eigenständige Geschwister von PID/TwoPoint (kein gemeinsamer Basistyp), selbst-enthaltener PID (kein AutoTunePID, PIDController unverändert)
 - Details: `SensActCtrl/PLAN.md`, `SensActCtrl/session.md`
 
 ### BrewControl
@@ -101,6 +102,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - **Hardcodierte Demo-Items entfernt (2026-05-30):** `main.cpp` startet mit leerer Registry; SD-Konfiguration füllt sie
 - **Multi-Dashboard (2026-05-31):** Benutzer-definierte Tabs; jedes Dashboard filtert Sensoren/Aktoren/Regler nach gewählter Teilmenge; SD-Persistenz unter `/config/dashboards.json`; `DashboardStore`-Klasse; 4 neue REST-Endpunkte; `DashboardEditorModal` im Frontend; `filterSnap()` mit Base-ID-Mapping für Multi-Channel-Sensoren
 - **Settings-Tab (2026-05-31):** `⚙`-Tab ganz rechts; `+ Hinzufügen` aus globalem Header entfernt und dort positioniert; Dashboard-Tabs sind reine Monitoring-Ansichten; `DashboardEditorModal` embeds `AddItemModal` als Sub-Modal mit `onCreated`-Auto-Check
+- **Gärsteuerung — Dual-Output-Regler (2026-06-02):** zwei neue Reglertypen im AddItemModal — „Heizen/Kühlen (Zweipunkt)" = `DualStage`, „Heizen/Kühlen (PID)" = `SplitRangePID`; gemeinsamer Sensor-Dropdown + zwei Aktor-Dropdowns (Heizung/Kühlung, je optional); ControllerCard zeigt zwei Ausgänge (Heizen/Kühlen); Zeit-Felder im UI in Sekunden (×1000 → ms im Wire-Format); `CtrlEntry.coolActuatorId` + erweiterte Lösch-Abhängigkeitsprüfung (referenzierter Kühl-Aktor blockiert); kein neuer Endpunkt, zwei neue `type`-Werte für `POST /api/controllers`
 - **Appearance-Settings / Design-Theme (2026-06-01):** `SettingsStore` (SD-Persistenz unter `/config/settings.json`); `GET/POST /api/settings` mit Enum-Validierung (mode, background) und Hex-Check (accent); CSS-Token-System (8 semantische Variablen `--bg/--surface/--fg/--muted/--faint/--border/--accent/--accent-fg`, Hell/Dunkel/System via `data-theme`, Tönung via `data-tint`); `theme.ts` mit Flash-Vermeidung per localStorage-Cache; Settings-Hub (`/settings`) mit Unterseiten `Darstellung` (`/settings/appearance`) + `Geräte` (`/settings/devices`); alle UI-Komponenten auf semantische Klassen umgestellt (Dark-Mode ready); Settings-Store-Infrastruktur für spätere Settings-Bereiche (Zeit & Formate etc.)
 - Build-Footprint: ~11 KB gzipped (Web), ~14.5 % Flash / ~14.7 % RAM (lilygo_t_display_s3_amoled, 2026-05-30)
 - Details: `BrewControl/PLAN.md`, `BrewControl/SESSION.md`
@@ -151,7 +153,7 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 ### Buckets (bei Gelegenheit)
 
 - **UI-Polish — gruppierte SensorCard für Multi-Channel-Sensoren** (Details s. Bekannte Einschränkungen). ⚠️ Vor Gradienten/Ableitungen umsetzen.
-- **Hardware-Verifikation** — IDS-Induktionskocher E2E-Test, SSR-Heizung unter Last mit Oszilloskop.
+- **Hardware-Verifikation** — IDS-Induktionskocher E2E-Test, SSR-Heizung unter Last mit Oszilloskop, **Gärsteuerung Dual-Output-Regler E2E am Gerät** (DualStage/SplitRangePID anlegen, beide Ausgänge live, Kompressor-Anti-Short-Cycle, Kühl-Aktor-Löschen-Block).
 
 ---
 

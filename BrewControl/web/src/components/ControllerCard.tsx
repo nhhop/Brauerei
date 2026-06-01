@@ -18,6 +18,9 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
 
   const linkedSensor = params?.sensor ? sensors.find((s) => s.id === params.sensor) : undefined;
   const linkedActuator = params?.actuator ? actuators.find((a) => a.id === params.actuator) : undefined;
+  const linkedHeat = params?.heatActuator ? actuators.find((a) => a.id === params.heatActuator) : undefined;
+  const linkedCool = params?.coolActuator ? actuators.find((a) => a.id === params.coolActuator) : undefined;
+  const dualOutput = params?.heatActuator != null || params?.coolActuator != null;
 
   async function applySp() {
     const n = parseFloat(sp);
@@ -65,7 +68,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
         </div>
       </div>
 
-      {(linkedSensor || linkedActuator) && (
+      {(linkedSensor || linkedActuator || dualOutput) && (
         <div class="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
           {linkedSensor && (
             <span>Ist:{' '}
@@ -75,10 +78,24 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
               </span>{' '}{linkedSensor.meta.unit}
             </span>
           )}
-          {linkedActuator && (
+          {!dualOutput && linkedActuator && (
             <span>Ausgang:{' '}
               <span class="font-mono text-fg">
                 {fmtActuatorOut(linkedActuator.state.v, linkedActuator.meta.max)}
+              </span>
+            </span>
+          )}
+          {dualOutput && linkedHeat && (
+            <span>Heizen:{' '}
+              <span class="font-mono text-fg">
+                {fmtActuatorOut(linkedHeat.state.v, linkedHeat.meta.max)}
+              </span>
+            </span>
+          )}
+          {dualOutput && linkedCool && (
+            <span>Kühlen:{' '}
+              <span class="font-mono text-fg">
+                {fmtActuatorOut(linkedCool.state.v, linkedCool.meta.max)}
               </span>
             </span>
           )}
