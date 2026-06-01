@@ -326,12 +326,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     setPending(false);
   }
 
-  const inp = 'w-full rounded border border-stone-300 px-2 py-1 font-mono text-sm';
-  const lbl = 'block text-xs text-stone-500 mb-1';
+  const inp = 'w-full rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-fg';
+  const lbl = 'block text-xs text-muted mb-1';
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' :
-      active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+      active ? 'bg-fg text-bg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
 
   return (
@@ -340,11 +340,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       onClick={() => { if (!pending) onClose(); }}
     >
       <div
-        class="w-full max-w-md overflow-y-auto rounded-lg bg-white p-5 shadow-xl"
+        class="w-full max-w-md overflow-y-auto rounded-lg bg-surface p-5 shadow-xl"
         style={{ maxHeight: '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 class="text-base font-medium text-stone-900">
+        <h2 class="text-base font-medium text-fg">
           {isEdit ? 'Item bearbeiten' : 'Item hinzufügen'}
         </h2>
 
@@ -451,7 +451,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                       } catch (e) { setErr(String(e)); }
                       setScanning(false);
                     }}
-                    class="rounded-md bg-stone-100 px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-200 disabled:opacity-50">
+                    class="rounded-md bg-fg/5 px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10 disabled:opacity-50">
                     {scanning ? '…' : 'Scan'}
                   </button>
                 </div>
@@ -465,7 +465,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                         <input type="radio" name="addr" value={d.address}
                           checked={selectedAddress === d.address}
                           onChange={() => setSelectedAddress(d.address)} />
-                        <span class="font-mono text-xs text-stone-700">
+                        <span class="font-mono text-xs text-fg">
                           {d.address.match(/.{2}/g)!.join(':')}
                         </span>
                       </label>
@@ -474,7 +474,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 </div>
               )}
               {scannedDevices.length === 0 && pin && !scanning && (
-                <p class="text-xs text-stone-400">Scan ausführen um Geräte auf diesem Bus zu finden.</p>
+                <p class="text-xs text-faint">Scan ausführen um Geräte auf diesem Bus zu finden.</p>
               )}
             </>
           )}
@@ -514,7 +514,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div>
                 <button type="button" onClick={() => setShowCustomSpi(!showCustomSpi)}
-                  class="text-xs text-stone-500 hover:text-stone-700">
+                  class="text-xs text-muted hover:text-fg">
                   {showCustomSpi ? '▼' : '▶'} Custom SPI Pins (CLK / MISO / MOSI)
                 </button>
                 {showCustomSpi && (
@@ -543,7 +543,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
               </div>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-faint">
                 Liefert zwei Kanäle: <strong>flow.rate</strong> (L/min) und <strong>flow.volume</strong> (L).
               </p>
             </div>
@@ -594,7 +594,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div>
                 <button type="button" onClick={() => setShowScale(!showScale)}
-                  class="text-xs text-stone-500 hover:text-stone-700">
+                  class="text-xs text-muted hover:text-fg">
                   {showScale ? '▼' : '▶'} Ableitung (optional)
                 </button>
                 {showScale && (
@@ -635,7 +635,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   ))}
                 </div>
               </div>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-faint">
                 3 Kanäle: <strong>id.temp</strong> (°C), <strong>id.hum</strong> (%RH), <strong>id.pres</strong> (hPa).
               </p>
             </div>
@@ -682,7 +682,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div>
                 <button type="button" onClick={() => setAnalogShowRange(!analogShowRange)}
-                  class="text-xs text-stone-500 hover:text-stone-700">
+                  class="text-xs text-muted hover:text-fg">
                   {analogShowRange ? '▼' : '▶'} Custom Value Range (optional)
                 </button>
                 {analogShowRange && (
@@ -801,12 +801,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                     placeholder="0.5" class={inp} />
                 </div>
               </div>
-              <label class="flex items-center gap-2 text-sm text-stone-700 cursor-pointer">
+              <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
                 <input type="checkbox" checked={inverted}
                   onChange={(e) => setInverted((e.target as HTMLInputElement).checked)} />
                 Invertiert (Kühlung statt Heizung)
               </label>
-              <p class="text-xs text-stone-400">
+              <p class="text-xs text-faint">
                 Heizbetrieb: Aktor AN wenn Ist &lt; Sollwert + Hysterese unten,
                 AUS wenn Ist &gt; Sollwert + Hysterese oben.
               </p>
@@ -817,11 +817,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
 
           <div class="flex justify-end gap-2">
             <button type="button" onClick={onClose} disabled={pending}
-              class="rounded-md bg-stone-100 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-200 disabled:opacity-50">
+              class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/10 disabled:opacity-50">
               Abbrechen
             </button>
             <button type="submit" disabled={pending}
-              class="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+              class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg disabled:opacity-50">
               {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
             </button>
           </div>
