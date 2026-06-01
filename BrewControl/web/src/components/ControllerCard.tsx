@@ -16,12 +16,8 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const linkedSensor = params?.sensor
-    ? sensors.find((s) => s.id === params.sensor)
-    : undefined;
-  const linkedActuator = params?.actuator
-    ? actuators.find((a) => a.id === params.actuator)
-    : undefined;
+  const linkedSensor = params?.sensor ? sensors.find((s) => s.id === params.sensor) : undefined;
+  const linkedActuator = params?.actuator ? actuators.find((a) => a.id === params.actuator) : undefined;
 
   async function applySp() {
     const n = parseFloat(sp);
@@ -45,53 +41,43 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   }
 
   return (
-    <div class={`rounded-lg border bg-white p-4 shadow-sm transition-opacity ${
-      enabled ? 'border-stone-200' : 'border-stone-100 opacity-60'
+    <div class={`rounded-lg border bg-surface p-4 shadow-sm transition-opacity ${
+      enabled ? 'border-border' : 'border-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">
-        <h3 class="font-medium text-stone-900">{id}</h3>
+        <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={toggleEnabled}
-            disabled={toggling}
+          <button type="button" onClick={toggleEnabled} disabled={toggling}
             title={enabled ? 'Regler deaktivieren' : 'Regler aktivieren'}
             class={`text-base leading-none disabled:opacity-40 transition-colors ${
-              enabled
-                ? 'text-emerald-600 hover:text-stone-400'
-                : 'text-stone-300 hover:text-emerald-600'
-            }`}
-          >
+              enabled ? 'text-emerald-600 hover:text-faint' : 'text-faint hover:text-emerald-600'
+            }`}>
             ⏻
           </button>
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
-              class="text-stone-400 hover:text-stone-700 leading-none text-sm">✎</button>
+              class="text-sm leading-none text-faint hover:text-fg">✎</button>
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Löschen"
-              class="text-stone-400 hover:text-red-600 leading-none">×</button>
+              class="leading-none text-faint hover:text-red-600">×</button>
           )}
         </div>
       </div>
 
       {(linkedSensor || linkedActuator) && (
-        <div class="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-stone-500">
+        <div class="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
           {linkedSensor && (
-            <span>
-              Ist:{' '}
-              <span class="font-mono text-stone-900">
+            <span>Ist:{' '}
+              <span class="font-mono text-fg">
                 {linkedSensor.state.v != null && isFinite(linkedSensor.state.v)
-                  ? linkedSensor.state.v.toFixed(2)
-                  : '—'}
-              </span>{' '}
-              {linkedSensor.meta.unit}
+                  ? linkedSensor.state.v.toFixed(2) : '—'}
+              </span>{' '}{linkedSensor.meta.unit}
             </span>
           )}
           {linkedActuator && (
-            <span>
-              Ausgang:{' '}
-              <span class="font-mono text-stone-900">
+            <span>Ausgang:{' '}
+              <span class="font-mono text-fg">
                 {fmtActuatorOut(linkedActuator.state.v, linkedActuator.meta.max)}
               </span>
             </span>
@@ -100,20 +86,13 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
       )}
 
       <div class="mt-3">
-        <label for={`sp-${id}`} class="block text-xs text-stone-500">Setpoint</label>
+        <label for={`sp-${id}`} class="block text-xs text-muted">Setpoint</label>
         <div class="mt-1 flex gap-2">
-          <input
-            id={`sp-${id}`}
-            type="number"
-            step="any"
-            value={sp}
+          <input id={`sp-${id}`} type="number" step="any" value={sp}
             onInput={(e) => setSp((e.target as HTMLInputElement).value)}
-            class="w-full rounded border border-stone-300 px-2 py-1 font-mono text-sm"
-          />
-          <button
-            onClick={applySp}
-            class="rounded bg-stone-900 px-3 py-1 text-sm text-white"
-          >
+            class="w-full rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-fg" />
+          <button onClick={applySp}
+            class="rounded bg-fg px-3 py-1 text-sm text-bg hover:bg-fg/80">
             Apply
           </button>
         </div>
