@@ -1,1 +1,61 @@
 @import "tailwindcss";
+
+/* ── Semantic tokens ─────────────────────────────────────────────────────── */
+
+:root {
+  --bg:         #fafaf9;   /* stone-50  — page background */
+  --surface:    #ffffff;   /* white     — card / modal background */
+  --fg:         #1c1917;   /* stone-900 — primary text */
+  --muted:      #78716c;   /* stone-500 — secondary text */
+  --faint:      #a8a29e;   /* stone-400 — placeholder / tertiary */
+  --border:     #e7e5e4;   /* stone-200 — dividers / input borders */
+  --accent:     #d97706;   /* amber-600 — default accent (overridden by theme.ts) */
+  --accent-fg:  #ffffff;   /* contrast on accent (overridden by theme.ts) */
+}
+
+[data-theme="dark"] {
+  --bg:         #1c1917;   /* stone-900 */
+  --surface:    #292524;   /* stone-800 */
+  --fg:         #fafaf9;   /* stone-50  */
+  --muted:      #a8a29e;   /* stone-400 */
+  --faint:      #57534e;   /* stone-600 */
+  --border:     #44403c;   /* stone-700 */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg:         #1c1917;
+    --surface:    #292524;
+    --fg:         #fafaf9;
+    --muted:      #a8a29e;
+    --faint:      #57534e;
+    --border:     #44403c;
+  }
+}
+
+/* ── Background tint overrides (only --bg shifts; --surface stays neutral) ── */
+
+:root[data-tint="warm"] { --bg: #faf8f5; }
+[data-theme="dark"][data-tint="warm"] { --bg: #201c17; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme])[data-tint="warm"] { --bg: #201c17; }
+}
+
+:root[data-tint="cool"] { --bg: #f7f9fa; }
+[data-theme="dark"][data-tint="cool"] { --bg: #171a1e; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme])[data-tint="cool"] { --bg: #171a1e; }
+}
+
+/* ── Tailwind 4 utility mapping ──────────────────────────────────────────── */
+
+@theme inline {
+  --color-bg:         var(--bg);
+  --color-surface:    var(--surface);
+  --color-fg:         var(--fg);
+  --color-muted:      var(--muted);
+  --color-faint:      var(--faint);
+  --color-border:     var(--border);
+  --color-accent:     var(--accent);
+  --color-accent-fg:  var(--accent-fg);
+}
