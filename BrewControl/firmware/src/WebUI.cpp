@@ -309,6 +309,7 @@ void WebUI::begin() {
     req->send(200, "application/json", settings_.serialize());
   });
 
+  // POST /api/settings — must be BEFORE serveStatic (pattern from rest of file)
   server_.addHandler(new AsyncCallbackJsonWebHandler("/api/settings",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
