@@ -115,3 +115,13 @@ export interface BusScanResult {
   pin: number;
   devices: ScannedDevice[];
 }
+
+export interface ThemeSettings {
+  mode: 'light' | 'dark' | 'system';
+  accent: string;
+  background: 'neutral' | 'warm' | 'cool';
+}
+
+export interface AppSettings {
+  theme: ThemeSettings;
+}
