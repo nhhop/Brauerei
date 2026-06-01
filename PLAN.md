@@ -103,19 +103,51 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 
 ## Roadmap
 
-### Peripherie-Abstraktion (Rückgrat, zuerst)
+Zwei **parallele Tracks** ohne feste Reihenfolge zueinander — je nach Lust und verfügbarer Hardware mal am Rückgrat (Architektur), mal an Features arbeiten. Daneben zwei „bei Gelegenheit"-Buckets (UI-Polish, Hardware-Verifikation).
+
+### Architektur-Track (Rückgrat)
+
+#### Peripherie-Abstraktion (zuerst im Track)
 
 `Peripheral`-Interface (`id`, `type`, `begin`/`tick`/`end`) + `PeripheralRegistry`, das geteilte Busse (OneWire / I2C / SPI / CAN) beim ersten passenden Consumer automatisch anlegt. Sensoren/Aktoren referenzieren per Bus-Id oder hängen sich anhand der Pins automatisch an. Verallgemeinert die bestehende `getOrCreateBus`-Logik in `DynamicItems.cpp`, beseitigt die SPI-Pin-Duplizierung bei MAX31865. Port-Expander / CAN-Transceiver = spätere konkrete Peripherie auf derselben Naht (Hardware aktuell nicht vorhanden).
 
-### Pin-Manager (firmware, auf Peripherie aufbauend)
+#### Pin-Manager (firmware, auf Peripherie aufbauend)
 
 Board-Capability-Map (per Board-Define ausgewählt): Input-only Pins 34–39, Strapping-Pins, Flash/PSRAM-belegte Pins (z.B. 33–37 auf S3-AMOLED), DAC-Pins 25/26, Default I2C/SPI/UART. `GET /api/pins` liefert frei/belegt; Belegung = Peripherie (geteilt/beitrittsfähig) + Items mit exklusiven Pins. Stufen: Tier 1 Belegung + Map → Tier 2 Constraint-Query (interrupt-/serial-/dac-fähig) → Tier 3 Protokoll-Vorschläge (bestehende Bus-Peripherie bevorzugen, ergibt sich aus Peripherie-Modell).
 
-### Interaktives LVGL-Display (firmware, board-spezifisch)
+#### Interaktives LVGL-Display (firmware, board-spezifisch)
 
-Snapshot-Consumer (rendert Werte per LVGL) **und** Command-Quelle (Touch → `writeActuator` / `setSetpoint` über bestehende WebUI-Handler). Kein Aktor — eigene Klasse, LVGL gekapselt; stärkste Analogie ist `RemotePublisher`. Ziel-Board: LilyGo T-Display-S3-AMOLED. Größter Scope, eigene Spec vor Implementierung.
+Snapshot-Consumer (rendert Werte per LVGL) **und** Command-Quelle (Touch → `writeActuator` / `setSetpoint` über bestehende WebUI-Handler). Kein Aktor — eigene Klasse, LVGL gekapselt; stärkste Analogie ist `RemotePublisher`. Ziel-Board: LilyGo T-Display-S3-AMOLED. Größter Scope, eigene Spec vor Implementierung. Profitiert vom Feature-Track: Charts, Timer und Sollwert-Rampen kann das Display mit anzeigen.
 
-**Sequenz:** Peripherie-Rückgrat → Pin-Manager → Display (größtenteils unabhängig, zuletzt).
+**Track-interne Sequenz:** Peripherie-Rückgrat → Pin-Manager → Display (größtenteils unabhängig, zuletzt).
+
+### Feature-Track (Wellen)
+
+Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine eigene Spec → Plan → Implementierung.
+
+**Welle 1 — Bestehendes besser machen (self-contained, hoher Sofortnutzen)**
+- **Sensor-Kalibrierung** — einheitliches Offset/Scale-Interface (ggf. Mehrpunkt) + UI; ersetzt die heutigen ad-hoc-Lösungen (HX711-`tare`, YF-S201-`calibration`, Analog-`setRange`).
+- **PID-AutoTune über Web** — Start/Stop/Status für die bestehende AutoTune-Logik über API + UI (Algorithmus existiert in der Library).
+- **Design/Theme-Einstellungen** — Hell/Dunkel/System, Akzentfarben, Hintergründe (reines Frontend).
+- **Zeit & Formate** — Uhrzeit-Sync + Anzeigeformate.
+
+**Welle 2 — Prozess-Features (greifen ineinander)**
+- **Gradienten/Ableitungen (Library)** — rate-of-change als zusätzlicher Channel (°C/min, K/min, L/min²). ⚠️ Voraussetzung: gruppierte SensorCard (s.u.), da hierdurch weitere Kanäle pro Sensor entstehen.
+- **Datenlogging & Trend-Charts** — Zeitreihen mitschreiben + Verlaufsgraphen.
+- **Sollwert-Rampen / Maischeprofile** — generalisierte Sollwert-Liste als zeitgesteuerte Setpoint-Folge mit Rasten (z.B. 52→63→72 °C).
+- **Timer-Widget** — Dashboard-Element für Brau-Timings.
+- **Alarme & Schwellwerte** — „Wert > X" → Warnung/Badge, baut auf `fault()` auf.
+
+**Welle 3 — Infrastruktur (größere Brocken / später)**
+- **Backup & Restore** — Config-Export/Import.
+- **OTA-Firmware-Update** — war bereits offen (s. Bekannte Einschränkungen).
+- **Netzwerk/WLAN-Einstellungen** — über das bestehende Captive-Portal hinaus.
+- **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
+
+### Buckets (bei Gelegenheit)
+
+- **UI-Polish — gruppierte SensorCard für Multi-Channel-Sensoren** (Details s. Bekannte Einschränkungen). ⚠️ Vor Gradienten/Ableitungen umsetzen.
+- **Hardware-Verifikation** — IDS-Induktionskocher E2E-Test, SSR-Heizung unter Last mit Oszilloskop.
 
 ---
 
