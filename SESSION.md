@@ -576,6 +576,96 @@ Sensor `hlt` — GPIO 21, ROM `28ff19c6a11605d3` — war bereits auf dem Gerät 
 
 ---
 
+## 2026-06-01 — Appearance-Settings: Design/Theme-Feature
+
+**Ausgangslage:** BrewControl hatte kein Theme-System — alle Komponenten nutzten hardcodierte Tailwind-Klassen (`stone-*`, `bg-white`, `bg-stone-900`). Kein Dark-Mode, keine Akzentfarben, keine Settings-Infrastruktur für spätere Bereiche (Zeit, Backup, OTA).
+
+**Scope:** Firmware-Persistenz + REST-API + CSS-Token-System + Theme-Logik + neue Settings-Navigationsstruktur + Refactor aller Komponenten.
+
+### Backend (Firmware)
+
+- **`SettingsStore.h/cpp`** (neu): hält `mode_`/`accent_`/`background_`-Felder mit Defaults (`"system"`, `"#d97706"`, `"neutral"`). Methoden `loadFromSD`, `saveToSD`, `serialize()`, `update(patch)` — `update()` merged Teilpatches, unbekannte Felder bleiben unberührt. Persistenz unter `/config/settings.json` (analog `DashboardStore`).
+- **`WebUI.h/cpp`**: Constructor um `SettingsStore&`-Parameter erweitert; zwei neue Routen:
+  - `GET /api/settings` → `settings_.serialize()` (200 application/json)
+  - `POST /api/settings` via `AsyncCallbackJsonWebHandler` — Enum-Validierung für `mode` (light/dark/system) und `background` (neutral/warm/cool) sowie Hex-Format-Check für `accent` (`strlen==7 && a[0]=='#'`); `update()` + `saveToSD()` + 204; ungültige Werte → 400.
+- **`main.cpp`**: `BrewControl::SettingsStore settingsStore` global; `settingsStore.loadFromSD(SD)` im `if(sdOk)`-Block; als 5. Argument an `WebUI`-Konstruktor.
+
+### CSS-Token-System (Web)
+
+`styles.css` — 8 semantische Tokens als CSS-Custom-Properties:
+
+| Token | Hell-Wert | Dunkel-Wert |
+|---|---|---|
+| `--bg` | `#fafaf9` (stone-50) | `#1c1917` (stone-900) |
+| `--surface` | `#ffffff` | `#292524` (stone-800) |
+| `--fg` | `#1c1917` | `#fafaf9` |
+| `--muted` | `#78716c` (stone-500) | `#a8a29e` (stone-400) |
+| `--faint` | `#a8a29e` | `#57534e` (stone-600) |
+| `--border` | `#e7e5e4` (stone-200) | `#44403c` (stone-700) |
+| `--accent` | `#d97706` (Bernstein, Default) | via `theme.ts` |
+| `--accent-fg` | `#ffffff` | via `theme.ts` (Luminanz-berechnet) |
+
+Dark-Mode-Selector: `[data-theme="dark"]` (explizit) + `@media (prefers-color-scheme: dark) { :root:not([data-theme]) }` (System). Tönung-Overrides: `data-tint="warm"` / `data-tint="cool"` verschiebt nur `--bg`, `--surface` bleibt neutral.
+
+Tailwind-4-Mapping via `@theme inline` — erzeugt `bg-bg`, `bg-surface`, `text-fg`, `text-muted`, `text-faint`, `border-border`, `bg-accent`, `text-accent-fg` sowie Opacity-Varianten (`bg-fg/5`, `bg-fg/10`, `bg-fg/80` etc.).
+
+### theme.ts (Web)
+
+- `applyTheme(settings)` — setzt `data-theme` (dark/light/absent für System), `data-tint` (warm/cool/absent für neutral), `--accent` + `--accent-fg` als Inline-CSS-Variablen auf `<html>`, schreibt localStorage-Cache.
+- `loadCachedTheme()` — liest localStorage, gibt null bei Fehler zurück.
+- Flash-Vermeidung: `App.useEffect` wendet gecachtes Theme sofort synchron an, dann `getSettings()` für Server-Abgleich.
+
+### Settings-Navigation (Web)
+
+Neue 3-Routen-Struktur statt bisherigem 1-Routen-`/settings`:
+- `/settings` → `SettingsIndex` (Hub mit Kategorieliste)
+- `/settings/appearance` → `AppearancePage` (Modus/Akzent/Tönung)
+- `/settings/devices` → `DevicesPage` (= alter `SettingsPage`-Inhalt, `←` nach `/settings`)
+
+`AppearancePage`: lädt Settings per `getSettings()`, optimistisches Apply via `applyTheme()` vor `updateSettings()`-Aufruf. Segmented-Buttons mit `bg-fg text-bg`-Aktivzustand. Akzent: 6 Presets (Bernstein, Kupfer, Blau, Grün, Rot, Violett) + nativer `<input type="color">`. Stale-Closure-Fix: `setSettings((prev) => ...)` statt Direktclosure — verhindert verlorene Updates beim schnellen Drag über den Color-Picker.
+
+`SettingsIndex` und `AppearancePage` verwenden `_: { path?: string }` (kein Destructuring) — konsistent mit Preact-Router-Konvention.
+
+### Komponenten-Refactor (Web)
+
+Alle 7 bestehenden Komponenten/Pages auf semantische Klassen umgestellt — kein hardcodiertes `stone-*` mehr:
+
+| Datei | Geänderte Klassen (Beispiele) |
+|---|---|
+| `SensorCard` | `bg-white→bg-surface`, `bg-stone-700→bg-accent` (Progress), `text-stone-400→text-faint` |
+| `ActuatorCard` | `bg-stone-900 text-white→bg-fg text-bg`, `bg-stone-100→bg-fg/5` (OFF-Toggle) |
+| `ControllerCard` | `border-stone-100→border-border/50` (disabled), `text-stone-300→text-faint` |
+| `ConfirmModal` | `bg-white→bg-surface`, Confirm-Button `bg-fg hover:bg-fg/80 text-bg` |
+| `DashboardEditorModal` | `accent-stone-800→accent-accent`, `focus:ring-stone-400→focus:ring-border` |
+| `AddItemModal` | `inp`/`lbl`/`segBtn`-Konstanten auf Tokens, `bg-surface`/`text-fg` auf Inputs |
+| `Dashboard` | `bg-stone-50→bg-bg`, `border-stone-900→border-accent` (aktiver Tab) |
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio run -e esp32dev` (Firmware) | SUCCESS — 78 % Flash |
+| `pnpm typecheck` (Web) | 0 Fehler |
+| Kein `stone-*` verbleibend | ✓ (grep clean) |
+
+### Commits
+
+`6c19f6d` feat(fw): SettingsStore  
+`3e2c5d2` feat(fw): GET/POST /api/settings  
+`93807d7` fix(fw): settings POST handler vor serveStatic  
+`a2c950c` feat(fw): wire SettingsStore in main  
+`358ffad` feat(web): ThemeSettings/AppSettings + API  
+`5842cdd` feat(web): CSS token system + Tailwind mapping  
+`117d3d5` feat(web): theme.ts  
+`027b4cf` feat(web): Settings hub + AppearancePage + DevicesPage  
+`559ef2a` fix(web): functional setSettings (stale closure)  
+`f7edee2` refactor(web): SensorCard/ActuatorCard/ControllerCard → tokens  
+`1a1a212` refactor(web): alle Komponenten → semantische Tokens  
+`5519f0e` fix(web): hover auf AddItemModal Submit-Button  
+`c0e9375` fix: Hex-Validierung accent + unused path params
+
+---
+
 ## 2026-06-01 — Routing-Refactor + UI-Verbesserungen
 
 **Ausgangslage:** Das gesamte Dashboard-UI lebte in `app.tsx`. Settings war kein eigener Tab, sondern ein State-Toggle in derselben Komponente. Die × -Schaltfläche auf Cards löschte Geräte dauerhaft statt sie vom Dashboard zu entfernen.

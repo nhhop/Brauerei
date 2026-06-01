@@ -24,6 +24,8 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 │  - POST /api/dashboards (create, → 201 {id})        │
 │  - POST /api/dashboards/:id (update)                │
 │  - DELETE /api/dashboards/:id                       │
+│  - GET  /api/settings                               │
+│  - POST /api/settings  (partial patch)              │
 └────────────────────┬────────────────────────────────┘
                      │ WiFi / HTTP (ESPAsyncWebServer)
 ┌────────────────────▼────────────────────────────────┐
@@ -34,6 +36,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 │  WiFiSetup…    Captive Portal (erste Inbetriebnahme)│
 │  DynamicItems  Laufzeit Add/Remove von Registry     │
 │  DashboardStore  SD-Persistenz für Dashboards       │
+│  SettingsStore   SD-Persistenz für App-Settings     │
 │                                                     │
 │  lib_dep: symlink://../../SensActCtrl               │
 │           symlink://../../../IdsInductionCooker    │
@@ -71,7 +74,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 | lolin_s2_mini | Single-core, USB-CDC (TinyUSB), ARDUINO_USB_CDC_ON_BOOT=1 |
 | lilygo_t_display_s3_amoled | S3 dual-core, 8 MB PSRAM, SD auf HSPI (38/41/39/40) |
 
-## Aktueller Status (Stand 2026-05-31)
+## Aktueller Status (Stand 2026-06-01)
 
 ### SensActCtrl
 - **Phase 1–3 abgeschlossen**: alle Abstraktionen, Sensor-/Aktor-/Regler-Implementierungen, drei Transporte
@@ -98,6 +101,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - **Hardcodierte Demo-Items entfernt (2026-05-30):** `main.cpp` startet mit leerer Registry; SD-Konfiguration füllt sie
 - **Multi-Dashboard (2026-05-31):** Benutzer-definierte Tabs; jedes Dashboard filtert Sensoren/Aktoren/Regler nach gewählter Teilmenge; SD-Persistenz unter `/config/dashboards.json`; `DashboardStore`-Klasse; 4 neue REST-Endpunkte; `DashboardEditorModal` im Frontend; `filterSnap()` mit Base-ID-Mapping für Multi-Channel-Sensoren
 - **Settings-Tab (2026-05-31):** `⚙`-Tab ganz rechts; `+ Hinzufügen` aus globalem Header entfernt und dort positioniert; Dashboard-Tabs sind reine Monitoring-Ansichten; `DashboardEditorModal` embeds `AddItemModal` als Sub-Modal mit `onCreated`-Auto-Check
+- **Appearance-Settings / Design-Theme (2026-06-01):** `SettingsStore` (SD-Persistenz unter `/config/settings.json`); `GET/POST /api/settings` mit Enum-Validierung (mode, background) und Hex-Check (accent); CSS-Token-System (8 semantische Variablen `--bg/--surface/--fg/--muted/--faint/--border/--accent/--accent-fg`, Hell/Dunkel/System via `data-theme`, Tönung via `data-tint`); `theme.ts` mit Flash-Vermeidung per localStorage-Cache; Settings-Hub (`/settings`) mit Unterseiten `Darstellung` (`/settings/appearance`) + `Geräte` (`/settings/devices`); alle UI-Komponenten auf semantische Klassen umgestellt (Dark-Mode ready); Settings-Store-Infrastruktur für spätere Settings-Bereiche (Zeit & Formate etc.)
 - Build-Footprint: ~11 KB gzipped (Web), ~14.5 % Flash / ~14.7 % RAM (lilygo_t_display_s3_amoled, 2026-05-30)
 - Details: `BrewControl/PLAN.md`, `BrewControl/SESSION.md`
 
@@ -128,7 +132,7 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 **Welle 1 — Bestehendes besser machen (self-contained, hoher Sofortnutzen)**
 - **Sensor-Kalibrierung** — einheitliches Offset/Scale-Interface (ggf. Mehrpunkt) + UI; ersetzt die heutigen ad-hoc-Lösungen (HX711-`tare`, YF-S201-`calibration`, Analog-`setRange`).
 - **PID-AutoTune über Web** — Start/Stop/Status für die bestehende AutoTune-Logik über API + UI (Algorithmus existiert in der Library).
-- **Design/Theme-Einstellungen** — Hell/Dunkel/System, Akzentfarben, Hintergründe (reines Frontend).
+- ~~**Design/Theme-Einstellungen**~~ ✓ — abgeschlossen 2026-06-01 (s. Aktueller Status).
 - **Zeit & Formate** — Uhrzeit-Sync + Anzeigeformate.
 
 **Welle 2 — Prozess-Features (greifen ineinander)**
