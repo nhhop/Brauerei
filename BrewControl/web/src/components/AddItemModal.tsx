@@ -467,19 +467,18 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           {role === 'controller' && (
             <div>
               <label class={lbl}>Regler-Typ</label>
-              <div class="flex flex-wrap gap-2">
-                {(['PID', 'TwoPoint', 'DualStage', 'SplitRangePID'] as ControllerType[]).map((t) => (
-                  <button key={t} type="button"
-                    onClick={() => { if (!isEdit) setCtrlType(t); }}
-                    disabled={isEdit}
-                    class={segBtn(ctrlType === t, isEdit)}>
-                    {t === 'TwoPoint' ? 'Zweipunkt'
-                      : t === 'DualStage' ? 'Heizen/Kühlen (Zweipunkt)'
-                      : t === 'SplitRangePID' ? 'Heizen/Kühlen (PID)'
-                      : 'PID'}
-                  </button>
-                ))}
-              </div>
+              <select value={ctrlType} disabled={isEdit} title="Regler-Typ"
+                onChange={(e) => setCtrlType((e.target as HTMLSelectElement).value as ControllerType)}
+                class={`${inp} ${isEdit ? 'opacity-60' : ''}`}>
+                <optgroup label="Zweipunktregler">
+                  <option value="TwoPoint">Einfacher Zweipunktregler</option>
+                  <option value="DualStage">Dual-Stage-Regler (Heizen/Kühlen)</option>
+                </optgroup>
+                <optgroup label="PID">
+                  <option value="PID">Einfacher PID-Regler</option>
+                  <option value="SplitRangePID">Split-Range-PID-Regler (Heizen/Kühlen)</option>
+                </optgroup>
+              </select>
             </div>
           )}
 
