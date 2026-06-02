@@ -86,7 +86,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - `fault()`-Interface: nicht-brechende Default-Methode auf `Sensor` + `Actuator`; `RegistrySnapshot` emittiert `"fault"` nur wenn gesetzt
 - `Quantity::Distance` neu (zwischen `Count` und `Custom`)
 - `Controller`-Basisklasse: `setEnabled(bool)` / `enabled()` — `PIDController` + `TwoPointController` respektieren Guard in `tick()`; `enabled` in `paramsJson` + `setParamsJson` + `RegistrySnapshot`
-- **Dual-Output-Regler (Gärsteuerung, 2026-06-02):** `DualStageController` (Bang-Bang Heizen+Kühlen, Totband über Heiz-/Kühl-Differenzial, Anti-Short-Cycle auf der Kühlstufe) + `SplitRangePIDController` (bipolarer PID −1..+1, positiv heizt / negativ kühlt, Output-Totband). Beide: 1 Sensor → 2 Aktoren (beide optional), Fail-safe→beide-aus bei dead sensor/disabled, strukturelle Mutual-Exclusion + harte Interlock-Schranke + optionale Umschalt-Totzeit `changeoverMs`. Eigenständige Geschwister von PID/TwoPoint (kein gemeinsamer Basistyp), selbst-enthaltener PID (kein AutoTunePID, PIDController unverändert)
+- **Dual-Output-Regler (Gärsteuerung, 2026-06-02):** `DualStageController` (Bang-Bang Heizen+Kühlen, Totband über Heiz-/Kühl-Differenzial, Anti-Short-Cycle auf der Kühlstufe) + `SplitRangePIDController` (bipolarer PID −1..+1, positiv heizt / negativ kühlt, Output-Totband). Beide: 1 Sensor → 2 Aktoren (beide optional), Fail-safe→beide-aus bei dead sensor/disabled, strukturelle Mutual-Exclusion + harte Interlock-Schranke + optionale Umschalt-Totzeit `changeoverMs`. Eigenständige Geschwister von PID/TwoPoint (kein gemeinsamer Basistyp), selbst-enthaltener PID (kein AutoTunePID, PIDController unverändert) PID-Engine in `detail::PidEngine` extrahiert (von `PIDController` + `SplitRangePIDController` geteilt); **SplitRangePID unterstützt jetzt AutoTune** (Relay über die geteilte Engine, Umschalt-Totzeit während des Tunes pausiert).
 - Details: `SensActCtrl/PLAN.md`, `SensActCtrl/session.md`
 
 ### BrewControl
@@ -102,7 +102,7 @@ Heimbrauerei-Steuerung auf ESP32-Basis: Sensoren (Temperatur, Druck, pH, Durchfl
 - **Hardcodierte Demo-Items entfernt (2026-05-30):** `main.cpp` startet mit leerer Registry; SD-Konfiguration füllt sie
 - **Multi-Dashboard (2026-05-31):** Benutzer-definierte Tabs; jedes Dashboard filtert Sensoren/Aktoren/Regler nach gewählter Teilmenge; SD-Persistenz unter `/config/dashboards.json`; `DashboardStore`-Klasse; 4 neue REST-Endpunkte; `DashboardEditorModal` im Frontend; `filterSnap()` mit Base-ID-Mapping für Multi-Channel-Sensoren
 - **Settings-Tab (2026-05-31):** `⚙`-Tab ganz rechts; `+ Hinzufügen` aus globalem Header entfernt und dort positioniert; Dashboard-Tabs sind reine Monitoring-Ansichten; `DashboardEditorModal` embeds `AddItemModal` als Sub-Modal mit `onCreated`-Auto-Check
-- **PID-AutoTune über Web (2026-06-02):** Start/Stop + Methodenwahl (5 Algorithmen) + Statusanzeige (idle/running/done) in der ControllerCard; Trigger als `{"autotune":"start"|"stop"}` über `POST /api/controllers/:id/params` (kein neuer Endpunkt); `PIDController::stopAutotune()` neu, Start aktiviert den Regler implizit. Nur PID-Regler. Reale Tuning-Schleife hardware-verifiziert (nativ No-Op).
+- **PID-AutoTune über Web (2026-06-02):** Start/Stop + Methodenwahl (5 Algorithmen) + Statusanzeige (idle/running/done) in der ControllerCard; Trigger als `{"autotune":"start"|"stop"}` über `POST /api/controllers/:id/params` (kein neuer Endpunkt); `PIDController::stopAutotune()` neu, Start aktiviert den Regler implizit. Nur PID-Regler. Reale Tuning-Schleife hardware-verifiziert (nativ No-Op). Seit 2026-06-02 auch für `SplitRangePID`-Regler (geteilte `PidEngine`); ControllerCard zeigt den AutoTune-Block für alle PID-Familien-Regler (`params.Kp != null`).
 - **Gärsteuerung — Dual-Output-Regler (2026-06-02):** zwei neue Reglertypen im AddItemModal — „Heizen/Kühlen (Zweipunkt)" = `DualStage`, „Heizen/Kühlen (PID)" = `SplitRangePID`; gemeinsamer Sensor-Dropdown + zwei Aktor-Dropdowns (Heizung/Kühlung, je optional); ControllerCard zeigt zwei Ausgänge (Heizen/Kühlen); Zeit-Felder im UI in Sekunden (×1000 → ms im Wire-Format); `CtrlEntry.coolActuatorId` + erweiterte Lösch-Abhängigkeitsprüfung (referenzierter Kühl-Aktor blockiert); kein neuer Endpunkt, zwei neue `type`-Werte für `POST /api/controllers`. **Regler-Typ-Auswahl als gruppiertes Dropdown** (`<optgroup>` Zweipunktregler / PID statt Segment-Buttons, 2026-06-02)
 - **Appearance-Settings / Design-Theme (2026-06-01):** `SettingsStore` (SD-Persistenz unter `/config/settings.json`); `GET/POST /api/settings` mit Enum-Validierung (mode, background) und Hex-Check (accent); CSS-Token-System (8 semantische Variablen `--bg/--surface/--fg/--muted/--faint/--border/--accent/--accent-fg`, Hell/Dunkel/System via `data-theme`, Tönung via `data-tint`); `theme.ts` mit Flash-Vermeidung per localStorage-Cache; Settings-Hub (`/settings`) mit Unterseiten `Darstellung` (`/settings/appearance`) + `Geräte` (`/settings/devices`); alle UI-Komponenten auf semantische Klassen umgestellt (Dark-Mode ready); Settings-Store-Infrastruktur für spätere Settings-Bereiche (Zeit & Formate etc.)
 - Build-Footprint: ~11 KB gzipped (Web), ~14.5 % Flash / ~14.7 % RAM (lilygo_t_display_s3_amoled, 2026-05-30)
@@ -133,11 +133,13 @@ Snapshot-Consumer (rendert Werte per LVGL) **und** Command-Quelle (Touch → `wr
 Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine eigene Spec → Plan → Implementierung.
 
 **Welle 1 — Bestehendes besser machen (self-contained, hoher Sofortnutzen)**
+- **PIN-Invertierung** - Umkehren der Digitalen Pin-Readings und Writings
 - **Sensor-Kalibrierung** — einheitliches Offset/Scale-Interface (ggf. Mehrpunkt) + UI; ersetzt die heutigen ad-hoc-Lösungen (HX711-`tare`, YF-S201-`calibration`, Analog-`setRange`).
 - **PID-AutoTune über Web** — Start/Stop/Status für die bestehende AutoTune-Logik über API + UI (Algorithmus existiert in der Library).
   - *Später:* Fortschrittsanzeige/Restzeit für den laufenden AutoTune-Vorgang (braucht zusätzliche Instrumentierung im Backend; v1 zeigt nur idle/running/done).
 - ~~**Design/Theme-Einstellungen**~~ ✓ — abgeschlossen 2026-06-01 (s. Aktueller Status).
 - **Zeit & Formate** — Uhrzeit-Sync + Anzeigeformate.
+  - *Später* Mehrsprachigkeit - Auswählen der Sprache in Page für Zeit & Formate: Umbenennen in Zeit & Region
 
 **Welle 2 — Prozess-Features (greifen ineinander)**
 - **Gradienten/Ableitungen (Library)** — rate-of-change als zusätzlicher Channel (°C/min, K/min, L/min²). ⚠️ Voraussetzung: gruppierte SensorCard (s.u.), da hierdurch weitere Kanäle pro Sensor entstehen.
@@ -145,17 +147,22 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 - **Sollwert-Rampen / Maischeprofile** — generalisierte Sollwert-Liste als zeitgesteuerte Setpoint-Folge mit Rasten (z.B. 52→63→72 °C).
 - **Timer-Widget** — Dashboard-Element für Brau-Timings.
 - **Alarme & Schwellwerte** — „Wert > X" → Warnung/Badge, baut auf `fault()` auf.
+- **Generischer MQTT-Aktor**: Topic statt device id, vorgabe des messagebody als Template mit Platzhalter für on/off/value
+→Ziel Sonoff oder andere Steckdosen ansteuern
+
 
 **Welle 3 — Infrastruktur (größere Brocken / später)**
 - **Backup & Restore** — Config-Export/Import.
+- **Webhook-Sensor-Aktor**
 - **OTA-Firmware-Update** — war bereits offen (s. Bekannte Einschränkungen).
+  - -> auch für das hinzufügen von Displays relevant. Firmware je nach Display laden (online oder SD-Karte)
 - **Netzwerk/WLAN-Einstellungen** — über das bestehende Captive-Portal hinaus.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
 
 ### Buckets (bei Gelegenheit)
 
 - **UI-Polish — gruppierte SensorCard für Multi-Channel-Sensoren** (Details s. Bekannte Einschränkungen). ⚠️ Vor Gradienten/Ableitungen umsetzen.
-- **Hardware-Verifikation** — IDS-Induktionskocher E2E-Test, SSR-Heizung unter Last mit Oszilloskop, **Gärsteuerung Dual-Output-Regler E2E am Gerät** (DualStage/SplitRangePID anlegen, beide Ausgänge live, Kompressor-Anti-Short-Cycle, Kühl-Aktor-Löschen-Block), **PID-AutoTune E2E am Gerät** (Status idle→running→done, übernommene Gains, Abbruch).
+- **Hardware-Verifikation** — IDS-Induktionskocher E2E-Test, SSR-Heizung unter Last mit Oszilloskop, **Gärsteuerung Dual-Output-Regler E2E am Gerät** (DualStage/SplitRangePID anlegen, beide Ausgänge live, Kompressor-Anti-Short-Cycle, Kühl-Aktor-Löschen-Block), **PID-AutoTune E2E am Gerät** (Status idle→running→done, übernommene Gains, Abbruch). SplitRangePID-AutoTune E2E am Gerät.
 
 ---
 
