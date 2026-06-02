@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <string.h>
 
 #include "controllers/SplitRangePIDController.h"
 #include "../mocks/MockSensor.h"
@@ -158,6 +159,55 @@ void test_params_json_roundtrip() {
   TEST_ASSERT_FALSE(c2.enabled());
 }
 
+void test_autotune_start_runs_and_enables() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+  c.setEnabled(false);
+
+  TEST_ASSERT_TRUE(c.setParamsJson("{\"autotune\":\"start\"}"));
+  TEST_ASSERT_TRUE(c.enabled());
+
+  char buf[384];
+  c.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"running\""));
+}
+
+void test_autotune_start_with_method() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+
+  TEST_ASSERT_TRUE(c.setParamsJson(
+      "{\"autotune\":\"start\",\"autotuneMethod\":\"IMC\"}"));
+  char buf[384];
+  c.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneMethod\":\"IMC\""));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"running\""));
+}
+
+void test_autotune_stop_returns_to_idle() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+
+  c.setParamsJson("{\"autotune\":\"start\"}");
+  c.setParamsJson("{\"autotune\":\"stop\"}");
+  char buf[384];
+  c.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
+}
+
+void test_stop_autotune_idempotent_when_idle() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+  c.stopAutotune();
+  char buf[384];
+  c.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
+}
+
 void setUp() { splitRangeSetMillisForTest(0); }
 void tearDown() {}
 
@@ -172,5 +222,9 @@ int main(int, char**) {
   RUN_TEST(test_disabled_drives_both_off);
   RUN_TEST(test_invalid_reading_drives_both_off);
   RUN_TEST(test_params_json_roundtrip);
+  RUN_TEST(test_autotune_start_runs_and_enables);
+  RUN_TEST(test_autotune_start_with_method);
+  RUN_TEST(test_autotune_stop_returns_to_idle);
+  RUN_TEST(test_stop_autotune_idempotent_when_idle);
   return UNITY_END();
 }
