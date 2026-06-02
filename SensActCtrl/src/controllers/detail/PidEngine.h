@@ -1,14 +1,18 @@
 #pragma once
 
+// INTERNAL HEADER — included only by controller .cpp files, never by a public
+// or umbrella header. This is intentional: pulling <AutoTunePID.h> here
+// (guarded by ARDUINO) does NOT leak the dependency into consumer sketches
+// because no public header transitively includes this file.
+
 #include <stdint.h>
+#include "controllers/TuningMethod.h"
 
 #if defined(ARDUINO)
   #include <AutoTunePID.h>
 #endif
 
 namespace SensActCtrl {
-
-enum class TuningMethod : uint8_t;  // vollständig definiert in controllers/PIDController.h
 
 namespace detail {
 

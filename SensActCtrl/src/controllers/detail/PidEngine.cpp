@@ -1,7 +1,5 @@
 #include "PidEngine.h"
 
-#include "controllers/PIDController.h"  // vollständiges TuningMethod-Enum
-
 #if defined(ARDUINO)
   #include <Arduino.h>
   #include <AutoTunePID.h>

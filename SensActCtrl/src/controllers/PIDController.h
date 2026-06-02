@@ -5,21 +5,11 @@
 #include "core/Controller.h"
 #include "core/Sensor.h"
 #include "core/Actuator.h"
+#include "controllers/TuningMethod.h"
 
 namespace SensActCtrl {
 
 namespace detail { class PidEngine; }
-
-// Tuning methods exposed by the wrapper. Names mirror AutoTunePID's enum
-// 1:1 — the wrapper translates these to the backend's enum internally so
-// the public API never leaks the AutoTunePID header.
-enum class TuningMethod : uint8_t {
-  ZieglerNichols,
-  CohenCoon,
-  IMC,
-  TyreusLuyben,
-  LambdaTuning,
-};
 
 // PID controller. Wraps AutoTunePID (lily-osp/AutoTunePID) on Arduino/ESP32
 // targets; on the native test environment falls back to a small handwritten
