@@ -789,3 +789,19 @@ POST /api/controllers
 | `pio test -e native` (SensActCtrl) | 101/101 PASSED (80 alt + 12 DualStage + 9 SplitRange) |
 | `pio run -e esp32dev` (Firmware) | SUCCESS — 79.1 % Flash |
 | `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+
+---
+
+## 2026-06-02 — UI: Regler-Typ als gruppiertes Dropdown (PR #2)
+
+**Ausgangslage:** Nach der Gärsteuerung gab es im `AddItemModal` vier Segment-Buttons für
+den Regler-Typ (PID / Zweipunkt / Heizen-Kühlen-Zweipunkt / Heizen-Kühlen-PID) — bei vier
+Typen unübersichtlich.
+
+**Änderung (`AddItemModal.tsx`, nur Frontend):** Buttons → gruppiertes `<select>` (gleiches
+`<optgroup>`-Muster wie der Sensortyp-Selektor):
+- **Zweipunktregler:** Einfacher Zweipunktregler (`TwoPoint`), Dual-Stage-Regler (`DualStage`)
+- **PID:** Einfacher PID-Regler (`PID`), Split-Range-PID-Regler (`SplitRangePID`)
+
+Im Edit-Modus gesperrt (`disabled` + `opacity-60`), `title` für Barrierefreiheit. `segBtn`
+bleibt für andere Selektoren in Gebrauch (kein Orphan). `pnpm typecheck` 0 Fehler.
