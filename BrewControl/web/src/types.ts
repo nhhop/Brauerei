@@ -62,6 +62,8 @@ export interface ControllerParams {
   Kp?: number;
   Ki?: number;
   Kd?: number;
+  Ku?: number;
+  Tu?: number;
   min?: number;
   max?: number;
   autotuneMethod?: string;

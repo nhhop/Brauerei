@@ -106,6 +106,55 @@ void test_invalid_reading_skips_tick() {
   TEST_ASSERT_EQUAL(0u, a.writes.size());
 }
 
+void test_autotune_start_runs_and_enables() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+  pid.setEnabled(false);
+
+  TEST_ASSERT_TRUE(pid.setParamsJson("{\"autotune\":\"start\"}"));
+  TEST_ASSERT_TRUE(pid.enabled());  // Auto-Enable beim Start
+
+  char buf[256];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"running\""));
+}
+
+void test_autotune_start_with_method() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+
+  TEST_ASSERT_TRUE(pid.setParamsJson(
+      "{\"autotune\":\"start\",\"autotuneMethod\":\"CohenCoon\"}"));
+  char buf[256];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneMethod\":\"CohenCoon\""));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"running\""));
+}
+
+void test_autotune_stop_returns_to_idle() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+
+  pid.setParamsJson("{\"autotune\":\"start\"}");
+  pid.setParamsJson("{\"autotune\":\"stop\"}");
+  char buf[256];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
+}
+
+void test_stop_autotune_idempotent_when_idle() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+  pid.stopAutotune();  // kein laufender Tune → sicherer No-Op
+  char buf[256];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -116,5 +165,9 @@ int main(int, char**) {
   RUN_TEST(test_step_response_negative_error_produces_zero_or_min_output);
   RUN_TEST(test_params_json_roundtrip);
   RUN_TEST(test_invalid_reading_skips_tick);
+  RUN_TEST(test_autotune_start_runs_and_enables);
+  RUN_TEST(test_autotune_start_with_method);
+  RUN_TEST(test_autotune_stop_returns_to_idle);
+  RUN_TEST(test_stop_autotune_idempotent_when_idle);
   return UNITY_END();
 }

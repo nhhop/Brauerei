@@ -62,6 +62,7 @@ class PIDController : public Controller {
 
   // AutoTune.
   void autotune(TuningMethod method);
+  void stopAutotune();
   bool isAutotuneRunning() const;
   bool isAutotuneDone() const;
   TuningMethod tuningMethod() const { return tuningMethod_; }

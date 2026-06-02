@@ -789,3 +789,55 @@ POST /api/controllers
 | `pio test -e native` (SensActCtrl) | 101/101 PASSED (80 alt + 12 DualStage + 9 SplitRange) |
 | `pio run -e esp32dev` (Firmware) | SUCCESS — 79.1 % Flash |
 | `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+
+---
+
+## 2026-06-02 — UI: Regler-Typ als gruppiertes Dropdown (PR #2)
+
+**Ausgangslage:** Nach der Gärsteuerung gab es im `AddItemModal` vier Segment-Buttons für
+den Regler-Typ (PID / Zweipunkt / Heizen-Kühlen-Zweipunkt / Heizen-Kühlen-PID) — bei vier
+Typen unübersichtlich.
+
+**Änderung (`AddItemModal.tsx`, nur Frontend):** Buttons → gruppiertes `<select>` (gleiches
+`<optgroup>`-Muster wie der Sensortyp-Selektor):
+- **Zweipunktregler:** Einfacher Zweipunktregler (`TwoPoint`), Dual-Stage-Regler (`DualStage`)
+- **PID:** Einfacher PID-Regler (`PID`), Split-Range-PID-Regler (`SplitRangePID`)
+
+Im Edit-Modus gesperrt (`disabled` + `opacity-60`), `title` für Barrierefreiheit. `segBtn`
+bleibt für andere Selektoren in Gebrauch (kein Orphan). `pnpm typecheck` 0 Fehler.
+
+---
+
+## 2026-06-02 — PID-AutoTune über Web
+
+**Ausgangslage:** `PIDController` kapselte AutoTune (autotune/isAutotuneRunning/isAutotuneDone,
+Auto-Übernahme der Gains, `autotuneState` im paramsJson), aber `setParamsJson` konnte es nicht
+starten und es gab keinen Stop.
+
+**Library:** neue Methode `stopAutotune()` (Backend → Normal-Modus mit letzten Gains,
+idempotent); `setParamsJson` liest Kommando-Feld `"autotune"`: `"start"` → `setEnabled(true)` +
+`autotune(tuningMethod_)`, `"stop"` → `stopAutotune()`. Auto-Enable, weil AutoTune einen
+tickenden Regler braucht. 4 neue native Tests (101 → 105).
+
+**Firmware:** keine Änderung — Trigger läuft über die bestehende `POST /api/controllers/:id/params`-Route.
+
+**Frontend:** `api.ts` `startAutotune(id, method)` / `stopAutotune(id)`; `types.ts` `Ku`/`Tu`
+ergänzt; ControllerCard zeigt für PID-Regler (`params.Kp != null && params.heatActuator == null`)
+ein Methoden-Dropdown (5 Algorithmen, Default Ziegler-Nichols) + Start-Button, bei `running`
+einen Abbrechen-Button + Badge, bei `done` die ermittelten Gains.
+
+**Randbedingung:** nur `PIDController`. `DualStage` (bang-bang) und `SplitRangePID` (PID ohne
+AutoTune-Backend) bleiben außen vor. Fortschrittsanzeige als späteres Feature in PLAN.md vermerkt.
+
+Spec: `docs/superpowers/specs/2026-06-02-pid-autotune-web-design.md`,
+Plan: `docs/superpowers/plans/2026-06-02-pid-autotune-web.md`.
+
+### Verifikation
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 105/105 PASSED (101 alt + 4 neu) |
+| `pio run -e esp32dev` (Firmware) | SUCCESS — 79.1 % Flash |
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+
+**Offen:** E2E am echten PID-Regler (Status idle→running→done, übernommene Gains, Abbruch) —
+in PLAN.md unter Hardware-Verifikation.

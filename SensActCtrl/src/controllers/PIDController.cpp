@@ -223,6 +223,13 @@ void PIDController::autotune(TuningMethod method) {
   impl_->startAutotune(method);
 }
 
+void PIDController::stopAutotune() {
+  if (!autotuneStarted_) return;  // idempotent — kein laufender Vorgang
+  autotuneStarted_ = false;
+  autotuneCompleted_ = false;
+  impl_->setManualGains(kp_, ki_, kd_);  // Backend → Normal-Modus mit letzten Gains
+}
+
 bool PIDController::isAutotuneRunning() const {
   return autotuneStarted_ && !autotuneCompleted_ && impl_->isTuneMode();
 }
@@ -374,6 +381,17 @@ bool PIDController::setParamsJson(const char* json) {
   // min/max are construction-time only; ignored on parse.
   bool b = true;
   if (extractBool(json, "enabled", &b)) setEnabled(b);
+
+  const char* aStr = nullptr;
+  size_t aLen = 0;
+  if (extractString(json, "autotune", &aStr, &aLen)) {
+    if (aLen == 5 && strncmp(aStr, "start", 5) == 0) {
+      setEnabled(true);            // AutoTune braucht einen tickenden Regler
+      autotune(tuningMethod_);     // tuningMethod_ wurde oben ggf. aktualisiert
+    } else if (aLen == 4 && strncmp(aStr, "stop", 4) == 0) {
+      stopAutotune();
+    }
+  }
   return true;
 }
 
