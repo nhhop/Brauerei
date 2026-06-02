@@ -99,6 +99,14 @@ export function enableController(id: string, enabled: boolean): Promise<void> {
   return setControllerParams(id, { enabled });
 }
 
+export function startAutotune(id: string, method: string): Promise<void> {
+  return setControllerParams(id, { autotune: 'start', autotuneMethod: method });
+}
+
+export function stopAutotune(id: string): Promise<void> {
+  return setControllerParams(id, { autotune: 'stop' });
+}
+
 // ── Dashboards ───────────────────────────────────────────────────────────────
 
 export async function getDashboards(): Promise<DashboardConfig[]> {
