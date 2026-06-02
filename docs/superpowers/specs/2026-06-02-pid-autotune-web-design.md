@@ -17,8 +17,9 @@ Statusanzeige), ohne neuen Endpunkt und ohne Refactor der getesteten Tuning-Logi
 
 ## Randbedingungen
 
-- AutoTune existiert nur in `PIDController`. `DualStageController` / `SplitRangePIDController`
-  haben einen selbst-enthaltenen PID **ohne** AutoTune-Backend → **kein** AutoTune in v1.
+- AutoTune existiert nur in `PIDController`. `DualStageController` ist ein Zweipunktregler
+  (kein PID → AutoTune ist gegenstandslos). `SplitRangePIDController` hat einen selbst-
+  enthaltenen PID, aber **kein** AutoTune-Backend → in v1 ebenfalls kein AutoTune.
 - Das AutoTunePID-Backend ist Hardware-only (`#if defined(ARDUINO)`); nativ ist `startAutotune`
   ein No-Op und `isTuneMode()` liefert `false`. Native Tests verifizieren die **Verdrahtung**,
   nicht die reale Tuning-Schleife (Projektkonvention: AutoTune ist hardware-verifiziert).
@@ -110,6 +111,9 @@ UI (ControllerCard "AutoTune starten")
 
 ## Bewusst nicht enthalten (YAGNI)
 
-- Kein AutoTune für `SplitRangePID`/`DualStage`.
-- Kein Fortschrittsbalken/keine Restzeit (Backend liefert das nicht).
+- Kein AutoTune für `SplitRangePID` in v1 (hätte einen PID, aber kein AutoTune-Backend —
+  eigener, größerer Aufwand). `DualStage` ist bang-bang, AutoTune dort gegenstandslos.
+- **Kein Fortschrittsbalken / keine Restzeit in v1** — als späteres Feature vorgemerkt
+  (s. PLAN.md). Backend liefert aktuell keinen Fortschrittswert; bräuchte zusätzliche
+  Instrumentierung.
 - Kein Persistieren des AutoTune-Zustands über Reboot (Vorgang ist transient).
