@@ -7,7 +7,7 @@ import {
 } from '../api';
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
@@ -57,6 +57,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [hx711Sck,  setHx711Sck]  = useState('');
   const [hx711Scale, setHx711Scale] = useState('');
 
+  // DigitalInput
+  const [diPin, setDiPin] = useState('');
+  const [diInvert, setDiInvert] = useState(false);
+  const [diPullup, setDiPullup] = useState(false);
+  const [diDebounce, setDiDebounce] = useState('0');
+
   // MAX31865
   const [csPin, setCsPin] = useState('');
   const [wiresCount, setWiresCount] = useState<Wires>(2);
@@ -80,6 +86,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [analogMin, setAnalogMin] = useState('0');
   const [analogMax, setAnalogMax] = useState('1');
   const [analogUnit, setAnalogUnit] = useState('');
+  const [invertOut, setInvertOut] = useState(false);
 
   // controller
   const [ctrlType, setCtrlType] = useState<ControllerType>('PID');
@@ -149,6 +156,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setScaleFactor(hasDeriv ? String(editConfig.factor) : '');
           setScaleOffset(hasDeriv ? String(editConfig.offset ?? '0') : '');
           setScaleUnit(hasDeriv ? String(editConfig.unit ?? '') : '');
+        } else if (t === 'DigitalInput') {
+          setDiPin(String(editConfig.pin ?? ''));
+          setDiInvert(Boolean(editConfig.invert ?? false));
+          setDiPullup(Boolean(editConfig.pullup ?? false));
+          setDiDebounce(String(editConfig.debounce_ms ?? '0'));
         }
       } else if (editRole === 'actuator') {
         const t = String(editConfig.type ?? 'DigitalOutput') as ActuatorType;
@@ -156,6 +168,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
         if (t === 'DigitalOutput') {
           setPin(String(editConfig.pin ?? ''));
           setMode((editConfig.mode ?? 'Binary') as 'Binary' | 'TimeProportional');
+          setInvertOut(Boolean(editConfig.invert ?? false));
         } else if (t === 'AnalogOutput') {
           setAnalogPin(String(editConfig.pin ?? ''));
           setAnalogMode((editConfig.mode ?? 'pwm') as 'pwm' | 'dac');
@@ -214,8 +227,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setTrigPin(''); setEchoPin('');
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
       setHx711Dout(''); setHx711Sck(''); setHx711Scale('');
+      setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
       setActuatorType('DigitalOutput');
       setMode('TimeProportional');
+      setInvertOut(false);
       setPinWhite('14'); setPinYellow('12'); setPinInterrupt('13');
       setAnalogPin(''); setAnalogMode('pwm'); setAnalogShowRange(false);
       setAnalogMin('0'); setAnalogMax('1'); setAnalogUnit('');
@@ -283,6 +298,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             if (isNaN(sc) || sc <= 0) throw new Error('Scale ungültig (muss > 0)');
             cfg.scale = sc;
           }
+        } else if (sensorType === 'DigitalInput') {
+          const p = parseInt(diPin, 10);
+          if (isNaN(p) || p < 0) throw new Error('Pin ungültig');
+          cfg = {
+            type: 'DigitalInput', id: trimId, pin: p,
+            invert: diInvert, pullup: diPullup,
+            debounce_ms: parseInt(diDebounce, 10) || 0,
+          };
         } else { // HCSR04
           const trig = parseInt(trigPin, 10);
           const echo = parseInt(echoPin, 10);
@@ -321,7 +344,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
         } else {
           const p = parseInt(pin, 10);
           if (isNaN(p)) throw new Error('invalid pin');
-          cfg = { type: 'DigitalOutput', id: trimId, pin: p, mode };
+          cfg = { type: 'DigitalOutput', id: trimId, pin: p, mode, invert: invertOut };
         }
         if (isEdit) await deleteActuator(String(editConfig!.id));
         await createActuator(cfg);
@@ -443,6 +466,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 </optgroup>
                 <optgroup label="Gewicht">
                   <option value="HX711">HX711 (Wägezelle)</option>
+                </optgroup>
+                <optgroup label="Digital / Schalter">
+                  <option value="DigitalInput">Digitaler Eingang (GPIO)</option>
                 </optgroup>
               </select>
             </div>
@@ -633,6 +659,36 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             </div>
           )}
 
+          {/* DigitalInput fields */}
+          {role === 'sensor' && sensorType === 'DigitalInput' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>GPIO Pin</label>
+                <input type="number" value={diPin}
+                  onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. 15" class={inp} required />
+              </div>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                  <input type="checkbox" checked={diInvert}
+                    onChange={(e) => setDiInvert((e.target as HTMLInputElement).checked)} />
+                  Invertieren
+                </label>
+                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                  <input type="checkbox" checked={diPullup}
+                    onChange={(e) => setDiPullup((e.target as HTMLInputElement).checked)} />
+                  Pullup aktivieren
+                </label>
+              </div>
+              <div>
+                <label class={lbl}>Entprellung (ms)</label>
+                <input type="number" value={diDebounce} min="0"
+                  onInput={(e) => setDiDebounce((e.target as HTMLInputElement).value)}
+                  placeholder="0 = aus" class={inp} />
+              </div>
+            </div>
+          )}
+
           {/* HCSR04 fields */}
           {role === 'sensor' && sensorType === 'HCSR04' && (
             <div class="space-y-3">
@@ -717,6 +773,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   <option value="TimeProportional">Time-Proportional (TPO/SSR)</option>
                 </select>
               </div>
+              <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <input type="checkbox" checked={invertOut}
+                  onChange={(e) => setInvertOut((e.target as HTMLInputElement).checked)} />
+                Invertieren (active-low)
+              </label>
             </>
           )}
 
