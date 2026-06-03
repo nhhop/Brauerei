@@ -97,6 +97,14 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     HX711LoadCellSensor* rawPtr = sensor.get();
     e->ptr = std::move(sensor);
     e->resetFn = [rawPtr]() { rawPtr->tare(); };
+  } else if (strcmp(type, "DigitalInput") == 0) {
+    int pin = cfg["pin"] | -1;
+    if (pin < 0) return {false, "missing pin"};
+    bool pullup       = cfg["pullup"]      | false;
+    bool invert       = cfg["invert"]      | false;
+    uint32_t debounce = cfg["debounce_ms"] | 0u;
+    e->ptr = std::make_unique<DigitalInputSensor>(
+        e->id.c_str(), pin, pullup, invert, debounce);
   } else {
     return {false, "unknown sensor type"};
   }
@@ -145,7 +153,8 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
     auto mode = strcmp(modeStr, "TimeProportional") == 0
                     ? DigitalOutputActuator::Mode::TimeProportional
                     : DigitalOutputActuator::Mode::Binary;
-    auto* a = new DigitalOutputActuator(e->id.c_str(), pin, mode);
+    bool invert = cfg["invert"] | false;
+    auto* a = new DigitalOutputActuator(e->id.c_str(), pin, mode, /*activeHigh=*/!invert);
     if (mode == DigitalOutputActuator::Mode::TimeProportional)
       a->setPeriodMs(cfg["period_ms"] | 2000u);
     e->ptr.reset(a);
