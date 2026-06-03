@@ -275,3 +275,19 @@ Wenn das Projekt aus der Hobby-Ecke heraus soll, gehören diese drei zusammen
 - **Firmware-Code-Signing** — signierte Images + Verifikation vor dem Flash. Ohne
   das bleibt selbst mit Cert-Pinning + Auth die offene Flanke, dass ein
   manipuliertes Image geflasht wird.
+- **OTA-Rollback-Automatik (Bootloop-Schutz ohne USB)** — beseitigt die letzte
+  Stelle, an der v1 noch ein USB-Kabel braucht. Bausteine:
+  - **Bootloader-/sdkconfig-Rollback aktivieren**
+    (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`, ggf.
+    `..._APP_ANTI_ROLLBACK`) — auf Arduino-ESP32 fummelig, da der vorkompilierte
+    Bootloader betroffen ist; ggf. Wechsel auf ein eigenes sdkconfig / Build mit
+    angepasstem Bootloader nötig. Vorab verifizieren, dass die Toolchain das im
+    PlatformIO-Arduino-Flow zulässt.
+  - **Pending-Verify nach Flash:** neues Image bootet im Zustand
+    `ESP_OTA_IMG_PENDING_VERIFY`.
+  - **Health-Check im Boot:** erst wenn WiFi-Connect **und** WebUI-Start erfolgreich
+    sind, ruft die Firmware `esp_ota_mark_app_valid_cancel_rollback()`. Bleibt das
+    aus (Crash/Bootloop vor diesem Punkt), rollt der Bootloader beim nächsten Reset
+    automatisch aufs vorherige Image zurück.
+  - **Eigene Build-Phase** mit HW-Test: absichtlich kaputtes Image flashen →
+    Auto-Rollback aufs alte Image verifizieren.
