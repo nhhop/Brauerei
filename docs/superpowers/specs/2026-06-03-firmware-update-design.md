@@ -35,6 +35,11 @@ Drei Wege, Firmware bzw. UI auf das Gerät zu bringen:
 
 - **Quelle = GitHub Releases.** `stable` = latest Release, `preview` = neuestes
   Pre-Release. Version = `tag_name`.
+- **Repo `nhhop/Brauerei`, vor dem ersten Release public schalten.** Bei einem
+  privaten Repo liefert die GitHub-API ohne Token `404`; public + `setInsecure`
+  ohne Token ist der designte Pfad und vermeidet ein Geheimnis im Flash. (Privat
+  + eingebetteter read-only PAT wäre die Alternative — bewusst verworfen, siehe
+  Out of Scope.)
 - **Zwei Asset-Typen pro Release:** `firmware-<variant>.bin` (eine pro Build-Env)
   + **eine** `webui.tar` (board-/varianten-unabhängig). Ein Pull aktualisiert
   Firmware **und** UI konsistent.
@@ -43,15 +48,21 @@ Drei Wege, Firmware bzw. UI auf das Gerät zu bringen:
   ESP32, keine Dekomprimierungs-Lib. Derselbe Entpacker dient Upload **und** Pull.
 - **HTTPS via `setInsecure`** (TLS-Verschlüsselung, keine Zert-Prüfung) — passt
   zum Hobby-LAN-Niveau, kein CA-Pflegeaufwand. Härtung siehe Future Work.
-- **Auto-Check + manueller Flash:** Gerät prüft im Hintergrund, flasht nie ohne
-  Klick.
+- **Auto-Check + manueller Flash:** Gerät prüft im Hintergrund (**fixes Intervall
+  = täglich**, nicht konfigurierbar; der `autoCheck`-Toggle schaltet nur an/aus),
+  flasht nie ohne Klick.
 - **Kein Code-Signing, kein API-Auth** in v1 — konsistent mit der bestehenden API.
 - **Asset-Ordner-Update atomar:** TAR nach `/assets.new` entpacken → bei Erfolg
   altes `/assets` löschen + Rename. Keine Karteileichen, kein Halb-Zustand.
 
-**Sicherheits-/Robustheits-Netz:** Browser-Upload (.bin) über lokales WiFi ist
-der Rückfallweg, falls der GitHub-Pull je ausfällt; USB-Flash als letzte Instanz.
-Kein Pfad kann das Gerät dauerhaft aussperren.
+**Sicherheits-/Robustheits-Netz (ehrlich abgegrenzt):**
+- **Browser-Upload (.bin)** rettet den Fall „GitHub-Pull-Pfad kaputt, Gerät läuft
+  aber noch" — er setzt voraus, dass WiFi + WebUI hochkommen.
+- **Bootloop** (kaputtes Image bootet gar nicht → WebUI kommt nicht hoch): Browser-
+  Upload ist dann **nicht** verfügbar. Brick-Rettung in diesem Fall ist
+  **USB-Flash** (`pio run -t upload`). Kein automatischer Rollback in v1 (siehe
+  Out of Scope) — die USB-Rettung ist bewusst die letzte Instanz, da das Kabel
+  greifbar ist.
 
 ## Versionierungs- & Varianten-Modell
 
@@ -176,8 +187,9 @@ Flash/Reboot bricht die Verbindung ohnehin ab — Polling ist robuster.
 
 ## GitHub-Release-Format & CI
 
-- Repo: kompile-fester Default `-DBREWCTL_GITHUB_REPO="owner/repo"` (v1 Konstante;
-  Override via Settings = Future Work).
+- Repo: kompile-fester Default `-DBREWCTL_GITHUB_REPO="nhhop/Brauerei"` (v1
+  Konstante; Override via Settings = Future Work). **Voraussetzung: Repo muss
+  public sein** (sonst Token nötig).
 - Tag = Version (`v1.4.0`). Stable = normales Release; Preview = Pre-Release-Flag.
 - Assets: `firmware-<variant>.bin` (eine pro Env) + **eine** `webui.tar`.
 - Gerät: `stable` → `GET /releases/latest`; `preview` → `GET /releases`, erstes
@@ -230,8 +242,8 @@ Jede Firmware-Phase endet mit `pio run -e esp32dev` compile-smoke.
    *Verify:* gegen Gerät via Dev-Proxy alle Flows klickbar.
 9. **CI + README** — `.github/workflows/release.yml` (Matrix-Build →
    `firmware-<env>.bin` + `webui.tar`), README: Release-Prozess +
-   Partition-Migrations-Caveat. *Verify:* Test-Tag gepusht → Release mit allen
-   Assets.
+   Partition-Migrations-Caveat + **USB-Brick-Rettung** (Bootloop →
+   `pio run -t upload`). *Verify:* Test-Tag gepusht → Release mit allen Assets.
 
 **Querschnitt:** Compile-smoke pro Env nach Firmware-Änderungen; Host-Test für
 `TarExtractor`; E2E auf realer HW (esp32dev + LilyGo S3) für die Flash-Pfade; ein
@@ -241,9 +253,13 @@ echtes GitHub-Test-Release für Check+Pull.
 
 - Varianten-Prüfung der per Browser hochgeladenen `.bin`.
 - `BREWCTL_GITHUB_REPO` als Laufzeit-Setting (v1: Kompile-Konstante).
+- **Privates Repo + eingebetteter Token** — bewusst verworfen zugunsten „Repo
+  public"; kein Geheimnis im Flash, kein Token-Ablauf.
 - espota / ArduinoOTA-Netzwerk-Push (bewusst weggelassen).
-- Rollback-Automatik bei fehlerhaftem Boot (`esp_ota_mark_app_valid` / Rollback) —
-  kann später ergänzt werden; v1 verlässt sich auf die Browser-Upload-Rettung.
+- **OTA-Rollback-Automatik** bei fehlerhaftem Boot (Bootloader-Rollback +
+  `esp_ota_mark_app_valid` nach Health-Check) — kann später ergänzt werden; v1
+  verlässt sich im Bootloop-Fall auf die USB-Rettung, im Pull-Pfad-Fall auf den
+  Browser-Upload.
 
 ## Future Work — Härtung über Hobby hinaus
 
