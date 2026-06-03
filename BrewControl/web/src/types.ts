@@ -135,6 +135,27 @@ export interface ThemeSettings {
   background: 'neutral' | 'warm' | 'cool';
 }
 
+export interface FirmwareSettings {
+  channel: 'stable' | 'preview';
+  autoCheck: boolean;
+}
+
 export interface AppSettings {
   theme: ThemeSettings;
+  firmware?: FirmwareSettings;
+}
+
+export type UpdateState =
+  | 'idle' | 'checking' | 'updateAvailable' | 'noUpdate'
+  | 'downloading' | 'flashing' | 'success' | 'error';
+
+export interface UpdateStatus {
+  state: UpdateState;
+  currentVersion: string;
+  variant: string;
+  channel: 'stable' | 'preview';
+  autoCheck: boolean;
+  progress: number;
+  error: string;
+  available: { version: string; notes: string } | null;
 }
