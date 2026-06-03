@@ -16,6 +16,7 @@
 
 #include "DashboardStore.h"
 #include "DynamicItems.h"
+#include "FirmwareUpdater.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
 #include "WiFiSetupPortal.h"
@@ -38,7 +39,8 @@ Registry registry;
 BrewControl::DynamicItems dynamicItems;
 BrewControl::DashboardStore dashboardStore;
 BrewControl::SettingsStore settingsStore;
-WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore);
+BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
+WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater);
 
 static bool resetHeldAtBoot() {
   pinMode(kBootButtonPin, INPUT_PULLUP);
@@ -134,11 +136,13 @@ void setup() {
   dynamicItems.markInitialized();  // future add*() calls will call begin()
 
   webUI.begin();
+  firmwareUpdater.begin();
   Serial.println(F("BrewControl ready"));
 }
 
 void loop() {
   registry.tick();
   webUI.tick();
+  firmwareUpdater.tick();
   delay(5);
 }
