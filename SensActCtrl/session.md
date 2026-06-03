@@ -224,6 +224,47 @@ Erstellt temporäre `OneWire`+`DallasTemperature`-Instanz, enumeriert via
 (`#if defined(ARDUINO)`); native-Build-Stub gibt 0. Kein neuer nativer Test
 (hardware-only). Native Tests weiterhin 31/31.
 
+## Sammel-Nachtrag 2026-05-21 – 2026-06-03
+
+Die detaillierte, chronologische Cross-Projekt-History ab hier liegt im
+**Root-`SESSION.md`** (Library-Änderungen wurden überwiegend zusammen mit
+BrewControl-Änderungen gemacht). Hier nur die Library-relevanten Eckpunkte:
+
+- **Multi-Channel-Sensor-Interface (Breaking Change):** `Sensor`-API von
+  `meta()` + `lastReading()` auf `channelCount()` + `channel(size_t)` mit neuem
+  `Channel`-Struct (`key`, `SensorMeta`, `Reading`) umgestellt. `RegistrySnapshot`
+  expandiert Multi-Channel-Sensoren zu Composite-IDs (`"flow.rate"`/`"flow.volume"`).
+  Alle Beispiel-Sketches mitmigriert.
+- **Neue Sensoren:** `MAX31865Sensor` (PT100/PT1000, SPI), `YF_S201Sensor`
+  (Durchfluss + Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle:
+  distance + derived), `HX711LoadCellSensor` (Wägezelle, eigener Bit-Bang-Treiber).
+- **Neue Aktoren:** `AnalogOutputActuator` (PWM/DAC, `SENSACTCTRL_HAS_DAC`-Guard
+  für S2/S3), `IdsActuator` (IDS1/IDS2 Induktionskocher, wrappt externe
+  `IdsInductionCooker`-Lib, Arduino-only).
+- **`fault()`-Interface:** nicht-brechende Default-Methode auf `Sensor` + `Actuator`;
+  `RegistrySnapshot` emittiert `"fault"` nur wenn gesetzt.
+- **Controller-Basisklasse:** `setEnabled(bool)` / `enabled()`; alle Controller
+  respektieren den Guard in `tick()`, `enabled` in JSON.
+- **Neue Controller (Gärsteuerung, dual-output 1 Sensor → 2 Aktoren):**
+  `DualStageController` (Bang-Bang Heizen+Kühlen, Anti-Short-Cycle auf der
+  Kühlstufe, optionale Umschalt-Totzeit) und `SplitRangePIDController` (bipolarer
+  PID −1..+1, positiv heizt/negativ kühlt). Beide: Fail-safe→beide-aus,
+  strukturelle Mutual-Exclusion + Interlock.
+- **PID-Engine extrahiert:** der AutoTunePID-Wrapper + native Fallback-PID liegt
+  jetzt in `src/controllers/detail/PidEngine.{h,cpp}` (von `PIDController` **und**
+  `SplitRangePIDController` geteilt); `TuningMethod` in eigenem Header
+  `controllers/TuningMethod.h`. Include-Hygiene: AutoTunePID erreicht die Umbrella
+  nicht (Regler-Header halten nur `detail::PidEngine*` forward-declariert).
+- **AutoTune über Web:** `PIDController` **und** `SplitRangePIDController` lösen
+  AutoTune über `setParamsJson` aus (Kommando-Feld `"autotune":"start"|"stop"`,
+  `stopAutotune()`, Auto-Enable). Real-Tuning hardware-only (nativ No-Op).
+- **`RemotePublisher` Multi-Channel + konfigurierbares Topic-Prefix** (per-Channel-
+  Topics; Flat-Topic-Backward-Compat für Single-Channel-Sensoren).
+
+**Native Tests:** 31 → **109/109** (u.a. test_max31865, test_yf_s201, test_hcsr04,
+test_hx711, test_analog_output, test_dualstage, test_splitrange + erweiterte
+test_pid/test_snapshot/test_remote).
+
 ## Offene Punkte
 
 - **Hardware-Smoke-Tests** aus PLAN.md (PLAN §Verifikation) — verschoben bis
@@ -239,7 +280,7 @@ Erstellt temporäre `OneWire`+`DallasTemperature`-Instanz, enumeriert via
 - **CI-Wrapper-Skript** (`scripts/build-all.ps1` o.ä.) — derzeit manuell
   sequenziell aus PowerShell. Optional formalisieren, falls CI dazukommt.
 
-## Dateibaum (Phase 1 + 2 + 3 komplett)
+## Dateibaum (Stand 2026-06-03)
 
 ```
 SensActCtrl/
@@ -251,14 +292,15 @@ SensActCtrl/
 ├── session.md
 ├── src/
 │   ├── SensActCtrl.h
-│   ├── core/         (Reading, ValueKind, Quantity, *Meta, Sensor/Actuator/Controller, Registry, RegistrySnapshot)
-│   ├── controllers/  (TwoPointController, PIDController)
-│   ├── actuators/    (DigitalOutputActuator, PulseOutputActuator)
-│   ├── sensors/      (DigitalInput, AnalogInput, PulseCounter, DS18B20, BME280)
+│   ├── core/         (Reading, Channel, ValueKind, Quantity, *Meta, Sensor/Actuator/Controller, Registry, RegistrySnapshot)
+│   ├── controllers/  (TwoPointController, PIDController, DualStageController, SplitRangePIDController, TuningMethod.h, detail/PidEngine)
+│   ├── actuators/    (DigitalOutputActuator, PulseOutputActuator, AnalogOutputActuator, IdsActuator)
+│   ├── sensors/      (DigitalInput, AnalogInput, PulseCounter, DS18B20, BME280, MAX31865, YF_S201, HCSR04, HX711LoadCell)
 │   ├── transport/    (ITransport, MqttTransport, EspNowTransport, WebhookTransport)
 │   └── remote/       (Topics, MetaJson, RemoteSensor, RemoteActuator, RemotePublisher)
 ├── examples/         (01..07 + 08_remote_mqtt/{p,c} + 09_remote_espnow/{p,c} + 10_remote_webhook/{p,c})
 └── test/
     ├── mocks/        (MockSensor, MockActuator, MockTransport)
-    └── test_*        (registry, twopoint, pid, pulse_output, analog_calibration, remote, snapshot)
+    └── test_*        (registry, twopoint, pid, pulse_output, analog_calibration, remote, snapshot,
+                       max31865, yf_s201, hcsr04, hx711, analog_output, dualstage, splitrange)
 ```

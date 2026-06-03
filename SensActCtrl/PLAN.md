@@ -1,5 +1,15 @@
 # Plan: SensActCtrl — Sensor/Aktor-Library für ESP32
 
+> **Status (Stand 2026-06-03):** Dieses Dokument ist der ursprüngliche Greenfield-
+> Design-Plan (Phasen 1–3, alle abgeschlossen). Die Library ist seither erheblich
+> gewachsen — die **laufende** Architektur/Status-Übersicht und Roadmap liegt im
+> **Root-`PLAN.md`**, die Detail-History im **Root-`SESSION.md`** + `session.md`.
+> Seither hinzugekommen (Abschnitte unten ggf. nicht erschöpfend):
+> Multi-Channel-`Channel`-Interface; Sensoren MAX31865/YF-S201/HCSR04/HX711;
+> Aktoren AnalogOutput/IdsActuator; Controller DualStage/SplitRangePID; geteilte
+> `detail::PidEngine` + AutoTune für beide PID-Regler; `fault()`-Interface;
+> Controller enable/disable. Native Tests: **109/109**.
+
 ## Context
 
 Greenfield-Projekt: Eine wiederverwendbare ESP32-Library, die Sensoren, Aktoren
@@ -287,6 +297,7 @@ SensActCtrl/
 │   ├── SensActCtrl.h          # Umbrella-Header
 │   ├── core/
 │   │   ├── Reading.h
+│   │   ├── Channel.h              # nachträglich (Multi-Channel-Sensor-Struct)
 │   │   ├── ValueKind.h          # enum class ValueKind
 │   │   ├── Quantity.h           # enum class Quantity + toString()
 │   │   ├── SensorMeta.h
@@ -294,19 +305,30 @@ SensActCtrl/
 │   │   ├── Sensor.h
 │   │   ├── Actuator.h
 │   │   ├── Controller.h
-│   │   └── Registry.{h,cpp}
+│   │   ├── Registry.{h,cpp}
+│   │   └── RegistrySnapshot.{h,cpp}  # nachträglich (serializeRegistry)
 │   ├── sensors/
 │   │   ├── DS18B20Sensor.{h,cpp}
 │   │   ├── BME280Sensor.{h,cpp}
 │   │   ├── DigitalInputSensor.{h,cpp}
 │   │   ├── AnalogInputSensor.{h,cpp}
-│   │   └── PulseCounterSensor.{h,cpp}
+│   │   ├── PulseCounterSensor.{h,cpp}
+│   │   ├── MAX31865Sensor.{h,cpp}         # nachträglich
+│   │   ├── YF_S201Sensor.{h,cpp}          # nachträglich (2 Kanäle)
+│   │   ├── HCSR04Sensor.{h,cpp}           # nachträglich (2 Kanäle)
+│   │   └── HX711LoadCellSensor.{h,cpp}    # nachträglich
 │   ├── actuators/
 │   │   ├── DigitalOutputActuator.{h,cpp}
-│   │   └── PulseOutputActuator.{h,cpp}
+│   │   ├── PulseOutputActuator.{h,cpp}
+│   │   ├── AnalogOutputActuator.{h,cpp}   # nachträglich (PWM/DAC)
+│   │   └── IdsActuator.{h,cpp}            # nachträglich (IDS1/IDS2, Arduino-only)
 │   ├── controllers/
+│   │   ├── TuningMethod.h                 # nachträglich (Enum, von beiden PID-Reglern geteilt)
 │   │   ├── TwoPointController.{h,cpp}
-│   │   └── PIDController.{h,cpp}
+│   │   ├── PIDController.{h,cpp}
+│   │   ├── DualStageController.{h,cpp}    # nachträglich (Heizen/Kühlen Bang-Bang)
+│   │   ├── SplitRangePIDController.{h,cpp} # nachträglich (Heizen/Kühlen PID)
+│   │   └── detail/PidEngine.{h,cpp}       # nachträglich (geteilte AutoTunePID-Engine)
 │   ├── transport/              # Phase 2
 │   │   ├── ITransport.h
 │   │   └── MqttTransport.{h,cpp}
@@ -324,9 +346,13 @@ SensActCtrl/
 │   ├── 07_analog_ph/                # AnalogInput mit Kalibrierung auf pH 0..14
 │   └── 08_remote_mqtt/              # zwei Knoten inkl. Meta-Austausch (Phase 2)
 └── test/                            # native (ohne HW), unity-basiert
+    ├── mocks/                       # MockSensor, MockActuator, MockTransport
     ├── test_registry/
     ├── test_twopoint/
-    └── test_pid/
+    ├── test_pid/
+    ├── test_pulse_output/  test_analog_calibration/  test_remote/  test_snapshot/
+    └── test_max31865/  test_yf_s201/  test_hcsr04/  test_hx711/
+        test_analog_output/  test_dualstage/  test_splitrange/   # nachträglich
 ```
 
 ## Build-Reihenfolge
