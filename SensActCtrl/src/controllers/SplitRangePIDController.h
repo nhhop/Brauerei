@@ -66,6 +66,8 @@ class SplitRangePIDController : public Controller {
   bool isAutotuneRunning() const;
   bool isAutotuneDone() const;
   TuningMethod tuningMethod() const { return tuningMethod_; }
+  float ku() const { return ku_; }
+  float tu() const { return tu_; }
 
   // Last commanded outputs (0..1), for inspection / JSON.
   float heatOut() const { return heatOut_; }
