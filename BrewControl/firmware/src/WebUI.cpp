@@ -333,6 +333,14 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject fw = obj["firmware"].as<JsonObject>();
+        if (!fw.isNull()) {
+          if (const char* c = fw["channel"]) {
+            if (strcmp(c,"stable")!=0 && strcmp(c,"preview")!=0) {
+              req->send(400, "text/plain", "invalid channel"); return;
+            }
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
         req->send(204);
