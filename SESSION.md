@@ -878,3 +878,45 @@ Plan: `docs/superpowers/plans/2026-06-02-splitrange-autotune.md`.
 | `pnpm typecheck` (BrewControl/web) | 0 Fehler |
 
 **Offen:** E2E am echten SplitRangePID (idle→running→done, übernommene Gains, Abbruch) — in PLAN.md unter Hardware-Verifikation.
+
+---
+
+## 2026-06-03 — PIN-Invertierung
+
+**Scope:** Feature-Track Welle 1. Kein Library-Code — beide Primitive (`DigitalInputSensor`,
+`DigitalOutputActuator`) waren bereits fertig.
+
+### DigitalInput-Sensor (neu in Factory + UI)
+
+- `DynamicItems.cpp`: neuer Branch `"DigitalInput"` in `addSensorNoBegin()` — liest `pin` (Pflicht),
+  `pullup`/`invert` (bool, Default false), `debounce_ms` (uint32, Default 0).
+  `DigitalInputSensor.h` bereits in Umbrella-Include — kein neues `#include` nötig.
+- `AddItemModal.tsx`: `SensorType += 'DigitalInput'`; neue `<optgroup label="Digital / Schalter">`;
+  Formular (Pin / Invertieren-Checkbox / Pullup-Checkbox / Entprellung); Edit-Preload +
+  Reset-Defaults + Submit.
+
+### DigitalOutput-Invert (Durchreichen)
+
+- `DynamicItems.cpp`: `bool invert = cfg["invert"] | false;` + `activeHigh = !invert` im
+  DigitalOutput-Branch. Rückwärtskompatibel — fehlendes Feld → false → `activeHigh=true`.
+- `AddItemModal.tsx`: neuer `invertOut`-State; Checkbox „Invertieren (active-low)" im
+  DigitalOutput-Formular; Edit-Preload + Reset + Submit ergänzt.
+
+### Wire-Format
+
+```json
+POST /api/sensors
+{ "type":"DigitalInput", "id":"float_sw", "pin":15, "invert":true, "pullup":true, "debounce_ms":50 }
+
+POST /api/actuators
+{ "type":"DigitalOutput", "id":"ssr", "pin":2, "mode":"Binary", "invert":true }
+```
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio run -e esp32dev` | SUCCESS |
+| `pio run -e lolin_s2_mini` | SUCCESS |
+| `pio run -e lilygo_t_display_s3_amoled` | SUCCESS |
+| `pnpm typecheck` | 0 Fehler |
