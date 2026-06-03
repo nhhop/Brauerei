@@ -5,19 +5,11 @@
 #include "core/Controller.h"
 #include "core/Sensor.h"
 #include "core/Actuator.h"
+#include "controllers/TuningMethod.h"
 
 namespace SensActCtrl {
 
-// Tuning methods exposed by the wrapper. Names mirror AutoTunePID's enum
-// 1:1 — the wrapper translates these to the backend's enum internally so
-// the public API never leaks the AutoTunePID header.
-enum class TuningMethod : uint8_t {
-  ZieglerNichols,
-  CohenCoon,
-  IMC,
-  TyreusLuyben,
-  LambdaTuning,
-};
+namespace detail { class PidEngine; }
 
 // PID controller. Wraps AutoTunePID (lily-osp/AutoTunePID) on Arduino/ESP32
 // targets; on the native test environment falls back to a small handwritten
@@ -73,8 +65,6 @@ class PIDController : public Controller {
   bool setParamsJson(const char* json) override;
 
  private:
-  class Impl;
-
   // Pull Kp/Ki/Kd/Ku/Tu out of the backend (e.g. after autotune) into our
   // mirrored state so paramsJson reports current values.
   void syncFromBackend();
@@ -82,7 +72,7 @@ class PIDController : public Controller {
   const char* id_;
   Sensor* sensor_;
   Actuator* actuator_;
-  Impl* impl_;
+  detail::PidEngine* engine_;
 
   float setpoint_ = 0.0f;
   float minOutput_;

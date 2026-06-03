@@ -22,7 +22,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   const [atMethod, setAtMethod] = useState('ZieglerNichols');
   const [atBusy, setAtBusy] = useState(false);
 
-  const isPid = params?.Kp != null && params?.heatActuator == null;
+  const isPid = params?.Kp != null;
   const autotuneState = params?.autotuneState as string | undefined;
 
   async function onStartAutotune() {

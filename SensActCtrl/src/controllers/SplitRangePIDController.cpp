@@ -1,5 +1,7 @@
 #include "SplitRangePIDController.h"
 
+#include "detail/PidEngine.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -18,36 +20,54 @@ namespace SensActCtrl {
 
 SplitRangePIDController::SplitRangePIDController(const char* id, Sensor& sensor,
                                                  Actuator* heat, Actuator* cool)
-    : id_(id), sensor_(&sensor), heat_(heat), cool_(cool) {}
+    : id_(id), sensor_(&sensor), heat_(heat), cool_(cool),
+      engine_(new detail::PidEngine(-1.0f, 1.0f)) {}
+
+SplitRangePIDController::~SplitRangePIDController() { delete engine_; }
+
+void SplitRangePIDController::begin() {
+  engine_->setSetpoint(setpoint_);
+  engine_->setManualGains(kp_, ki_, kd_);
+}
+
+void SplitRangePIDController::setSetpoint(float sp) {
+  setpoint_ = sp;
+  engine_->setSetpoint(sp);
+}
 
 void SplitRangePIDController::setTunings(float kp, float ki, float kd) {
   kp_ = kp; ki_ = ki; kd_ = kd;
+  engine_->setManualGains(kp, ki, kd);
 }
 
 void SplitRangePIDController::setDeadband(float d) {
   deadband_ = d < 0.0f ? 0.0f : d;
 }
 
-// Positional PID with clamping anti-windup; output range fixed to [-1, +1].
-float SplitRangePIDController::pidUpdate(float input, float dtSeconds) {
-  if (dtSeconds <= 0.0f) dtSeconds = 0.1f;
-  const float error = setpoint_ - input;
-  const float deriv = (error - lastError_) / dtSeconds;
-  const float trial = integral_ + error * dtSeconds;
-  const float trialOut = kp_ * error + ki_ * trial + kd_ * deriv;
-  // Hold the integrator if it would push further past saturation.
-  if (trialOut > 1.0f && error > 0.0f) {
-    // saturating high while error pushes up — hold
-  } else if (trialOut < -1.0f && error < 0.0f) {
-    // saturating low while error pushes down — hold
-  } else {
-    integral_ = trial;
-  }
-  float out = kp_ * error + ki_ * integral_ + kd_ * deriv;
-  if (out > 1.0f) out = 1.0f;
-  if (out < -1.0f) out = -1.0f;
-  lastError_ = error;
-  return out;
+void SplitRangePIDController::autotune(TuningMethod method) {
+  tuningMethod_ = method;
+  autotuneStarted_ = true;
+  autotuneCompleted_ = false;
+  engine_->startAutotune(method);
+}
+
+void SplitRangePIDController::stopAutotune() {
+  if (!autotuneStarted_) return;  // idempotent
+  autotuneStarted_ = false;
+  autotuneCompleted_ = false;
+  engine_->setManualGains(kp_, ki_, kd_);  // Backend -> Normal-Modus mit letzten Gains
+}
+
+bool SplitRangePIDController::isAutotuneRunning() const {
+  return autotuneStarted_ && !autotuneCompleted_ && engine_->isTuneMode();
+}
+
+bool SplitRangePIDController::isAutotuneDone() const {
+  return autotuneStarted_ && autotuneCompleted_;
+}
+
+void SplitRangePIDController::syncFromBackend() {
+  engine_->readGains(&kp_, &ki_, &kd_, &ku_, &tu_);
 }
 
 void SplitRangePIDController::writeOff() {
@@ -68,21 +88,27 @@ void SplitRangePIDController::tick() {
 
   const uint32_t now = millis();
   const uint32_t elapsed = started_ ? (now - lastTickMs_) : 100;
-  if (started_ && elapsed < 100) return;  // throttle PID to >= 100 ms
+  if (started_ && elapsed < 100) return;  // throttle to >= 100 ms
   started_ = true;
   lastTickMs_ = now;
 
+  // Detect autotune completion: started + engine left Tune mode -> done.
+  if (autotuneStarted_ && !autotuneCompleted_ && !engine_->isTuneMode()) {
+    autotuneCompleted_ = true;
+    syncFromBackend();
+  }
+  const bool tuning = autotuneStarted_ && !autotuneCompleted_;
+
   const float dt = static_cast<float>(elapsed) / 1000.0f;
-  const float out = pidUpdate(r.value, dt);
+  const float out = engine_->update(r.value, dt);
 
   float heatCmd = (out >  deadband_) ? (out > 1.0f ? 1.0f : out) : 0.0f;
   float coolCmd = (out < -deadband_) ? (-out > 1.0f ? 1.0f : -out) : 0.0f;
   bool wantHeat = heatCmd > 0.0f;
   bool wantCool = coolCmd > 0.0f;
 
-  // Changeover dead-time: a stage may only engage once the opposite has been
-  // off long enough.
-  if (changeoverMs_) {
+  // Changeover dead-time - skipped while tuning so the relay swing isn't distorted.
+  if (changeoverMs_ && !tuning) {
     if (wantHeat && !heatOn_ &&
         (coolOn_ || (coolOffSeen_ && (now - coolOffSinceMs_) < changeoverMs_))) {
       heatCmd = 0.0f; wantHeat = false;
@@ -93,7 +119,7 @@ void SplitRangePIDController::tick() {
     }
   }
 
-  // Hard interlock — never both on; on contradiction fail safe to off.
+  // Hard interlock - never both on; on contradiction fail safe to off.
   if (wantHeat && wantCool) {
     heatCmd = 0.0f; coolCmd = 0.0f; wantHeat = false; wantCool = false;
   }
@@ -114,8 +140,31 @@ void SplitRangePIDController::tick() {
 }
 
 // ---------------------------------------------------------------------------
-// JSON — flat {"k":v,...}, hand-rolled to stay free of ArduinoJson.
+// JSON - flat {"k":v,...}, hand-rolled to stay free of ArduinoJson.
 // ---------------------------------------------------------------------------
+
+static const char* tuningMethodName(TuningMethod m) {
+  switch (m) {
+    case TuningMethod::ZieglerNichols: return "ZieglerNichols";
+    case TuningMethod::CohenCoon:      return "CohenCoon";
+    case TuningMethod::IMC:            return "IMC";
+    case TuningMethod::TyreusLuyben:   return "TyreusLuyben";
+    case TuningMethod::LambdaTuning:   return "LambdaTuning";
+  }
+  return "ZieglerNichols";
+}
+
+static bool parseTuningMethod(const char* s, size_t len, TuningMethod* out) {
+  auto match = [&](const char* lit) {
+    return strlen(lit) == len && strncmp(s, lit, len) == 0;
+  };
+  if (match("ZieglerNichols")) { *out = TuningMethod::ZieglerNichols; return true; }
+  if (match("CohenCoon"))      { *out = TuningMethod::CohenCoon;      return true; }
+  if (match("IMC"))            { *out = TuningMethod::IMC;            return true; }
+  if (match("TyreusLuyben"))   { *out = TuningMethod::TyreusLuyben;   return true; }
+  if (match("LambdaTuning"))   { *out = TuningMethod::LambdaTuning;   return true; }
+  return false;
+}
 
 static bool jsonFindValue(const char* json, const char* key, const char** out) {
   const size_t klen = strlen(key);
@@ -160,20 +209,38 @@ static bool extractBool(const char* json, const char* key, bool* out) {
   return false;
 }
 
+static bool extractString(const char* json, const char* key,
+                          const char** valOut, size_t* lenOut) {
+  const char* v = nullptr;
+  if (!jsonFindValue(json, key, &v)) return false;
+  if (*v != '"') return false;
+  const char* start = v + 1;
+  const char* end = strchr(start, '"');
+  if (!end) return false;
+  *valOut = start;
+  *lenOut = static_cast<size_t>(end - start);
+  return true;
+}
+
 size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
   if (!buf || bufSize == 0) return 0;
+  const char* state = autotuneCompleted_ ? "done"
+                       : autotuneStarted_ ? "running" : "idle";
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,\"Kd\":%.4f,"
-                         "\"deadband\":%.4f,\"changeoverMs\":%u,"
-                         "\"sensor\":\"%s\",\"heatActuator\":\"%s\","
-                         "\"coolActuator\":\"%s\",\"enabled\":%s,"
+                         "\"Ku\":%.4f,\"Tu\":%.4f,\"deadband\":%.4f,"
+                         "\"changeoverMs\":%u,\"sensor\":\"%s\","
+                         "\"heatActuator\":\"%s\",\"coolActuator\":\"%s\","
+                         "\"enabled\":%s,\"autotuneMethod\":\"%s\","
+                         "\"autotuneState\":\"%s\","
                          "\"heatOut\":%.4f,\"coolOut\":%.4f}",
-                         setpoint_, kp_, ki_, kd_, deadband_,
+                         setpoint_, kp_, ki_, kd_, ku_, tu_, deadband_,
                          static_cast<unsigned>(changeoverMs_),
                          sensor_->id(),
                          heat_ ? heat_->id() : "",
                          cool_ ? cool_->id() : "",
                          enabled() ? "true" : "false",
+                         tuningMethodName(tuningMethod_), state,
                          heatOut_, coolOut_);
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;
   return static_cast<size_t>(n);
@@ -182,7 +249,7 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
 bool SplitRangePIDController::setParamsJson(const char* json) {
   if (!json) return false;
   float f = 0.0f;
-  if (extractFloat(json, "setpoint", &f)) setpoint_ = f;
+  if (extractFloat(json, "setpoint", &f)) setSetpoint(f);
   bool gainsChanged = false;
   float kp = kp_, ki = ki_, kd = kd_;
   if (extractFloat(json, "Kp", &f)) { kp = f; gainsChanged = true; }
@@ -192,8 +259,26 @@ bool SplitRangePIDController::setParamsJson(const char* json) {
   if (extractFloat(json, "deadband", &f)) setDeadband(f);
   uint32_t u = 0;
   if (extractU32(json, "changeoverMs", &u)) changeoverMs_ = u;
+
+  const char* mStr = nullptr;
+  size_t mLen = 0;
+  if (extractString(json, "autotuneMethod", &mStr, &mLen)) {
+    TuningMethod tm;
+    if (parseTuningMethod(mStr, mLen, &tm)) tuningMethod_ = tm;
+  }
   bool b = true;
   if (extractBool(json, "enabled", &b)) setEnabled(b);
+
+  const char* aStr = nullptr;
+  size_t aLen = 0;
+  if (extractString(json, "autotune", &aStr, &aLen)) {
+    if (aLen == 5 && strncmp(aStr, "start", 5) == 0) {
+      setEnabled(true);
+      autotune(tuningMethod_);
+    } else if (aLen == 4 && strncmp(aStr, "stop", 4) == 0) {
+      stopAutotune();
+    }
+  }
   return true;
 }
 

@@ -841,3 +841,40 @@ Plan: `docs/superpowers/plans/2026-06-02-pid-autotune-web.md`.
 
 **Offen:** E2E am echten PID-Regler (Status idle→running→done, übernommene Gains, Abbruch) —
 in PLAN.md unter Hardware-Verifikation.
+
+---
+
+## 2026-06-02 — AutoTune für SplitRangePID (geteilte PidEngine)
+
+**Ausgangslage:** `PIDController` konnte AutoTune (AutoTunePID-Backend via privater `Impl`),
+`SplitRangePIDController` hatte einen selbst-geschriebenen PID ohne AutoTune.
+
+**Library:** `PIDController::Impl` → `SensActCtrl::detail::PidEngine` (`src/controllers/detail/`)
+extrahiert (AutoTunePID auf Arduino + Positional-PID-Fallback nativ); `TuningMethod` in eigenen
+Header `controllers/TuningMethod.h` ausgelagert. Beide Regler halten `detail::PidEngine* engine_`
+(forward-declariert → AutoTunePID leckt nicht in die Umbrella). `SplitRangePIDController` nutzt
+die Engine mit Range [−1,+1] und bekommt dieselbe AutoTune-Oberfläche (`autotune`/`stopAutotune`/
+Abschlusserkennung/`syncFromBackend`, `Ku`/`Tu`/`autotuneMethod`/`autotuneState` im JSON,
+`"autotune":"start/stop"`-Trigger). Während des Tunes wird die Umschalt-Totzeit übersprungen
+(Relay-Schwingung). 4 neue native Tests (105 → 109); bestehende test_pid (9) + test_splitrange (9)
+unverändert grün (verhaltensneutral).
+
+**Firmware:** keine Änderung — Trigger über die bestehende params-Route.
+
+**Frontend:** ControllerCard-Bedingung `params.Kp != null && params.heatActuator == null` →
+`params.Kp != null` (AutoTune-Block für PID *und* SplitRangePID).
+
+**Randbedingung:** Relay-Autotune liefert einen Kompromiss-Gain-Satz über die gemischte
+Heiz/Kühl-Strecke (kein getrenntes Tuning pro Richtung). `DualStage` (bang-bang) bleibt außen vor.
+
+Spec: `docs/superpowers/specs/2026-06-02-splitrange-autotune-design.md`,
+Plan: `docs/superpowers/plans/2026-06-02-splitrange-autotune.md`.
+
+### Verifikation
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 109/109 |
+| `pio run -e esp32dev` (Firmware) | SUCCESS |
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+
+**Offen:** E2E am echten SplitRangePID (idle→running→done, übernommene Gains, Abbruch) — in PLAN.md unter Hardware-Verifikation.
