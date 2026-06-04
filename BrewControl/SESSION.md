@@ -603,9 +603,20 @@ unverändert (17,4 %). ⚠ Layout-Wechsel braucht **einmaligen USB-Flash**.
 **Verifikation:** alle drei Boards `pio run` grün; `pio test -e native` 4/4;
 `pnpm typecheck` + `pnpm build` grün.
 
-**Offen (nicht autonom machbar):**
-- **Task 7 — HW-E2E** auf echtem Board (Upload-/Pull-Pfade, Negativ-Variante).
-- **Task 10 Step 2** — Test-Tag pushen + echtes Release; Repo `nhhop/Brauerei`
-  muss **public** sein, bevor der Server-Pull funktioniert.
-- Bestehende SD-Karten: Assets nach `/www` migrieren (oder einmal `webui.tar`
-  über die UI einspielen).
+**HW-E2E Phase A (Upload-Pfade) — erledigt auf LilyGo S3 (192.168.178.87):**
+- A1 USB-Flash (min_spiffs-Layout) + SD `/www` → bootet, UI serviert aus `/www`.
+- A2 `/api/update/status` → `variant:lilygo…`, korrekt. (Boot-Auto-Check meldet
+  `error/check failed` — erwartet, da noch kein Release/public-Repo; kein Crash.)
+- A3 `.bin`-OTA-Upload (1,14 MB) → `ok`, Flash, Reboot, Gerät wieder oben.
+- A4 `.tar`-Upload → **Bug gefunden:** `tar -cf x .` emittiert `./`-Namen,
+  `SdTarSink` baute `/www.new/./<name>` → SD-VFS lehnt ab → `extract failed`.
+  **Gefixt** (`fix(fw): strip leading ./ in SdTarSink`, Commit 4d05e10): beide
+  tar-Formen (`.` und `*`) extrahieren jetzt; UI nach Swap korrekt aus `/www`.
+  **Relevant für CI:** `release.yml` nutzt die `.`-Form → ohne den Fix wäre der
+  Server-Pull (Phase B) am Asset-Extract gescheitert.
+
+**Offen (Phase B + freigabe-gebunden):**
+- **Task 7 Phase B — Server-Pull-E2E**: braucht echtes Release + Negativ-Variante.
+- **Task 10 Step 2** — Test-Tag pushen + Release; Repo `nhhop/Brauerei` muss
+  **public** sein, bevor der Server-Pull funktioniert.
+- Bestehende SD-Karten: Assets nach `/www` migrieren (oder `webui.tar` einspielen).

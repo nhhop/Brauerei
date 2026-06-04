@@ -16,7 +16,11 @@ class SdTarSink {
 
   TarExtractor::OpenCb openCb() {
     return [this](const std::string& path, uint32_t) {
-      String full = base_ + "/" + String(path.c_str());
+      // `tar -cf x.tar .` emits "./"-prefixed names; the SD VFS rejects a
+      // "/./" path component, so normalize the leading "./" away.
+      const char* p = path.c_str();
+      if (p[0] == '.' && p[1] == '/') p += 2;
+      String full = base_ + "/" + String(p);
       ensureParentDirs(full);
       if (cur_) cur_.close();
       cur_ = fs_.open(full, FILE_WRITE);
