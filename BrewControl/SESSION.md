@@ -640,3 +640,45 @@ unverändert (17,4 %). ⚠ Layout-Wechsel braucht **einmaligen USB-Flash**.
 **SD-Karten-Migration:** erledigt — bestehende Karten auf `/www` umgestellt
 (bzw. via `webui.tar`-Einspielung). Damit ist das OTA-Feature vollständig
 abgeschlossen, keine offenen Punkte mehr.
+
+---
+
+## Session 2026-06-04 — Backup & Restore (Config-Export/Import)
+
+Voller Superpowers-Zyklus: brainstorming → spec → writing-plans →
+subagent-driven-development (frischer Implementer pro Task + Zwei-Stufen-Review)
+→ HW-E2E → PR. Spec: [`docs/superpowers/specs/2026-06-04-backup-restore-design.md`](../docs/superpowers/specs/2026-06-04-backup-restore-design.md),
+Plan: [`docs/superpowers/plans/2026-06-04-backup-restore.md`](../docs/superpowers/plans/2026-06-04-backup-restore.md).
+Branch `feat/backup-restore`, **PR #7 gemergt** (Merge-Commit d72e5e8).
+
+**Implementiert:**
+- `WebUI` — `GET /api/backup` bündelt die 3 `/config`-Stores
+  (`items_.serializeConfig()` Objekt, `store_.serialize()` Array,
+  `settings_.serialize()` Objekt) zu einer JSON-Datei
+  `{type,version,firmwareVersion,variant,registry,dashboards,settings}` mit
+  `Content-Disposition`-Download. `POST /api/backup` (`AsyncCallbackJsonWebHandler`)
+  validiert `type`/`version`/3 Sektions-Typen **vor** jedem Schreibzugriff,
+  schreibt die Sektionen verbatim via `writeSection_` in die `/config`-Dateien,
+  Reboot über `rebootAtMs_`. Restore = Replace-all + Reboot, reuse des
+  Boot-Lade-Pfads (`loadFromSD`) — keine Store-Änderungen, keine neue
+  Serialisierungslogik.
+- Web — `downloadBackup()` (Blob-Download mit Datums-Dateiname) + `restoreBackup()`
+  in `api.ts`; `BackupPage.tsx` (Export-Button, File-Import, `ConfirmModal`,
+  „Neustart…"-View); Route `/settings/backup`; Settings-Kachel.
+
+**Entscheidungen:** nur Config (kein WiFi); Ansatz A (verbatim schreiben + Reboot);
+Server-Endpoint. Geräte-Zeitstempel als Zukunfts-Hook in der Spec (wartet auf das
+„Zeit & Formate"-Feature).
+
+**Review-Findings (übernommen):** File-Input-Reset bei Cancel/Error (sonst feuert
+das erneute Wählen derselben Datei nicht), `kRebootDelayMs` statt Magic-500,
+`serializeJson`-Rückgabe prüfen, klarere 500-Meldung bei Teil-Schreibfehler.
+Eine stilistische Anmerkung (`confirmRestore` inline statt benannt) begründet
+abgelehnt. Finaler Opus-Gesamt-Review: „Ready to merge".
+
+**HW-E2E (LilyGo S3, neue Firmware per OTA aufgespielt):** Export → Theme-Akzent
+als Canary auf `#123456` geändert → erfasstes Backup zurückgespielt (`200 ok`,
+Reboot) → nach Reboot Akzent wieder `#d97706` (Restore verifiziert: settings.json
+überschrieben + Boot-Load); Negativtest `{"foo":1}` → `400`, Config intakt. Kein
+Bug gefunden. (Die BackupPage-UI selbst wurde nachträglich per `webui.tar` auf die
+SD gespielt.)

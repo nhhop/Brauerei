@@ -262,6 +262,20 @@ die Firmware normalisiert die in `SdTarSink` weg (die Glob-Variante
 `/settings/firmware` → „UI-Paket (.tar)", oder
 `curl -F "f=@webui.tar" http://<ip>/api/update/assets`.
 
+### firmware.bin manuell bauen
+Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:
+
+```powershell
+pio run -e esp32dev      # oder lolin_s2_mini / lilygo_t_display_s3_amoled
+# Ergebnis: .pio\build\<env>\firmware.bin
+```
+
+Release-Benennung (wie die CI): `Copy-Item .pio\build\<env>\firmware.bin firmware-<env>.bin`.
+Aufspielen: `/settings/firmware` → „Firmware (.bin)",
+`curl -F "f=@.pio/build/<env>/firmware.bin" http://<ip>/api/update/firmware`, oder
+USB via `pio run -e <env> -t upload`. ⚠ Bei den 4-MB-Boards muss der **erste** Flash
+mit dem `min_spiffs`-Layout per USB laufen (s. Partition-Layout unten).
+
 ### Release erstellen
 `git tag vX.Y.Z && git push origin vX.Y.Z` → die GitHub-Action baut alle Board-
 Varianten und hängt `firmware-<env>.bin` + `webui.tar` ans Release. Stable = normales

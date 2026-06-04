@@ -152,7 +152,12 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 
 
 **Welle 3 — Infrastruktur (größere Brocken / später)**
-- **Backup & Restore** — Config-Export/Import.
+- ~~**Backup & Restore**~~ — **erledigt 2026-06-04** (Spec:
+  [docs/superpowers/specs/2026-06-04-backup-restore-design.md](docs/superpowers/specs/2026-06-04-backup-restore-design.md)):
+  `GET/POST /api/backup` bündelt die 3 `/config`-Dateien zu einer JSON-Datei;
+  Restore validiert-vor-Schreiben, überschreibt + Reboot (Boot-Lade-Pfad).
+  Settings-Seite „Backup & Restore". Nur Config, kein WiFi. HW-E2E auf LilyGo S3
+  verifiziert (export → mutate → restore → verify + Negativtest); PR #7 gemergt.
 - **Webhook-Sensor-Aktor**
 - ~~**OTA-Firmware-Update**~~ — **erledigt 2026-06-03** (Spec:
   [docs/superpowers/specs/2026-06-03-firmware-update-design.md](docs/superpowers/specs/2026-06-03-firmware-update-design.md)):
