@@ -194,3 +194,29 @@ export function uploadFirmware(file: File, onProgress: (pct: number) => void): P
 export function uploadAssets(file: File, onProgress: (pct: number) => void): Promise<void> {
   return uploadFile('/api/update/assets', file, onProgress);
 }
+
+// ── Backup & Restore ───────────────────────────────────────────────────────────
+
+export async function downloadBackup(): Promise<void> {
+  const r = await fetch('/api/backup');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `brewcontrol-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Posts the raw backup file text; on 200 the device reboots to apply.
+export async function restoreBackup(text: string): Promise<void> {
+  const r = await fetch('/api/backup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: text,
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}

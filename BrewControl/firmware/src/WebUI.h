@@ -33,6 +33,8 @@ namespace BrewControl {
 //   POST /api/controllers/<id>/setpoint    — {"v":<float>}
 //   POST /api/controllers/<id>/params      — raw controller-params JSON
 //   POST /api/admin/wifi-reset             — clear WiFi creds, reboot
+//   GET  /api/backup                       — download config bundle as JSON
+//   POST /api/backup                       — restore config bundle, reboot
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
 //   GET  /*                                — SD static (default index.html)
 //
@@ -55,6 +57,8 @@ class WebUI {
   void pushSnapshot_();
   void sendSnapshotTo_(AsyncEventSourceClient* client);
   void swapAssets_();
+  // Writes one backup section (a JSON object/array) verbatim to `path`.
+  bool writeSection_(const char* path, ArduinoJson::JsonVariantConst v);
 
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
