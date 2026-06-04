@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { downloadBackup, restoreBackup } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 
@@ -7,6 +7,8 @@ export function BackupPage(_: { path?: string }) {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [done, setDone] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const clearFileInput = () => { if (fileRef.current) fileRef.current.value = ''; };
 
   if (done) {
     return (
@@ -34,6 +36,7 @@ export function BackupPage(_: { path?: string }) {
       setError(String(e));
       setRestoring(false);
       setPendingFile(null);
+      clearFileInput();
     }
   };
 
@@ -51,7 +54,8 @@ export function BackupPage(_: { path?: string }) {
           JSON-Datei herunter.
         </div>
         <button onClick={() => downloadBackup().catch((e) => setError(String(e)))}
-          class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium hover:bg-fg/10">
+          disabled={restoring}
+          class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium hover:bg-fg/10 disabled:opacity-50">
           Backup herunterladen
         </button>
       </section>
@@ -61,10 +65,10 @@ export function BackupPage(_: { path?: string }) {
         <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
           ⚠ Überschreibt die komplette Konfiguration und startet das Gerät neu.
         </div>
-        <input type="file" accept=".json,application/json"
+        <input type="file" accept=".json,application/json" ref={fileRef}
           class="mt-1 block w-full text-sm"
           onChange={(e) => {
-            const f = (e.target as HTMLInputElement).files?.[0];
+            const f = (e.currentTarget as HTMLInputElement).files?.[0];
             if (f) setPendingFile(f);
           }} />
         {error && <div class="text-sm text-red-500">Fehler: {error}</div>}
@@ -73,7 +77,7 @@ export function BackupPage(_: { path?: string }) {
       <ConfirmModal open={pendingFile !== null} title="Backup wiederherstellen?"
         confirmLabel="Wiederherstellen" cancelLabel="Abbrechen" destructive
         pending={restoring}
-        onCancel={() => { if (!restoring) setPendingFile(null); }}
+        onCancel={() => { if (!restoring) { setPendingFile(null); clearFileInput(); } }}
         onConfirm={confirmRestore}>
         Die Datei <span class="font-mono">{pendingFile?.name}</span> ersetzt die
         komplette Konfiguration. Das Gerät startet danach neu.
