@@ -615,8 +615,27 @@ unverändert (17,4 %). ⚠ Layout-Wechsel braucht **einmaligen USB-Flash**.
   **Relevant für CI:** `release.yml` nutzt die `.`-Form → ohne den Fix wäre der
   Server-Pull (Phase B) am Asset-Extract gescheitert.
 
-**Offen (Phase B + freigabe-gebunden):**
-- **Task 7 Phase B — Server-Pull-E2E**: braucht echtes Release + Negativ-Variante.
-- **Task 10 Step 2** — Test-Tag pushen + Release; Repo `nhhop/Brauerei` muss
-  **public** sein, bevor der Server-Pull funktioniert.
-- Bestehende SD-Karten: Assets nach `/www` migrieren (oder `webui.tar` einspielen).
+**HW-E2E Phase B (Server-Pull) — erledigt auf LilyGo S3 (2026-06-04):**
+- Repo `nhhop/Brauerei` public geschaltet; manuelles Test-Release `v0.0.1-test`
+  mit allen 4 Assets (CI war zu dem Zeitpunkt noch kaputt, s. u.).
+- `check` → `updateAvailable` v0.0.1-test; `install` → `downloading` (webui.tar
+  extract + `/www`-Swap) → `flashing` (0→98 %) → Reboot → Gerät läuft danach
+  `v0.0.1-test`, UI aus den gepullten Assets (`/` + gehashte Assets → 200).
+  Bestätigt zugleich den `./`-Fix mit dem **CI-Format** `webui.tar`.
+- Negativ-Varianten-Test entfällt: die Matrix baut alle 3 Varianten, also findet
+  jede Variante ihr Asset.
+
+**CI-Bugs (beim Tag-Push-Release entdeckt) — gefixt + verifiziert (2026-06-04):**
+1. Firmware-Build brach, weil `platformio.ini` an `symlink://../../../IdsInductionCooker`
+   hängt — ein **privates Sibling-Repo**, das `actions/checkout` nie auscheckte.
+2. `action-gh-release` scheiterte mangels `permissions: contents: write`.
+   Fix (`ci: fix release workflow …`, Commit 2c1decd): Brauerei + IdsInductionCooker
+   als Siblings unter `$GITHUB_WORKSPACE` auschecken + `contents: write`. Voraussetzung:
+   IdsInductionCooker **public**. Verifiziert: Run für `v0.0.1-test2` grün (2m11s),
+   alle 4 Assets automatisch gebaut. Beide Test-Releases danach gelöscht.
+
+**Merge:** PR #6 nach `main` gemergt (Merge-Commit 230fa11), Branch
+`feat/firmware-update` lokal + remote gelöscht.
+
+**Noch offen:** Bestehende SD-Karten — Assets nach `/www` migrieren (oder einmal
+`webui.tar` über die UI einspielen).

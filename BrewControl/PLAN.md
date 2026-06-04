@@ -605,7 +605,10 @@ einbauen, der parallel zum WiFi-Pfad genutzt werden kann.
   `TarExtractor` (host-getestet) nach `/www` mit atomarem Swap. Drei Wege:
   Browser-Upload `.bin`/`.tar`, GitHub-Release-Pull, täglicher Auto-Check mit
   Badge. CI-Matrix baut `firmware-<env>.bin` + `webui.tar` pro Tag.
-  4-MB-Boards auf `min_spiffs.csv` (TLS-Pull-Pfad). HW-E2E ausstehend.
+  4-MB-Boards auf `min_spiffs.csv` (TLS-Pull-Pfad). HW-E2E auf LilyGo S3
+  verifiziert (Upload-Pfade + voller Server-Pull); CI-Release grün; PR #6 gemergt.
+  Dabei gefixt: `./`-tar-Pfade (`SdTarSink`) + CI (privates `IdsInductionCooker`-
+  Sibling-Checkout, `contents: write`).
 - **HTTPS-Support**: Voraussetzung für **Push-Notifications via
   [ESPToolKit/esp-webPush](https://github.com/ESPToolKit/esp-webPush)**,
   da Browser-Push-API nur über `https://` registriert. Plan: ESPAsyncWebServer

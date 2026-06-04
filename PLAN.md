@@ -158,7 +158,8 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
   [docs/superpowers/specs/2026-06-03-firmware-update-design.md](docs/superpowers/specs/2026-06-03-firmware-update-design.md)):
   drei Wege — Browser-Upload (`.bin`/`.tar`), GitHub-Release-Pull, täglicher
   Auto-Check. Varianten-Modell pro Board-Env; UI serviert aus `/www` (atomarer
-  Swap). 4-MB-Boards auf `min_spiffs.csv` (OTA-Headroom). HW-E2E ausstehend.
+  Swap). 4-MB-Boards auf `min_spiffs.csv` (OTA-Headroom). HW-E2E auf LilyGo S3
+  verifiziert (Upload + Server-Pull); CI-Release-Pipeline grün; PR #6 gemergt.
   - -> auch für das hinzufügen von Displays relevant. Firmware je nach Display laden (online oder SD-Karte)
 - **Netzwerk/WLAN-Einstellungen** — über das bestehende Captive-Portal hinaus.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
@@ -173,7 +174,7 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 ## Bekannte Einschränkungen / Offene Punkte
 
 - Heizung (SSR) unter Last mit Oszilloskop verifizieren
-- OTA-Firmware-Update ✓ (2026-06-03; Code komplett, HW-E2E ausstehend)
+- OTA-Firmware-Update ✓ (2026-06-04; HW-E2E auf LilyGo S3 verifiziert, CI grün, gemergt)
 - QEMU/Simulation: nicht viable (kein WiFi-Emulation für ESP32)
 - `RemotePublisher` Multi-Channel via MQTT/ESP-NOW ✓ (2026-05-29)
 - IDS-Induktionskocher E2E-Test mit echter Hardware ausstehend
