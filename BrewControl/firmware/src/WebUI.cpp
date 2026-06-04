@@ -466,7 +466,9 @@ void WebUI::begin() {
         if (!writeSection_("/config/registry.json",   o["registry"]) ||
             !writeSection_("/config/dashboards.json",  o["dashboards"]) ||
             !writeSection_("/config/settings.json",    o["settings"])) {
-          req->send(500, "text/plain", "write failed"); return;
+          req->send(500, "text/plain",
+                    "write failed — config may be partially restored, re-import to recover");
+          return;
         }
         req->send(200, "text/plain", "ok");
         rebootAtMs_ = millis() + kRebootDelayMs;
