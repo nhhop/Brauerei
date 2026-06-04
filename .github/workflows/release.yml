@@ -4,6 +4,9 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write   # action-gh-release needs this to create/update the release
+
 jobs:
   firmware:
     runs-on: ubuntu-latest
@@ -11,22 +14,32 @@ jobs:
       matrix:
         env: [esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled]
     steps:
+      # platformio.ini references symlink://../../../IdsInductionCooker — a sibling
+      # of the repo root. Reproduce that layout: check this repo out under Brauerei/
+      # and the dependency under IdsInductionCooker/, both inside $GITHUB_WORKSPACE,
+      # so "BrewControl/firmware/../../../IdsInductionCooker" resolves correctly.
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }   # tags needed for git describe (fallback)
+        with:
+          path: Brauerei
+          fetch-depth: 0   # tags for git describe (fallback if override unset)
+      - uses: actions/checkout@v4
+        with:
+          repository: nhhop/IdsInductionCooker   # must be public for this to work
+          path: IdsInductionCooker
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install platformio
       - name: Build ${{ matrix.env }}
-        working-directory: BrewControl/firmware
+        working-directory: Brauerei/BrewControl/firmware
         env:
           BREWCTL_VERSION_OVERRIDE: ${{ github.ref_name }}
         run: pio run -e ${{ matrix.env }}
       - name: Rename artifact
-        working-directory: BrewControl/firmware
+        working-directory: Brauerei/BrewControl/firmware
         run: cp .pio/build/${{ matrix.env }}/firmware.bin firmware-${{ matrix.env }}.bin
       - uses: softprops/action-gh-release@v2
         with:
-          files: BrewControl/firmware/firmware-${{ matrix.env }}.bin
+          files: Brauerei/BrewControl/firmware/firmware-${{ matrix.env }}.bin
 
   webui:
     runs-on: ubuntu-latest
