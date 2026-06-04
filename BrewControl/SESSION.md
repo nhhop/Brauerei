@@ -637,5 +637,6 @@ unverändert (17,4 %). ⚠ Layout-Wechsel braucht **einmaligen USB-Flash**.
 **Merge:** PR #6 nach `main` gemergt (Merge-Commit 230fa11), Branch
 `feat/firmware-update` lokal + remote gelöscht.
 
-**Noch offen:** Bestehende SD-Karten — Assets nach `/www` migrieren (oder einmal
-`webui.tar` über die UI einspielen).
+**SD-Karten-Migration:** erledigt — bestehende Karten auf `/www` umgestellt
+(bzw. via `webui.tar`-Einspielung). Damit ist das OTA-Feature vollständig
+abgeschlossen, keine offenen Punkte mehr.
