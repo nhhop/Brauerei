@@ -8,6 +8,8 @@
 #include <math.h>
 #include <memory>
 
+#include "version.h"
+
 namespace BrewControl {
 namespace {
 
@@ -424,6 +426,52 @@ void WebUI::begin() {
         }
       });
 
+  // ── Backup & Restore ───────────────────────────────────────────────────────
+  // GET: bundle the three /config stores into one downloadable JSON file.
+  server_.on("/api/backup", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    String out = "{\"type\":\"brewcontrol-backup\",\"version\":1,"
+                 "\"firmwareVersion\":\"";
+    out += BREWCTL_VERSION;
+    out += "\",\"variant\":\"";
+    out += BREWCTL_VARIANT;
+    out += "\",\"registry\":";
+    out += items_.serializeConfig();
+    out += ",\"dashboards\":";
+    out += store_.serialize();
+    out += ",\"settings\":";
+    out += settings_.serialize();
+    out += "}";
+    AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", out);
+    resp->addHeader("Content-Disposition",
+                    "attachment; filename=\"brewcontrol-backup.json\"");
+    req->send(resp);
+  });
+
+  // POST: validate a backup bundle, overwrite the three /config files, reboot.
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/backup",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        JsonObject o = json.as<JsonObject>();
+        if (strcmp(o["type"] | "", "brewcontrol-backup") != 0) {
+          req->send(400, "text/plain", "not a brewcontrol backup"); return;
+        }
+        if ((o["version"] | 0) != 1) {
+          req->send(400, "text/plain", "unsupported backup version"); return;
+        }
+        if (!o["registry"].is<JsonObject>())   { req->send(400, "text/plain", "missing registry");   return; }
+        if (!o["dashboards"].is<JsonArray>())  { req->send(400, "text/plain", "missing dashboards");  return; }
+        if (!o["settings"].is<JsonObject>())   { req->send(400, "text/plain", "missing settings");    return; }
+
+        // Validation passed — only now touch the filesystem.
+        if (!writeSection_("/config/registry.json",   o["registry"]) ||
+            !writeSection_("/config/dashboards.json",  o["dashboards"]) ||
+            !writeSection_("/config/settings.json",    o["settings"])) {
+          req->send(500, "text/plain", "write failed"); return;
+        }
+        req->send(200, "text/plain", "ok");
+        rebootAtMs_ = millis() + 500;
+      }));
+
   server_.serveStatic("/", fs_, "/www")
       .setDefaultFile("index.html")
       .setCacheControl("max-age=600");
@@ -471,6 +519,15 @@ void WebUI::swapAssets_() {
   };
   rm("/www");
   fs_.rename("/www.new", "/www");
+}
+
+bool WebUI::writeSection_(const char* path, JsonVariantConst v) {
+  fs_.mkdir("/config");
+  File f = fs_.open(path, FILE_WRITE);
+  if (!f) return false;
+  serializeJson(v, f);
+  f.close();
+  return true;
 }
 
 void WebUI::pushSnapshot_() {

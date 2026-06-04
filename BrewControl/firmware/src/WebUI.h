@@ -55,6 +55,8 @@ class WebUI {
   void pushSnapshot_();
   void sendSnapshotTo_(AsyncEventSourceClient* client);
   void swapAssets_();
+  // Writes one backup section (a JSON object/array) verbatim to `path`.
+  bool writeSection_(const char* path, ArduinoJson::JsonVariantConst v);
 
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
