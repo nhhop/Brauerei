@@ -469,7 +469,7 @@ void WebUI::begin() {
           req->send(500, "text/plain", "write failed"); return;
         }
         req->send(200, "text/plain", "ok");
-        rebootAtMs_ = millis() + 500;
+        rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 
   server_.serveStatic("/", fs_, "/www")
@@ -525,9 +525,9 @@ bool WebUI::writeSection_(const char* path, JsonVariantConst v) {
   fs_.mkdir("/config");
   File f = fs_.open(path, FILE_WRITE);
   if (!f) return false;
-  serializeJson(v, f);
+  size_t written = serializeJson(v, f);
   f.close();
-  return true;
+  return written > 0;
 }
 
 void WebUI::pushSnapshot_() {
