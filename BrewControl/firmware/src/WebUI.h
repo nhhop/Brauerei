@@ -5,9 +5,14 @@
 #include <FS.h>
 #include <SensActCtrl.h>
 
+#include <memory>
+
 #include "DashboardStore.h"
 #include "DynamicItems.h"
+#include "FirmwareUpdater.h"
+#include "SdTarSink.h"
 #include "SettingsStore.h"
+#include "TarExtractor.h"
 
 namespace BrewControl {
 
@@ -37,7 +42,8 @@ namespace BrewControl {
 class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
-        DashboardStore& store, SettingsStore& settings, uint16_t port = 80);
+        DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
+        uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -48,16 +54,22 @@ class WebUI {
  private:
   void pushSnapshot_();
   void sendSnapshotTo_(AsyncEventSourceClient* client);
+  void swapAssets_();
 
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
   DynamicItems& items_;
   DashboardStore& store_;
   SettingsStore& settings_;
+  FirmwareUpdater& updater_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;
   uint32_t rebootAtMs_ = 0;
+
+  std::unique_ptr<SdTarSink> assetSink_;
+  std::unique_ptr<TarExtractor> assetTar_;
+  bool assetSwapPending_ = false;
 };
 
 }  // namespace BrewControl

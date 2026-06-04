@@ -562,3 +562,50 @@ rekonstruiert die Shared-Bus-Instanz korrekt.
   PowerShell-Oneliner.
 - `package.json` bekommt `"build:sd": "vite build && node scripts/gzip-dist.js"`.
 - SD-Deploy-Workflow jetzt: `pnpm build:sd` + `robocopy dist D:\ /E /NFL /NDL`.
+
+---
+
+## Session 2026-06-03 — OTA Firmware-Update (Code komplett, HW-E2E offen)
+
+Plan [`docs/superpowers/plans/2026-06-03-firmware-update.md`](../docs/superpowers/plans/2026-06-03-firmware-update.md)
+umgesetzt (Skill `superpowers:executing-plans`), Feature-Branch `feat/firmware-update`.
+
+**Implementiert (Firmware):**
+- `version_flags.py` + `src/version.h` — `BREWCTL_VERSION` (git-Tag) +
+  `BREWCTL_VARIANT` (`${PIOENV}`) als Compile-Flags; `BREWCTL_VERSION_OVERRIDE`
+  hat in CI Vorrang.
+- `lib/TarExtractor/` — streaming USTAR-Parser, pure-C++, host-getestet
+  (`[env:native]`, 4 Unity-Tests grün). Plan-Lücke gefixt: Unity braucht
+  `setUp`/`tearDown`-Stubs.
+- `src/SdTarSink.h` — TarExtractor-Callbacks → `fs::FS`.
+- `src/FirmwareUpdater.{h,cpp}` — State-Machine, GitHub-Releases-Client
+  (`WiFiClientSecure.setInsecure()`, ArduinoJson-Filter), blockierender
+  Download/Flash auf dem loopTask via `tick()`; HTTP-Routen setzen nur Flags.
+- `SettingsStore` — `firmware`-Sektion (channel/autoCheck) + Validierung.
+- `WebUI` — `/api/update/{status,check,install,firmware,assets}`,
+  `.bin`-Flash- und `.tar`-Extract-Upload-Handler, atomarer `/www`-Swap auf
+  loopTask; Serve-Root von SD-Root → `/www` umgestellt.
+- `main.cpp` — `FirmwareUpdater` instanziiert + verdrahtet.
+
+**Implementiert (Web):** `types.ts` (`UpdateStatus`/`FirmwareSettings`),
+`api.ts` (Update-Client + XHR-Upload mit Progress), `FirmwarePage.tsx`,
+Route `/settings/firmware`, Settings-Kachel + „Update verfügbar"-Badge.
+
+**CI:** `.github/workflows/release.yml` — Matrix baut `firmware-<env>.bin` +
+`webui.tar` bei `v*`-Tag.
+
+**Partition-Entscheidung (Task 12, vorgezogen):** Sobald der TLS-Pull-Pfad
+gelinkt ist, springt esp32dev von 79 % → **92,6 %** App-Flash (lolin 88,3 %).
+Zu eng für OTA → beide 4-MB-Envs auf `board_build.partitions = min_spiffs.csv`
+(~1,9 MB Slots): esp32dev **61,7 %**, lolin **58,8 %**. LilyGo-S3 (16 MB)
+unverändert (17,4 %). ⚠ Layout-Wechsel braucht **einmaligen USB-Flash**.
+
+**Verifikation:** alle drei Boards `pio run` grün; `pio test -e native` 4/4;
+`pnpm typecheck` + `pnpm build` grün.
+
+**Offen (nicht autonom machbar):**
+- **Task 7 — HW-E2E** auf echtem Board (Upload-/Pull-Pfade, Negativ-Variante).
+- **Task 10 Step 2** — Test-Tag pushen + echtes Release; Repo `nhhop/Brauerei`
+  muss **public** sein, bevor der Server-Pull funktioniert.
+- Bestehende SD-Karten: Assets nach `/www` migrieren (oder einmal `webui.tar`
+  über die UI einspielen).

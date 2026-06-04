@@ -232,6 +232,34 @@ Browser-EventSource reconnected nativ; UI sollte in ≤60 s resumen.
 Falls nicht: `server.begin()` muss in einen `WiFi.onEvent(STA_GOT_IP)`-
 Hook (nicht im MVP — siehe `PLAN.md` Verifikation Schritt 10).
 
+## Firmware-Update
+
+Drei Wege:
+- **Server-Pull (GitHub):** `/settings/firmware` → Kanal (stable/preview) wählen →
+  „Auf Updates prüfen" → „Installieren". Zieht `firmware-<variant>.bin` + `webui.tar`
+  aus dem passenden Release. Repo `nhhop/Brauerei` muss **public** sein.
+- **Browser-Upload:** dieselbe Seite — `.bin` (Firmware) bzw. `.tar` (UI-Paket).
+- **USB (Brick-Rettung):** Bootet das Gerät nach einem fehlerhaften Flash nicht mehr,
+  ist die WebUI weg → per Kabel `pio run -e <env> -t upload` neu flashen.
+
+### UI liegt jetzt unter /www
+Die SPA wird aus `/www` auf der SD-Karte serviert (vorher SD-Root). Beim Deploy:
+`Copy-Item -Recurse -Force .\dist\* D:\www\`. Bestehende Karten: Assets nach `/www`
+verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an).
+
+### Release erstellen
+`git tag vX.Y.Z && git push origin vX.Y.Z` → die GitHub-Action baut alle Board-
+Varianten und hängt `firmware-<env>.bin` + `webui.tar` ans Release. Stable = normales
+Release, Preview = als „Pre-release" markieren.
+
+### Partition-Layout (min_spiffs)
+OTA braucht zwei App-Slots. Der TLS-Pull-Pfad füllt den Default-OTA-App-Slot der
+4-MB-Boards (esp32dev, lolin_s2_mini) auf >90 %; deshalb verwenden diese Envs
+`board_build.partitions = min_spiffs.csv` (~1,9 MB App-Slots; SPIFFS ungenutzt, da
+Assets auf SD liegen). **Wichtig:** Der Wechsel auf dieses Layout muss **einmalig per
+USB** geflasht werden — OTA kann die Partitionstabelle nicht ändern. Danach laufen
+OTA-Updates normal. Der LilyGo-S3 (16 MB) behält die Default-Tabelle (genug Platz).
+
 ## Weiteres
 
 - [`PLAN.md`](PLAN.md) — Architektur-Vertrag, Build-Reihenfolge,

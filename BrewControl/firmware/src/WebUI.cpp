@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <AsyncJson.h>
 #include <Preferences.h>
+#include <Update.h>
 #include <functional>
 #include <math.h>
 #include <memory>
@@ -69,9 +70,10 @@ class DeletePrefixHandler : public AsyncWebHandler {
 }  // namespace
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
-             DashboardStore& store, SettingsStore& settings, uint16_t port)
+             DashboardStore& store, SettingsStore& settings,
+             FirmwareUpdater& updater, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      server_(port), events_("/api/events") {}
+      updater_(updater), server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -333,19 +335,103 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject fw = obj["firmware"].as<JsonObject>();
+        if (!fw.isNull()) {
+          if (const char* c = fw["channel"]) {
+            if (strcmp(c,"stable")!=0 && strcmp(c,"preview")!=0) {
+              req->send(400, "text/plain", "invalid channel"); return;
+            }
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
         req->send(204);
       }));
 
-  server_.serveStatic("/", fs_, "/")
+  // ── Firmware update ────────────────────────────────────────────────────────
+  server_.on("/api/update/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", updater_.statusJson());
+  });
+
+  server_.addHandler(new BodyPrefixHandler("/api/update/check",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        String channel;
+        if (len) {
+          JsonDocument doc;
+          if (deserializeJson(doc, data, len) == DeserializationError::Ok)
+            channel = doc["channel"] | "";
+        }
+        updater_.requestCheck(channel);
+        req->send(202);
+      }));
+
+  server_.addHandler(new BodyPrefixHandler("/api/update/install",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        String channel;
+        if (len) {
+          JsonDocument doc;
+          if (deserializeJson(doc, data, len) == DeserializationError::Ok)
+            channel = doc["channel"] | "";
+        }
+        updater_.requestInstall(channel);
+        req->send(202);
+      }));
+
+  // Multipart firmware (.bin) upload → flash. The final response is sent from
+  // the upload callback (handleRequest fires with empty body otherwise).
+  server_.on("/api/update/firmware", HTTP_POST,
+      [](AsyncWebServerRequest* req) { /* response sent in upload cb */ },
+      [this](AsyncWebServerRequest* req, const String& filename, size_t index,
+             uint8_t* data, size_t len, bool final) {
+        if (index == 0) {
+          if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+            req->send(500, "text/plain", Update.errorString());
+            return;
+          }
+        }
+        if (len) Update.write(data, len);
+        if (final) {
+          if (Update.end(true)) {
+            req->send(200, "text/plain", "ok");
+            rebootAtMs_ = millis() + 500;
+          } else {
+            req->send(500, "text/plain", Update.errorString());
+          }
+        }
+      });
+
+  // Multipart UI package (.tar) upload → extract to /www.new, swap on loopTask.
+  server_.on("/api/update/assets", HTTP_POST,
+      [](AsyncWebServerRequest* req) { /* response sent in upload cb */ },
+      [this](AsyncWebServerRequest* req, const String& filename, size_t index,
+             uint8_t* data, size_t len, bool final) {
+        if (index == 0) {
+          assetSink_.reset(new SdTarSink(fs_, "/www.new"));
+          assetTar_.reset(new TarExtractor(assetSink_->openCb(),
+                                           assetSink_->writeCb(),
+                                           assetSink_->closeCb()));
+          // Clear staging dir.
+          fs_.rmdir("/www.new");
+          fs_.mkdir("/www.new");
+        }
+        if (len && assetTar_) assetTar_->feed(data, len);
+        if (final) {
+          bool ok = assetTar_ && !assetTar_->hasError();
+          assetTar_.reset();
+          assetSink_.reset();
+          if (ok) { assetSwapPending_ = true; req->send(200, "text/plain", "ok"); }
+          else { req->send(500, "text/plain", "extract failed"); }
+        }
+      });
+
+  server_.serveStatic("/", fs_, "/www")
       .setDefaultFile("index.html")
       .setCacheControl("max-age=600");
 
   // SPA fallback: serve index.html for unknown GET paths so client-side routes work
   server_.onNotFound([this](AsyncWebServerRequest* req) {
     if (req->method() == HTTP_GET && !req->url().startsWith("/api/")) {
-      req->send(fs_, "/index.html", "text/html");
+      req->send(fs_, "/www/index.html", "text/html");
     } else {
       req->send(404, "text/plain", "Not Found");
     }
@@ -355,12 +441,36 @@ void WebUI::begin() {
 }
 
 void WebUI::tick() {
+  if (assetSwapPending_) {
+    assetSwapPending_ = false;
+    swapAssets_();
+  }
   uint32_t now = millis();
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
   if (now - lastPushMs_ >= 1000) {
     lastPushMs_ = now;
     pushSnapshot_();
   }
+}
+
+void WebUI::swapAssets_() {
+  // Remove /www then rename /www.new → /www (loopTask context).
+  std::function<void(const char*)> rm = [&](const char* path) {
+    File dir = fs_.open(path);
+    if (!dir) return;
+    if (!dir.isDirectory()) { dir.close(); fs_.remove(path); return; }
+    File e = dir.openNextFile();
+    while (e) {
+      String child = String(path) + "/" + e.name();
+      bool d = e.isDirectory(); e.close();
+      if (d) rm(child.c_str()); else fs_.remove(child);
+      e = dir.openNextFile();
+    }
+    dir.close();
+    fs_.rmdir(path);
+  };
+  rm("/www");
+  fs_.rename("/www.new", "/www");
 }
 
 void WebUI::pushSnapshot_() {

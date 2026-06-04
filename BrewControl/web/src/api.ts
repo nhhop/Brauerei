@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, AppSettings } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, AppSettings, UpdateStatus } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -153,4 +153,44 @@ export async function getSettings(): Promise<AppSettings> {
 
 export function updateSettings(patch: Partial<AppSettings>): Promise<void> {
   return postJson('/api/settings', patch);
+}
+
+// ── Firmware update ────────────────────────────────────────────────────────────
+
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  const r = await fetch('/api/update/status');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()) as UpdateStatus;
+}
+
+export function checkUpdate(channel: 'stable' | 'preview'): Promise<void> {
+  return postJson('/api/update/check', { channel });
+}
+
+export function installUpdate(channel: 'stable' | 'preview'): Promise<void> {
+  return postJson('/api/update/install', { channel });
+}
+
+function uploadFile(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('f', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300
+      ? resolve() : reject(new Error(`${xhr.status} ${xhr.responseText}`)));
+    xhr.onerror = () => reject(new Error('network error'));
+    xhr.send(form);
+  });
+}
+
+export function uploadFirmware(file: File, onProgress: (pct: number) => void): Promise<void> {
+  return uploadFile('/api/update/firmware', file, onProgress);
+}
+
+export function uploadAssets(file: File, onProgress: (pct: number) => void): Promise<void> {
+  return uploadFile('/api/update/assets', file, onProgress);
 }

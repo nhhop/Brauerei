@@ -597,12 +597,15 @@ einbauen, der parallel zum WiFi-Pfad genutzt werden kann.
 
 ## Future Work (Backlog — eigene PRs nach MVP)
 
-- **OTA-Update**: ESP32-Arduino bringt `ArduinoOTA` mit; AsyncWebServer
-  hat zusätzlich `AsyncElegantOTA`/`ElegantOTA` für Browser-basierte
-  Firmware-Uploads. Würde sich gut in einen `/admin`-Tab der bestehenden
-  WebUI integrieren. Auch für die UI-Assets denkbar: Upload neuer
-  `dist/`-Bundles direkt über die WebUI ins SD-FS (mit `request->_tempFile`
-  und `events->send("reload")` an alle SSE-Clients).
+- ~~**OTA-Update**~~ — **erledigt 2026-06-03** (Spec:
+  [../docs/superpowers/specs/2026-06-03-firmware-update-design.md](../docs/superpowers/specs/2026-06-03-firmware-update-design.md),
+  Plan: [../docs/superpowers/plans/2026-06-03-firmware-update.md](../docs/superpowers/plans/2026-06-03-firmware-update.md)).
+  Statt `ElegantOTA`: eigener `FirmwareUpdater` (State-Machine, GitHub-Pull auf
+  loopTask) + `Update.h`-Upload-Handler in `WebUI`. UI-Assets via streaming
+  `TarExtractor` (host-getestet) nach `/www` mit atomarem Swap. Drei Wege:
+  Browser-Upload `.bin`/`.tar`, GitHub-Release-Pull, täglicher Auto-Check mit
+  Badge. CI-Matrix baut `firmware-<env>.bin` + `webui.tar` pro Tag.
+  4-MB-Boards auf `min_spiffs.csv` (TLS-Pull-Pfad). HW-E2E ausstehend.
 - **HTTPS-Support**: Voraussetzung für **Push-Notifications via
   [ESPToolKit/esp-webPush](https://github.com/ESPToolKit/esp-webPush)**,
   da Browser-Push-API nur über `https://` registriert. Plan: ESPAsyncWebServer
