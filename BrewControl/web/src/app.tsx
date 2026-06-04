@@ -9,6 +9,7 @@ import { SettingsIndex } from './pages/SettingsIndex';
 import { AppearancePage } from './pages/AppearancePage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FirmwarePage } from './pages/FirmwarePage';
+import { BackupPage } from './pages/BackupPage';
 
 function useSnapshot() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -47,6 +48,7 @@ export function App() {
       <AppearancePage path="/settings/appearance" />
       <DevicesPage path="/settings/devices" snap={snap} />
       <FirmwarePage path="/settings/firmware" />
+      <BackupPage path="/settings/backup" />
     </Router>
   );
 }

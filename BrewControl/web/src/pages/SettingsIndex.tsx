@@ -41,6 +41,14 @@ export function SettingsIndex(_: { path?: string }) {
           </div>
           <span class="text-faint">›</span>
         </a>
+        <a href="/settings/backup"
+          class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 hover:bg-fg/5">
+          <div>
+            <div class="font-medium">Backup &amp; Restore</div>
+            <div class="text-xs text-muted">Konfiguration exportieren / wiederherstellen</div>
+          </div>
+          <span class="text-faint">›</span>
+        </a>
       </div>
     </div>
   );
