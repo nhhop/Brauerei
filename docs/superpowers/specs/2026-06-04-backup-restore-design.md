@@ -103,8 +103,13 @@ Neue Settings-Kachel **„Backup & Restore"** (`/settings/backup`), Aufbau analo
 
 - **Export:** Button → `GET /api/backup` → Datei als
   `brewcontrol-backup-<YYYY-MM-DD>.json` speichern. Das Datum wird client-seitig
-  gesetzt (Gerät hat keine Echtzeituhr). Umsetzung via `fetch` → `Blob` →
+  gesetzt (Gerät hat **noch** keine Echtzeituhr). Umsetzung via `fetch` → `Blob` →
   temporärer `<a download>`-Klick, damit der Dateiname kontrolliert werden kann.
+
+  > **Zukunfts-Hook:** Sobald das geplante Feature *„Zeit & Formate — Uhrzeit-Sync"*
+  > (root `PLAN.md`) gelandet ist, kann der Export ein `exportedAt`-Feld mit der
+  > Geräte-Wall-Clock-Zeit ins Bündel schreiben und den Dateinamen daraus ableiten,
+  > statt aus der Browser-Zeit. Bis dahin bleibt es client-seitig.
 - **Import:** File-Picker (`.json`) → `ConfirmModal` (Warnung: „überschreibt die
   komplette Konfiguration und startet das Gerät neu") → Browser liest die Datei
   via `FileReader` als Text → `POST /api/backup` (Body = Dateitext) → bei `200`
