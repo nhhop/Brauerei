@@ -247,6 +247,21 @@ Die SPA wird aus `/www` auf der SD-Karte serviert (vorher SD-Root). Beim Deploy:
 `Copy-Item -Recurse -Force .\dist\* D:\www\`. Bestehende Karten: Assets nach `/www`
 verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an).
 
+### webui.tar manuell bauen
+Das `webui.tar` ist das gebaute, **gzippte** `dist/` als Tar — Pfade relativ zur
+dist-Wurzel (nicht unter `dist/`). Aus `web/`:
+
+```powershell
+pnpm build:sd            # vite build + gzip-dist (NICHT nur `pnpm build` — sonst fehlen die .gz)
+tar -C dist -cf webui.tar .
+```
+
+Das ist exakt die Form, die auch die CI baut. Sie erzeugt `./`-präfixierte Namen;
+die Firmware normalisiert die in `SdTarSink` weg (die Glob-Variante
+`cd dist; tar -cf ../webui.tar *` ohne `./` geht ebenso). Aufspielen: über
+`/settings/firmware` → „UI-Paket (.tar)", oder
+`curl -F "f=@webui.tar" http://<ip>/api/update/assets`.
+
 ### Release erstellen
 `git tag vX.Y.Z && git push origin vX.Y.Z` → die GitHub-Action baut alle Board-
 Varianten und hängt `firmware-<env>.bin` + `webui.tar` ans Release. Stable = normales
