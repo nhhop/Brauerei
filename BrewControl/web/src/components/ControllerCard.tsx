@@ -1,10 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { Controller, Sensor, Actuator } from '../types';
-import { setControllerSetpoint, enableController, startAutotune, stopAutotune } from '../api';
-
-const AUTOTUNE_METHODS = [
-  'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
-] as const;
+import { setControllerSetpoint, enableController, writeActuator } from '../api';
 
 interface Props {
   controller: Controller;
@@ -19,25 +15,9 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   const [sp, setSp] = useState(setpoint.toString());
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [atMethod, setAtMethod] = useState('ZieglerNichols');
-  const [atBusy, setAtBusy] = useState(false);
 
   const isPid = params?.Kp != null;
   const autotuneState = params?.autotuneState as string | undefined;
-
-  async function onStartAutotune() {
-    setAtBusy(true); setErr(null);
-    try { await startAutotune(id, atMethod); }
-    catch (e) { setErr(String(e)); }
-    finally { setAtBusy(false); }
-  }
-
-  async function onStopAutotune() {
-    setAtBusy(true); setErr(null);
-    try { await stopAutotune(id); }
-    catch (e) { setErr(String(e)); }
-    finally { setAtBusy(false); }
-  }
 
   const linkedSensor = params?.sensor ? sensors.find((s) => s.id === params.sensor) : undefined;
   const linkedActuator = params?.actuator ? actuators.find((a) => a.id === params.actuator) : undefined;
@@ -56,8 +36,15 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   async function toggleEnabled() {
     setToggling(true);
     setErr(null);
-    try { await enableController(id, !enabled); }
-    catch (e) { setErr(String(e)); }
+    try {
+      await enableController(id, !enabled);
+      if (enabled) {
+        const min = params?.min ?? 0;
+        if (params?.actuator) await writeActuator(params.actuator, min);
+        if (params?.heatActuator) await writeActuator(params.heatActuator, 0);
+        if (params?.coolActuator) await writeActuator(params.coolActuator, 0);
+      }
+    } catch (e) { setErr(String(e)); }
     finally { setToggling(false); }
   }
 
@@ -138,33 +125,15 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
         </div>
       </div>
 
-      {isPid && (
+      {isPid && autotuneState && (
         <div class="mt-3 border-t border-border/50 pt-3">
-          {autotuneState === 'running' ? (
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs text-amber-600">AutoTune läuft…</span>
-              <button type="button" onClick={onStopAutotune} disabled={atBusy}
-                class="rounded bg-fg/5 px-2 py-1 text-xs text-fg hover:bg-fg/10 disabled:opacity-50">
-                Abbrechen
-              </button>
-            </div>
-          ) : (
-            <div class="flex flex-wrap items-center gap-2">
-              <select value={atMethod} title="AutoTune-Methode"
-                onChange={(e) => setAtMethod((e.target as HTMLSelectElement).value)}
-                class="rounded border border-border bg-surface px-2 py-1 text-xs text-fg">
-                {AUTOTUNE_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <button type="button" onClick={onStartAutotune} disabled={atBusy}
-                class="rounded bg-fg px-2 py-1 text-xs text-bg hover:bg-fg/80 disabled:opacity-50">
-                AutoTune starten
-              </button>
-              {autotuneState === 'done' && (
-                <span class="text-xs text-emerald-600 font-mono">
-                  Kp {Number(params?.Kp).toFixed(2)} · Ki {Number(params?.Ki).toFixed(2)} · Kd {Number(params?.Kd).toFixed(2)}
-                </span>
-              )}
-            </div>
+          {autotuneState === 'running' && (
+            <span class="text-xs text-amber-600">AutoTune läuft…</span>
+          )}
+          {autotuneState === 'done' && (
+            <span class="text-xs text-emerald-600 font-mono">
+              Kp {Number(params?.Kp).toFixed(2)} · Ki {Number(params?.Ki).toFixed(2)} · Kd {Number(params?.Kd).toFixed(2)}
+            </span>
           )}
         </div>
       )}

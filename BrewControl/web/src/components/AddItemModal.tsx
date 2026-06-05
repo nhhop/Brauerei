@@ -3,8 +3,12 @@ import type { Snapshot, ScannedDevice, ItemConfig } from '../types';
 import {
   createSensor, createActuator, createController,
   deleteSensor, deleteActuator, deleteController,
-  scanOneWireBus,
+  scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
+
+const AUTOTUNE_METHODS = [
+  'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
+] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
 type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput';
@@ -113,9 +117,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [srDeadband, setSrDeadband] = useState('0.05');
   const [changeoverS, setChangeoverS] = useState('0');
 
+  // autotune (edit-only, PID/SplitRangePID)
+  const [atMethod, setAtMethod] = useState('ZieglerNichols');
+  const [atBusy, setAtBusy] = useState(false);
+  const [atErr, setAtErr] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setAtErr(null); setAtBusy(false); setAtMethod('ZieglerNichols');
     setScanning(false); setScannedDevices([]); setSelectedAddress('');
 
     if (isEdit && editConfig && editRole) {
@@ -249,6 +259,25 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   }, [open]);
 
   if (!open) return null;
+
+  const liveController = isEdit && editRole === 'controller' && id
+    ? snap?.controllers.find((c) => c.id === id)
+    : undefined;
+  const autotuneState = liveController?.params?.autotuneState as string | undefined;
+
+  async function onStartAutotune() {
+    setAtBusy(true); setAtErr(null);
+    try { await startAutotune(id, atMethod); }
+    catch (e) { setAtErr(String(e)); }
+    finally { setAtBusy(false); }
+  }
+
+  async function onStopAutotune() {
+    setAtBusy(true); setAtErr(null);
+    try { await stopAutotune(id); }
+    catch (e) { setAtErr(String(e)); }
+    finally { setAtBusy(false); }
+  }
 
   function handleRtdChange(rt: RtdType) {
     setRtdType(rt);
@@ -900,11 +929,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   </div>
                 </>
               )}
-              <div>
-                <label class={lbl}>Setpoint</label>
-                <input type="number" step="any" value={setpoint}
-                  onInput={(e) => setSetpoint((e.target as HTMLInputElement).value)} class={inp} />
-              </div>
             </>
           )}
 
@@ -1049,6 +1073,42 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             </>
           )}
 
+          {/* AutoTune (PID/SplitRangePID, nur beim Bearbeiten) */}
+          {role === 'controller' && isEdit && (ctrlType === 'PID' || ctrlType === 'SplitRangePID') && (
+            <div class="border-t border-border/50 pt-3">
+              <label class={lbl}>AutoTune</label>
+              {autotuneState === 'running' ? (
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs text-amber-600">AutoTune läuft…</span>
+                  <button type="button" onClick={onStopAutotune} disabled={atBusy}
+                    class="rounded bg-fg/5 px-2 py-1 text-xs text-fg hover:bg-fg/10 disabled:opacity-50">
+                    Abbrechen
+                  </button>
+                </div>
+              ) : (
+                <div class="space-y-2">
+                  {autotuneState === 'done' && (
+                    <p class="text-xs text-emerald-600 font-mono">
+                      Kp {Number(liveController?.params?.Kp).toFixed(2)} · Ki {Number(liveController?.params?.Ki).toFixed(2)} · Kd {Number(liveController?.params?.Kd).toFixed(2)}
+                    </p>
+                  )}
+                  <div class="flex gap-2">
+                    <select value={atMethod} title="AutoTune-Methode"
+                      onChange={(e) => setAtMethod((e.target as HTMLSelectElement).value)}
+                      class={`flex-1 ${inp}`}>
+                      {AUTOTUNE_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <button type="button" onClick={onStartAutotune} disabled={atBusy}
+                      class="rounded bg-fg px-2 py-1 text-xs text-bg hover:bg-fg/80 disabled:opacity-50">
+                      Starten
+                    </button>
+                  </div>
+                </div>
+              )}
+              {atErr && <p class="mt-1 text-xs text-red-600">{atErr}</p>}
+            </div>
+          )}
+
           {err && <p class="text-xs text-red-600">{err}</p>}
 
           <div class="flex justify-end gap-2">
@@ -1056,7 +1116,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/10 disabled:opacity-50">
               Abbrechen
             </button>
-            <button type="submit" disabled={pending}
+            <button type="submit" disabled={pending || autotuneState === 'running'}
+              title={autotuneState === 'running' ? 'AutoTune läuft — erst abbrechen' : undefined}
               class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg/80 disabled:opacity-50">
               {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
             </button>

@@ -702,3 +702,51 @@ Vierter OTA-Weg neben Browser-Upload / GitHub-Pull / Auto-Check: eine
 
 **Verifikation:** `pio run -e esp32dev` SUCCESS (Flash 62.0 %, RAM 15.4 %).
 HW-E2E am Gerät noch ausstehend.
+
+---
+
+## Session 2026-06-05 — UI-Fixes: PID-Regler Dashboard & AutoTune
+
+Vier zusammenhängende UI-Fixes an `ControllerCard.tsx` und `AddItemModal.tsx`.
+`pnpm typecheck` grün; keine HW-E2E nötig (reine Frontend-Änderungen).
+
+**1. Aktor-Reset beim Ausschalten (`ControllerCard.tsx`)**
+
+`toggleEnabled()` setzt nach `enableController(id, false)` alle verknüpften
+Aktoren explizit auf den Minimalwert: single-Aktor auf `params.min ?? 0`,
+dual heat/cool-Aktoren je auf `0`. Ohne diesen Reset blieb der letzte
+PID-Ausgangswert im Aktor stehen.
+
+**2. Setpoint nur im Dashboard**
+
+Setpoint-Feld aus `AddItemModal` entfernt — war redundant (bereits im
+Dashboard editierbar) und könnte beim delete+recreate-Edit-Mechanismus
+einen unerwünschten Setpoint-Reset auslösen. Der `setpoint`-State und
+die Übernahme in den `cfg`-Submit-Block bleiben erhalten (initiale
+Konfiguration).
+
+**3. AutoTune in Settings verschoben**
+
+AutoTune-Controls (Methode-Selector, Starten/Abbrechen) aus
+`ControllerCard` (Dashboard) in `AddItemModal` (Settings, Edit-Modus)
+verschoben. Gründe: AutoTune läuft stundenlang; versehentliches Auslösen
+während eines Braugangs vermeiden; Settings sind der natürliche Ort für
+Parametrisierungs-Workflows. Gilt nur für `PID` und `SplitRangePID` beim
+Bearbeiten — beim Neu-Anlegen kein AutoTune-Abschnitt. Save-Button im
+Modal wird gesperrt solange `autotuneState === 'running'` (verhindert
+Controller delete+recreate während laufendem AutoTune).
+
+**4. AutoTune-Status implementiert**
+
+Dashboard (`ControllerCard`): zeigt jetzt read-only-Status:
+- `'running'` → amber „AutoTune läuft…"
+- `'done'` → grüne Kp/Ki/Kd-Zeile (war schon teilweise vorhanden, bleibt)
+- kein State / anderer Wert → kein UI-Element
+
+Settings (`AddItemModal`): gleicher Status-Block + volle Steuerung.
+`liveController` wird per `snap?.controllers.find(id)` aufgelöst —
+`snap` wird bereits an das Modal übergeben, kein neuer Prop nötig.
+
+**Geänderte Dateien:**
+- `web/src/components/ControllerCard.tsx`
+- `web/src/components/AddItemModal.tsx`

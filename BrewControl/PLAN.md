@@ -375,9 +375,14 @@ Spalten (Sensoren/Controllers/Aktoren) mit Tailwind `grid`.
 - **ActuatorCard**: bei `kind=Binary` Toggle-Switch, bei
   `kind=Continuous` Slider 0..1, bei `kind=Discrete` Number-Input mit
   "Send"-Button → `writeActuator(id, v)`.
-- **ControllerCard**: Setpoint-Input mit Live-Edit-and-Submit, Params
-  als editierbarer JSON-Textarea mit "Apply"-Button →
-  `setControllerParams(id, json)`.
+- **ControllerCard**: Setpoint-Input (Dashboard), Enable/Disable-Toggle
+  (setzt Aktoren beim Deaktivieren auf Minimalwert zurück), AutoTune-
+  Status read-only (amber „läuft" / grüne Kp·Ki·Kd-Zeile nach AutoTune).
+  AutoTune-Controls und Setpoint-Initwert leben im **AddItemModal** (Edit).
+- **AddItemModal**: Create + Edit aller Item-Typen. Im Edit-Modus für
+  PID/SplitRangePID: vollständige AutoTune-Steuerung (Methode, Start/
+  Abbrechen); Save-Button gesperrt solange AutoTune läuft. Setpoint
+  **nicht** im Modal — wird ausschließlich über die Dashboard-Card gesetzt.
 
 **`BrewControl/web/src/styles.css`** (neu) — `@import "tailwindcss";`
 (Tailwind v4: Content-Scanning automatisch, **kein** `tailwind.config.ts`,
