@@ -2,9 +2,10 @@
 //
 // Boot flow:
 //   1. BOOT button held >5 s at power-on  → clear WiFi prefs (factory reset).
-//   2. No SSID in NVS                     → run WiFiSetupPortal (AP), reboot.
-//   3. STA connect (30 s timeout)         → fall back to portal on failure.
-//   4. mDNS + SD + Registry + WebUI       → loop().
+//   2. SD mount + /firmware.bin present   → flash it, delete it, reboot.
+//   3. No SSID in NVS                     → run WiFiSetupPortal (AP), reboot.
+//   4. STA connect (30 s timeout)         → fall back to portal on failure.
+//   5. mDNS + Registry + WebUI            → loop().
 
 #include <Arduino.h>
 #include <ESPmDNS.h>
@@ -82,6 +83,24 @@ void setup() {
     prefs.end();
   }
 
+  // Mount SD early — before WiFi — so a firmware image placed on the card can be
+  // flashed as a recovery path even without a network. On boards where the SD
+  // slot uses non-default SPI pins (e.g. T-Display-S3 AMOLED on GPIO 36/35/37),
+  // bring up an explicit HSPI instance first.
+#ifdef BREWCTL_SD_SCK
+  static SPIClass sdSpi(HSPI);
+  sdSpi.begin(BREWCTL_SD_SCK, BREWCTL_SD_MISO, BREWCTL_SD_MOSI, kSdCsPin);
+  const bool sdOk = SD.begin(kSdCsPin, sdSpi);
+#else
+  const bool sdOk = SD.begin(kSdCsPin);
+#endif
+  if (!sdOk) {
+    Serial.println(F("SD mount FAILED — UI assets unavailable, API still works"));
+  } else {
+    Serial.println(F("SD mounted"));
+    firmwareUpdater.flashFromSdImage();  // flashes /firmware.bin then reboots; returns if none
+  }
+
   Preferences prefs;
   prefs.begin("brewctrl", true);
   const String ssid = prefs.getString("ssid", "");
@@ -107,23 +126,6 @@ void setup() {
     Serial.printf("mDNS up: http://%s.local/\n", kHostname);
   } else {
     Serial.println(F("mDNS start failed"));
-  }
-
-  // On boards where the SD slot is wired to non-default SPI pins (e.g.
-  // T-Display-S3 AMOLED uses GPIO 36/35/37), bring up an HSPI instance with
-  // explicit pin mapping before SD.begin. On other boards SD.begin uses the
-  // default SPI bus.
-#ifdef BREWCTL_SD_SCK
-  static SPIClass sdSpi(HSPI);
-  sdSpi.begin(BREWCTL_SD_SCK, BREWCTL_SD_MISO, BREWCTL_SD_MOSI, kSdCsPin);
-  const bool sdOk = SD.begin(kSdCsPin, sdSpi);
-#else
-  const bool sdOk = SD.begin(kSdCsPin);
-#endif
-  if (!sdOk) {
-    Serial.println(F("SD mount FAILED — UI assets unavailable, API still works"));
-  } else {
-    Serial.println(F("SD mounted"));
   }
 
   if (sdOk) {

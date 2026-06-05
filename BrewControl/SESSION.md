@@ -682,3 +682,23 @@ Reboot) → nach Reboot Akzent wieder `#d97706` (Restore verifiziert: settings.j
 überschrieben + Boot-Load); Negativtest `{"foo":1}` → `400`, Config intakt. Kein
 Bug gefunden. (Die BackupPage-UI selbst wurde nachträglich per `webui.tar` auf die
 SD gespielt.)
+
+## Session 2026-06-05 — SD-Boot-Firmware-Flash (Recovery-Pfad)
+
+Vierter OTA-Weg neben Browser-Upload / GitHub-Pull / Auto-Check: eine
+`/firmware.bin` im SD-Root wird beim nächsten Boot geflasht — funktioniert
+**ohne WiFi** (Recovery / Erstinbetriebnahme).
+
+**Implementiert:**
+- `FirmwareUpdater::flashFromSdImage(path = "/firmware.bin")` — prüft `fs_.exists`,
+  streamt die Datei in 1 KB-Blöcken durch `Update.begin(size)/write/end(true)`,
+  löscht das Image und `ESP.restart()`. Guard gegen Reflash-Loop: schlägt das
+  Löschen fehl, wird der Reboot übersprungen (neues Image ist bereits Boot-Target).
+  Keine Versions-/Varianten-Prüfung — bewusst, damit Downgrade/Recovery geht.
+- `main.cpp` — SD-Mount **vor** die WiFi-Logik gezogen (sonst kehrt das
+  Setup-Portal bei fehlenden Creds nie zurück); direkt nach erfolgreichem Mount
+  `firmwareUpdater.flashFromSdImage()`. Alter SD-Mount-Block nach mDNS entfernt,
+  Boot-Flow-Kommentar aktualisiert.
+
+**Verifikation:** `pio run -e esp32dev` SUCCESS (Flash 62.0 %, RAM 15.4 %).
+HW-E2E am Gerät noch ausstehend.

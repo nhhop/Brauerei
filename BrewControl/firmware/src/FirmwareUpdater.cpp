@@ -250,6 +250,58 @@ void FirmwareUpdater::doInstall(const String& channel) {
   ESP.restart();
 }
 
+bool FirmwareUpdater::flashFromSdImage(const char* path) {
+  if (!fs_.exists(path)) return false;
+  File f = fs_.open(path, FILE_READ);
+  if (!f) return false;
+  size_t size = f.size();
+  if (size == 0) { f.close(); fs_.remove(path); return false; }
+
+  Serial.printf("SD firmware image %s (%u bytes) — flashing\n",
+                path, static_cast<unsigned>(size));
+  if (!Update.begin(size, U_FLASH)) {
+    Serial.printf("SD flash: Update.begin failed: %s\n", Update.errorString());
+    f.close();
+    return false;
+  }
+
+  uint8_t buf[1024];
+  size_t written = 0;
+  while (f.available()) {
+    size_t n = f.read(buf, sizeof(buf));
+    if (n == 0) break;
+    if (Update.write(buf, n) != n) {
+      Serial.printf("SD flash: Update.write failed: %s\n", Update.errorString());
+      Update.abort();
+      f.close();
+      return false;
+    }
+    written += n;
+  }
+  f.close();
+
+  if (written != size || !Update.end(true)) {
+    Serial.printf("SD flash failed (%u/%u bytes): %s\n",
+                  static_cast<unsigned>(written), static_cast<unsigned>(size),
+                  Update.errorString());
+    return false;
+  }
+
+  // Delete the image so we don't reflash it on every boot. If deletion fails,
+  // skip the reboot to avoid a reflash loop — the new firmware is already the
+  // boot target and will run on the next ordinary restart.
+  fs_.remove(path);
+  if (fs_.exists(path)) {
+    Serial.println(F("SD flash: WARNING could not delete image — skipping reboot"));
+    return false;
+  }
+
+  Serial.println(F("SD firmware flashed — rebooting"));
+  delay(500);
+  ESP.restart();
+  return true;  // unreachable
+}
+
 String FirmwareUpdater::statusJson() const {
   JsonDocument doc;
   doc["state"] = stateName(state_);

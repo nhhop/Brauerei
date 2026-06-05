@@ -22,6 +22,11 @@ class FirmwareUpdater {
   void begin();  // record current version, seed auto-check timer
   void tick();   // process queued requests + daily auto-check; call every loop()
 
+  // Boot-time recovery path: if `path` exists on SD, flash it, delete it, and
+  // reboot into the new firmware. Returns false if no image is present (boot
+  // continues normally). Runs before WiFi so it works without a network.
+  bool flashFromSdImage(const char* path = "/firmware.bin");
+
   // Called from WebUI HTTP handlers (AsyncTCP task) — only set flags.
   void requestCheck(const String& channel);
   void requestInstall(const String& channel);

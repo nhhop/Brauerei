@@ -133,7 +133,7 @@ Snapshot-Consumer (rendert Werte per LVGL) **und** Command-Quelle (Touch → `wr
 Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine eigene Spec → Plan → Implementierung.
 
 **Welle 1 — Bestehendes besser machen (self-contained, hoher Sofortnutzen)**
-- **PIN-Invertierung** - Umkehren der Digitalen Pin-Readings und Writings
+- ~~**PIN-Invertierung**~~ ✓ — erledigt 2026-06-03 (DigitalInput `invert` + DigitalOutput `activeHigh`/active-low, Library→Firmware→Frontend end-to-end; Commits `941da78`/`2e0b57c`)
 - **Sensor-Kalibrierung** — einheitliches Offset/Scale-Interface (ggf. Mehrpunkt) + UI; ersetzt die heutigen ad-hoc-Lösungen (HX711-`tare`, YF-S201-`calibration`, Analog-`setRange`).
 - **PID-AutoTune über Web** — Start/Stop/Status für die bestehende AutoTune-Logik über API + UI (Algorithmus existiert in der Library).
   - *Später:* Fortschrittsanzeige/Restzeit für den laufenden AutoTune-Vorgang (braucht zusätzliche Instrumentierung im Backend; v1 zeigt nur idle/running/done).
@@ -165,6 +165,11 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
   Auto-Check. Varianten-Modell pro Board-Env; UI serviert aus `/www` (atomarer
   Swap). 4-MB-Boards auf `min_spiffs.csv` (OTA-Headroom). HW-E2E auf LilyGo S3
   verifiziert (Upload + Server-Pull); CI-Release-Pipeline grün; PR #6 gemergt.
+  - **SD-Boot-Flash (Recovery, 2026-06-05):** `/firmware.bin` im SD-Root wird
+    beim Boot geflasht (vor WiFi → funktioniert ohne Netzwerk), danach gelöscht;
+    `FirmwareUpdater::flashFromSdImage()`. Build grün. HW-E2E ausstehend:
+    `firmware.bin` auf SD-Root legen, Boot beobachten (Serial: „SD firmware image …
+    flashing" → „SD firmware flashed — rebooting"), Datei danach weg prüfen.
   - -> auch für das hinzufügen von Displays relevant. Firmware je nach Display laden (online oder SD-Karte)
 - **Netzwerk/WLAN-Einstellungen** — über das bestehende Captive-Portal hinaus.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.

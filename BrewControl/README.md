@@ -234,11 +234,16 @@ Hook (nicht im MVP — siehe `PLAN.md` Verifikation Schritt 10).
 
 ## Firmware-Update
 
-Drei Wege:
+Vier Wege:
 - **Server-Pull (GitHub):** `/settings/firmware` → Kanal (stable/preview) wählen →
   „Auf Updates prüfen" → „Installieren". Zieht `firmware-<variant>.bin` + `webui.tar`
   aus dem passenden Release. Repo `nhhop/Brauerei` muss **public** sein.
 - **Browser-Upload:** dieselbe Seite — `.bin` (Firmware) bzw. `.tar` (UI-Paket).
+- **SD-Boot-Flash (Recovery, ohne WiFi):** Eine Datei `firmware.bin` in den
+  **SD-Root** kopieren → beim nächsten Boot wird sie geflasht, danach gelöscht und
+  das Gerät rebootet. Funktioniert vor der WiFi-Verbindung, also auch ohne Netz /
+  bei fehlenden WiFi-Creds. Keine Versions-/Varianten-Prüfung — passende `.bin` für
+  das Board selbst wählen.
 - **USB (Brick-Rettung):** Bootet das Gerät nach einem fehlerhaften Flash nicht mehr,
   ist die WebUI weg → per Kabel `pio run -e <env> -t upload` neu flashen.
 
@@ -272,7 +277,8 @@ pio run -e esp32dev      # oder lolin_s2_mini / lilygo_t_display_s3_amoled
 
 Release-Benennung (wie die CI): `Copy-Item .pio\build\<env>\firmware.bin firmware-<env>.bin`.
 Aufspielen: `/settings/firmware` → „Firmware (.bin)",
-`curl -F "f=@.pio/build/<env>/firmware.bin" http://<ip>/api/update/firmware`, oder
+`curl -F "f=@.pio/build/<env>/firmware.bin" http://<ip>/api/update/firmware`,
+als `firmware.bin` in den SD-Root kopieren (Boot-Flash, s.o.), oder
 USB via `pio run -e <env> -t upload`. ⚠ Bei den 4-MB-Boards muss der **erste** Flash
 mit dem `min_spiffs`-Layout per USB laufen (s. Partition-Layout unten).
 
