@@ -7,19 +7,31 @@
 #include <functional>
 #include <math.h>
 #include <memory>
+#include <time.h>
 
 #include "version.h"
 
 namespace BrewControl {
 namespace {
 
-constexpr size_t kSnapshotCap = 4096;
+constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
 
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
   if (!buf) { *outLen = 0; return buf; }
-  *outLen = SensActCtrl::serializeRegistry(reg, buf.get(), kSnapshotCap);
+  size_t n = SensActCtrl::serializeRegistry(reg, buf.get(), kSnapshotCap);
+  // Append serverTime if NTP is synced (epoch > year 2000)
+  time_t now = time(nullptr);
+  if (now > 946684800L && n >= 2) {
+    char suffix[40];
+    int slen = snprintf(suffix, sizeof(suffix), ",\"serverTime\":%ld}", (long)now);
+    if (slen > 0 && n - 1 + (size_t)slen + 1 <= kSnapshotCap) {
+      memcpy(buf.get() + n - 1, suffix, slen + 1);  // overwrites closing '}'
+      n = n - 1 + slen;
+    }
+  }
+  *outLen = n;
   return buf;
 }
 
@@ -345,8 +357,31 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject t = obj["time"].as<JsonObject>();
+        if (!t.isNull()) {
+          if (t["utcOffsetSec"].is<int>()) {
+            int32_t v = t["utcOffsetSec"].as<int32_t>();
+            if (v < -43200 || v > 50400) { req->send(400, "text/plain", "invalid utcOffsetSec"); return; }
+          }
+          if (t["dstOffsetSec"].is<int>()) {
+            int32_t v = t["dstOffsetSec"].as<int32_t>();
+            if (v < 0 || v > 7200) { req->send(400, "text/plain", "invalid dstOffsetSec"); return; }
+          }
+          if (const char* f = t["timeFormat"]) {
+            if (strcmp(f,"24h")!=0 && strcmp(f,"12h")!=0) { req->send(400, "text/plain", "invalid timeFormat"); return; }
+          }
+          if (const char* f = t["dateFormat"]) {
+            if (strcmp(f,"DD.MM.YYYY")!=0 && strcmp(f,"MM/DD/YYYY")!=0 && strcmp(f,"YYYY-MM-DD")!=0) {
+              req->send(400, "text/plain", "invalid dateFormat"); return;
+            }
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
+        if (!t.isNull()) {
+          configTime(settings_.utcOffsetSec(), settings_.dstOffsetSec(),
+                     settings_.ntpServer().c_str());
+        }
         req->send(204);
       }));
 

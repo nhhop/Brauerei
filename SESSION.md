@@ -920,3 +920,45 @@ POST /api/actuators
 | `pio run -e lolin_s2_mini` | SUCCESS |
 | `pio run -e lilygo_t_display_s3_amoled` | SUCCESS |
 | `pnpm typecheck` | 0 Fehler |
+
+---
+
+## 2026-06-05 — Zeit & Formate (NTP-Sync + Zeitzone + Formateinstellungen)
+
+**Ausgangslage:** Keine Zeitsynchronisation, keine Timestamps in Logs, kein konfiguriertes Zeitformat.
+
+### Firmware (BrewControl)
+
+- **`SettingsStore.h/cpp`**: neuer `"time"`-Toplevel-Block mit 5 Feldern: `ntpServer_` (default `"pool.ntp.org"`), `utcOffsetSec_` (int32_t, default 3600 = CET), `dstOffsetSec_` (int32_t, default 3600 = CEST), `timeFormat_` (`"24h"`/`"12h"`), `dateFormat_` (`"DD.MM.YYYY"`/`"MM/DD/YYYY"`/`"YYYY-MM-DD"`). Getter, load/save/serialize/update nach bewährtem Muster.
+- **`main.cpp`**: `configTime(utcOffsetSec, dstOffsetSec, ntpServer)` direkt nach `settingsStore.loadFromSD()` — nutzt gespeicherte Werte, non-blocking (SNTP im Hintergrund).
+- **`WebUI.cpp`**:
+  - `kSnapshotCap` 4096 → 4160 (Puffer für serverTime-Suffix).
+  - `makeSnapshot()`: hängt `,"serverTime":<unix-ts>}` vor das abschließende `}` des Registry-JSONs an, wenn `time(nullptr) > 946684800` (NTP synced, nach Jahr 2000).
+  - POST `/api/settings`: `"time"`-Validierungsblock (Range-Check für Offsets, Enum-Check für Format-Strings). Nach `settings_.update()` + `saveToSD()` wird `configTime()` sofort neu aufgerufen — kein Reboot nötig.
+
+### Frontend (BrewControl/web)
+
+- **`types.ts`**: `TimeSettings`-Interface, `AppSettings` um `time?: TimeSettings` erweitert, `Snapshot` um `serverTime?: number` erweitert.
+- **`time.ts`** (neu): `formatTime(ts, settings)`, `formatDate(ts, settings)`, `formatDateTime(ts, settings)` — verwendet Browser-`Date` mit Unix-Timestamp (Sekunden × 1000). Wird von Charts/Logs wiederverwendet.
+- **`pages/TimePage.tsx`** (neu): Timezone-Dropdown (25 gängige Regionen → `utcOffsetSec`/`dstOffsetSec`), Zeitformat-Segmented-Buttons (24h/12h), Datumsformat-Segmented-Buttons, NTP-Server-Text-Input. Optimistisches Update-Muster (wie `AppearancePage`).
+- **`pages/SettingsIndex.tsx`**: Live-Uhr ganz oben (Browser-`setInterval(1s)`, `new Date()`, formatiert mit gespeicherten Format-Settings). Neuer Nav-Eintrag „Zeit & Formate" → `/settings/time`.
+- **`app.tsx`**: Route `/settings/time` → `TimePage` hinzugefügt.
+
+### Wire-Format
+
+```json
+// GET/POST /api/settings
+{ "time": { "ntpServer": "pool.ntp.org", "utcOffsetSec": 3600, "dstOffsetSec": 3600,
+            "timeFormat": "24h", "dateFormat": "DD.MM.YYYY" } }
+
+// SSE-Snapshot (nur wenn NTP synced)
+{ "sensors": [...], "actuators": [...], "controllers": [...], "serverTime": 1748995200 }
+```
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pnpm typecheck` | 0 Fehler |
+| `pio run -e esp32dev` | SUCCESS — 62.3 % Flash, 15.5 % RAM |
+| HW-E2E (NTP-Sync, Formatwechsel, serverTime im Snapshot) | ausstehend |

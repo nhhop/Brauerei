@@ -97,6 +97,7 @@ export interface Snapshot {
   sensors: Sensor[];
   actuators: Actuator[];
   controllers: Controller[];
+  serverTime?: number;  // Unix timestamp (seconds), present only when NTP synced
 }
 
 // Wire format of GET /api/config
@@ -140,9 +141,18 @@ export interface FirmwareSettings {
   autoCheck: boolean;
 }
 
+export interface TimeSettings {
+  ntpServer: string;
+  utcOffsetSec: number;
+  dstOffsetSec: number;
+  timeFormat: '24h' | '12h';
+  dateFormat: 'DD.MM.YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+}
+
 export interface AppSettings {
   theme: ThemeSettings;
   firmware?: FirmwareSettings;
+  time?: TimeSettings;
 }
 
 export type UpdateState =

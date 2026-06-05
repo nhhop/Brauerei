@@ -138,8 +138,9 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 - **PID-AutoTune über Web** — Start/Stop/Status für die bestehende AutoTune-Logik über API + UI (Algorithmus existiert in der Library).
   - *Später:* Fortschrittsanzeige/Restzeit für den laufenden AutoTune-Vorgang (braucht zusätzliche Instrumentierung im Backend; v1 zeigt nur idle/running/done).
 - ~~**Design/Theme-Einstellungen**~~ ✓ — abgeschlossen 2026-06-01 (s. Aktueller Status).
-- **Zeit & Formate** — Uhrzeit-Sync + Anzeigeformate.
-  - *Später* Mehrsprachigkeit - Auswählen der Sprache in Page für Zeit & Formate: Umbenennen in Zeit & Region
+- ~~**Zeit & Formate**~~ ✓ — abgeschlossen 2026-06-05: NTP-Sync (`configTime()`) nach WiFi-Connect; konfigurierbare Zeitzone (UTC-Offset + DST), Zeitformat (24h/12h), Datumsformat (DD.MM.YYYY / MM/DD/YYYY / YYYY-MM-DD), NTP-Server; `serverTime` im SSE-Snapshot (Unix-Timestamp, nur wenn NTP synced); Live-Uhr auf Settings-Hub; `/settings/time`-Unterseite mit Zeitzone-Dropdown (25 Regionen).
+  - *Später:* Mehrsprachigkeit — Sprache in „Zeit & Region"-Seite wählbar (Umbenennung von „Zeit & Formate").
+  - *Später:* Hardware-RTC (PCF8563) als Fallback für Betrieb ohne WiFi — LilyGo T-Display-S3-AMOLED hat den Chip onboard; einmalige NTP-Sync schreibt in RTC, danach zeitstempelstabil auch offline.
 
 **Welle 2 — Prozess-Features (greifen ineinander)**
 - **Gradienten/Ableitungen (Library)** — rate-of-change als zusätzlicher Channel (°C/min, K/min, L/min²). ⚠️ Voraussetzung: gruppierte SensorCard (s.u.), da hierdurch weitere Kanäle pro Sensor entstehen.

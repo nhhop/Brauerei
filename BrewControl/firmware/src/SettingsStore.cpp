@@ -20,6 +20,14 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* c = fw["channel"]) fwChannel_ = c;
     if (fw["autoCheck"].is<bool>())    fwAutoCheck_ = fw["autoCheck"].as<bool>();
   }
+  JsonObject t = doc["time"].as<JsonObject>();
+  if (!t.isNull()) {
+    if (const char* s = t["ntpServer"])  ntpServer_    = s;
+    if (t["utcOffsetSec"].is<int>())     utcOffsetSec_ = t["utcOffsetSec"].as<int32_t>();
+    if (t["dstOffsetSec"].is<int>())     dstOffsetSec_ = t["dstOffsetSec"].as<int32_t>();
+    if (const char* f = t["timeFormat"]) timeFormat_   = f;
+    if (const char* f = t["dateFormat"]) dateFormat_   = f;
+  }
 }
 
 void SettingsStore::saveToSD(fs::FS& sd) const {
@@ -39,6 +47,12 @@ String SettingsStore::serialize() const {
   JsonObject fw = doc["firmware"].to<JsonObject>();
   fw["channel"]   = fwChannel_.c_str();
   fw["autoCheck"] = fwAutoCheck_;
+  JsonObject t = doc["time"].to<JsonObject>();
+  t["ntpServer"]    = ntpServer_.c_str();
+  t["utcOffsetSec"] = utcOffsetSec_;
+  t["dstOffsetSec"] = dstOffsetSec_;
+  t["timeFormat"]   = timeFormat_.c_str();
+  t["dateFormat"]   = dateFormat_.c_str();
   String out;
   serializeJson(doc, out);
   return out;
@@ -55,6 +69,14 @@ void SettingsStore::update(const JsonObject& patch) {
   if (!fw.isNull()) {
     if (const char* c = fw["channel"])  fwChannel_   = c;
     if (fw["autoCheck"].is<bool>())     fwAutoCheck_ = fw["autoCheck"].as<bool>();
+  }
+  JsonObject t = patch["time"].as<JsonObject>();
+  if (!t.isNull()) {
+    if (const char* s = t["ntpServer"])  ntpServer_    = s;
+    if (t["utcOffsetSec"].is<int>())     utcOffsetSec_ = t["utcOffsetSec"].as<int32_t>();
+    if (t["dstOffsetSec"].is<int>())     dstOffsetSec_ = t["dstOffsetSec"].as<int32_t>();
+    if (const char* f = t["timeFormat"]) timeFormat_   = f;
+    if (const char* f = t["dateFormat"]) dateFormat_   = f;
   }
 }
 

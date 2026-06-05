@@ -134,6 +134,9 @@ void setup() {
     settingsStore.loadFromSD(SD);
   }
 
+  configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
+             settingsStore.ntpServer().c_str());
+
   registry.begin();
   dynamicItems.markInitialized();  // future add*() calls will call begin()
 
