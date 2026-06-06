@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, AppSettings, UpdateStatus } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, AppSettings, UpdateStatus } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -133,6 +133,90 @@ export function updateDashboard(id: string, cfg: Omit<DashboardConfig, 'id'>): P
 export async function deleteDashboard(id: string): Promise<void> {
   const r = await fetch(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+// ── Data logs / charts ─────────────────────────────────────────────────────────
+
+export async function getLogs(): Promise<LogConfig[]> {
+  const r = await fetch('/api/logs');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json() as Promise<LogConfig[]>;
+}
+
+export async function createLog(cfg: Omit<LogConfig, 'id' | 'session'>): Promise<string> {
+  const r = await fetch('/api/logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json() as { id: string }).id;
+}
+
+export function updateLog(id: string, cfg: Omit<LogConfig, 'id' | 'session'>): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}`, cfg);
+}
+
+export async function deleteLog(id: string): Promise<void> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+export function logDownloadUrl(id: string): string {
+  return `/api/logs/${encodeURIComponent(id)}/download`;
+}
+
+// Parsed current-session data, shaped for uPlot: data[0] = timestamps (s),
+// data[i+1] = series i (null for empty cells). refs are the column headers.
+export interface LogData {
+  refs: string[];
+  data: (number | null)[][];
+}
+
+export async function getLogData(id: string): Promise<LogData> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}/data`);
+  if (r.status === 404) return { refs: [], data: [[]] };
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return parseCsv(await r.text());
+}
+
+function parseCsv(text: string): LogData {
+  const lines = text.trim().split('\n');
+  if (lines.length < 1 || !lines[0]) return { refs: [], data: [[]] };
+  const header = lines[0].split(',');
+  const refs = header.slice(1);            // drop "ts"
+  const cols: (number | null)[][] = header.map(() => []);
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',');
+    if (cells.length !== header.length) continue;
+    for (let c = 0; c < header.length; c++) {
+      const raw = cells[c];
+      cols[c].push(raw === '' ? null : Number(raw));
+    }
+  }
+  return { refs, data: cols };
+}
+
+// Resolves a series ref against a live snapshot. Mirrors LogStore::resolve
+// in the firmware. Returns null when the channel is absent or invalid.
+export function resolveRef(snap: Snapshot, ref: string): number | null {
+  const slash = ref.indexOf('/');
+  if (slash < 0) return null;
+  const role = ref.slice(0, slash);
+  const id = ref.slice(slash + 1);
+  if (role === 'sensor') {
+    const s = snap.sensors.find((x) => x.id === id);
+    return s && s.state.ok ? s.state.v : null;
+  }
+  if (role === 'actuator') {
+    const a = snap.actuators.find((x) => x.id === id);
+    return a ? a.state.v : null;
+  }
+  if (role === 'controller') {
+    const c = snap.controllers.find((x) => x.id === id);
+    return c ? c.setpoint : null;
+  }
+  return null;
 }
 
 // ── Bus discovery ────────────────────────────────────────────────────────────

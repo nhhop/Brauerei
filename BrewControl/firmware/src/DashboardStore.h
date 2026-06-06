@@ -35,6 +35,7 @@ class DashboardStore {
     std::vector<std::string> sensors;
     std::vector<std::string> actuators;
     std::vector<std::string> controllers;
+    std::vector<std::string> charts;       // referenced log/chart IDs
   };
 
   std::vector<DashboardCfg> dashboards_;

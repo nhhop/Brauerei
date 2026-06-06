@@ -63,6 +63,24 @@ class BodyPrefixHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
+// Matches GET <prefix>* requests where the URL carries a path param.
+class GetPrefixHandler : public AsyncWebHandler {
+ public:
+  using Cb = std::function<void(AsyncWebServerRequest*)>;
+  GetPrefixHandler(const char* prefix, Cb cb)
+      : prefix_(prefix), cb_(std::move(cb)) {}
+
+  bool canHandle(AsyncWebServerRequest* req) const override {
+    return req->method() == HTTP_GET && req->url().startsWith(prefix_);
+  }
+  void handleRequest(AsyncWebServerRequest* req) override { cb_(req); }
+  bool isRequestHandlerTrivial() const override { return false; }
+
+ private:
+  String prefix_;
+  Cb cb_;
+};
+
 // Matches DELETE <prefix>* requests (no body).
 class DeletePrefixHandler : public AsyncWebHandler {
  public:
@@ -85,9 +103,9 @@ class DeletePrefixHandler : public AsyncWebHandler {
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
-             FirmwareUpdater& updater, uint16_t port)
+             FirmwareUpdater& updater, LogStore& logs, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), server_(port), events_("/api/events") {}
+      updater_(updater), logs_(logs), server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -320,6 +338,66 @@ void WebUI::begin() {
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
 
+  // ── Data logs ───────────────────────────────────────────────────────────────
+  server_.on("/api/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", logs_.serialize());
+  });
+
+  // GET /api/logs/:id/data | /download — current session CSV
+  server_.addHandler(new GetPrefixHandler("/api/logs/",
+      [this](AsyncWebServerRequest* req) {
+        String tail = req->url().substring(strlen("/api/logs/"));
+        int slash = tail.indexOf('/');
+        if (slash < 0) { req->send(404); return; }
+        String id   = tail.substring(0, slash);
+        String verb = tail.substring(slash + 1);
+        bool download = (verb == "download");
+        if (verb != "data" && !download) { req->send(404); return; }
+        String path = logs_.sessionPath(id.c_str());
+        if (path.isEmpty() || !fs_.exists(path)) {
+          req->send(404, "text/plain", "no data");
+          return;
+        }
+        req->send(fs_, path, "text/csv", download);
+      }));
+
+  // DELETE /api/logs/:id
+  server_.addHandler(new DeletePrefixHandler("/api/logs/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/logs/"));
+        if (!logs_.remove(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        logs_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/logs/:id — update (before create handler)
+  server_.addHandler(new BodyPrefixHandler("/api/logs/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String id = req->url().substring(strlen("/api/logs/"));
+        if (!logs_.update(id.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        logs_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/logs — create (registered last so prefix handlers above win)
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/logs",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = logs_.add(json.as<JsonObject>());
+        logs_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
   // ── Settings ──────────────────────────────────────────────────────────────
   server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* req) {
     req->send(200, "application/json", settings_.serialize());
@@ -532,6 +610,7 @@ void WebUI::tick() {
   }
   uint32_t now = millis();
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
+  logs_.tick(reg_, fs_, time(nullptr), now);
   if (now - lastPushMs_ >= 1000) {
     lastPushMs_ = now;
     pushSnapshot_();

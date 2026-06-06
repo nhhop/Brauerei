@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, DashboardConfig } from '../types';
+import type { Snapshot, DashboardConfig, LogConfig } from '../types';
 import { AddItemModal } from './AddItemModal';
 
 interface Props {
-  open: boolean; snap: Snapshot | null; initial?: DashboardConfig;
-  onSave: (name: string, sensors: string[], actuators: string[], controllers: string[]) => void;
+  open: boolean; snap: Snapshot | null; initial?: DashboardConfig; logs?: LogConfig[];
+  onSave: (name: string, sensors: string[], actuators: string[], controllers: string[], charts: string[]) => void;
   onDelete?: () => void; onClose: () => void;
 }
 
-export function DashboardEditorModal({ open, snap, initial, onSave, onDelete, onClose }: Props) {
+export function DashboardEditorModal({ open, snap, initial, logs, onSave, onDelete, onClose }: Props) {
   const [name, setName] = useState('');
   const [sensors, setSensors] = useState<Set<string>>(new Set());
   const [actuators, setActuators] = useState<Set<string>>(new Set());
   const [controllers, setControllers] = useState<Set<string>>(new Set());
+  const [charts, setCharts] = useState<Set<string>>(new Set());
   const [subAddOpen, setSubAddOpen] = useState(false);
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export function DashboardEditorModal({ open, snap, initial, onSave, onDelete, on
       setSensors(new Set(initial?.sensors ?? []));
       setActuators(new Set(initial?.actuators ?? []));
       setControllers(new Set(initial?.controllers ?? []));
+      setCharts(new Set(initial?.charts ?? []));
     }
   }, [open, initial]);
 
@@ -41,7 +43,7 @@ export function DashboardEditorModal({ open, snap, initial, onSave, onDelete, on
   function handleSubmit(e: Event) {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave(name.trim(), [...sensors], [...actuators], [...controllers]);
+    onSave(name.trim(), [...sensors], [...actuators], [...controllers], [...charts]);
   }
 
   return (
@@ -101,6 +103,22 @@ export function DashboardEditorModal({ open, snap, initial, onSave, onDelete, on
                     checked={controllers.has(id)}
                     onChange={() => toggle(controllers, setControllers, id)} />
                   {id}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        {logs && logs.length > 0 && (
+          <fieldset class="mb-3">
+            <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Charts</legend>
+            <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+              {logs.map((l) => (
+                <label key={l.id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
+                  <input type="checkbox" class="accent-accent"
+                    checked={charts.has(l.id)}
+                    onChange={() => toggle(charts, setCharts, l.id)} />
+                  {l.name}
                 </label>
               ))}
             </div>

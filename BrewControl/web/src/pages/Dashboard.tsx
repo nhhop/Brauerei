@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import type { Snapshot, ItemConfig, DashboardConfig } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig } from '../types';
 import {
   wifiReset,
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
+  getLogs,
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
+import { ChartCard } from '../components/ChartCard';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { AddItemModal } from '../components/AddItemModal';
 import { DashboardEditorModal } from '../components/DashboardEditorModal';
@@ -38,6 +40,7 @@ export function Dashboard({ snap, err, onReset }: {
 }) {
   // ── Dashboards ────────────────────────────────────────────────────────────
   const [dashboards, setDashboards] = useState<DashboardConfig[]>([]);
+  const [logs, setLogs] = useState<LogConfig[]>([]);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [dashEditorOpen, setDashEditorOpen] = useState(false);
   const [editingDash, setEditingDash] = useState<DashboardConfig | null>(null);
@@ -47,22 +50,23 @@ export function Dashboard({ snap, err, onReset }: {
       setDashboards(ds);
       if (ds.length > 0) setActiveTab({ kind: 'dashboard', id: ds[0].id });
     }).catch(() => {});
+    getLogs().then(setLogs).catch(() => {});
   }, []);
 
   function openCreateDash() { setEditingDash(null); setDashEditorOpen(true); }
   function openEditDash(d: DashboardConfig) { setEditingDash(d); setDashEditorOpen(true); }
 
   async function saveDashboard(
-    name: string, sensors: string[], actuators: string[], controllers: string[]
+    name: string, sensors: string[], actuators: string[], controllers: string[], charts: string[]
   ) {
     if (editingDash) {
-      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers });
+      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers, charts });
       setDashboards(ds => ds.map(d =>
-        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers } : d
+        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers, charts } : d
       ));
     } else {
-      const id = await createDashboard({ name, sensors, actuators, controllers });
-      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers }]);
+      const id = await createDashboard({ name, sensors, actuators, controllers, charts });
+      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers, charts }]);
       setActiveTab({ kind: 'dashboard', id });
     }
     setDashEditorOpen(false);
@@ -91,6 +95,7 @@ export function Dashboard({ snap, err, onReset }: {
       sensors: role === 'sensor' ? activeDash.sensors.filter(s => s !== id) : activeDash.sensors,
       actuators: role === 'actuator' ? activeDash.actuators.filter(a => a !== id) : activeDash.actuators,
       controllers: role === 'controller' ? activeDash.controllers.filter(c => c !== id) : activeDash.controllers,
+      charts: activeDash.charts ?? [],
     };
     await updateDashboard(activeDash.id, updated);
     setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
@@ -197,6 +202,7 @@ export function Dashboard({ snap, err, onReset }: {
       <DashboardEditorModal
         open={dashEditorOpen}
         snap={snap}
+        logs={logs}
         initial={editingDash ?? undefined}
         onSave={saveDashboard}
         onDelete={editingDash ? async () => {
@@ -262,6 +268,20 @@ export function Dashboard({ snap, err, onReset }: {
           ))}
         </Column>
       </div>
+      {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
+        <div class="mt-4 space-y-4">
+          {activeDash.charts!.map((cid) => {
+            const log = logs.find((l) => l.id === cid);
+            if (!log) return null;
+            return (
+              <div key={cid} class="rounded-lg border border-border bg-surface p-4">
+                <div class="mb-2 text-sm font-medium">{log.name}</div>
+                <ChartCard log={log} snap={snap} />
+              </div>
+            );
+          })}
+        </div>
+      )}
       {modals}
     </div>
   );

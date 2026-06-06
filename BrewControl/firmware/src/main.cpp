@@ -18,6 +18,7 @@
 #include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
+#include "LogStore.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
 #include "WiFiSetupPortal.h"
@@ -41,7 +42,8 @@ BrewControl::DynamicItems dynamicItems;
 BrewControl::DashboardStore dashboardStore;
 BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
-WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater);
+BrewControl::LogStore logStore;
+WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore);
 
 static bool resetHeldAtBoot() {
   pinMode(kBootButtonPin, INPUT_PULLUP);
@@ -132,6 +134,7 @@ void setup() {
     dynamicItems.loadFromSD(SD, registry);
     dashboardStore.loadFromSD(SD);
     settingsStore.loadFromSD(SD);
+    logStore.loadFromSD(SD);
   }
 
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
