@@ -38,6 +38,21 @@ class LogStore {
   // Removes a log config (leaves its CSV sessions on disk). False if not found.
   bool remove(const char* id);
 
+  // Enables/disables background logging without touching the session. False if
+  // id not found. Persist with saveToSD afterwards.
+  bool setEnabled(const char* id, bool enabled);
+
+  // Closes the current session so the next sample starts a fresh timestamped
+  // file. Does not delete anything. False if id not found.
+  bool clear(const char* id);
+
+  // JSON array of completed/active sessions for `id`:
+  // [{"start":<epoch>,"size":<bytes>,"active":<bool>}, …]. "[]" if unknown id.
+  String serializeSessions(const char* id, fs::FS& sd) const;
+
+  // Deletes one session file (never the active one). False if not found/active.
+  bool deleteSession(const char* id, time_t start, fs::FS& sd);
+
   // Samples every configured log whose interval has elapsed and appends a row
   // to its current session file. nowEpoch is the wall-clock time (Unix s) used
   // for the timestamp column; nowMs is millis() used for interval gating.
@@ -45,8 +60,9 @@ class LogStore {
   void tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
             uint32_t nowMs);
 
-  // Absolute path of the current session CSV for `id`, or "" if no session.
-  String sessionPath(const char* id) const;
+  // Absolute path of a session CSV for `id`. start==0 → the current session.
+  // Returns "" if the id is unknown (or no current session for start==0).
+  String sessionPath(const char* id, time_t start = 0) const;
 
  private:
   struct Series {
@@ -61,10 +77,13 @@ class LogStore {
     std::vector<Series> series;
     CompAlgo    algo      = CompAlgo::None;
     uint32_t    maxGapSec = 600;   // safety point: force a row after this gap
+    bool        enabled   = true;  // background logging on/off
+    std::string bindEnableTo;      // controller id; if set, enabled follows it
     // Runtime state (not persisted):
     time_t        sessionStart = 0;  // 0 = no session file opened yet
     uint32_t      lastSampleMs = 0;
     bool          firstSample  = true;
+    bool          loggingActive = false;  // last-tick effective-enabled state
     LogCompressor comp;
 
     // Rebuilds the compressor from the current series tolerances + algo.
@@ -86,6 +105,15 @@ class LogStore {
   static Value resolve(SensActCtrl::Registry& reg, const std::string& ref);
 
   std::vector<LogCfg> logs_;
+
+  // Writes one emitted row to l's current session (creating it + header on
+  // first write), then enforces the global storage budget. nowEpoch seeds a
+  // new session's start time.
+  void writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row, time_t nowEpoch);
+
+  // Deletes the oldest non-active session files across all logs until the
+  // total /logs size is within the budget.
+  void pruneToBudget_(fs::FS& sd);
 
   static String generateId();
   static void   fillFromJson(LogCfg& l, const JsonObject& cfg);

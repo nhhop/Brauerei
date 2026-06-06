@@ -343,7 +343,8 @@ void WebUI::begin() {
     req->send(200, "application/json", logs_.serialize());
   });
 
-  // GET /api/logs/:id/data | /download — current session CSV
+  // GET /api/logs/:id/data|download[?session=<start>] — session CSV
+  // GET /api/logs/:id/sessions                        — session list (JSON)
   server_.addHandler(new GetPrefixHandler("/api/logs/",
       [this](AsyncWebServerRequest* req) {
         String tail = req->url().substring(strlen("/api/logs/"));
@@ -351,9 +352,16 @@ void WebUI::begin() {
         if (slash < 0) { req->send(404); return; }
         String id   = tail.substring(0, slash);
         String verb = tail.substring(slash + 1);
+        if (verb == "sessions") {
+          req->send(200, "application/json", logs_.serializeSessions(id.c_str(), fs_));
+          return;
+        }
         bool download = (verb == "download");
         if (verb != "data" && !download) { req->send(404); return; }
-        String path = logs_.sessionPath(id.c_str());
+        time_t start = 0;
+        if (req->hasParam("session"))
+          start = (time_t)atol(req->getParam("session")->value().c_str());
+        String path = logs_.sessionPath(id.c_str(), start);
         if (path.isEmpty() || !fs_.exists(path)) {
           req->send(404, "text/plain", "no data");
           return;
@@ -361,11 +369,23 @@ void WebUI::begin() {
         req->send(fs_, path, "text/csv", download);
       }));
 
-  // DELETE /api/logs/:id
+  // DELETE /api/logs/:id                    — remove log config
+  // DELETE /api/logs/:id/sessions/<start>   — delete one archived session
   server_.addHandler(new DeletePrefixHandler("/api/logs/",
       [this](AsyncWebServerRequest* req) {
-        String id = req->url().substring(strlen("/api/logs/"));
-        if (!logs_.remove(id.c_str())) {
+        String tail = req->url().substring(strlen("/api/logs/"));
+        int sp = tail.indexOf("/sessions/");
+        if (sp >= 0) {
+          String id = tail.substring(0, sp);
+          time_t start = (time_t)atol(tail.substring(sp + strlen("/sessions/")).c_str());
+          if (!logs_.deleteSession(id.c_str(), start, fs_)) {
+            req->send(404, "text/plain", "not found or active");
+            return;
+          }
+          req->send(204);
+          return;
+        }
+        if (!logs_.remove(tail.c_str())) {
           req->send(404, "text/plain", "not found");
           return;
         }
@@ -373,7 +393,9 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // POST /api/logs/:id — update (before create handler)
+  // POST /api/logs/:id           — update config (resets session)
+  // POST /api/logs/:id/enable    — {"enabled":bool} toggle logging
+  // POST /api/logs/:id/clear     — close current session, start a fresh one
   server_.addHandler(new BodyPrefixHandler("/api/logs/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
         JsonDocument doc;
@@ -381,8 +403,22 @@ void WebUI::begin() {
           req->send(400, "text/plain", "invalid JSON");
           return;
         }
-        String id = req->url().substring(strlen("/api/logs/"));
-        if (!logs_.update(id.c_str(), doc.as<JsonObject>())) {
+        String tail = req->url().substring(strlen("/api/logs/"));
+        if (tail.endsWith("/enable")) {
+          String id = tail.substring(0, tail.length() - strlen("/enable"));
+          bool en = doc["enabled"] | true;
+          if (!logs_.setEnabled(id.c_str(), en)) { req->send(404); return; }
+          logs_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (tail.endsWith("/clear")) {
+          String id = tail.substring(0, tail.length() - strlen("/clear"));
+          if (!logs_.clear(id.c_str())) { req->send(404); return; }
+          req->send(204);
+          return;
+        }
+        if (!logs_.update(tail.c_str(), doc.as<JsonObject>())) {
           req->send(404, "text/plain", "not found");
           return;
         }

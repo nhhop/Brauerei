@@ -1,11 +1,17 @@
 #include "LogStore.h"
 
 #include <Arduino.h>
+#include <algorithm>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace BrewControl {
 namespace {
+
+// Global storage budget for all CSV sessions under /logs. When exceeded, the
+// oldest non-active sessions are deleted first.
+constexpr uint64_t kLogBudgetBytes = 200ULL * 1024 * 1024;
 
 CompAlgo algoFromStr(const char* s) {
   if (!s) return CompAlgo::None;
@@ -49,8 +55,10 @@ void LogStore::loadFromSD(fs::FS& sd) {
       ser.tol = s["tol"] | 0.0f;
       l.series.push_back(std::move(ser));
     }
-    l.algo      = algoFromStr(obj["algo"] | "none");
-    l.maxGapSec = obj["maxGapSec"] | 600;
+    l.algo         = algoFromStr(obj["algo"] | "none");
+    l.maxGapSec    = obj["maxGapSec"] | 600;
+    l.enabled      = obj["enabled"] | true;
+    l.bindEnableTo = obj["bindEnableTo"] | "";
     l.reconfigure();
     logs_.push_back(std::move(l));
   }
@@ -76,6 +84,8 @@ String LogStore::serialize() const {
     obj["intervalSec"] = l.intervalSec;
     obj["algo"]      = algoToStr(l.algo);
     obj["maxGapSec"] = l.maxGapSec;
+    obj["enabled"]   = l.enabled;
+    if (!l.bindEnableTo.empty()) obj["bindEnableTo"] = l.bindEnableTo.c_str();
     JsonArray sarr = obj["series"].to<JsonArray>();
     for (const auto& s : l.series) {
       JsonObject so = sarr.add<JsonObject>();
@@ -110,8 +120,10 @@ void LogStore::fillFromJson(LogCfg& l, const JsonObject& cfg) {
     ser.tol = s["tol"] | 0.0f;
     l.series.push_back(std::move(ser));
   }
-  l.algo      = algoFromStr(cfg["algo"] | "none");
-  l.maxGapSec = cfg["maxGapSec"] | 600;
+  l.algo         = algoFromStr(cfg["algo"] | "none");
+  l.maxGapSec    = cfg["maxGapSec"] | 600;
+  l.enabled      = cfg["enabled"] | true;
+  l.bindEnableTo = cfg["bindEnableTo"] | "";
   l.reconfigure();
 }
 
@@ -141,6 +153,70 @@ bool LogStore::update(const char* id, const JsonObject& cfg) {
 bool LogStore::remove(const char* id) {
   for (auto it = logs_.begin(); it != logs_.end(); ++it) {
     if (it->id == id) { logs_.erase(it); return true; }
+  }
+  return false;
+}
+
+bool LogStore::setEnabled(const char* id, bool enabled) {
+  for (auto& l : logs_) {
+    if (l.id == id) { l.enabled = enabled; return true; }
+  }
+  return false;
+}
+
+bool LogStore::clear(const char* id) {
+  for (auto& l : logs_) {
+    if (l.id == id) {
+      l.sessionStart  = 0;
+      l.firstSample   = true;
+      l.loggingActive = false;
+      l.comp.reset();
+      return true;
+    }
+  }
+  return false;
+}
+
+String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (const auto& l : logs_) {
+    if (l.id != id) continue;
+    char dirpath[40];
+    snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
+    File dir = sd.open(dirpath);
+    if (dir && dir.isDirectory()) {
+      File e = dir.openNextFile();
+      while (e) {
+        String raw = e.name();  // basename or full path, depending on core
+        int sl = raw.lastIndexOf('/');
+        String fn = (sl >= 0) ? raw.substring(sl + 1) : raw;
+        if (fn.endsWith(".csv")) {
+          long start = atol(fn.c_str());
+          JsonObject o = arr.add<JsonObject>();
+          o["start"]  = start;
+          o["size"]   = (uint32_t)e.size();
+          o["active"] = (l.sessionStart > 0 && (long)l.sessionStart == start);
+        }
+        e = dir.openNextFile();
+      }
+    }
+    if (dir) dir.close();
+    break;
+  }
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
+bool LogStore::deleteSession(const char* id, time_t start, fs::FS& sd) {
+  for (const auto& l : logs_) {
+    if (l.id != id) continue;
+    if (l.sessionStart > 0 && l.sessionStart == start) return false;  // active
+    char path[48];
+    snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(), (long)start);
+    if (!sd.exists(path)) return false;
+    return sd.remove(path);
   }
   return false;
 }
@@ -198,14 +274,14 @@ LogStore::Value LogStore::resolve(SensActCtrl::Registry& reg,
 
 // ── Sampling ───────────────────────────────────────────────────────────────────
 
-String LogStore::sessionPath(const char* id) const {
+String LogStore::sessionPath(const char* id, time_t start) const {
   for (const auto& l : logs_) {
-    if (l.id == id && l.sessionStart > 0) {
-      char p[48];
-      snprintf(p, sizeof(p), "/logs/%s/%ld.csv", l.id.c_str(),
-               (long)l.sessionStart);
-      return String(p);
-    }
+    if (l.id != id) continue;
+    const time_t s = (start > 0) ? start : l.sessionStart;
+    if (s <= 0) return String();
+    char p[48];
+    snprintf(p, sizeof(p), "/logs/%s/%ld.csv", l.id.c_str(), (long)s);
+    return String(p);
   }
   return String();
 }
@@ -216,6 +292,26 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
 
   for (auto& l : logs_) {
     if (l.series.empty()) continue;
+
+    // Effective enabled: a controller binding overrides the manual flag.
+    bool eff = l.enabled;
+    if (!l.bindEnableTo.empty()) {
+      auto* c = reg.findController(l.bindEnableTo.c_str());
+      if (c) eff = c->enabled();
+    }
+
+    if (!eff) {
+      // On active→inactive transition, flush the buffered point so the session
+      // ends on the last real reading.
+      if (l.loggingActive) {
+        LogSample out;
+        if (l.comp.flush(out)) writeEmitted_(sd, l, out, nowEpoch);
+        l.loggingActive = false;
+      }
+      continue;
+    }
+    l.loggingActive = true;
+
     const uint32_t intervalMs = l.intervalSec * 1000UL;
     if (!l.firstSample && (nowMs - l.lastSampleMs) < intervalMs) continue;
     l.firstSample = false;
@@ -237,41 +333,83 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
 
     // Feed the compressor; only persist when it emits a (buffered) row.
     LogSample out;
-    if (!l.comp.feed(in, out)) continue;
+    if (l.comp.feed(in, out)) writeEmitted_(sd, l, out, nowEpoch);
+  }
+}
 
-    const bool created = (l.sessionStart == 0);
-    if (created) {
-      l.sessionStart = nowEpoch;
-      sd.mkdir("/logs");
-      char dir[40];
-      snprintf(dir, sizeof(dir), "/logs/%s", l.id.c_str());
-      sd.mkdir(dir);
+void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
+                             time_t nowEpoch) {
+  const bool created = (l.sessionStart == 0);
+  if (created) {
+    l.sessionStart = nowEpoch;
+    sd.mkdir("/logs");
+    char dir[40];
+    snprintf(dir, sizeof(dir), "/logs/%s", l.id.c_str());
+    sd.mkdir(dir);
+    pruneToBudget_(sd);
+  }
+  char path[48];
+  snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(),
+           (long)l.sessionStart);
+
+  File f = sd.open(path, FILE_APPEND);
+  if (!f) return;
+
+  if (created) {
+    String header = "ts";
+    for (const auto& s : l.series) { header += ','; header += s.ref.c_str(); }
+    f.println(header);
+  }
+
+  String line = String((long)row.ts);
+  for (float val : row.vals) {
+    line += ',';
+    if (!isnan(val)) {
+      char num[16];
+      snprintf(num, sizeof(num), "%.3f", val);
+      line += num;
     }
-    char path[48];
-    snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(),
-             (long)l.sessionStart);
+    // NAN → empty cell
+  }
+  f.println(line);
+  f.close();
+}
 
-    File f = sd.open(path, FILE_APPEND);
-    if (!f) continue;
+void LogStore::pruneToBudget_(fs::FS& sd) {
+  struct Entry { String path; uint32_t size; long start; bool active; };
+  std::vector<Entry> entries;
+  uint64_t total = 0;
 
-    if (created) {
-      String header = "ts";
-      for (const auto& s : l.series) { header += ','; header += s.ref.c_str(); }
-      f.println(header);
-    }
-
-    String row = String((long)out.ts);
-    for (float val : out.vals) {
-      row += ',';
-      if (!isnan(val)) {
-        char num[16];
-        snprintf(num, sizeof(num), "%.3f", val);
-        row += num;
+  for (const auto& l : logs_) {
+    char dirpath[40];
+    snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
+    File dir = sd.open(dirpath);
+    if (!dir || !dir.isDirectory()) { if (dir) dir.close(); continue; }
+    File e = dir.openNextFile();
+    while (e) {
+      String raw = e.name();
+      int sl = raw.lastIndexOf('/');
+      String fn = (sl >= 0) ? raw.substring(sl + 1) : raw;
+      if (fn.endsWith(".csv")) {
+        const long start = atol(fn.c_str());
+        const uint32_t sz = (uint32_t)e.size();
+        const bool active = (l.sessionStart > 0 && (long)l.sessionStart == start);
+        total += sz;
+        entries.push_back({String(dirpath) + "/" + fn, sz, start, active});
       }
-      // NAN → empty cell
+      e = dir.openNextFile();
     }
-    f.println(row);
-    f.close();
+    dir.close();
+  }
+
+  if (total <= kLogBudgetBytes) return;
+  // Oldest first (smallest start epoch); never touch an active session.
+  std::sort(entries.begin(), entries.end(),
+            [](const Entry& a, const Entry& b) { return a.start < b.start; });
+  for (auto& en : entries) {
+    if (total <= kLogBudgetBytes) break;
+    if (en.active) continue;
+    if (sd.remove(en.path)) total -= en.size;
   }
 }
 

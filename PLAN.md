@@ -144,7 +144,8 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 
 **Welle 2 — Prozess-Features (greifen ineinander)**
 - **Gradienten/Ableitungen (Library)** — rate-of-change als zusätzlicher Channel (°C/min, K/min, L/min²). ⚠️ Voraussetzung: gruppierte SensorCard (s.u.), da hierdurch weitere Kanäle pro Sensor entstehen.
-- **Datenlogging & Trend-Charts** — Zeitreihen mitschreiben + Verlaufsgraphen.
+- **Datenlogging & Trend-Charts** ✓ — abgeschlossen 2026-06-06 (Branch `feat/datalog`): Log-Config = Chart-Config; `LogStore` sampelt Serien (`sensor/…`, `actuator/…`, `controller/…`) in Sessions `/logs/<id>/<start>.csv`. Online-Datenreduktion `LogCompressor` mit zwei Algorithmen (Linear-Interpolation + Swinging Door, NaN-sicher, Lockstep über Serien, Timeout-Stützpunkt, 12 native Tests). uPlot-`ChartCard` (CSV-Hydration + Live aus SSE), zentrale `/settings/logs`-Verwaltung, Dashboard-Referenz via `charts[]`. Lifecycle: Logging-Toggle, Controller-Binding, Clear/Session-Rotation, Archiv-Seite (`/settings/logs/:id/archive`), globale Retention (200 MB, älteste Sessions zuerst). HW-E2E ausstehend.
+  - *Später:* API-seitige Dezimierung (LTTB/Douglas-Peucker mit `?points=`) für sehr lange Archiv-Zeiträume; Live-Chart-Append an `intervalSec` angleichen (aktuell 1 Hz).
 - **Sollwert-Rampen / Maischeprofile** — generalisierte Sollwert-Liste als zeitgesteuerte Setpoint-Folge mit Rasten (z.B. 52→63→72 °C).
 - **Timer-Widget** — Dashboard-Element für Brau-Timings.
 - **Alarme & Schwellwerte** — „Wert > X" → Warnung/Badge, baut auf `fault()` auf.

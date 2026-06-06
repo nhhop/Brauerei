@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, AppSettings, UpdateStatus } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -162,8 +162,28 @@ export async function deleteLog(id: string): Promise<void> {
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
 }
 
-export function logDownloadUrl(id: string): string {
-  return `/api/logs/${encodeURIComponent(id)}/download`;
+export function setLogEnabled(id: string, enabled: boolean): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}/enable`, { enabled });
+}
+
+export function clearLog(id: string): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}/clear`, {});
+}
+
+export async function getLogSessions(id: string): Promise<LogSession[]> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}/sessions`);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json() as Promise<LogSession[]>;
+}
+
+export async function deleteLogSession(id: string, start: number): Promise<void> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}/sessions/${start}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+export function logDownloadUrl(id: string, session?: number): string {
+  const base = `/api/logs/${encodeURIComponent(id)}/download`;
+  return session ? `${base}?session=${session}` : base;
 }
 
 // Parsed current-session data, shaped for uPlot: data[0] = timestamps (s),
@@ -173,8 +193,9 @@ export interface LogData {
   data: (number | null)[][];
 }
 
-export async function getLogData(id: string): Promise<LogData> {
-  const r = await fetch(`/api/logs/${encodeURIComponent(id)}/data`);
+export async function getLogData(id: string, session?: number): Promise<LogData> {
+  const url = `/api/logs/${encodeURIComponent(id)}/data${session ? `?session=${session}` : ''}`;
+  const r = await fetch(url);
   if (r.status === 404) return { refs: [], data: [[]] };
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return parseCsv(await r.text());

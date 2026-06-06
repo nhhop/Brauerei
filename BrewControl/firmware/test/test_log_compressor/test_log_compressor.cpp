@@ -138,6 +138,29 @@ void test_nan_series_is_safe_and_passthrough() {
   TEST_ASSERT_TRUE(std::isnan(e[0].vals[1]));     // invalid cell preserved
 }
 
+// ── Flush (disable path) ──────────────────────────────────────────────────────
+
+void test_flush_emits_buffered_point() {
+  LogCompressor c = make(CompAlgo::SwingingDoor, {0.5f});
+  // Flat run: first point emitted, the rest buffered.
+  run(c, {s1(0, 20), s1(2, 20), s1(4, 20), s1(6, 20)});
+  LogSample out;
+  TEST_ASSERT_TRUE(c.flush(out));            // buffered last point comes out
+  TEST_ASSERT_EQUAL_INT(6, (int)out.ts);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 20.0f, out.vals[0]);
+  // Nothing left pending after a flush.
+  LogSample again;
+  TEST_ASSERT_FALSE(c.flush(again));
+}
+
+void test_flush_noop_right_after_emit() {
+  LogCompressor c = make(CompAlgo::SwingingDoor, {0.5f});
+  LogSample out;
+  c.feed(s1(0, 5), out);                     // first point emitted immediately
+  LogSample f;
+  TEST_ASSERT_FALSE(c.flush(f));             // p1 == emitted → nothing buffered
+}
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 void setUp(void) {}
@@ -155,5 +178,7 @@ int main(int, char**) {
   RUN_TEST(test_linear_offline_point_kept);
   RUN_TEST(test_multiseries_or_trigger);
   RUN_TEST(test_nan_series_is_safe_and_passthrough);
+  RUN_TEST(test_flush_emits_buffered_point);
+  RUN_TEST(test_flush_noop_right_after_emit);
   return UNITY_END();
 }

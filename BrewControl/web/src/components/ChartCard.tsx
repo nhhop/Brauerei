@@ -19,11 +19,13 @@ interface Props {
   log: LogConfig;
   snap: Snapshot | null;
   height?: number;
+  session?: number;   // when set, render that archived session read-only (no live)
 }
 
-// Renders the current session of one log as a live uPlot line chart: hydrates
-// from the session CSV on mount, then appends a point per incoming snapshot.
-export function ChartCard({ log, snap, height = 240 }: Props) {
+// Renders one log session as a uPlot line chart. Without `session` it shows the
+// current session live (hydrate from CSV, then append a point per snapshot);
+// with `session` it shows that archived session read-only.
+export function ChartCard({ log, snap, height = 240, session }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const uRef = useRef<uPlot | null>(null);
   const dataRef = useRef<(number | null)[][]>([[]]);
@@ -59,7 +61,7 @@ export function ChartCard({ log, snap, height = 240 }: Props) {
       };
     }
 
-    getLogData(log.id).then((d) => {
+    getLogData(log.id, session).then((d) => {
       if (!alive || !el) return;
       // Fall back to the config's series when the server has no data yet.
       const refs = d.refs.length ? d.refs : log.series.map((s) => s.ref);
@@ -82,10 +84,12 @@ export function ChartCard({ log, snap, height = 240 }: Props) {
       uRef.current?.destroy();
       uRef.current = null;
     };
-  }, [log.id, seriesKey, height]);
+  }, [log.id, seriesKey, height, session]);
 
   // Append a live point per snapshot (server timestamp drives the x value).
+  // Skipped for archived sessions, which are read-only.
   useEffect(() => {
+    if (session) return;
     if (!snap || !snap.serverTime || !uRef.current) return;
     const ts = snap.serverTime;
     if (ts <= lastTsRef.current) return;  // monotonic / dedupe

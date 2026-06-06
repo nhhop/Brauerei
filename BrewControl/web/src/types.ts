@@ -141,7 +141,16 @@ export interface LogConfig {
   series: LogSeries[];
   algo: CompAlgo;
   maxGapSec: number;      // safety point: force a row after this gap (s)
+  enabled: boolean;       // background logging on/off
+  bindEnableTo?: string;  // controller id; if set, enabled follows it
   session?: number;       // start epoch (s) of the current session, if any
+}
+
+// One CSV session of a log (GET /api/logs/:id/sessions).
+export interface LogSession {
+  start: number;          // session start epoch (s) = filename
+  size: number;           // bytes on disk
+  active: boolean;        // true for the currently-written session
 }
 
 // Wire format of GET /api/bus/scan

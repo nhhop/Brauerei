@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Snapshot, LogConfig } from '../types';
-import { getLogs, createLog, updateLog, deleteLog, logDownloadUrl } from '../api';
+import { getLogs, createLog, updateLog, deleteLog, logDownloadUrl, setLogEnabled, clearLog } from '../api';
 
 type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 import { ChartCard } from '../components/ChartCard';
@@ -13,10 +13,23 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [editing, setEditing] = useState<LogConfig | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LogConfig | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Bumped per log to force a ChartCard remount (re-hydrate) after Clear.
+  const [versions, setVersions] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     getLogs().then(setLogs).catch(() => {});
   }, []);
+
+  function toggleEnabled(log: LogConfig) {
+    const next = !log.enabled;
+    setLogs((ls) => ls.map((l) => l.id === log.id ? { ...l, enabled: next } : l));
+    setLogEnabled(log.id, next).catch(() => {});
+  }
+
+  async function doClear(log: LogConfig) {
+    await clearLog(log.id);
+    setVersions((v) => new Map(v).set(log.id, (v.get(log.id) ?? 0) + 1));
+  }
 
   async function save(cfg: SaveCfg) {
     if (editing) {
@@ -66,9 +79,32 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                   <div class="font-medium">{log.name}</div>
                   <div class="text-xs text-muted">
                     {log.intervalSec}s · {log.series.length} Serie{log.series.length === 1 ? '' : 'n'}
+                    {log.algo !== 'none' && ` · ${log.algo === 'swingingdoor' ? 'Swinging Door' : 'Linear'}`}
                   </div>
                 </div>
                 <div class="flex shrink-0 items-center gap-2 text-xs">
+                  {log.bindEnableTo ? (
+                    <span class="rounded-md border border-border px-2 py-1 text-faint"
+                      title={`Logging folgt Regler ${log.bindEnableTo}`}>
+                      ⛓ {log.bindEnableTo}
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => toggleEnabled(log)}
+                      class={`rounded-md border px-2 py-1 ${log.enabled
+                        ? 'border-green-600 text-green-600'
+                        : 'border-border text-muted'} hover:bg-fg/10`}>
+                      {log.enabled ? '● Aktiv' : '○ Aus'}
+                    </button>
+                  )}
+                  <a href={`/settings/logs/${log.id}/archive`}
+                    class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">
+                    Archiv
+                  </a>
+                  <button type="button" onClick={() => doClear(log)}
+                    class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10"
+                    title="Aktuelle Aufzeichnung abschließen, neue Session beginnen">
+                    Clear
+                  </button>
                   <a href={logDownloadUrl(log.id)}
                     class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">
                     CSV
@@ -83,7 +119,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                   </button>
                 </div>
               </div>
-              <ChartCard log={log} snap={snap} />
+              <ChartCard key={versions.get(log.id) ?? 0} log={log} snap={snap} />
             </div>
           ))}
         </div>

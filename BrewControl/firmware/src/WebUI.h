@@ -40,8 +40,12 @@ namespace BrewControl {
 //   POST /api/logs                         — create data-log config
 //   POST /api/logs/<id>                    — update data-log config
 //   DELETE /api/logs/<id>                  — remove data-log config
-//   GET  /api/logs/<id>/data               — current session CSV
-//   GET  /api/logs/<id>/download           — current session CSV (attachment)
+//   POST /api/logs/<id>/enable             — {"enabled":bool} toggle logging
+//   POST /api/logs/<id>/clear              — start a fresh session
+//   GET  /api/logs/<id>/data[?session=N]   — session CSV (current or archived)
+//   GET  /api/logs/<id>/download[?session=N] — session CSV (attachment)
+//   GET  /api/logs/<id>/sessions           — list sessions (JSON)
+//   DELETE /api/logs/<id>/sessions/<start> — delete one archived session
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
 //   GET  /*                                — SD static (default index.html)
 //

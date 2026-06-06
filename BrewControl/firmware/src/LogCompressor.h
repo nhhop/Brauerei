@@ -42,8 +42,23 @@ class LogCompressor {
   void reset() {
     init_ = false;
     hasP1_ = false;
+    pending_ = false;
     smin_.clear();
     smax_.clear();
+  }
+
+  // Emits the buffered (not-yet-persisted) point, if any, so a session ends on
+  // the last real reading. Call before pausing/closing a session. Leaves the
+  // filter in a re-anchored state ready to continue.
+  bool flush(LogSample& out) {
+    if (!pending_) return false;
+    out = p1_;
+    pending_ = false;
+    p0_ = p1_;
+    hasP1_ = false;
+    smin_.assign(tols_.size(), -INFINITY);
+    smax_.assign(tols_.size(), INFINITY);
+    return true;
   }
 
   // Feeds one sampled row. Returns true and fills `out` with the row to persist
@@ -64,6 +79,7 @@ class LogCompressor {
 
   bool init_ = false;
   bool hasP1_ = false;            // linear only
+  bool pending_ = false;          // p1_ holds an un-persisted point
   LogSample p0_;                  // linear: last committed; SDT: corridor start
   LogSample p1_;                  // linear: probe; SDT: last in-corridor point
   std::vector<float> smin_, smax_;  // SDT slope corridor, per series
@@ -76,9 +92,9 @@ class LogCompressor {
 
   // ── Linear-interpolation filter ──────────────────────────────────────────
   bool feedLinear(const LogSample& s, LogSample& out) {
-    if (!init_) { p0_ = s; init_ = true; out = s; return true; }
-    if (!hasP1_) { p1_ = s; hasP1_ = true; return false; }
-    if (timedOut(s.ts)) { out = p1_; p0_ = p1_; p1_ = s; return true; }
+    if (!init_) { p0_ = s; init_ = true; pending_ = false; out = s; return true; }
+    if (!hasP1_) { p1_ = s; hasP1_ = true; pending_ = true; return false; }
+    if (timedOut(s.ts)) { out = p1_; p0_ = p1_; p1_ = s; pending_ = true; return true; }
 
     const double ttot = static_cast<double>(s.ts - p0_.ts);
     bool keep = false;
@@ -91,8 +107,9 @@ class LogCompressor {
         if (std::fabs(p1_.vals[i] - interp) > tols_[i]) { keep = true; break; }
       }
     }
-    if (keep) { out = p1_; p0_ = p1_; p1_ = s; return true; }
+    if (keep) { out = p1_; p0_ = p1_; p1_ = s; pending_ = true; return true; }
     p1_ = s;
+    pending_ = true;
     return false;
   }
 
@@ -116,13 +133,14 @@ class LogCompressor {
       p0_ = s;
       p1_ = s;
       init_ = true;
+      pending_ = false;
       smin_.assign(tols_.size(), -INFINITY);
       smax_.assign(tols_.size(), INFINITY);
       out = s;
       return true;
     }
     if (timedOut(s.ts)) {
-      out = p1_; p0_ = p1_; p1_ = s; recompute(p0_, s); return true;
+      out = p1_; p0_ = p1_; p1_ = s; recompute(p0_, s); pending_ = true; return true;
     }
 
     const double dt = static_cast<double>(s.ts - p0_.ts);
@@ -140,11 +158,12 @@ class LogCompressor {
       }
     }
     if (breakout) {
-      out = p1_; p0_ = p1_; p1_ = s; recompute(p0_, s); return true;
+      out = p1_; p0_ = p1_; p1_ = s; recompute(p0_, s); pending_ = true; return true;
     }
     smin_ = nmin;
     smax_ = nmax;
     p1_ = s;
+    pending_ = true;
     return false;
   }
 };

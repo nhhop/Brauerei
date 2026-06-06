@@ -32,6 +32,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
   const [intervalSec, setIntervalSec] = useState(5);
   const [algo, setAlgo] = useState<CompAlgo>('none');
   const [maxGapSec, setMaxGapSec] = useState(600);
+  const [bindEnableTo, setBindEnableTo] = useState('');
   // ref → tolerance; presence in the map means the series is selected.
   const [tols, setTols] = useState<Map<string, number>>(new Map());
 
@@ -41,6 +42,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
       setIntervalSec(initial?.intervalSec ?? 5);
       setAlgo(initial?.algo ?? 'none');
       setMaxGapSec(initial?.maxGapSec ?? 600);
+      setBindEnableTo(initial?.bindEnableTo ?? '');
       setTols(new Map(initial?.series.map((s) => [s.ref, s.tol]) ?? []));
     }
   }, [open, initial]);
@@ -59,15 +61,23 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
     setTols((prev) => new Map(prev).set(ref, v));
   }
 
+  // Controllers among the selected series — candidates for the enable binding.
+  const boundControllers = [...tols.keys()]
+    .filter((ref) => ref.startsWith('controller/'))
+    .map((ref) => ref.slice('controller/'.length));
+
   function handleSubmit(e: Event) {
     e.preventDefault();
     if (!name.trim() || tols.size === 0) return;
     const series = [...tols].map(([ref, tol]) => ({ ref, tol }));
+    const bind = boundControllers.includes(bindEnableTo) ? bindEnableTo : '';
     onSave({
       name: name.trim(),
       intervalSec: Math.max(1, intervalSec),
       algo,
       maxGapSec: Math.max(0, maxGapSec),
+      enabled: initial?.enabled ?? true,
+      bindEnableTo: bind,
       series,
     });
   }
@@ -146,6 +156,20 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
             </div>
           </fieldset>
         ))}
+
+        {boundControllers.length > 0 && (
+          <label class="mb-3 block">
+            <span class="text-xs text-muted">Logging an Regler koppeln</span>
+            <select class="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+              value={bindEnableTo}
+              onChange={(e) => setBindEnableTo((e.target as HTMLSelectElement).value)}>
+              <option value="">Nicht gekoppelt (manueller Schalter)</option>
+              {boundControllers.map((id) => (
+                <option key={id} value={id}>{id} (an/aus folgt Regler)</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div class="mt-4 flex items-center justify-end gap-2">
           <button type="button" onClick={onClose}

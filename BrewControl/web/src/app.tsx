@@ -12,6 +12,7 @@ import { FirmwarePage } from './pages/FirmwarePage';
 import { BackupPage } from './pages/BackupPage';
 import { TimePage } from './pages/TimePage';
 import { LogsPage } from './pages/LogsPage';
+import { ArchivePage } from './pages/ArchivePage';
 
 function useSnapshot() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -53,6 +54,7 @@ export function App() {
       <BackupPage path="/settings/backup" />
       <TimePage path="/settings/time" />
       <LogsPage path="/settings/logs" snap={snap} />
+      <ArchivePage path="/settings/logs/:id/archive" />
     </Router>
   );
 }
