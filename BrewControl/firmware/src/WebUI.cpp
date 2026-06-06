@@ -339,12 +339,11 @@ void WebUI::begin() {
       }));
 
   // ── Data logs ───────────────────────────────────────────────────────────────
-  server_.on("/api/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
-    req->send(200, "application/json", logs_.serialize());
-  });
-
   // GET /api/logs/:id/data|download[?session=<start>] — session CSV
   // GET /api/logs/:id/sessions                        — session list (JSON)
+  // Registered BEFORE the bare "/api/logs" GET: AsyncCallbackWebHandler matches
+  // "/api/logs" as a prefix of "/api/logs/…", so it would otherwise swallow
+  // these sub-paths. The prefix handler ignores the bare URL (no trailing '/').
   server_.addHandler(new GetPrefixHandler("/api/logs/",
       [this](AsyncWebServerRequest* req) {
         String tail = req->url().substring(strlen("/api/logs/"));
@@ -368,6 +367,10 @@ void WebUI::begin() {
         }
         req->send(fs_, path, "text/csv", download);
       }));
+
+  server_.on("/api/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", logs_.serialize());
+  });
 
   // DELETE /api/logs/:id                    — remove log config
   // DELETE /api/logs/:id/sessions/<start>   — delete one archived session
