@@ -29,11 +29,25 @@ const char* algoToStr(CompAlgo a) {
   }
 }
 
+// RAII guard for the recursive logs_ mutex.
+struct ScopedLock {
+  SemaphoreHandle_t m;
+  explicit ScopedLock(SemaphoreHandle_t s) : m(s) {
+    if (m) xSemaphoreTakeRecursive(m, portMAX_DELAY);
+  }
+  ~ScopedLock() { if (m) xSemaphoreGiveRecursive(m); }
+  ScopedLock(const ScopedLock&) = delete;
+  ScopedLock& operator=(const ScopedLock&) = delete;
+};
+
 }  // namespace
+
+LogStore::LogStore() : mutex_(xSemaphoreCreateRecursiveMutex()) {}
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 
 void LogStore::loadFromSD(fs::FS& sd) {
+  ScopedLock lk(mutex_);
   File f = sd.open("/config/logs.json");
   if (!f) return;
   JsonDocument doc;
@@ -65,6 +79,7 @@ void LogStore::loadFromSD(fs::FS& sd) {
 }
 
 void LogStore::saveToSD(fs::FS& sd) const {
+  ScopedLock lk(mutex_);
   sd.mkdir("/config");
   File f = sd.open("/config/logs.json", FILE_WRITE);
   if (!f) return;
@@ -75,6 +90,7 @@ void LogStore::saveToSD(fs::FS& sd) const {
 // ── Serialization ─────────────────────────────────────────────────────────────
 
 String LogStore::serialize() const {
+  ScopedLock lk(mutex_);
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& l : logs_) {
@@ -128,6 +144,7 @@ void LogStore::fillFromJson(LogCfg& l, const JsonObject& cfg) {
 }
 
 String LogStore::add(const JsonObject& cfg) {
+  ScopedLock lk(mutex_);
   LogCfg l;
   l.id = generateId().c_str();
   fillFromJson(l, cfg);
@@ -137,6 +154,7 @@ String LogStore::add(const JsonObject& cfg) {
 }
 
 bool LogStore::update(const char* id, const JsonObject& cfg) {
+  ScopedLock lk(mutex_);
   for (auto& l : logs_) {
     if (l.id == id) {
       // Changing the series set changes the CSV header; start a fresh session
@@ -151,6 +169,7 @@ bool LogStore::update(const char* id, const JsonObject& cfg) {
 }
 
 bool LogStore::remove(const char* id) {
+  ScopedLock lk(mutex_);
   for (auto it = logs_.begin(); it != logs_.end(); ++it) {
     if (it->id == id) { logs_.erase(it); return true; }
   }
@@ -158,6 +177,7 @@ bool LogStore::remove(const char* id) {
 }
 
 bool LogStore::setEnabled(const char* id, bool enabled) {
+  ScopedLock lk(mutex_);
   for (auto& l : logs_) {
     if (l.id == id) { l.enabled = enabled; return true; }
   }
@@ -165,6 +185,7 @@ bool LogStore::setEnabled(const char* id, bool enabled) {
 }
 
 bool LogStore::clear(const char* id) {
+  ScopedLock lk(mutex_);
   for (auto& l : logs_) {
     if (l.id == id) {
       l.sessionStart  = 0;
@@ -178,6 +199,7 @@ bool LogStore::clear(const char* id) {
 }
 
 String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
+  ScopedLock lk(mutex_);
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& l : logs_) {
@@ -210,6 +232,7 @@ String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
 }
 
 bool LogStore::deleteSession(const char* id, time_t start, fs::FS& sd) {
+  ScopedLock lk(mutex_);
   for (const auto& l : logs_) {
     if (l.id != id) continue;
     if (l.sessionStart > 0 && l.sessionStart == start) return false;  // active
@@ -275,6 +298,7 @@ LogStore::Value LogStore::resolve(SensActCtrl::Registry& reg,
 // ── Sampling ───────────────────────────────────────────────────────────────────
 
 String LogStore::sessionPath(const char* id, time_t start) const {
+  ScopedLock lk(mutex_);
   for (const auto& l : logs_) {
     if (l.id != id) continue;
     const time_t s = (start > 0) ? start : l.sessionStart;
@@ -290,6 +314,7 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
                     uint32_t nowMs) {
   if (nowEpoch <= 946684800L) return;  // wait for a real clock (post-2000)
 
+  ScopedLock lk(mutex_);
   for (auto& l : logs_) {
     if (l.series.empty()) continue;
 

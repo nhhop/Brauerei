@@ -3,6 +3,8 @@
 #include <ArduinoJson.h>
 #include <FS.h>
 #include <SensActCtrl.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <time.h>
 
 #include <string>
@@ -22,6 +24,8 @@ namespace BrewControl {
 // cells. Persists the config list to /config/logs.json.
 class LogStore {
  public:
+  LogStore();
+
   void loadFromSD(fs::FS& sd);
   void saveToSD(fs::FS& sd) const;
 
@@ -105,6 +109,11 @@ class LogStore {
   static Value resolve(SensActCtrl::Registry& reg, const std::string& ref);
 
   std::vector<LogCfg> logs_;
+
+  // Guards logs_ against concurrent access from the AsyncTCP task (REST handlers
+  // mutate logs_) and the loopTask (tick() iterates logs_). Recursive so methods
+  // that call each other while locked (saveToSD → serialize) don't self-deadlock.
+  mutable SemaphoreHandle_t mutex_ = nullptr;
 
   // Writes one emitted row to l's current session (creating it + header on
   // first write), then enforces the global storage budget. nowEpoch seeds a
