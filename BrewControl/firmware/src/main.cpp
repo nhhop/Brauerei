@@ -56,8 +56,11 @@ static bool resetHeldAtBoot() {
   return false;
 }
 
-static bool connectStation(const String& ssid, const String& password) {
+static bool connectStation(const String& ssid, const String& password,
+                           const String& hostname) {
   WiFi.mode(WIFI_STA);
+  WiFi.setHostname(hostname.c_str());  // registers with DHCP; must precede begin()
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED) {
@@ -107,6 +110,7 @@ void setup() {
   prefs.begin("brewctrl", true);
   const String ssid = prefs.getString("ssid", "");
   const String password = prefs.getString("password", "");
+  const String hostname = prefs.getString("hostname", kHostname);
   prefs.end();
 
   if (ssid.isEmpty()) {
@@ -115,7 +119,7 @@ void setup() {
     portal.runUntilConfigured();  // never returns — ESP.restart()
   }
 
-  if (!connectStation(ssid, password)) {
+  if (!connectStation(ssid, password, hostname)) {
     Serial.println(F("STA connect failed — falling back to setup portal"));
     WiFiSetupPortal portal;
     portal.runUntilConfigured();
@@ -123,9 +127,9 @@ void setup() {
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
 
-  if (MDNS.begin(kHostname)) {
+  if (MDNS.begin(hostname.c_str())) {
     MDNS.addService("http", "tcp", 80);
-    Serial.printf("mDNS up: http://%s.local/\n", kHostname);
+    Serial.printf("mDNS up: http://%s.local/\n", hostname.c_str());
   } else {
     Serial.println(F("mDNS start failed"));
   }
@@ -148,9 +152,24 @@ void setup() {
   Serial.println(F("BrewControl ready"));
 }
 
+// Self-healing WiFi: if the STA link drops (scan off-channel, AP reboot, noise),
+// nudge a reconnect after 10 s; reboot as a last resort after 60 s so a wedged
+// radio can never leave the device permanently unreachable (boot reconnects or
+// opens the setup portal). Runs only after setup()'s successful connect.
+static void maintainWiFi() {
+  static uint32_t downSinceMs = 0;
+  static uint32_t lastRetryMs = 0;
+  if (WiFi.status() == WL_CONNECTED) { downSinceMs = 0; return; }
+  const uint32_t now = millis();
+  if (downSinceMs == 0) { downSinceMs = now; lastRetryMs = now; return; }
+  if (now - lastRetryMs >= 10000) { lastRetryMs = now; WiFi.reconnect(); }
+  if (now - downSinceMs >= 60000) ESP.restart();
+}
+
 void loop() {
   registry.tick();
   webUI.tick();
   firmwareUpdater.tick();
+  maintainWiFi();
   delay(5);
 }

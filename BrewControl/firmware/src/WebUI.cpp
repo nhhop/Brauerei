@@ -4,6 +4,7 @@
 #include <AsyncJson.h>
 #include <Preferences.h>
 #include <Update.h>
+#include <WiFi.h>
 #include <functional>
 #include <math.h>
 #include <memory>
@@ -16,6 +17,18 @@ namespace {
 
 constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
+
+// mDNS / DHCP hostname rules: 1–32 chars, lowercase alnum and hyphen, no
+// leading/trailing hyphen. Caller lowercases before validating.
+bool validHostname(const String& h) {
+  if (h.isEmpty() || h.length() > 32) return false;
+  if (h[0] == '-' || h[h.length() - 1] == '-') return false;
+  for (size_t i = 0; i < h.length(); ++i) {
+    const char c = h[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+  }
+  return true;
+}
 
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
@@ -259,6 +272,85 @@ void WebUI::begin() {
                rebootAtMs_ = millis() + kRebootDelayMs;
                req->send(204);
              });
+
+  // ── Network ─────────────────────────────────────────────────────────────────
+  // GET /api/network       — current STA status + configured hostname (JSON)
+  // GET /api/network/scan  — async scan: 202 while running, 200 + JSON when done
+  // One GetPrefixHandler dispatches both: "/api/network" is a BackwardCompatible
+  // match (^uri(/.*)?$), so a bare server_.on would also swallow the sub-path.
+  // The scan briefly takes the radio off-channel; the WiFi watchdog in loop()
+  // (main.cpp) reconnects if it drops the live STA link so we can't lock out.
+  server_.addHandler(new GetPrefixHandler("/api/network",
+      [this](AsyncWebServerRequest* req) {
+        if (req->url().endsWith("/scan")) {
+          int n = WiFi.scanComplete();
+          if (n == WIFI_SCAN_RUNNING) { req->send(202, "application/json", "[]"); return; }
+          if (n < 0) {  // no scan yet or previous failed — kick off a fresh one.
+            // async, hidden=false, passive=false, 100 ms/channel: short dwell
+            // minimises disruption of the live STA connection during the scan.
+            WiFi.scanNetworks(/*async=*/true, /*hidden=*/false, /*passive=*/false, 100);
+            req->send(202, "application/json", "[]");
+            return;
+          }
+          JsonDocument doc;
+          JsonArray arr = doc.to<JsonArray>();
+          for (int i = 0; i < n; ++i) {
+            JsonObject o = arr.add<JsonObject>();
+            o["ssid"] = WiFi.SSID(i);
+            o["rssi"] = WiFi.RSSI(i);
+            o["open"] = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+          }
+          WiFi.scanDelete();
+          String out;
+          serializeJson(doc, out);
+          req->send(200, "application/json", out);
+          return;
+        }
+        Preferences prefs;
+        prefs.begin("brewctrl", true);
+        String host = prefs.getString("hostname", "brewcontrol");
+        prefs.end();
+        JsonDocument doc;
+        doc["connected"] = WiFi.status() == WL_CONNECTED;
+        doc["ssid"] = WiFi.SSID();
+        doc["ip"] = WiFi.localIP().toString();
+        doc["rssi"] = WiFi.RSSI();
+        doc["mac"] = WiFi.macAddress();
+        doc["hostname"] = host;
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+      }));
+
+  // POST /api/network — change WiFi credentials and/or hostname, then reboot.
+  // Body: {"ssid","password"} to switch network, {"hostname"} to rename, or both.
+  // Both only take effect on the next boot (main.cpp reads NVS), so we reboot.
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/network",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        JsonObject o = json.as<JsonObject>();
+        const bool hasSsid = o["ssid"].is<const char*>();
+        const bool hasHost = o["hostname"].is<const char*>();
+        if (!hasSsid && !hasHost) { req->send(400, "text/plain", "nothing to change"); return; }
+        String ssid, password, hostname;
+        if (hasSsid) {
+          ssid = o["ssid"].as<const char*>();
+          password = o["password"] | "";
+          if (ssid.isEmpty()) { req->send(400, "text/plain", "missing ssid"); return; }
+        }
+        if (hasHost) {
+          hostname = o["hostname"].as<const char*>();
+          hostname.toLowerCase();
+          if (!validHostname(hostname)) { req->send(400, "text/plain", "invalid hostname"); return; }
+        }
+        Preferences prefs;
+        prefs.begin("brewctrl", false);
+        if (hasSsid) { prefs.putString("ssid", ssid); prefs.putString("password", password); }
+        if (hasHost) { prefs.putString("hostname", hostname); }
+        prefs.end();
+        req->send(204);
+        rebootAtMs_ = millis() + kRebootDelayMs;
+      }));
 
   // ── Bus scan ──────────────────────────────────────────────────────────────
   server_.on("/api/bus/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {

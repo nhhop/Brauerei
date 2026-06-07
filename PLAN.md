@@ -173,7 +173,8 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
     `firmware.bin` auf SD-Root legen, Boot beobachten (Serial: „SD firmware image …
     flashing" → „SD firmware flashed — rebooting"), Datei danach weg prüfen.
   - -> auch für das hinzufügen von Displays relevant. Firmware je nach Display laden (online oder SD-Karte)
-- **Netzwerk/WLAN-Einstellungen** — über das bestehende Captive-Portal hinaus.
+- **Netzwerk/WLAN-Einstellungen** — *STA-Teil erledigt 2026-06-07* (Branch `feat/datalog`): Settings-Seite `/settings/network` mit Status (SSID/IP/RSSI/MAC/Hostname), WLAN-Wechsel (Scan + Creds → Reboot) und konfigurierbarem mDNS-Hostname (NVS `brewctrl/hostname`); „Reset WiFi" vom Dashboard hierher verschoben. Endpunkte `GET/POST /api/network` + `GET /api/network/scan`. **HW-E2E grün** (LilyGo S3, 2026-06-07): Status/Scan/Hostname/Reset verifiziert. Scan im laufenden STA brach anfangs die Verbindung ab → gehärtet: WLAN-Watchdog in `loop()` (`maintainWiFi()`: reconnect nach 10 s, reboot nach 60 s) + kürzere Scan-Dwell (100 ms) + resilienter Frontend-Poll mit manuellem SSID-Fallback.
+  - *Später:* AP-Modus als wählbare Alternative (Standalone ohne Router) — verschoben, weil ohne Internet kein NTP (bricht Datalog-Timestamps); sinnvoll zusammen mit Hardware-RTC (PCF8563). Statische IP / DHCP-Konfiguration.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
 
 ### Buckets (bei Gelegenheit)

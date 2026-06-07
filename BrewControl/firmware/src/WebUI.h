@@ -34,6 +34,9 @@ namespace BrewControl {
 //   POST /api/controllers/<id>/setpoint    — {"v":<float>}
 //   POST /api/controllers/<id>/params      — raw controller-params JSON
 //   POST /api/admin/wifi-reset             — clear WiFi creds, reboot
+//   GET  /api/network                      — STA status + hostname (JSON)
+//   GET  /api/network/scan                 — async WiFi scan (202 → 200+JSON)
+//   POST /api/network                      — set SSID/password and/or hostname, reboot
 //   GET  /api/backup                       — download config bundle as JSON
 //   POST /api/backup                       — restore config bundle, reboot
 //   GET  /api/logs                         — list data-log configs (JSON)

@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -48,6 +48,43 @@ export function setControllerParams(
 export async function wifiReset(): Promise<void> {
   const r = await fetch('/api/admin/wifi-reset', { method: 'POST' });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+// ── Network ──────────────────────────────────────────────────────────────
+
+export async function getNetwork(): Promise<NetworkStatus> {
+  const r = await fetch('/api/network');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()) as NetworkStatus;
+}
+
+// Polls the async scan: the device replies 202 while the scan runs and
+// 200 + JSON once results are ready. The scan briefly takes the radio
+// off-channel, so a poll may transiently fail — keep retrying until the
+// connection recovers rather than aborting on the first error.
+export async function scanNetworks(): Promise<ScanNetwork[]> {
+  let lastErr = '';
+  for (let i = 0; i < 30; i++) {
+    try {
+      const r = await fetch('/api/network/scan');
+      if (r.status === 200) return (await r.json()) as ScanNetwork[];
+      if (r.status !== 202) lastErr = `${r.status} ${await r.text()}`;
+    } catch (e) {
+      lastErr = String(e);
+    }
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  throw new Error(lastErr || 'Scan-Timeout');
+}
+
+// Switches WiFi credentials; the device reboots to connect to the new network.
+export function setNetwork(ssid: string, password: string): Promise<void> {
+  return postJson('/api/network', { ssid, password });
+}
+
+// Changes the mDNS hostname; the device reboots to apply it.
+export function setHostname(hostname: string): Promise<void> {
+  return postJson('/api/network', { hostname });
 }
 
 // ── Dynamic item creation ────────────────────────────────────────────────

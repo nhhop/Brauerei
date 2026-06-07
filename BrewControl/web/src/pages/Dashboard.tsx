@@ -2,7 +2,6 @@ import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import type { Snapshot, ItemConfig, DashboardConfig, LogConfig } from '../types';
 import {
-  wifiReset,
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
   getLogs,
@@ -11,7 +10,6 @@ import { SensorCard } from '../components/SensorCard';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
-import { ConfirmModal } from '../components/ConfirmModal';
 import { AddItemModal } from '../components/AddItemModal';
 import { DashboardEditorModal } from '../components/DashboardEditorModal';
 
@@ -32,10 +30,9 @@ function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
   };
 }
 
-export function Dashboard({ snap, err, onReset }: {
+export function Dashboard({ snap, err }: {
   snap: Snapshot | null;
   err: string | null;
-  onReset: () => void;
   path?: string;
 }) {
   // ── Dashboards ────────────────────────────────────────────────────────────
@@ -79,11 +76,6 @@ export function Dashboard({ snap, err, onReset }: {
     if (activeTab?.id === id) setActiveTab(null);
   }
 
-  // ── WiFi reset ────────────────────────────────────────────────────────────
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetPending, setResetPending] = useState(false);
-  const [resetErr, setResetErr] = useState<string | null>(null);
-
   // ── Edit item (from card buttons) ─────────────────────────────────────────
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
@@ -99,18 +91,6 @@ export function Dashboard({ snap, err, onReset }: {
     };
     await updateDashboard(activeDash.id, updated);
     setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
-  }
-
-  async function doReset() {
-    setResetPending(true);
-    setResetErr(null);
-    try {
-      await wifiReset();
-      onReset();
-    } catch (e) {
-      setResetErr(String(e));
-      setResetPending(false);
-    }
   }
 
   async function startEdit(role: Role, id: string) {
@@ -139,10 +119,6 @@ export function Dashboard({ snap, err, onReset }: {
           class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
           ⚙
         </a>
-        <button type="button" onClick={() => setResetOpen(true)}
-          class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
-          Reset WiFi
-        </button>
       </div>
     </header>
   );
@@ -178,19 +154,6 @@ export function Dashboard({ snap, err, onReset }: {
   // ── Modals ────────────────────────────────────────────────────────────────
   const modals = (
     <>
-      <ConfirmModal open={resetOpen} title="WiFi-Zugangsdaten zurücksetzen?" destructive
-        confirmLabel="Zurücksetzen & Neustart" pending={resetPending}
-        onCancel={() => { setResetOpen(false); setResetErr(null); }}
-        onConfirm={doReset}>
-        <p>
-          Dies löscht die gespeicherten WiFi-Zugangsdaten und startet das Gerät neu in
-          den Setup-Modus. Danach über
-          <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
-          neu verbinden.
-        </p>
-        {resetErr && <p class="mt-2 text-red-600">{resetErr}</p>}
-      </ConfirmModal>
-
       <AddItemModal
         open={addOpen}
         snap={snap}

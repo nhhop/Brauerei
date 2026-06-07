@@ -153,6 +153,23 @@ export interface LogSession {
   active: boolean;        // true for the currently-written session
 }
 
+// Wire format of GET /api/network
+export interface NetworkStatus {
+  connected: boolean;
+  ssid: string;
+  ip: string;
+  rssi: number;     // dBm; 0 when not connected
+  mac: string;
+  hostname: string; // configured mDNS host (".local" appended in UI)
+}
+
+// One entry of GET /api/network/scan
+export interface ScanNetwork {
+  ssid: string;
+  rssi: number;
+  open: boolean;
+}
+
 // Wire format of GET /api/bus/scan
 export interface ScannedDevice {
   address: string; // 16 hex chars, e.g. "28ff64c8815604ef"
