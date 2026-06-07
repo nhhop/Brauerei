@@ -33,8 +33,10 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
   const [algo, setAlgo] = useState<CompAlgo>('none');
   const [maxGapSec, setMaxGapSec] = useState(600);
   const [bindEnableTo, setBindEnableTo] = useState('');
-  // ref → tolerance; presence in the map means the series is selected.
-  const [tols, setTols] = useState<Map<string, number>>(new Map());
+  // ref → tolerance as the raw input string; presence in the map means the
+  // series is selected. Kept as a string (not a number) so in-progress decimal
+  // input like "0." survives re-renders; parsed to a number on submit.
+  const [tols, setTols] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (open) {
@@ -43,7 +45,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
       setAlgo(initial?.algo ?? 'none');
       setMaxGapSec(initial?.maxGapSec ?? 600);
       setBindEnableTo(initial?.bindEnableTo ?? '');
-      setTols(new Map(initial?.series.map((s) => [s.ref, s.tol]) ?? []));
+      setTols(new Map(initial?.series.map((s) => [s.ref, String(s.tol)]) ?? []));
     }
   }, [open, initial]);
 
@@ -52,12 +54,12 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
   function toggle(ref: string) {
     setTols((prev) => {
       const next = new Map(prev);
-      if (next.has(ref)) next.delete(ref); else next.set(ref, 0);
+      if (next.has(ref)) next.delete(ref); else next.set(ref, '0');
       return next;
     });
   }
 
-  function setTol(ref: string, v: number) {
+  function setTol(ref: string, v: string) {
     setTols((prev) => new Map(prev).set(ref, v));
   }
 
@@ -69,7 +71,11 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
   function handleSubmit(e: Event) {
     e.preventDefault();
     if (!name.trim() || tols.size === 0) return;
-    const series = [...tols].map(([ref, tol]) => ({ ref, tol }));
+    // Accept a German decimal comma; clamp negatives/blank to 0.
+    const series = [...tols].map(([ref, tol]) => ({
+      ref,
+      tol: Math.max(0, parseFloat(tol.replace(',', '.')) || 0),
+    }));
     const bind = boundControllers.includes(bindEnableTo) ? bindEnableTo : '';
     onSave({
       name: name.trim(),
@@ -144,10 +150,10 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
                     {sel && showTol && (
                       <label class="flex items-center gap-1 text-xs text-muted">
                         ±
-                        <input type="number" step="any" min={0}
+                        <input type="text" inputMode="decimal"
                           class="w-20 rounded border border-border bg-surface px-1.5 py-1 text-right text-fg focus:outline-none focus:ring-1 focus:ring-border"
-                          value={tols.get(ref) ?? 0}
-                          onInput={(e) => setTol(ref, Number((e.target as HTMLInputElement).value))} />
+                          value={tols.get(ref) ?? '0'}
+                          onInput={(e) => setTol(ref, (e.target as HTMLInputElement).value)} />
                       </label>
                     )}
                   </div>
