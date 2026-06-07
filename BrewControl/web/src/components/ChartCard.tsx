@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'preact/hooks';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import type { Snapshot, LogConfig } from '../types';
+import type { Snapshot, LogConfig, TimeSettings } from '../types';
 import { getLogData, resolveRef } from '../api';
+import { formatTime, formatDateTime, loadTimeSettings } from '../time';
 
 // Distinct line colors, reused cyclically across series.
 const PALETTE = [
@@ -13,6 +14,35 @@ const PALETTE = [
 function cssVar(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
+}
+
+// Cursor x in data units (seconds), or null when the cursor is off the plot.
+function cursorX(u: uPlot): number | null {
+  const left = u.cursor.left;
+  return left != null && left >= 0 ? u.posToVal(left, 'x') : null;
+}
+
+// Linearly-interpolated value of series `si` at x=`cx` — the reconstructed
+// signal between stored points (both compression algos rebuild linearly).
+// Returns null across gaps (null endpoint) or outside the data range.
+function interpAt(u: uPlot, si: number, cx: number): number | null {
+  const xs = u.data[0] as number[];
+  const ys = u.data[si] as (number | null)[];
+  const n = xs.length;
+  if (n === 0 || cx < xs[0] || cx > xs[n - 1]) return null;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (xs[mid] <= cx) lo = mid; else hi = mid;
+  }
+  const y0 = ys[lo], y1 = ys[hi];
+  if (y0 == null || y1 == null) return null;
+  const x0 = xs[lo], x1 = xs[hi];
+  return x1 === x0 ? y1 : y0 + (y1 - y0) * ((cx - x0) / (x1 - x0));
+}
+
+function fmtNum(v: number | null): string {
+  return v == null ? '--' : String(Math.round(v * 1000) / 1000);
 }
 
 interface Props {
@@ -31,6 +61,7 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
   const dataRef = useRef<(number | null)[][]>([[]]);
   const refsRef = useRef<string[]>([]);
   const lastTsRef = useRef<number>(0);
+  const enabledRef = useRef<boolean>(log.enabled);
 
   // Rebuild the plot whenever the log identity or its series set changes.
   const seriesKey = log.series.map((s) => s.ref).join(',');
@@ -39,29 +70,39 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
     const el = elRef.current;
     if (!el) return;
 
-    function makeOpts(refs: string[]): uPlot.Options {
+    function makeOpts(refs: string[], tset: TimeSettings): uPlot.Options {
       const axisColor = cssVar('--fg', '#888');
       const gridColor = cssVar('--border', 'rgba(128,128,128,0.2)');
       return {
         width: el!.clientWidth || 600,
         height,
         series: [
-          {},
+          // Legend "Time" shows the full date+time (with seconds) at the cursor.
+          { value: (u) => { const cx = cursorX(u); return cx == null ? '--' : formatDateTime(Math.round(cx), tset); } },
           ...refs.map((ref, i) => ({
             label: ref,
             stroke: PALETTE[i % PALETTE.length],
             width: 1.5,
             spanGaps: false,
+            // Legend shows the interpolated value at the cursor, not the nearest point.
+            value: (u: uPlot, _v: number | null, si: number) => {
+              const cx = cursorX(u);
+              return cx == null ? '--' : fmtNum(interpAt(u, si, cx));
+            },
           })),
         ],
         axes: [
-          { stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: gridColor } },
+          {
+            stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: gridColor },
+            // Use the configured time format (with seconds) instead of uPlot's default.
+            values: (_u, splits) => splits.map((t) => formatTime(t, tset)),
+          },
           { stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: gridColor } },
         ],
       };
     }
 
-    getLogData(log.id, session).then((d) => {
+    Promise.all([getLogData(log.id, session), loadTimeSettings()]).then(([d, tset]) => {
       if (!alive || !el) return;
       // Fall back to the config's series when the server has no data yet.
       const refs = d.refs.length ? d.refs : log.series.map((s) => s.ref);
@@ -71,7 +112,7 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
       const xs = data[0];
       lastTsRef.current = xs.length ? (xs[xs.length - 1] as number) : 0;
       uRef.current?.destroy();
-      uRef.current = new uPlot(makeOpts(refs), data as uPlot.AlignedData, el);
+      uRef.current = new uPlot(makeOpts(refs, tset), data as uPlot.AlignedData, el);
     }).catch(() => {});
 
     const onResize = () => {
@@ -93,9 +134,22 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
     if (!snap || !snap.serverTime || !uRef.current) return;
     const ts = snap.serverTime;
     if (ts <= lastTsRef.current) return;  // monotonic / dedupe
-    lastTsRef.current = ts;
     const refs = refsRef.current;
     const data = dataRef.current;
+    const wasEnabled = enabledRef.current;
+    enabledRef.current = log.enabled;
+    if (!log.enabled) {
+      // While logging is off, stop extending the line. On the on→off transition
+      // push one gap (null) so the line breaks instead of spanning the pause.
+      if (wasEnabled) {
+        lastTsRef.current = ts;
+        data[0].push(ts);
+        refs.forEach((_ref, i) => data[i + 1].push(null));
+        uRef.current.setData(data as uPlot.AlignedData);
+      }
+      return;
+    }
+    lastTsRef.current = ts;
     data[0].push(ts);
     refs.forEach((ref, i) => data[i + 1].push(resolveRef(snap, ref)));
     uRef.current.setData(data as uPlot.AlignedData);

@@ -202,7 +202,9 @@ export async function getLogData(id: string, session?: number): Promise<LogData>
 }
 
 function parseCsv(text: string): LogData {
-  const lines = text.trim().split('\n');
+  // Firmware writes CRLF line endings; split on either so the last column's
+  // header/cells don't carry a trailing '\r' (which breaks live resolveRef).
+  const lines = text.trim().split(/\r?\n/);
   if (lines.length < 1 || !lines[0]) return { refs: [], data: [[]] };
   const header = lines[0].split(',');
   const refs = header.slice(1);            // drop "ts"

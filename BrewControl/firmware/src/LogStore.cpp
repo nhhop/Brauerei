@@ -331,6 +331,14 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
       if (l.loggingActive) {
         LogSample out;
         if (l.comp.flush(out)) writeEmitted_(sd, l, out, nowEpoch);
+        // Mark the stop with an empty row so charts break the line across the
+        // off-period instead of connecting the last value to the next resume.
+        if (l.sessionStart > 0) {
+          LogSample gap;
+          gap.ts = nowEpoch;
+          gap.vals.assign(l.series.size(), NAN);
+          writeEmitted_(sd, l, gap, nowEpoch);
+        }
         l.loggingActive = false;
       }
       continue;
