@@ -18,6 +18,7 @@
 #include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
+#include "LogStore.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
 #include "WiFiSetupPortal.h"
@@ -41,7 +42,24 @@ BrewControl::DynamicItems dynamicItems;
 BrewControl::DashboardStore dashboardStore;
 BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
-WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater);
+BrewControl::LogStore logStore;
+WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore);
+
+// Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
+// the WiFi event handler can re-announce mDNS after a reconnect.
+String hostname_;
+
+// (Re-)start the mDNS responder. ESP32 mDNS typically does not survive a WiFi
+// reconnect, so this runs on every STA_GOT_IP event, not just at boot.
+static void startMDNS() {
+  MDNS.end();
+  if (MDNS.begin(hostname_.c_str())) {
+    MDNS.addService("http", "tcp", 80);
+    Serial.printf("mDNS up: http://%s.local/\n", hostname_.c_str());
+  } else {
+    Serial.println(F("mDNS start failed"));
+  }
+}
 
 static bool resetHeldAtBoot() {
   pinMode(kBootButtonPin, INPUT_PULLUP);
@@ -54,8 +72,11 @@ static bool resetHeldAtBoot() {
   return false;
 }
 
-static bool connectStation(const String& ssid, const String& password) {
+static bool connectStation(const String& ssid, const String& password,
+                           const String& hostname) {
   WiFi.mode(WIFI_STA);
+  WiFi.setHostname(hostname.c_str());  // registers with DHCP; must precede begin()
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED) {
@@ -105,6 +126,7 @@ void setup() {
   prefs.begin("brewctrl", true);
   const String ssid = prefs.getString("ssid", "");
   const String password = prefs.getString("password", "");
+  hostname_ = prefs.getString("hostname", kHostname);
   prefs.end();
 
   if (ssid.isEmpty()) {
@@ -113,25 +135,35 @@ void setup() {
     portal.runUntilConfigured();  // never returns — ESP.restart()
   }
 
-  if (!connectStation(ssid, password)) {
-    Serial.println(F("STA connect failed — falling back to setup portal"));
+  // Creds exist: a failed connect is usually a transient outage (router
+  // rebooting), not bad creds — retry for a few minutes before falling back to
+  // the AP setup portal, so a reboot during a router outage can't strand us
+  // there with valid credentials.
+  bool connected = false;
+  for (int attempt = 1; attempt <= 6 && !connected; ++attempt) {
+    connected = connectStation(ssid, password, hostname_);
+    if (!connected)
+      Serial.printf("STA connect attempt %d/6 failed, retrying...\n", attempt);
+  }
+  if (!connected) {
+    Serial.println(F("STA connect failed repeatedly — falling back to setup portal"));
     WiFiSetupPortal portal;
     portal.runUntilConfigured();
   }
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
 
-  if (MDNS.begin(kHostname)) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.printf("mDNS up: http://%s.local/\n", kHostname);
-  } else {
-    Serial.println(F("mDNS start failed"));
-  }
+  // Re-announce mDNS on every STA_GOT_IP (it doesn't survive reconnects). The
+  // initial GOT_IP already fired during connectStation, so also start it once now.
+  WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t) { startMDNS(); },
+               ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  startMDNS();
 
   if (sdOk) {
     dynamicItems.loadFromSD(SD, registry);
     dashboardStore.loadFromSD(SD);
     settingsStore.loadFromSD(SD);
+    logStore.loadFromSD(SD);
   }
 
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
@@ -145,9 +177,25 @@ void setup() {
   Serial.println(F("BrewControl ready"));
 }
 
+// Self-healing WiFi: if the STA link drops (AP reboot, noise, wedged radio),
+// nudge a reconnect every 30 s; reboot only as a last resort after 5 min of
+// continuous loss. The long timeout is deliberate — a router reboot (~1–2 min)
+// recovers via auto-reconnect well before it fires, so the device stays in STA
+// instead of rebooting into the setup portal. Runs only after setup() connects.
+static void maintainWiFi() {
+  static uint32_t downSinceMs = 0;
+  static uint32_t lastRetryMs = 0;
+  if (WiFi.status() == WL_CONNECTED) { downSinceMs = 0; return; }
+  const uint32_t now = millis();
+  if (downSinceMs == 0) { downSinceMs = now; lastRetryMs = now; return; }
+  if (now - lastRetryMs >= 30000) { lastRetryMs = now; WiFi.reconnect(); }
+  if (now - downSinceMs >= 300000) ESP.restart();
+}
+
 void loop() {
   registry.tick();
   webUI.tick();
   firmwareUpdater.tick();
+  maintainWiFi();
   delay(5);
 }

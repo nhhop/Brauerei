@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, AppSettings, UpdateStatus } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -48,6 +48,43 @@ export function setControllerParams(
 export async function wifiReset(): Promise<void> {
   const r = await fetch('/api/admin/wifi-reset', { method: 'POST' });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+// ── Network ──────────────────────────────────────────────────────────────
+
+export async function getNetwork(): Promise<NetworkStatus> {
+  const r = await fetch('/api/network');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()) as NetworkStatus;
+}
+
+// Polls the async scan: the device replies 202 while the scan runs and
+// 200 + JSON once results are ready. The scan briefly takes the radio
+// off-channel, so a poll may transiently fail — keep retrying until the
+// connection recovers rather than aborting on the first error.
+export async function scanNetworks(): Promise<ScanNetwork[]> {
+  let lastErr = '';
+  for (let i = 0; i < 30; i++) {
+    try {
+      const r = await fetch('/api/network/scan');
+      if (r.status === 200) return (await r.json()) as ScanNetwork[];
+      if (r.status !== 202) lastErr = `${r.status} ${await r.text()}`;
+    } catch (e) {
+      lastErr = String(e);
+    }
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  throw new Error(lastErr || 'Scan-Timeout');
+}
+
+// Switches WiFi credentials; the device reboots to connect to the new network.
+export function setNetwork(ssid: string, password: string): Promise<void> {
+  return postJson('/api/network', { ssid, password });
+}
+
+// Changes the mDNS hostname; the device reboots to apply it.
+export function setHostname(hostname: string): Promise<void> {
+  return postJson('/api/network', { hostname });
 }
 
 // ── Dynamic item creation ────────────────────────────────────────────────
@@ -133,6 +170,113 @@ export function updateDashboard(id: string, cfg: Omit<DashboardConfig, 'id'>): P
 export async function deleteDashboard(id: string): Promise<void> {
   const r = await fetch(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+// ── Data logs / charts ─────────────────────────────────────────────────────────
+
+export async function getLogs(): Promise<LogConfig[]> {
+  const r = await fetch('/api/logs');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json() as Promise<LogConfig[]>;
+}
+
+export async function createLog(cfg: Omit<LogConfig, 'id' | 'session'>): Promise<string> {
+  const r = await fetch('/api/logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json() as { id: string }).id;
+}
+
+export function updateLog(id: string, cfg: Omit<LogConfig, 'id' | 'session'>): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}`, cfg);
+}
+
+export async function deleteLog(id: string): Promise<void> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+export function setLogEnabled(id: string, enabled: boolean): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}/enable`, { enabled });
+}
+
+export function clearLog(id: string): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}/clear`, {});
+}
+
+export async function getLogSessions(id: string): Promise<LogSession[]> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}/sessions`);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json() as Promise<LogSession[]>;
+}
+
+export async function deleteLogSession(id: string, start: number): Promise<void> {
+  const r = await fetch(`/api/logs/${encodeURIComponent(id)}/sessions/${start}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+export function logDownloadUrl(id: string, session?: number): string {
+  const base = `/api/logs/${encodeURIComponent(id)}/download`;
+  return session ? `${base}?session=${session}` : base;
+}
+
+// Parsed current-session data, shaped for uPlot: data[0] = timestamps (s),
+// data[i+1] = series i (null for empty cells). refs are the column headers.
+export interface LogData {
+  refs: string[];
+  data: (number | null)[][];
+}
+
+export async function getLogData(id: string, session?: number): Promise<LogData> {
+  const url = `/api/logs/${encodeURIComponent(id)}/data${session ? `?session=${session}` : ''}`;
+  const r = await fetch(url);
+  if (r.status === 404) return { refs: [], data: [[]] };
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return parseCsv(await r.text());
+}
+
+function parseCsv(text: string): LogData {
+  // Firmware writes CRLF line endings; split on either so the last column's
+  // header/cells don't carry a trailing '\r' (which breaks live resolveRef).
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 1 || !lines[0]) return { refs: [], data: [[]] };
+  const header = lines[0].split(',');
+  const refs = header.slice(1);            // drop "ts"
+  const cols: (number | null)[][] = header.map(() => []);
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(',');
+    if (cells.length !== header.length) continue;
+    for (let c = 0; c < header.length; c++) {
+      const raw = cells[c];
+      cols[c].push(raw === '' ? null : Number(raw));
+    }
+  }
+  return { refs, data: cols };
+}
+
+// Resolves a series ref against a live snapshot. Mirrors LogStore::resolve
+// in the firmware. Returns null when the channel is absent or invalid.
+export function resolveRef(snap: Snapshot, ref: string): number | null {
+  const slash = ref.indexOf('/');
+  if (slash < 0) return null;
+  const role = ref.slice(0, slash);
+  const id = ref.slice(slash + 1);
+  if (role === 'sensor') {
+    const s = snap.sensors.find((x) => x.id === id);
+    return s && s.state.ok ? s.state.v : null;
+  }
+  if (role === 'actuator') {
+    const a = snap.actuators.find((x) => x.id === id);
+    return a ? a.state.v : null;
+  }
+  if (role === 'controller') {
+    const c = snap.controllers.find((x) => x.id === id);
+    return c ? c.setpoint : null;
+  }
+  return null;
 }
 
 // ── Bus discovery ────────────────────────────────────────────────────────────

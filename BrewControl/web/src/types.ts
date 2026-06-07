@@ -116,6 +116,58 @@ export interface DashboardConfig {
   sensors: string[];      // base IDs (without sub-channel suffix)
   actuators: string[];
   controllers: string[];
+  charts?: string[];      // referenced log/chart IDs (see LogConfig)
+}
+
+// One plotted/logged channel. ref is "<role>/<snapshotId>", e.g.
+// "sensor/bme280.temp", "actuator/heizung", "controller/maische".
+export interface LogSeries {
+  ref: string;
+  tol: number;            // dead-band tolerance (0 = log every change)
+}
+
+// Online data-reduction algorithm applied before writing to the CSV.
+//   none          — write every sampled row.
+//   linear        — drop points on the chord between their neighbours (±tol).
+//   swingingdoor  — bounded-slope corridor; long runs collapse to one segment.
+export type CompAlgo = 'none' | 'linear' | 'swingingdoor';
+
+// Wire format of GET /api/logs. A log config doubles as the chart config:
+// the series list drives both the CSV columns and the plotted lines.
+export interface LogConfig {
+  id: string;
+  name: string;
+  intervalSec: number;
+  series: LogSeries[];
+  algo: CompAlgo;
+  maxGapSec: number;      // safety point: force a row after this gap (s)
+  enabled: boolean;       // background logging on/off
+  bindEnableTo?: string;  // controller id; if set, enabled follows it
+  session?: number;       // start epoch (s) of the current session, if any
+}
+
+// One CSV session of a log (GET /api/logs/:id/sessions).
+export interface LogSession {
+  start: number;          // session start epoch (s) = filename
+  size: number;           // bytes on disk
+  active: boolean;        // true for the currently-written session
+}
+
+// Wire format of GET /api/network
+export interface NetworkStatus {
+  connected: boolean;
+  ssid: string;
+  ip: string;
+  rssi: number;     // dBm; 0 when not connected
+  mac: string;
+  hostname: string; // configured mDNS host (".local" appended in UI)
+}
+
+// One entry of GET /api/network/scan
+export interface ScanNetwork {
+  ssid: string;
+  rssi: number;
+  open: boolean;
 }
 
 // Wire format of GET /api/bus/scan

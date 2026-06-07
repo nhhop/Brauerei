@@ -4,6 +4,7 @@
 #include <AsyncJson.h>
 #include <Preferences.h>
 #include <Update.h>
+#include <WiFi.h>
 #include <functional>
 #include <math.h>
 #include <memory>
@@ -16,6 +17,18 @@ namespace {
 
 constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
+
+// mDNS / DHCP hostname rules: 1–32 chars, lowercase alnum and hyphen, no
+// leading/trailing hyphen. Caller lowercases before validating.
+bool validHostname(const String& h) {
+  if (h.isEmpty() || h.length() > 32) return false;
+  if (h[0] == '-' || h[h.length() - 1] == '-') return false;
+  for (size_t i = 0; i < h.length(); ++i) {
+    const char c = h[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+  }
+  return true;
+}
 
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
@@ -63,6 +76,24 @@ class BodyPrefixHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
+// Matches GET <prefix>* requests where the URL carries a path param.
+class GetPrefixHandler : public AsyncWebHandler {
+ public:
+  using Cb = std::function<void(AsyncWebServerRequest*)>;
+  GetPrefixHandler(const char* prefix, Cb cb)
+      : prefix_(prefix), cb_(std::move(cb)) {}
+
+  bool canHandle(AsyncWebServerRequest* req) const override {
+    return req->method() == HTTP_GET && req->url().startsWith(prefix_);
+  }
+  void handleRequest(AsyncWebServerRequest* req) override { cb_(req); }
+  bool isRequestHandlerTrivial() const override { return false; }
+
+ private:
+  String prefix_;
+  Cb cb_;
+};
+
 // Matches DELETE <prefix>* requests (no body).
 class DeletePrefixHandler : public AsyncWebHandler {
  public:
@@ -85,9 +116,9 @@ class DeletePrefixHandler : public AsyncWebHandler {
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
-             FirmwareUpdater& updater, uint16_t port)
+             FirmwareUpdater& updater, LogStore& logs, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), server_(port), events_("/api/events") {}
+      updater_(updater), logs_(logs), server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -242,6 +273,85 @@ void WebUI::begin() {
                req->send(204);
              });
 
+  // ── Network ─────────────────────────────────────────────────────────────────
+  // GET /api/network       — current STA status + configured hostname (JSON)
+  // GET /api/network/scan  — async scan: 202 while running, 200 + JSON when done
+  // One GetPrefixHandler dispatches both: "/api/network" is a BackwardCompatible
+  // match (^uri(/.*)?$), so a bare server_.on would also swallow the sub-path.
+  // The scan briefly takes the radio off-channel; the WiFi watchdog in loop()
+  // (main.cpp) reconnects if it drops the live STA link so we can't lock out.
+  server_.addHandler(new GetPrefixHandler("/api/network",
+      [this](AsyncWebServerRequest* req) {
+        if (req->url().endsWith("/scan")) {
+          int n = WiFi.scanComplete();
+          if (n == WIFI_SCAN_RUNNING) { req->send(202, "application/json", "[]"); return; }
+          if (n < 0) {  // no scan yet or previous failed — kick off a fresh one.
+            // async, hidden=false, passive=false, 100 ms/channel: short dwell
+            // minimises disruption of the live STA connection during the scan.
+            WiFi.scanNetworks(/*async=*/true, /*hidden=*/false, /*passive=*/false, 100);
+            req->send(202, "application/json", "[]");
+            return;
+          }
+          JsonDocument doc;
+          JsonArray arr = doc.to<JsonArray>();
+          for (int i = 0; i < n; ++i) {
+            JsonObject o = arr.add<JsonObject>();
+            o["ssid"] = WiFi.SSID(i);
+            o["rssi"] = WiFi.RSSI(i);
+            o["open"] = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+          }
+          WiFi.scanDelete();
+          String out;
+          serializeJson(doc, out);
+          req->send(200, "application/json", out);
+          return;
+        }
+        Preferences prefs;
+        prefs.begin("brewctrl", true);
+        String host = prefs.getString("hostname", "brewcontrol");
+        prefs.end();
+        JsonDocument doc;
+        doc["connected"] = WiFi.status() == WL_CONNECTED;
+        doc["ssid"] = WiFi.SSID();
+        doc["ip"] = WiFi.localIP().toString();
+        doc["rssi"] = WiFi.RSSI();
+        doc["mac"] = WiFi.macAddress();
+        doc["hostname"] = host;
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+      }));
+
+  // POST /api/network — change WiFi credentials and/or hostname, then reboot.
+  // Body: {"ssid","password"} to switch network, {"hostname"} to rename, or both.
+  // Both only take effect on the next boot (main.cpp reads NVS), so we reboot.
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/network",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        JsonObject o = json.as<JsonObject>();
+        const bool hasSsid = o["ssid"].is<const char*>();
+        const bool hasHost = o["hostname"].is<const char*>();
+        if (!hasSsid && !hasHost) { req->send(400, "text/plain", "nothing to change"); return; }
+        String ssid, password, hostname;
+        if (hasSsid) {
+          ssid = o["ssid"].as<const char*>();
+          password = o["password"] | "";
+          if (ssid.isEmpty()) { req->send(400, "text/plain", "missing ssid"); return; }
+        }
+        if (hasHost) {
+          hostname = o["hostname"].as<const char*>();
+          hostname.toLowerCase();
+          if (!validHostname(hostname)) { req->send(400, "text/plain", "invalid hostname"); return; }
+        }
+        Preferences prefs;
+        prefs.begin("brewctrl", false);
+        if (hasSsid) { prefs.putString("ssid", ssid); prefs.putString("password", password); }
+        if (hasHost) { prefs.putString("hostname", hostname); }
+        prefs.end();
+        req->send(204);
+        rebootAtMs_ = millis() + kRebootDelayMs;
+      }));
+
   // ── Bus scan ──────────────────────────────────────────────────────────────
   server_.on("/api/bus/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {
     if (!req->hasParam("type") || !req->hasParam("pin")) {
@@ -317,6 +427,105 @@ void WebUI::begin() {
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         String id = store_.add(json.as<JsonObject>());
         store_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
+  // ── Data logs ───────────────────────────────────────────────────────────────
+  // GET /api/logs/:id/data|download[?session=<start>] — session CSV
+  // GET /api/logs/:id/sessions                        — session list (JSON)
+  // Registered BEFORE the bare "/api/logs" GET: AsyncCallbackWebHandler matches
+  // "/api/logs" as a prefix of "/api/logs/…", so it would otherwise swallow
+  // these sub-paths. The prefix handler ignores the bare URL (no trailing '/').
+  server_.addHandler(new GetPrefixHandler("/api/logs/",
+      [this](AsyncWebServerRequest* req) {
+        String tail = req->url().substring(strlen("/api/logs/"));
+        int slash = tail.indexOf('/');
+        if (slash < 0) { req->send(404); return; }
+        String id   = tail.substring(0, slash);
+        String verb = tail.substring(slash + 1);
+        if (verb == "sessions") {
+          req->send(200, "application/json", logs_.serializeSessions(id.c_str(), fs_));
+          return;
+        }
+        bool download = (verb == "download");
+        if (verb != "data" && !download) { req->send(404); return; }
+        time_t start = 0;
+        if (req->hasParam("session"))
+          start = (time_t)atol(req->getParam("session")->value().c_str());
+        String path = logs_.sessionPath(id.c_str(), start);
+        if (path.isEmpty() || !fs_.exists(path)) {
+          req->send(404, "text/plain", "no data");
+          return;
+        }
+        req->send(fs_, path, "text/csv", download);
+      }));
+
+  server_.on("/api/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", logs_.serialize());
+  });
+
+  // DELETE /api/logs/:id                    — remove log config
+  // DELETE /api/logs/:id/sessions/<start>   — delete one archived session
+  server_.addHandler(new DeletePrefixHandler("/api/logs/",
+      [this](AsyncWebServerRequest* req) {
+        String tail = req->url().substring(strlen("/api/logs/"));
+        int sp = tail.indexOf("/sessions/");
+        if (sp >= 0) {
+          String id = tail.substring(0, sp);
+          time_t start = (time_t)atol(tail.substring(sp + strlen("/sessions/")).c_str());
+          if (!logs_.deleteSession(id.c_str(), start, fs_)) {
+            req->send(404, "text/plain", "not found or active");
+            return;
+          }
+          req->send(204);
+          return;
+        }
+        if (!logs_.remove(tail.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        logs_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/logs/:id           — update config (resets session)
+  // POST /api/logs/:id/enable    — {"enabled":bool} toggle logging
+  // POST /api/logs/:id/clear     — close current session, start a fresh one
+  server_.addHandler(new BodyPrefixHandler("/api/logs/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String tail = req->url().substring(strlen("/api/logs/"));
+        if (tail.endsWith("/enable")) {
+          String id = tail.substring(0, tail.length() - strlen("/enable"));
+          bool en = doc["enabled"] | true;
+          if (!logs_.setEnabled(id.c_str(), en)) { req->send(404); return; }
+          logs_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (tail.endsWith("/clear")) {
+          String id = tail.substring(0, tail.length() - strlen("/clear"));
+          if (!logs_.clear(id.c_str())) { req->send(404); return; }
+          req->send(204);
+          return;
+        }
+        if (!logs_.update(tail.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        logs_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/logs — create (registered last so prefix handlers above win)
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/logs",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = logs_.add(json.as<JsonObject>());
+        logs_.saveToSD(fs_);
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
 
@@ -532,6 +741,7 @@ void WebUI::tick() {
   }
   uint32_t now = millis();
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
+  logs_.tick(reg_, fs_, time(nullptr), now);
   if (now - lastPushMs_ >= 1000) {
     lastPushMs_ = now;
     pushSnapshot_();

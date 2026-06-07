@@ -144,7 +144,8 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
 
 **Welle 2 — Prozess-Features (greifen ineinander)**
 - **Gradienten/Ableitungen (Library)** — rate-of-change als zusätzlicher Channel (°C/min, K/min, L/min²). ⚠️ Voraussetzung: gruppierte SensorCard (s.u.), da hierdurch weitere Kanäle pro Sensor entstehen.
-- **Datenlogging & Trend-Charts** — Zeitreihen mitschreiben + Verlaufsgraphen.
+- **Datenlogging & Trend-Charts** ✓ — abgeschlossen 2026-06-06 (Branch `feat/datalog`): Log-Config = Chart-Config; `LogStore` sampelt Serien (`sensor/…`, `actuator/…`, `controller/…`) in Sessions `/logs/<id>/<start>.csv`. Online-Datenreduktion `LogCompressor` mit zwei Algorithmen (Linear-Interpolation + Swinging Door, NaN-sicher, Lockstep über Serien, Timeout-Stützpunkt, 12 native Tests). uPlot-`ChartCard` (CSV-Hydration + Live aus SSE), zentrale `/settings/logs`-Verwaltung, Dashboard-Referenz via `charts[]`. Lifecycle: Logging-Toggle, Controller-Binding, Clear/Session-Rotation, Archiv-Seite (`/settings/logs/:id/archive`), globale Retention (200 MB, älteste Sessions zuerst). HW-E2E auf LilyGo S3-AMOLED verifiziert (2026-06-06). Playwright-UI-Tests aller Frontend-Flächen grün (2026-06-07); dabei Cross-Task-Race auf `logs_` (AsyncTCP-Handler vs. `loopTask`-`tick()`) gefunden & per rekursivem FreeRTOS-Mutex gefixt, HW-verifiziert.
+  - *Später:* API-seitige Dezimierung (LTTB/Douglas-Peucker mit `?points=`) für sehr lange Archiv-Zeiträume; Live-Chart-Append an `intervalSec` angleichen (aktuell 1 Hz).
 - **Sollwert-Rampen / Maischeprofile** — generalisierte Sollwert-Liste als zeitgesteuerte Setpoint-Folge mit Rasten (z.B. 52→63→72 °C).
 - **Timer-Widget** — Dashboard-Element für Brau-Timings.
 - **Alarme & Schwellwerte** — „Wert > X" → Warnung/Badge, baut auf `fault()` auf.
@@ -172,7 +173,8 @@ Innerhalb einer Welle grob nach Reihenfolge; jeder Punkt bekommt bei Bedarf eine
     `firmware.bin` auf SD-Root legen, Boot beobachten (Serial: „SD firmware image …
     flashing" → „SD firmware flashed — rebooting"), Datei danach weg prüfen.
   - -> auch für das hinzufügen von Displays relevant. Firmware je nach Display laden (online oder SD-Karte)
-- **Netzwerk/WLAN-Einstellungen** — über das bestehende Captive-Portal hinaus.
+- **Netzwerk/WLAN-Einstellungen** — *STA-Teil erledigt 2026-06-07* (Branch `feat/datalog`): Settings-Seite `/settings/network` mit Status (SSID/IP/RSSI/MAC/Hostname), WLAN-Wechsel (Scan + Creds → Reboot) und konfigurierbarem mDNS-Hostname (NVS `brewctrl/hostname`); „Reset WiFi" vom Dashboard hierher verschoben. Endpunkte `GET/POST /api/network` + `GET /api/network/scan`. **HW-E2E grün** (LilyGo S3, 2026-06-07): Status/Scan/Hostname/Reset verifiziert. Scan im laufenden STA brach anfangs die Verbindung ab → gehärtet: WLAN-Watchdog in `loop()` (`maintainWiFi()`: reconnect nach 10 s, reboot nach 60 s) + kürzere Scan-Dwell (100 ms) + resilienter Frontend-Poll mit manuellem SSID-Fallback.
+  - *Später:* AP-Modus als wählbare Alternative (Standalone ohne Router) — verschoben, weil ohne Internet kein NTP (bricht Datalog-Timestamps); sinnvoll zusammen mit Hardware-RTC (PCF8563). Statische IP / DHCP-Konfiguration.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
 
 ### Buckets (bei Gelegenheit)

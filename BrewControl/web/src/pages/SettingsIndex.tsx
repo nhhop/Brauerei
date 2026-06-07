@@ -59,6 +59,22 @@ export function SettingsIndex(_: { path?: string }) {
           </div>
           <span class="text-faint">›</span>
         </a>
+        <a href="/settings/network"
+          class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 hover:bg-fg/5">
+          <div>
+            <div class="font-medium">Netzwerk</div>
+            <div class="text-xs text-muted">WLAN-Status, Netzwerk wechseln, Hostname</div>
+          </div>
+          <span class="text-faint">›</span>
+        </a>
+        <a href="/settings/logs"
+          class="flex items-center justify-between rounded-lg border border-border bg-surface px-4 py-3 hover:bg-fg/5">
+          <div>
+            <div class="font-medium">Logs &amp; Charts</div>
+            <div class="text-xs text-muted">Datenaufzeichnung konfigurieren und Verläufe anzeigen</div>
+          </div>
+          <span class="text-faint">›</span>
+        </a>
       </div>
     </div>
   );

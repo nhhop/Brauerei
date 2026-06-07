@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import type { Snapshot, ItemConfig, DashboardConfig } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig } from '../types';
 import {
-  wifiReset,
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
+  getLogs,
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
-import { ConfirmModal } from '../components/ConfirmModal';
+import { ChartCard } from '../components/ChartCard';
 import { AddItemModal } from '../components/AddItemModal';
 import { DashboardEditorModal } from '../components/DashboardEditorModal';
 
@@ -30,14 +30,14 @@ function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
   };
 }
 
-export function Dashboard({ snap, err, onReset }: {
+export function Dashboard({ snap, err }: {
   snap: Snapshot | null;
   err: string | null;
-  onReset: () => void;
   path?: string;
 }) {
   // ── Dashboards ────────────────────────────────────────────────────────────
   const [dashboards, setDashboards] = useState<DashboardConfig[]>([]);
+  const [logs, setLogs] = useState<LogConfig[]>([]);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [dashEditorOpen, setDashEditorOpen] = useState(false);
   const [editingDash, setEditingDash] = useState<DashboardConfig | null>(null);
@@ -47,22 +47,23 @@ export function Dashboard({ snap, err, onReset }: {
       setDashboards(ds);
       if (ds.length > 0) setActiveTab({ kind: 'dashboard', id: ds[0].id });
     }).catch(() => {});
+    getLogs().then(setLogs).catch(() => {});
   }, []);
 
   function openCreateDash() { setEditingDash(null); setDashEditorOpen(true); }
   function openEditDash(d: DashboardConfig) { setEditingDash(d); setDashEditorOpen(true); }
 
   async function saveDashboard(
-    name: string, sensors: string[], actuators: string[], controllers: string[]
+    name: string, sensors: string[], actuators: string[], controllers: string[], charts: string[]
   ) {
     if (editingDash) {
-      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers });
+      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers, charts });
       setDashboards(ds => ds.map(d =>
-        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers } : d
+        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers, charts } : d
       ));
     } else {
-      const id = await createDashboard({ name, sensors, actuators, controllers });
-      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers }]);
+      const id = await createDashboard({ name, sensors, actuators, controllers, charts });
+      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers, charts }]);
       setActiveTab({ kind: 'dashboard', id });
     }
     setDashEditorOpen(false);
@@ -75,11 +76,6 @@ export function Dashboard({ snap, err, onReset }: {
     if (activeTab?.id === id) setActiveTab(null);
   }
 
-  // ── WiFi reset ────────────────────────────────────────────────────────────
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetPending, setResetPending] = useState(false);
-  const [resetErr, setResetErr] = useState<string | null>(null);
-
   // ── Edit item (from card buttons) ─────────────────────────────────────────
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
@@ -91,21 +87,10 @@ export function Dashboard({ snap, err, onReset }: {
       sensors: role === 'sensor' ? activeDash.sensors.filter(s => s !== id) : activeDash.sensors,
       actuators: role === 'actuator' ? activeDash.actuators.filter(a => a !== id) : activeDash.actuators,
       controllers: role === 'controller' ? activeDash.controllers.filter(c => c !== id) : activeDash.controllers,
+      charts: activeDash.charts ?? [],
     };
     await updateDashboard(activeDash.id, updated);
     setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
-  }
-
-  async function doReset() {
-    setResetPending(true);
-    setResetErr(null);
-    try {
-      await wifiReset();
-      onReset();
-    } catch (e) {
-      setResetErr(String(e));
-      setResetPending(false);
-    }
   }
 
   async function startEdit(role: Role, id: string) {
@@ -134,10 +119,6 @@ export function Dashboard({ snap, err, onReset }: {
           class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
           ⚙
         </a>
-        <button type="button" onClick={() => setResetOpen(true)}
-          class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
-          Reset WiFi
-        </button>
       </div>
     </header>
   );
@@ -173,19 +154,6 @@ export function Dashboard({ snap, err, onReset }: {
   // ── Modals ────────────────────────────────────────────────────────────────
   const modals = (
     <>
-      <ConfirmModal open={resetOpen} title="WiFi-Zugangsdaten zurücksetzen?" destructive
-        confirmLabel="Zurücksetzen & Neustart" pending={resetPending}
-        onCancel={() => { setResetOpen(false); setResetErr(null); }}
-        onConfirm={doReset}>
-        <p>
-          Dies löscht die gespeicherten WiFi-Zugangsdaten und startet das Gerät neu in
-          den Setup-Modus. Danach über
-          <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
-          neu verbinden.
-        </p>
-        {resetErr && <p class="mt-2 text-red-600">{resetErr}</p>}
-      </ConfirmModal>
-
       <AddItemModal
         open={addOpen}
         snap={snap}
@@ -197,6 +165,7 @@ export function Dashboard({ snap, err, onReset }: {
       <DashboardEditorModal
         open={dashEditorOpen}
         snap={snap}
+        logs={logs}
         initial={editingDash ?? undefined}
         onSave={saveDashboard}
         onDelete={editingDash ? async () => {
@@ -262,6 +231,20 @@ export function Dashboard({ snap, err, onReset }: {
           ))}
         </Column>
       </div>
+      {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
+        <div class="mt-4 space-y-4">
+          {activeDash.charts!.map((cid) => {
+            const log = logs.find((l) => l.id === cid);
+            if (!log) return null;
+            return (
+              <div key={cid} class="rounded-lg border border-border bg-surface p-4">
+                <div class="mb-2 text-sm font-medium">{log.name}</div>
+                <ChartCard log={log} snap={snap} />
+              </div>
+            );
+          })}
+        </div>
+      )}
       {modals}
     </div>
   );

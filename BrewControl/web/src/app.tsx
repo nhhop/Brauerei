@@ -11,6 +11,9 @@ import { DevicesPage } from './pages/DevicesPage';
 import { FirmwarePage } from './pages/FirmwarePage';
 import { BackupPage } from './pages/BackupPage';
 import { TimePage } from './pages/TimePage';
+import { NetworkPage } from './pages/NetworkPage';
+import { LogsPage } from './pages/LogsPage';
+import { ArchivePage } from './pages/ArchivePage';
 
 function useSnapshot() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -29,7 +32,6 @@ function useSnapshot() {
 }
 
 export function App() {
-  const [rebooting, setRebooting] = useState(false);
   const { snap, err } = useSnapshot();
 
   useEffect(() => {
@@ -40,32 +42,18 @@ export function App() {
       .catch(() => {});
   }, []);
 
-  if (rebooting) return <RebootingView />;
-
   return (
     <Router>
-      <Dashboard path="/" snap={snap} err={err} onReset={() => setRebooting(true)} />
+      <Dashboard path="/" snap={snap} err={err} />
       <SettingsIndex path="/settings" />
       <AppearancePage path="/settings/appearance" />
       <DevicesPage path="/settings/devices" snap={snap} />
       <FirmwarePage path="/settings/firmware" />
       <BackupPage path="/settings/backup" />
       <TimePage path="/settings/time" />
+      <NetworkPage path="/settings/network" />
+      <LogsPage path="/settings/logs" snap={snap} />
+      <ArchivePage path="/settings/logs/:id/archive" />
     </Router>
-  );
-}
-
-function RebootingView() {
-  return (
-    <div class="flex min-h-screen items-center justify-center bg-bg p-6 text-fg">
-      <div class="max-w-md text-center">
-        <h1 class="text-xl font-medium tracking-tight">Neustart…</h1>
-        <p class="mt-3 text-sm text-muted">
-          Das Gerät startet in den Setup-Modus. Mit dem WLAN
-          <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
-          verbinden um neue Zugangsdaten einzutragen.
-        </p>
-      </div>
-    </div>
   );
 }

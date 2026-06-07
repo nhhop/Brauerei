@@ -10,6 +10,7 @@
 #include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
+#include "LogStore.h"
 #include "SdTarSink.h"
 #include "SettingsStore.h"
 #include "TarExtractor.h"
@@ -33,8 +34,21 @@ namespace BrewControl {
 //   POST /api/controllers/<id>/setpoint    — {"v":<float>}
 //   POST /api/controllers/<id>/params      — raw controller-params JSON
 //   POST /api/admin/wifi-reset             — clear WiFi creds, reboot
+//   GET  /api/network                      — STA status + hostname (JSON)
+//   GET  /api/network/scan                 — async WiFi scan (202 → 200+JSON)
+//   POST /api/network                      — set SSID/password and/or hostname, reboot
 //   GET  /api/backup                       — download config bundle as JSON
 //   POST /api/backup                       — restore config bundle, reboot
+//   GET  /api/logs                         — list data-log configs (JSON)
+//   POST /api/logs                         — create data-log config
+//   POST /api/logs/<id>                    — update data-log config
+//   DELETE /api/logs/<id>                  — remove data-log config
+//   POST /api/logs/<id>/enable             — {"enabled":bool} toggle logging
+//   POST /api/logs/<id>/clear              — start a fresh session
+//   GET  /api/logs/<id>/data[?session=N]   — session CSV (current or archived)
+//   GET  /api/logs/<id>/download[?session=N] — session CSV (attachment)
+//   GET  /api/logs/<id>/sessions           — list sessions (JSON)
+//   DELETE /api/logs/<id>/sessions/<start> — delete one archived session
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
 //   GET  /*                                — SD static (default index.html)
 //
@@ -45,7 +59,7 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        uint16_t port = 80);
+        LogStore& logs, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -66,6 +80,7 @@ class WebUI {
   DashboardStore& store_;
   SettingsStore& settings_;
   FirmwareUpdater& updater_;
+  LogStore& logs_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;
