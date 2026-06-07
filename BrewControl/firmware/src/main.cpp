@@ -45,6 +45,22 @@ BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
 BrewControl::LogStore logStore;
 WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore);
 
+// Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
+// the WiFi event handler can re-announce mDNS after a reconnect.
+String hostname_;
+
+// (Re-)start the mDNS responder. ESP32 mDNS typically does not survive a WiFi
+// reconnect, so this runs on every STA_GOT_IP event, not just at boot.
+static void startMDNS() {
+  MDNS.end();
+  if (MDNS.begin(hostname_.c_str())) {
+    MDNS.addService("http", "tcp", 80);
+    Serial.printf("mDNS up: http://%s.local/\n", hostname_.c_str());
+  } else {
+    Serial.println(F("mDNS start failed"));
+  }
+}
+
 static bool resetHeldAtBoot() {
   pinMode(kBootButtonPin, INPUT_PULLUP);
   if (digitalRead(kBootButtonPin) != LOW) return false;
@@ -110,7 +126,7 @@ void setup() {
   prefs.begin("brewctrl", true);
   const String ssid = prefs.getString("ssid", "");
   const String password = prefs.getString("password", "");
-  const String hostname = prefs.getString("hostname", kHostname);
+  hostname_ = prefs.getString("hostname", kHostname);
   prefs.end();
 
   if (ssid.isEmpty()) {
@@ -119,7 +135,7 @@ void setup() {
     portal.runUntilConfigured();  // never returns — ESP.restart()
   }
 
-  if (!connectStation(ssid, password, hostname)) {
+  if (!connectStation(ssid, password, hostname_)) {
     Serial.println(F("STA connect failed — falling back to setup portal"));
     WiFiSetupPortal portal;
     portal.runUntilConfigured();
@@ -127,12 +143,11 @@ void setup() {
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
 
-  if (MDNS.begin(hostname.c_str())) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.printf("mDNS up: http://%s.local/\n", hostname.c_str());
-  } else {
-    Serial.println(F("mDNS start failed"));
-  }
+  // Re-announce mDNS on every STA_GOT_IP (it doesn't survive reconnects). The
+  // initial GOT_IP already fired during connectStation, so also start it once now.
+  WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t) { startMDNS(); },
+               ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  startMDNS();
 
   if (sdOk) {
     dynamicItems.loadFromSD(SD, registry);
