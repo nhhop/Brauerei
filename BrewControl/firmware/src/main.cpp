@@ -135,8 +135,18 @@ void setup() {
     portal.runUntilConfigured();  // never returns — ESP.restart()
   }
 
-  if (!connectStation(ssid, password, hostname_)) {
-    Serial.println(F("STA connect failed — falling back to setup portal"));
+  // Creds exist: a failed connect is usually a transient outage (router
+  // rebooting), not bad creds — retry for a few minutes before falling back to
+  // the AP setup portal, so a reboot during a router outage can't strand us
+  // there with valid credentials.
+  bool connected = false;
+  for (int attempt = 1; attempt <= 6 && !connected; ++attempt) {
+    connected = connectStation(ssid, password, hostname_);
+    if (!connected)
+      Serial.printf("STA connect attempt %d/6 failed, retrying...\n", attempt);
+  }
+  if (!connected) {
+    Serial.println(F("STA connect failed repeatedly — falling back to setup portal"));
     WiFiSetupPortal portal;
     portal.runUntilConfigured();
   }
@@ -167,18 +177,19 @@ void setup() {
   Serial.println(F("BrewControl ready"));
 }
 
-// Self-healing WiFi: if the STA link drops (scan off-channel, AP reboot, noise),
-// nudge a reconnect after 10 s; reboot as a last resort after 60 s so a wedged
-// radio can never leave the device permanently unreachable (boot reconnects or
-// opens the setup portal). Runs only after setup()'s successful connect.
+// Self-healing WiFi: if the STA link drops (AP reboot, noise, wedged radio),
+// nudge a reconnect every 30 s; reboot only as a last resort after 5 min of
+// continuous loss. The long timeout is deliberate — a router reboot (~1–2 min)
+// recovers via auto-reconnect well before it fires, so the device stays in STA
+// instead of rebooting into the setup portal. Runs only after setup() connects.
 static void maintainWiFi() {
   static uint32_t downSinceMs = 0;
   static uint32_t lastRetryMs = 0;
   if (WiFi.status() == WL_CONNECTED) { downSinceMs = 0; return; }
   const uint32_t now = millis();
   if (downSinceMs == 0) { downSinceMs = now; lastRetryMs = now; return; }
-  if (now - lastRetryMs >= 10000) { lastRetryMs = now; WiFi.reconnect(); }
-  if (now - downSinceMs >= 60000) ESP.restart();
+  if (now - lastRetryMs >= 30000) { lastRetryMs = now; WiFi.reconnect(); }
+  if (now - downSinceMs >= 300000) ESP.restart();
 }
 
 void loop() {
