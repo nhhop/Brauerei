@@ -1,4 +1,5 @@
 node_modules
 dist
+webui.tar
 .env.local
 .env.*.local
