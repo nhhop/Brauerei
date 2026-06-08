@@ -11,6 +11,7 @@
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
+#include "ProgramRunner.h"
 #include "SdTarSink.h"
 #include "SettingsStore.h"
 #include "TarExtractor.h"
@@ -49,6 +50,11 @@ namespace BrewControl {
 //   GET  /api/logs/<id>/download[?session=N] — session CSV (attachment)
 //   GET  /api/logs/<id>/sessions           — list sessions (JSON)
 //   DELETE /api/logs/<id>/sessions/<start> — delete one archived session
+//   GET  /api/programs                     — list setpoint programs (JSON)
+//   POST /api/programs                     — create setpoint program
+//   POST /api/programs/<id>                — update setpoint program
+//   DELETE /api/programs/<id>              — remove setpoint program
+//   POST /api/programs/<id>/control        — {"action":start|pause|resume|stop|next|prev}
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
 //   GET  /*                                — SD static (default index.html)
 //
@@ -59,7 +65,7 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        LogStore& logs, uint16_t port = 80);
+        LogStore& logs, ProgramRunner& programs, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -81,6 +87,7 @@ class WebUI {
   SettingsStore& settings_;
   FirmwareUpdater& updater_;
   LogStore& logs_;
+  ProgramRunner& programs_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;

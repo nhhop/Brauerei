@@ -116,9 +116,11 @@ class DeletePrefixHandler : public AsyncWebHandler {
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
-             FirmwareUpdater& updater, LogStore& logs, uint16_t port)
+             FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
+             uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), logs_(logs), server_(port), events_("/api/events") {}
+      updater_(updater), logs_(logs), programs_(programs), server_(port),
+      events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -529,6 +531,67 @@ void WebUI::begin() {
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
 
+  // ── Setpoint programs ───────────────────────────────────────────────────────
+  server_.on("/api/programs", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", programs_.serialize());
+  });
+
+  // DELETE /api/programs/:id — remove a program
+  server_.addHandler(new DeletePrefixHandler("/api/programs/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/programs/"));
+        if (!programs_.remove(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        programs_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/programs/:id           — update definition (resets to idle)
+  // POST /api/programs/:id/control   — {"action":"start"|"pause"|…}
+  server_.addHandler(new BodyPrefixHandler("/api/programs/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String tail = req->url().substring(strlen("/api/programs/"));
+        if (tail.endsWith("/control")) {
+          String id = tail.substring(0, tail.length() - strlen("/control"));
+          const char* action = doc["action"] | "";
+          auto r = programs_.control(id.c_str(), action, reg_);
+          if (!r.ok) {
+            bool notFound = strcmp(r.error, "not found") == 0;
+            req->send(notFound ? 404 : 400, "text/plain", r.error);
+            return;
+          }
+          programs_.saveToSD(fs_);
+          pushSnapshot_();  // setpoint changed → reflect immediately
+          req->send(204);
+          return;
+        }
+        if (!programs_.update(tail.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found or invalid");
+          return;
+        }
+        programs_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/programs — create (registered last so prefix handlers above win)
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/programs",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = programs_.add(json.as<JsonObject>());
+        if (id.isEmpty()) {
+          req->send(400, "text/plain", "invalid program");
+          return;
+        }
+        programs_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
   // ── Settings ──────────────────────────────────────────────────────────────
   server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* req) {
     req->send(200, "application/json", settings_.serialize());
@@ -742,6 +805,7 @@ void WebUI::tick() {
   uint32_t now = millis();
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
   logs_.tick(reg_, fs_, time(nullptr), now);
+  programs_.tick(reg_, fs_, time(nullptr));
   if (now - lastPushMs_ >= 1000) {
     lastPushMs_ = now;
     pushSnapshot_();

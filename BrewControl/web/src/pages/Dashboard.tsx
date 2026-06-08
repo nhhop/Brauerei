@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import type { Snapshot, ItemConfig, DashboardConfig, LogConfig } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig } from '../types';
 import {
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
   getLogs,
+  getPrograms, createProgram, updateProgram, deleteProgram,
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
+import { ProgramCard } from '../components/ProgramCard';
 import { AddItemModal } from '../components/AddItemModal';
 import { DashboardEditorModal } from '../components/DashboardEditorModal';
+import { ProgramEditorModal } from '../components/ProgramEditorModal';
+
+type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
 type Role = 'sensor' | 'actuator' | 'controller';
 type Tab = { kind: 'dashboard'; id: string };
@@ -38,6 +43,7 @@ export function Dashboard({ snap, err }: {
   // ── Dashboards ────────────────────────────────────────────────────────────
   const [dashboards, setDashboards] = useState<DashboardConfig[]>([]);
   const [logs, setLogs] = useState<LogConfig[]>([]);
+  const [programs, setPrograms] = useState<ProgramConfig[]>([]);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const [dashEditorOpen, setDashEditorOpen] = useState(false);
   const [editingDash, setEditingDash] = useState<DashboardConfig | null>(null);
@@ -50,20 +56,30 @@ export function Dashboard({ snap, err }: {
     getLogs().then(setLogs).catch(() => {});
   }, []);
 
+  // Poll program live status (current step, remaining time) — independent of
+  // the SSE snapshot so the library serializer stays untouched.
+  function refreshPrograms() { getPrograms().then(setPrograms).catch(() => {}); }
+  useEffect(() => {
+    refreshPrograms();
+    const t = setInterval(refreshPrograms, 2000);
+    return () => clearInterval(t);
+  }, []);
+
   function openCreateDash() { setEditingDash(null); setDashEditorOpen(true); }
   function openEditDash(d: DashboardConfig) { setEditingDash(d); setDashEditorOpen(true); }
 
   async function saveDashboard(
-    name: string, sensors: string[], actuators: string[], controllers: string[], charts: string[]
+    name: string, sensors: string[], actuators: string[], controllers: string[],
+    charts: string[], programs: string[]
   ) {
     if (editingDash) {
-      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers, charts });
+      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers, charts, programs });
       setDashboards(ds => ds.map(d =>
-        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers, charts } : d
+        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers, charts, programs } : d
       ));
     } else {
-      const id = await createDashboard({ name, sensors, actuators, controllers, charts });
-      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers, charts }]);
+      const id = await createDashboard({ name, sensors, actuators, controllers, charts, programs });
+      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers, charts, programs }]);
       setActiveTab({ kind: 'dashboard', id });
     }
     setDashEditorOpen(false);
@@ -88,9 +104,46 @@ export function Dashboard({ snap, err }: {
       actuators: role === 'actuator' ? activeDash.actuators.filter(a => a !== id) : activeDash.actuators,
       controllers: role === 'controller' ? activeDash.controllers.filter(c => c !== id) : activeDash.controllers,
       charts: activeDash.charts ?? [],
+      programs: activeDash.programs ?? [],
     };
     await updateDashboard(activeDash.id, updated);
     setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
+  }
+
+  async function removeProgramRef(id: string) {
+    if (!activeDash) return;
+    const updated = {
+      name: activeDash.name,
+      sensors: activeDash.sensors,
+      actuators: activeDash.actuators,
+      controllers: activeDash.controllers,
+      charts: activeDash.charts ?? [],
+      programs: (activeDash.programs ?? []).filter(p => p !== id),
+    };
+    await updateDashboard(activeDash.id, updated);
+    setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
+  }
+
+  // ── Programs (create / edit / delete) ─────────────────────────────────────
+  const [progEditorOpen, setProgEditorOpen] = useState(false);
+  const [editingProg, setEditingProg] = useState<ProgramConfig | null>(null);
+
+  function openCreateProgram() { setEditingProg(null); setProgEditorOpen(true); }
+  function openEditProgram(p: ProgramConfig) { setEditingProg(p); setProgEditorOpen(true); }
+
+  async function saveProgram(cfg: ProgramSave) {
+    if (editingProg) await updateProgram(editingProg.id, cfg);
+    else await createProgram(cfg);
+    setProgEditorOpen(false);
+    setEditingProg(null);
+    refreshPrograms();
+  }
+
+  async function doDeleteProgram(id: string) {
+    await deleteProgram(id);
+    setProgEditorOpen(false);
+    setEditingProg(null);
+    refreshPrograms();
   }
 
   async function startEdit(role: Role, id: string) {
@@ -166,14 +219,25 @@ export function Dashboard({ snap, err }: {
         open={dashEditorOpen}
         snap={snap}
         logs={logs}
+        programs={programs}
         initial={editingDash ?? undefined}
         onSave={saveDashboard}
+        onNewProgram={openCreateProgram}
         onDelete={editingDash ? async () => {
           await doDeleteDashboard(editingDash.id);
           setDashEditorOpen(false);
           setEditingDash(null);
         } : undefined}
         onClose={() => { setDashEditorOpen(false); setEditingDash(null); }}
+      />
+
+      <ProgramEditorModal
+        open={progEditorOpen}
+        snap={snap}
+        initial={editingProg ?? undefined}
+        onSave={saveProgram}
+        onDelete={editingProg ? () => doDeleteProgram(editingProg.id) : undefined}
+        onClose={() => { setProgEditorOpen(false); setEditingProg(null); }}
       />
     </>
   );
@@ -231,6 +295,23 @@ export function Dashboard({ snap, err }: {
           ))}
         </Column>
       </div>
+      {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
+        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {activeDash.programs!.map((pid) => {
+            const prog = programs.find((p) => p.id === pid);
+            if (!prog) return null;
+            const ctrlExists = (snap?.controllers ?? []).some((c) => c.id === prog.controller);
+            return (
+              <ProgramCard key={pid} program={prog}
+                controllerExists={ctrlExists}
+                onChanged={refreshPrograms}
+                onEdit={() => openEditProgram(prog)}
+                onDelete={() => removeProgramRef(pid)}
+              />
+            );
+          })}
+        </div>
+      )}
       {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
         <div class="mt-4 space-y-4">
           {activeDash.charts!.map((cid) => {
