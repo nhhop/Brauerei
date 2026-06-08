@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, DashboardConfig, LogConfig } from '../types';
+import type { Snapshot, DashboardConfig, LogConfig, ProgramConfig } from '../types';
 import { AddItemModal } from './AddItemModal';
 
 interface Props {
-  open: boolean; snap: Snapshot | null; initial?: DashboardConfig; logs?: LogConfig[];
-  onSave: (name: string, sensors: string[], actuators: string[], controllers: string[], charts: string[]) => void;
+  open: boolean; snap: Snapshot | null; initial?: DashboardConfig; logs?: LogConfig[]; programs?: ProgramConfig[];
+  onSave: (name: string, sensors: string[], actuators: string[], controllers: string[], charts: string[], programs: string[]) => void;
+  onNewProgram?: () => void;
   onDelete?: () => void; onClose: () => void;
 }
 
-export function DashboardEditorModal({ open, snap, initial, logs, onSave, onDelete, onClose }: Props) {
+export function DashboardEditorModal({ open, snap, initial, logs, programs, onSave, onNewProgram, onDelete, onClose }: Props) {
   const [name, setName] = useState('');
   const [sensors, setSensors] = useState<Set<string>>(new Set());
   const [actuators, setActuators] = useState<Set<string>>(new Set());
   const [controllers, setControllers] = useState<Set<string>>(new Set());
   const [charts, setCharts] = useState<Set<string>>(new Set());
+  const [progs, setProgs] = useState<Set<string>>(new Set());
   const [subAddOpen, setSubAddOpen] = useState(false);
 
   useEffect(() => {
@@ -23,6 +25,7 @@ export function DashboardEditorModal({ open, snap, initial, logs, onSave, onDele
       setActuators(new Set(initial?.actuators ?? []));
       setControllers(new Set(initial?.controllers ?? []));
       setCharts(new Set(initial?.charts ?? []));
+      setProgs(new Set(initial?.programs ?? []));
     }
   }, [open, initial]);
 
@@ -43,7 +46,7 @@ export function DashboardEditorModal({ open, snap, initial, logs, onSave, onDele
   function handleSubmit(e: Event) {
     e.preventDefault();
     if (!name.trim()) return;
-    onSave(name.trim(), [...sensors], [...actuators], [...controllers], [...charts]);
+    onSave(name.trim(), [...sensors], [...actuators], [...controllers], [...charts], [...progs]);
   }
 
   return (
@@ -125,10 +128,34 @@ export function DashboardEditorModal({ open, snap, initial, logs, onSave, onDele
           </fieldset>
         )}
 
-        <button type="button" onClick={() => setSubAddOpen(true)}
-          class="mt-1 text-xs text-faint hover:text-fg">
-          + Neues Gerät erstellen
-        </button>
+        {programs && programs.length > 0 && (
+          <fieldset class="mb-3">
+            <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Programme</legend>
+            <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+              {programs.map((p) => (
+                <label key={p.id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
+                  <input type="checkbox" class="accent-accent"
+                    checked={progs.has(p.id)}
+                    onChange={() => toggle(progs, setProgs, p.id)} />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        <div class="mt-1 flex flex-col items-start gap-1">
+          <button type="button" onClick={() => setSubAddOpen(true)}
+            class="text-xs text-faint hover:text-fg">
+            + Neues Gerät erstellen
+          </button>
+          {onNewProgram && (
+            <button type="button" onClick={onNewProgram}
+              class="text-xs text-faint hover:text-fg">
+              + Neues Programm erstellen
+            </button>
+          )}
+        </div>
 
         <div class="mt-4 flex items-center justify-between gap-2">
           {onDelete ? (

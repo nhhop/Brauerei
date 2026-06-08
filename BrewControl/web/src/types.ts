@@ -117,6 +117,35 @@ export interface DashboardConfig {
   actuators: string[];
   controllers: string[];
   charts?: string[];      // referenced log/chart IDs (see LogConfig)
+  programs?: string[];    // referenced setpoint-program IDs (see ProgramConfig)
+}
+
+// ── Setpoint programs (mash profiles) ────────────────────────────────────────
+// Wire format of GET /api/programs. A program drives a controller's setpoint
+// through a list of timed steps. Mirrors ProgramRunner in the firmware.
+
+export type ProgramStatus = 'idle' | 'running' | 'awaiting' | 'paused' | 'done';
+
+export type ProgramAction = 'start' | 'pause' | 'resume' | 'stop' | 'next' | 'prev';
+
+export interface ProgramStep {
+  name?: string;          // optional, cosmetic
+  setpoint: number;
+  holdSec: number;
+  confirm?: boolean;      // true → wait for manual "next" after the hold elapses
+}
+
+export interface ProgramConfig {
+  id: string;
+  name: string;
+  controller: string;     // bound controller id
+  steps: ProgramStep[];
+  // Runtime state:
+  status: ProgramStatus;
+  currentStep: number;
+  // Derived live fields (read-only, present in GET /api/programs):
+  stepRemainingSec?: number;
+  currentSetpoint?: number;
 }
 
 // One plotted/logged channel. ref is "<role>/<snapshotId>", e.g.
