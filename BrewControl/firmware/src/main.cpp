@@ -19,6 +19,7 @@
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
+#include "ProgramRunner.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
 #include "WiFiSetupPortal.h"
@@ -43,7 +44,8 @@ BrewControl::DashboardStore dashboardStore;
 BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
 BrewControl::LogStore logStore;
-WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore);
+BrewControl::ProgramRunner programRunner;
+WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner);
 
 // Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
 // the WiFi event handler can re-announce mDNS after a reconnect.
@@ -164,6 +166,7 @@ void setup() {
     dashboardStore.loadFromSD(SD);
     settingsStore.loadFromSD(SD);
     logStore.loadFromSD(SD);
+    programRunner.loadFromSD(SD);
   }
 
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),

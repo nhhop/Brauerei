@@ -24,6 +24,8 @@ void DashboardStore::loadFromSD(fs::FS& sd) {
       if (const char* s = v.as<const char*>()) d.controllers.push_back(s);
     for (JsonVariant v : obj["charts"].as<JsonArray>())
       if (const char* s = v.as<const char*>()) d.charts.push_back(s);
+    for (JsonVariant v : obj["programs"].as<JsonArray>())
+      if (const char* s = v.as<const char*>()) d.programs.push_back(s);
     dashboards_.push_back(std::move(d));
   }
 }
@@ -53,6 +55,8 @@ String DashboardStore::serialize() const {
     for (const auto& id : d.controllers) c.add(id.c_str());
     JsonArray ch = obj["charts"].to<JsonArray>();
     for (const auto& id : d.charts)      ch.add(id.c_str());
+    JsonArray pr = obj["programs"].to<JsonArray>();
+    for (const auto& id : d.programs)    pr.add(id.c_str());
   }
   String out;
   serializeJson(doc, out);
@@ -73,6 +77,7 @@ void DashboardStore::fillFromJson(DashboardCfg& d, const JsonObject& cfg) {
   d.actuators.clear();
   d.controllers.clear();
   d.charts.clear();
+  d.programs.clear();
   for (JsonVariant v : cfg["sensors"].as<JsonArray>())
     if (const char* s = v.as<const char*>()) d.sensors.push_back(s);
   for (JsonVariant v : cfg["actuators"].as<JsonArray>())
@@ -81,6 +86,8 @@ void DashboardStore::fillFromJson(DashboardCfg& d, const JsonObject& cfg) {
     if (const char* s = v.as<const char*>()) d.controllers.push_back(s);
   for (JsonVariant v : cfg["charts"].as<JsonArray>())
     if (const char* s = v.as<const char*>()) d.charts.push_back(s);
+  for (JsonVariant v : cfg["programs"].as<JsonArray>())
+    if (const char* s = v.as<const char*>()) d.programs.push_back(s);
 }
 
 String DashboardStore::add(const JsonObject& cfg) {
