@@ -4,6 +4,7 @@ import type { ComponentChildren } from 'preact';
 import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 // Coarse signal-strength bucket from RSSI (dBm) for a 0–4 bar display.
 function signalBars(rssi: number): number {
@@ -156,7 +157,7 @@ export function NetworkPage(_: { path?: string }) {
   const hostChanged = status != null && host.trim().toLowerCase() !== status.hostname;
 
   if (reboot) return (
-    <div class="flex min-h-screen items-center justify-center bg-bg p-6 text-fg">
+    <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
       <div class="max-w-md text-center">
         <h1 class="text-xl font-medium tracking-tight">{reboot.title}</h1>
         <div class="mt-3 text-sm text-muted">{reboot.body}</div>
@@ -165,16 +166,15 @@ export function NetworkPage(_: { path?: string }) {
   );
 
   if (loading) return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       <p class="text-sm text-muted">Laden…</p>
     </div>
   );
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
-      <header class="mb-6 flex items-center gap-3">
-        <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
-        <h1 class="text-xl font-medium tracking-tight">Netzwerk</h1>
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+      <header class="mb-6">
+        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Netzwerk' }]} />
       </header>
 
       {/* ── Status ─────────────────────────────────────────────────────── */}

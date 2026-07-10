@@ -3,6 +3,7 @@ import { useState, useEffect } from 'preact/hooks';
 import type { ThemeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { applyTheme } from '../theme';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 const ACCENT_PRESETS: { label: string; value: string }[] = [
   { label: 'Bernstein', value: '#d97706' },
@@ -37,16 +38,15 @@ export function AppearancePage(_: { path?: string }) {
   }
 
   if (loading) return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       <p class="text-sm text-muted">Laden…</p>
     </div>
   );
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
-      <header class="mb-6 flex items-center gap-3">
-        <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
-        <h1 class="text-xl font-medium tracking-tight">Darstellung</h1>
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+      <header class="mb-6">
+        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Darstellung' }]} />
       </header>
 
       <div class="space-y-5 rounded-lg border border-border bg-surface p-4">

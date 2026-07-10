@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "brewcontrol-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "BrewControl/web", "dev"],
+      "port": 5173
+    }
+  ]
+}

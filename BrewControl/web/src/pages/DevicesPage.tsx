@@ -4,6 +4,7 @@ import type { Snapshot, ItemConfig } from '../types';
 import { deleteSensor, deleteActuator, deleteController, getConfig } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { AddItemModal } from '../components/AddItemModal';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 type Role = 'sensor' | 'actuator' | 'controller';
 
@@ -46,12 +47,9 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
   }) : [];
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       <header class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
-          <h1 class="text-xl font-medium tracking-tight">Geräte</h1>
-        </div>
+        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Geräte' }]} />
         <button type="button" onClick={() => setAddOpen(true)}
           class="rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-fg/80">
           + Hinzufügen
