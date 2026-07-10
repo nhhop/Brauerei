@@ -6,6 +6,7 @@ type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 import { ChartCard } from '../components/ChartCard';
 import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [logs, setLogs] = useState<LogConfig[]>([]);
@@ -56,12 +57,9 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   }
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       <header class="mb-6 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
-          <h1 class="text-xl font-medium tracking-tight">Logs &amp; Charts</h1>
-        </div>
+        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Logs & Charts' }]} />
         <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }}
           class="rounded-md bg-fg px-3 py-1.5 text-sm text-bg hover:bg-fg/80">
           + Neues Log

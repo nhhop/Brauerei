@@ -3,6 +3,7 @@ import type { LogConfig, LogSession, TimeSettings } from '../types';
 import { getLogs, getLogSessions, deleteLogSession, logDownloadUrl, getSettings } from '../api';
 import { ChartCard } from '../components/ChartCard';
 import { formatDateTime } from '../time';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -38,12 +39,13 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
   }
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
-      <header class="mb-6 flex items-center gap-3">
-        <a href="/settings/logs" class="text-lg leading-none text-faint hover:text-fg">←</a>
-        <h1 class="text-xl font-medium tracking-tight">
-          Archiv{log ? ` · ${log.name}` : ''}
-        </h1>
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+      <header class="mb-6">
+        <Breadcrumb trail={[
+          { label: 'Einstellungen', href: '/settings' },
+          { label: 'Logs & Charts', href: '/settings/logs' },
+          { label: `Archiv${log ? ` · ${log.name}` : ''}` },
+        ]} />
       </header>
 
       {sessions.length === 0 ? (

@@ -5,6 +5,7 @@ import {
   uploadFirmware, uploadAssets, updateSettings,
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 export function FirmwarePage(_: { path?: string }) {
   const [st, setSt] = useState<UpdateStatus | null>(null);
@@ -21,7 +22,7 @@ export function FirmwarePage(_: { path?: string }) {
     return () => { if (poll.current) clearInterval(poll.current); };
   }, []);
 
-  if (!st) return <div class="min-h-screen bg-bg p-6 text-fg">Lädt…</div>;
+  if (!st) return <div class="min-h-full bg-bg p-6 text-fg">Lädt…</div>;
 
   const busy = ['checking', 'downloading', 'flashing'].includes(st.state);
   const channel = st.channel;
@@ -32,10 +33,9 @@ export function FirmwarePage(_: { path?: string }) {
     updateSettings({ firmware: { channel, autoCheck: a } }).then(refresh);
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
-      <header class="flex items-center gap-3">
-        <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
-        <h1 class="text-xl font-medium tracking-tight">Firmware-Update</h1>
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+      <header>
+        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Firmware-Update' }]} />
       </header>
 
       <div class="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">

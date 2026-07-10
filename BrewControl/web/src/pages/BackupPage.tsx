@@ -1,6 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { downloadBackup, restoreBackup } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { Breadcrumb } from '../components/Breadcrumb';
 
 export function BackupPage(_: { path?: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -12,7 +13,7 @@ export function BackupPage(_: { path?: string }) {
 
   if (done) {
     return (
-      <div class="flex min-h-screen items-center justify-center bg-bg p-6 text-fg">
+      <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
         <div class="max-w-md text-center">
           <h1 class="text-xl font-medium tracking-tight">Neustart…</h1>
           <p class="mt-3 text-sm text-muted">
@@ -41,10 +42,9 @@ export function BackupPage(_: { path?: string }) {
   };
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
-      <header class="flex items-center gap-3">
-        <a href="/settings" class="text-lg leading-none text-faint hover:text-fg">←</a>
-        <h1 class="text-xl font-medium tracking-tight">Backup &amp; Restore</h1>
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+      <header>
+        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Backup & Restore' }]} />
       </header>
 
       <section class="mt-6 rounded-lg border border-border bg-surface p-4 space-y-2">

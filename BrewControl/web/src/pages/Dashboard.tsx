@@ -167,12 +167,6 @@ export function Dashboard({ snap, err }: {
   const header = (
     <header class="flex items-center justify-between gap-3">
       <h1 class="text-xl font-medium tracking-tight">BrewControl</h1>
-      <div class="flex items-center gap-2">
-        <a href="/settings"
-          class="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10">
-          ⚙
-        </a>
-      </div>
     </header>
   );
 
@@ -243,7 +237,7 @@ export function Dashboard({ snap, err }: {
   );
 
   if (err) return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       {header}{tabBar}
       <p class="text-sm text-red-600">{err}</p>
       {modals}
@@ -251,7 +245,7 @@ export function Dashboard({ snap, err }: {
   );
 
   if (!displaySnap) return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       {header}{tabBar}
       <p class="text-sm text-muted">Laden…</p>
       {modals}
@@ -259,7 +253,7 @@ export function Dashboard({ snap, err }: {
   );
 
   return (
-    <div class="min-h-screen bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       {header}
       {tabBar}
       <div class="grid grid-cols-1 gap-4 md:grid-cols-3">

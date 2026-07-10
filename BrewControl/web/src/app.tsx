@@ -4,6 +4,7 @@ import { Router } from 'preact-router';
 import type { Snapshot } from './types';
 import { getSnapshot, subscribeEvents, getSettings } from './api';
 import { applyTheme, loadCachedTheme } from './theme';
+import { NavShell } from './components/NavShell';
 import { Dashboard } from './pages/Dashboard';
 import { SettingsIndex } from './pages/SettingsIndex';
 import { AppearancePage } from './pages/AppearancePage';
@@ -43,17 +44,19 @@ export function App() {
   }, []);
 
   return (
-    <Router>
-      <Dashboard path="/" snap={snap} err={err} />
-      <SettingsIndex path="/settings" />
-      <AppearancePage path="/settings/appearance" />
-      <DevicesPage path="/settings/devices" snap={snap} />
-      <FirmwarePage path="/settings/firmware" />
-      <BackupPage path="/settings/backup" />
-      <TimePage path="/settings/time" />
-      <NetworkPage path="/settings/network" />
-      <LogsPage path="/settings/logs" snap={snap} />
-      <ArchivePage path="/settings/logs/:id/archive" />
-    </Router>
+    <NavShell>
+      <Router>
+        <Dashboard path="/" snap={snap} err={err} />
+        <SettingsIndex path="/settings" />
+        <AppearancePage path="/settings/appearance" />
+        <DevicesPage path="/settings/devices" snap={snap} />
+        <FirmwarePage path="/settings/firmware" />
+        <BackupPage path="/settings/backup" />
+        <TimePage path="/settings/time" />
+        <NetworkPage path="/settings/network" />
+        <LogsPage path="/settings/logs" snap={snap} />
+        <ArchivePage path="/settings/logs/:id/archive" />
+      </Router>
+    </NavShell>
   );
 }
