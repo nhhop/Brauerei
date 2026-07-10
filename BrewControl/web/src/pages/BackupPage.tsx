@@ -2,6 +2,7 @@ import { useRef, useState } from 'preact/hooks';
 import { downloadBackup, restoreBackup } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { TriangleAlert } from 'lucide-preact';
 
 export function BackupPage(_: { path?: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -62,8 +63,8 @@ export function BackupPage(_: { path?: string }) {
 
       <section class="mt-4 rounded-lg border border-border bg-surface p-4 space-y-2">
         <div class="font-medium">Restore</div>
-        <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-          ⚠ Überschreibt die komplette Konfiguration und startet das Gerät neu.
+        <div class="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+          <TriangleAlert size={16} class="shrink-0" /> Überschreibt die komplette Konfiguration und startet das Gerät neu.
         </div>
         <input type="file" accept=".json,application/json" ref={fileRef}
           class="mt-1 block w-full text-sm"

@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { Power, Pencil, X } from 'lucide-preact';
 import type { Controller, Sensor, Actuator } from '../types';
 import { setControllerSetpoint, enableController, writeActuator } from '../api';
 
@@ -54,7 +55,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   }
 
   return (
-    <div class={`rounded-lg border bg-surface p-4 shadow-sm transition-opacity ${
+    <div class={`rounded-lg border bg-surface p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
       enabled ? 'border-border' : 'border-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">
@@ -62,18 +63,18 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
         <div class="flex items-center gap-1.5">
           <button type="button" onClick={toggleEnabled} disabled={toggling}
             title={enabled ? 'Regler deaktivieren' : 'Regler aktivieren'}
-            class={`text-base leading-none disabled:opacity-40 transition-colors ${
+            class={`disabled:opacity-40 transition-colors ${
               enabled ? 'text-emerald-600 hover:text-faint' : 'text-faint hover:text-emerald-600'
             }`}>
-            ⏻
+            <Power size={16} />
           </button>
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
-              class="text-sm leading-none text-faint hover:text-fg">✎</button>
+              class="text-faint hover:text-fg"><Pencil size={14} /></button>
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Löschen"
-              class="leading-none text-faint hover:text-red-600">×</button>
+              class="text-faint hover:text-red-600"><X size={16} /></button>
           )}
         </div>
       </div>

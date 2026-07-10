@@ -1,3 +1,4 @@
+import { Pencil, RotateCcw, X, TriangleAlert } from 'lucide-preact';
 import type { Sensor } from '../types';
 
 export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sensor; onDelete?: () => void; onReset?: () => void; onEdit?: () => void }) {
@@ -9,23 +10,23 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
     : 0;
 
   return (
-    <div class="rounded-lg border border-border bg-surface p-4 shadow-sm">
+    <div class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.quantity}</span>
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
-              class="text-sm leading-none text-faint hover:text-fg">✎</button>
+              class="text-faint hover:text-fg"><Pencil size={14} /></button>
           )}
           {onReset && (
             <button type="button" onClick={onReset}
               title={meta.quantity === 'Mass' ? 'Tare' : 'Reset volume'}
-              class="text-sm leading-none text-faint hover:text-blue-600">↺</button>
+              class="text-faint hover:text-blue-600"><RotateCcw size={14} /></button>
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Delete"
-              class="leading-none text-faint hover:text-red-600">×</button>
+              class="text-faint hover:text-red-600"><X size={16} /></button>
           )}
         </div>
       </div>
@@ -51,8 +52,8 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
         <span>{meta.max}</span>
       </div>
       {sensor.fault && (
-        <span class="mt-2 inline-block rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
-          ⚠ {sensor.fault}
+        <span class="mt-2 inline-flex items-center gap-1 rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
+          <TriangleAlert size={12} /> {sensor.fault}
         </span>
       )}
     </div>

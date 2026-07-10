@@ -5,6 +5,7 @@ import { deleteSensor, deleteActuator, deleteController, getConfig } from '../ap
 import { ConfirmModal } from '../components/ConfirmModal';
 import { AddItemModal } from '../components/AddItemModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { Pencil, X } from 'lucide-preact';
 
 type Role = 'sensor' | 'actuator' | 'controller';
 
@@ -135,9 +136,9 @@ function DeviceRow({ label, badge, onEdit, onDelete }: {
       </div>
       <div class="flex shrink-0 items-center gap-3">
         <button type="button" onClick={onEdit} title="Bearbeiten"
-          class="text-sm leading-none text-faint hover:text-fg">✎</button>
+          class="text-faint hover:text-fg"><Pencil size={14} /></button>
         <button type="button" onClick={onDelete} title="Löschen"
-          class="leading-none text-faint hover:text-red-600">×</button>
+          class="text-faint hover:text-red-600"><X size={16} /></button>
       </div>
     </div>
   );

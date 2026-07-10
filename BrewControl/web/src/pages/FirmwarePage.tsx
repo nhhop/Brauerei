@@ -6,6 +6,7 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { TriangleAlert } from 'lucide-preact';
 
 export function FirmwarePage(_: { path?: string }) {
   const [st, setSt] = useState<UpdateStatus | null>(null);
@@ -38,8 +39,8 @@ export function FirmwarePage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Firmware-Update' }]} />
       </header>
 
-      <div class="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-        ⚠ Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
+      <div class="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+        <TriangleAlert size={16} class="shrink-0" /> Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
       </div>
 
       <section class="mt-6 rounded-lg border border-border bg-surface p-4">

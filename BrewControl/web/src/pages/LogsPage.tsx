@@ -7,6 +7,7 @@ import { ChartCard } from '../components/ChartCard';
 import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { Pencil, Trash2 } from 'lucide-preact';
 
 export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [logs, setLogs] = useState<LogConfig[]>([]);
@@ -109,11 +110,11 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                   </a>
                   <button type="button" onClick={() => { setEditing(log); setEditorOpen(true); }}
                     class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">
-                    ✎
+                    <Pencil size={14} />
                   </button>
                   <button type="button" onClick={() => setDeleteTarget(log)}
                     class="rounded-md border border-border px-2 py-1 text-red-500 hover:bg-fg/10">
-                    🗑
+                    <Trash2 size={14} />
                   </button>
                 </div>
               </div>
