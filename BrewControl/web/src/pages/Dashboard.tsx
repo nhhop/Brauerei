@@ -15,6 +15,7 @@ import { ProgramCard } from '../components/ProgramCard';
 import { AddItemModal } from '../components/AddItemModal';
 import { DashboardEditorModal } from '../components/DashboardEditorModal';
 import { ProgramEditorModal } from '../components/ProgramEditorModal';
+import { Pencil } from 'lucide-preact';
 
 type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
@@ -189,10 +190,10 @@ export function Dashboard({ snap, err }: {
       </div>
       {activeDash && (
         <button type="button"
-          class="mb-2 shrink-0 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
+          class="mb-2 flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
           onClick={() => openEditDash(activeDash)}
           title="Dashboard bearbeiten">
-          ✎ Bearbeiten
+          <Pencil size={12} /> Bearbeiten
         </button>
       )}
     </div>
@@ -312,7 +313,7 @@ export function Dashboard({ snap, err }: {
             const log = logs.find((l) => l.id === cid);
             if (!log) return null;
             return (
-              <div key={cid} class="rounded-lg border border-border bg-surface p-4">
+              <div key={cid} class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
                 <div class="mb-2 text-sm font-medium">{log.name}</div>
                 <ChartCard log={log} snap={snap} />
               </div>

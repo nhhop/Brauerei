@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, ProgramConfig, ProgramStep } from '../types';
+import { btnPrimary, btnSecondary, linkDanger, dialogFrame } from '../ui';
 
 type SaveCfg = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
@@ -87,7 +88,7 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-surface p-6 shadow-lg">
+      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 ${dialogFrame}`}>
         <h2 class="mb-4 text-base font-medium text-fg">
           {initial ? 'Programm bearbeiten' : 'Neues Programm'}
         </h2>
@@ -161,17 +162,15 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
 
         <div class="mt-5 flex items-center justify-between gap-2">
           {onDelete ? (
-            <button type="button" onClick={onDelete} class="text-sm text-red-500 hover:text-red-700">
+            <button type="button" onClick={onDelete} class={linkDanger}>
               Löschen
             </button>
           ) : <span />}
           <div class="flex gap-2">
-            <button type="button" onClick={onClose}
-              class="rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:bg-fg/5">
+            <button type="button" onClick={onClose} class={btnSecondary}>
               Abbrechen
             </button>
-            <button type="submit" disabled={!valid}
-              class="rounded-md bg-fg px-3 py-1.5 text-sm text-bg hover:bg-fg/80 disabled:opacity-40">
+            <button type="submit" disabled={!valid} class={btnPrimary}>
               {initial ? 'Speichern' : 'Erstellen'}
             </button>
           </div>

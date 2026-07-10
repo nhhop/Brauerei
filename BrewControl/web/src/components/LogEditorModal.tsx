@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, LogConfig, CompAlgo } from '../types';
+import { btnPrimary, btnSecondary, dialogFrame } from '../ui';
 
 type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 
@@ -93,7 +94,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-surface p-6 shadow-lg">
+      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-md overflow-y-auto p-6 ${dialogFrame}`}>
         <h2 class="mb-4 text-base font-medium text-fg">
           {initial ? 'Log bearbeiten' : 'Neues Log'}
         </h2>
@@ -178,12 +179,10 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
         )}
 
         <div class="mt-4 flex items-center justify-end gap-2">
-          <button type="button" onClick={onClose}
-            class="rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:bg-fg/5">
+          <button type="button" onClick={onClose} class={btnSecondary}>
             Abbrechen
           </button>
-          <button type="submit" disabled={!name.trim() || tols.size === 0}
-            class="rounded-md bg-fg px-3 py-1.5 text-sm text-bg hover:bg-fg/80 disabled:opacity-40">
+          <button type="submit" disabled={!name.trim() || tols.size === 0} class={btnPrimary}>
             {initial ? 'Speichern' : 'Erstellen'}
           </button>
         </div>

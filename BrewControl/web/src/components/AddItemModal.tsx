@@ -5,6 +5,7 @@ import {
   deleteSensor, deleteActuator, deleteController,
   scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
+import { btnPrimary, btnSecondary, dialogFrame } from '../ui';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -448,7 +449,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       onClick={() => { if (!pending) onClose(); }}
     >
       <div
-        class="w-full max-w-md overflow-y-auto rounded-lg bg-surface p-5 shadow-xl"
+        class={`w-full max-w-md overflow-y-auto p-5 ${dialogFrame}`}
         style={{ maxHeight: '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1112,13 +1113,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           {err && <p class="text-xs text-red-600">{err}</p>}
 
           <div class="flex justify-end gap-2">
-            <button type="button" onClick={onClose} disabled={pending}
-              class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/10 disabled:opacity-50">
+            <button type="button" onClick={onClose} disabled={pending} class={btnSecondary}>
               Abbrechen
             </button>
             <button type="submit" disabled={pending || autotuneState === 'running'}
               title={autotuneState === 'running' ? 'AutoTune läuft — erst abbrechen' : undefined}
-              class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg/80 disabled:opacity-50">
+              class={btnPrimary}>
               {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
             </button>
           </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, DashboardConfig, LogConfig, ProgramConfig } from '../types';
 import { AddItemModal } from './AddItemModal';
+import { btnPrimary, btnSecondary, linkDanger, dialogFrame } from '../ui';
 
 interface Props {
   open: boolean; snap: Snapshot | null; initial?: DashboardConfig; logs?: LogConfig[]; programs?: ProgramConfig[];
@@ -52,7 +53,7 @@ export function DashboardEditorModal({ open, snap, initial, logs, programs, onSa
   return (
     <>
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class="w-full max-w-md rounded-xl bg-surface p-6 shadow-lg">
+      <form onSubmit={handleSubmit} class={`w-full max-w-md p-6 ${dialogFrame}`}>
         <h2 class="mb-4 text-base font-medium text-fg">
           {initial ? 'Dashboard bearbeiten' : 'Neues Dashboard'}
         </h2>
@@ -159,17 +160,15 @@ export function DashboardEditorModal({ open, snap, initial, logs, programs, onSa
 
         <div class="mt-4 flex items-center justify-between gap-2">
           {onDelete ? (
-            <button type="button" onClick={onDelete} class="text-sm text-red-500 hover:text-red-700">
+            <button type="button" onClick={onDelete} class={linkDanger}>
               Löschen
             </button>
           ) : <span />}
           <div class="flex gap-2">
-            <button type="button" onClick={onClose}
-              class="rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:bg-fg/5">
+            <button type="button" onClick={onClose} class={btnSecondary}>
               Abbrechen
             </button>
-            <button type="submit" disabled={!name.trim()}
-              class="rounded-md bg-fg px-3 py-1.5 text-sm text-bg hover:bg-fg/80 disabled:opacity-40">
+            <button type="submit" disabled={!name.trim()} class={btnPrimary}>
               {initial ? 'Speichern' : 'Erstellen'}
             </button>
           </div>

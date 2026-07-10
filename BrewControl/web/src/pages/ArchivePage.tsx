@@ -4,6 +4,7 @@ import { getLogs, getLogSessions, deleteLogSession, logDownloadUrl, getSettings 
 import { ChartCard } from '../components/ChartCard';
 import { formatDateTime } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { Trash2 } from 'lucide-preact';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -75,7 +76,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
                 {!s.active && (
                   <button type="button" onClick={() => remove(s.start)}
                     class="rounded-md border border-border px-2 py-1 text-red-500 hover:bg-fg/10">
-                    🗑
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
@@ -85,7 +86,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
       )}
 
       {log && selected !== null && (
-        <div class="mt-4 rounded-lg border border-border bg-surface p-4">
+        <div class="mt-4 rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
           <div class="mb-2 text-sm font-medium">{formatDateTime(selected, time)}</div>
           <ChartCard log={log} snap={null} session={selected} />
         </div>

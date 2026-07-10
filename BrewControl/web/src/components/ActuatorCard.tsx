@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
+import { Pencil, X, TriangleAlert } from 'lucide-preact';
 import type { Actuator } from '../types';
 import { writeActuator } from '../api';
 
@@ -16,18 +17,18 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
   }
 
   return (
-    <div class="rounded-lg border border-border bg-surface p-4 shadow-sm">
+    <div class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.kind}</span>
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
-              class="text-sm leading-none text-faint hover:text-fg">✎</button>
+              class="text-faint hover:text-fg"><Pencil size={14} /></button>
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Löschen"
-              class="leading-none text-faint hover:text-red-600">×</button>
+              class="text-faint hover:text-red-600"><X size={16} /></button>
           )}
         </div>
       </div>
@@ -47,8 +48,8 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
       </div>
       {err && <p class="mt-2 text-xs text-red-600">{err}</p>}
       {actuator.fault && (
-        <span class="mt-2 inline-block rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
-          ⚠ {actuator.fault}
+        <span class="mt-2 inline-flex items-center gap-1 rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
+          <TriangleAlert size={12} /> {actuator.fault}
         </span>
       )}
     </div>
