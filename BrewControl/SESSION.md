@@ -907,3 +907,36 @@ gzip, kein Bundle-Sprung). Browser-E2E gegen echten ESP32 via Dev-Proxy
 (`brewcontrol.local`): Nav-Pill, Akzent-Buttons/-Switches (Nutzer-Akzent Grün
 schlägt überall durch), Fokus-Unterstrich, Win11-Settings-Karten, 3-stufige
 Archiv-Breadcrumb, Dialog-Footer — jeweils hell/dunkel + Desktop/Mobile.
+
+## Session 2026-07-11 — Dashboard-Layout: Programm-Sidebar + Compact/Sticky-Widget
+
+**Kontext:** Ein auf einem anderen Rechner gebautes, aufs Gerät geflashtes
+Dashboard-Layout lag ungepusht im Branch `feat/dashboard-layout` (Commit
+00e0d92) — aber auf dem **Vor-NavShell-Stand** (Basis 0f83ac4, Zahnrad-Header,
+`min-h-screen`/`h-screen`, `shadow-sm`). Ein Merge hätte NavShell + die
+Fluent/WinUI-3-Arbeit (PR #10/#11/#12) zurückgerollt. Deshalb **nicht gemerged**,
+sondern die Absicht adaptiert auf den aktuellen `main` übertragen (Branch
+`feat/dashboard-layout-navshell`), alter Branch danach gelöscht.
+
+**Änderungen (2 Dateien):**
+- [ProgramCard.tsx](web/src/components/ProgramCard.tsx) — Mobile-Accordion:
+  eingeklappt per Default, kompakte Ein-Zeilen-Zusammenfassung (aktiver Schritt +
+  Sollwert + Restzeit/„Freigabe"/„pausiert" bzw. „N Schritte"), `▸`/`▾`-Toggle
+  (`lg:hidden`); Desktop zeigt die Liste immer. Neues `fill`-Prop → bei einem
+  einzigen Programm füllt die Karte die Spaltenhöhe (`lg:flex lg:h-full
+  lg:flex-col`, Liste scrollt intern, Buttons `lg:mt-auto`). Auf Mobil/Tablet
+  `max-lg:sticky` (Offset responsiv: `top-14` unter der Mobil-Toolbar, `top-2`
+  auf Tablet). **Elevation-Klassen bewusst behalten** (kein `shadow-sm`-Rückfall).
+- [Dashboard.tsx](web/src/pages/Dashboard.tsx) — Content-Umbau: Programm-Sidebar
+  links (`lg:w-80`, `max-lg:contents` → fließt auf Mobil oben ein) + rechter
+  Scroll-Bereich (Chart oben, Sensoren/Regler/Aktoren-Grid darunter). Root
+  `lg:flex lg:h-full lg:flex-col lg:overflow-hidden` — **`h-full` statt `h-screen`**
+  (füllt NavShells `<main>` statt des Viewports), Panes scrollen unabhängig, die
+  Seite selbst nicht. Zahnrad-Header **nicht** zurückgeholt (NavShell übernimmt).
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün. Browser-E2E gegen echten
+ESP32 (`brewcontrol.local`): Desktop — Programm-Sidebar links + rechter Pane,
+`main.scrollHeight == clientHeight` (gemessen, keine Seiten-Scrollbar), Panes
+scrollen unabhängig. Mobil — Programm oben kompakt eingeklappt, Accordion klappt
+korrekt auf (Fortschritt sichtbar), Steuer-Buttons bleiben beim Scrollen sticky
+unter der Toolbar. Keine Konsolen-Fehler.
