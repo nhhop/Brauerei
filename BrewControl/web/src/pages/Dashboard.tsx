@@ -173,7 +173,7 @@ export function Dashboard({ snap, err }: {
 
   // ── Tab bar ───────────────────────────────────────────────────────────────
   const tabBar = (
-    <div class="my-4 flex items-end gap-2 border-b border-border">
+    <div class="my-4 flex items-end gap-2 border-b border-border lg:mb-0">
       <div class="flex flex-1 overflow-x-auto">
         {dashboards.map(d => (
           <TabBtn key={d.id}
@@ -254,73 +254,78 @@ export function Dashboard({ snap, err }: {
   );
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full bg-bg p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
       {header}
       {tabBar}
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Column title="Sensoren" count={displaySnap.sensors.length}>
-          {displaySnap.sensors.map((s) => {
-            const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-            return (
-              <SensorCard key={s.id} sensor={s}
-                onEdit={() => startEdit('sensor', baseId)}
-                onDelete={() => removeFromDashboard('sensor', baseId)}
-                onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
-                  ? () => resetSensor(baseId) : undefined}
-              />
-            );
-          })}
-        </Column>
-        <Column title="Regler" count={displaySnap.controllers.length}>
-          {displaySnap.controllers.map((c) => (
-            <ControllerCard key={c.id} controller={c}
-              sensors={displaySnap.sensors}
-              actuators={displaySnap.actuators}
-              onEdit={() => startEdit('controller', c.id)}
-              onDelete={() => removeFromDashboard('controller', c.id)}
-            />
-          ))}
-        </Column>
-        <Column title="Aktoren" count={displaySnap.actuators.length}>
-          {displaySnap.actuators.map((a) => (
-            <ActuatorCard key={a.id} actuator={a}
-              onEdit={() => startEdit('actuator', a.id)}
-              onDelete={() => removeFromDashboard('actuator', a.id)}
-            />
-          ))}
-        </Column>
+      <div class="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
+        {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
+          <div class="max-lg:contents lg:h-full lg:w-80 lg:shrink-0 lg:space-y-4 lg:overflow-y-auto lg:pt-4 lg:pb-6">
+            {activeDash.programs!.map((pid) => {
+              const prog = programs.find((p) => p.id === pid);
+              if (!prog) return null;
+              const ctrlExists = (snap?.controllers ?? []).some((c) => c.id === prog.controller);
+              return (
+                <ProgramCard key={pid} program={prog}
+                  controllerExists={ctrlExists}
+                  onChanged={refreshPrograms}
+                  onEdit={() => openEditProgram(prog)}
+                  onDelete={() => removeProgramRef(pid)}
+                  fill={activeDash.programs!.length === 1}
+                />
+              );
+            })}
+          </div>
+        )}
+        <div class="min-w-0 flex-1 space-y-4 lg:-mr-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pt-4 lg:pr-6">
+          {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
+            <div class="space-y-4">
+              {activeDash.charts!.map((cid) => {
+                const log = logs.find((l) => l.id === cid);
+                if (!log) return null;
+                return (
+                  <div key={cid} class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+                    <div class="mb-2 text-sm font-medium">{log.name}</div>
+                    <ChartCard log={log} snap={snap} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Column title="Sensoren" count={displaySnap.sensors.length}>
+              {displaySnap.sensors.map((s) => {
+                const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+                return (
+                  <SensorCard key={s.id} sensor={s}
+                    onEdit={() => startEdit('sensor', baseId)}
+                    onDelete={() => removeFromDashboard('sensor', baseId)}
+                    onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
+                      ? () => resetSensor(baseId) : undefined}
+                  />
+                );
+              })}
+            </Column>
+            <Column title="Regler" count={displaySnap.controllers.length}>
+              {displaySnap.controllers.map((c) => (
+                <ControllerCard key={c.id} controller={c}
+                  sensors={displaySnap.sensors}
+                  actuators={displaySnap.actuators}
+                  onEdit={() => startEdit('controller', c.id)}
+                  onDelete={() => removeFromDashboard('controller', c.id)}
+                />
+              ))}
+            </Column>
+            <Column title="Aktoren" count={displaySnap.actuators.length}>
+              {displaySnap.actuators.map((a) => (
+                <ActuatorCard key={a.id} actuator={a}
+                  onEdit={() => startEdit('actuator', a.id)}
+                  onDelete={() => removeFromDashboard('actuator', a.id)}
+                />
+              ))}
+            </Column>
+          </div>
+        </div>
       </div>
-      {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
-        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {activeDash.programs!.map((pid) => {
-            const prog = programs.find((p) => p.id === pid);
-            if (!prog) return null;
-            const ctrlExists = (snap?.controllers ?? []).some((c) => c.id === prog.controller);
-            return (
-              <ProgramCard key={pid} program={prog}
-                controllerExists={ctrlExists}
-                onChanged={refreshPrograms}
-                onEdit={() => openEditProgram(prog)}
-                onDelete={() => removeProgramRef(pid)}
-              />
-            );
-          })}
-        </div>
-      )}
-      {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
-        <div class="mt-4 space-y-4">
-          {activeDash.charts!.map((cid) => {
-            const log = logs.find((l) => l.id === cid);
-            if (!log) return null;
-            return (
-              <div key={cid} class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
-                <div class="mb-2 text-sm font-medium">{log.name}</div>
-                <ChartCard log={log} snap={snap} />
-              </div>
-            );
-          })}
-        </div>
-      )}
       {modals}
     </div>
   );

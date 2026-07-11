@@ -8,6 +8,7 @@ interface Props {
   onChanged: () => void;   // re-fetch programs after a control action
   onEdit?: () => void;
   onDelete?: () => void;
+  fill?: boolean;          // stretch to full column height on desktop (single program)
 }
 
 function fmtDuration(sec: number): string {
@@ -27,10 +28,12 @@ const STATUS_LABEL: Record<string, string> = {
   done: 'Fertig',
 };
 
-export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDelete }: Props) {
+export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDelete, fill }: Props) {
   const { name, controller, steps, status, currentStep } = program;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Mobile-only accordion: collapsed by default; desktop always shows the list.
+  const [expanded, setExpanded] = useState(false);
 
   async function act(action: ProgramAction) {
     setBusy(true);
@@ -47,6 +50,17 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
 
   const active = status === 'running' || status === 'awaiting' || status === 'paused';
   const remaining = program.stepRemainingSec;
+  const cur = steps[currentStep];
+
+  // One-line summary shown on mobile when the list is collapsed.
+  function compactSummary(): string {
+    if (active && cur) {
+      const tail = status === 'running' ? `noch ${fmtDuration(remaining ?? 0)}`
+        : status === 'awaiting' ? 'Freigabe' : 'pausiert';
+      return `${cur.name || `Schritt ${currentStep + 1}`} · ${cur.setpoint}° · ${tail}`;
+    }
+    return `${steps.length} Schritte`;
+  }
 
   function Btn({ action, label, primary, title }: {
     action: ProgramAction; label: string; primary?: boolean; title?: string;
@@ -65,7 +79,8 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
   }
 
   return (
-    <div class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+    <div class={`rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
+      ${fill ? 'max-lg:sticky max-md:top-14 md:top-2 max-lg:z-10 lg:flex lg:h-full lg:flex-col lg:overflow-hidden' : ''}`}>
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <h3 class="truncate font-medium text-fg">{name}</h3>
@@ -92,13 +107,24 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
         </div>
       </div>
 
-      <ol class="mt-3 space-y-1">
+      {/* Mobile accordion toggle — full-width tap target (desktop shows the list). */}
+      <button type="button" onClick={() => setExpanded((v) => !v)}
+        title={expanded ? 'Schritte einklappen' : 'Schritte anzeigen'}
+        class="mt-2 flex w-full items-center justify-between gap-2 rounded py-2 text-left hover:bg-fg/5 lg:hidden">
+        <span class={`min-w-0 truncate text-sm ${!expanded && active ? 'font-medium text-fg' : 'text-muted'}`}>
+          {expanded ? 'Schritte' : compactSummary()}
+        </span>
+        <span class="shrink-0 px-1 text-lg leading-none text-faint">{expanded ? '▾' : '▸'}</span>
+      </button>
+
+      {/* Full step list — desktop always; mobile only when expanded. */}
+      <ol class={`mt-3 space-y-1 ${expanded ? 'block' : 'hidden'} lg:block ${fill ? 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto' : ''}`}>
         {steps.map((s, i) => {
           const done = active && i < currentStep;
-          const cur = active && i === currentStep;
+          const isCur = active && i === currentStep;
           return (
             <li key={i} class={`flex items-baseline justify-between gap-2 rounded px-2 py-1 text-sm ${
-              cur ? 'bg-accent/10 font-medium text-fg'
+              isCur ? 'bg-accent/10 font-medium text-fg'
               : done ? 'text-faint line-through'
               : 'text-muted'
             }`}>
@@ -108,13 +134,13 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
               </span>
               <span class="shrink-0 font-mono text-xs">
                 {s.setpoint}° · {fmtDuration(s.holdSec)}
-                {cur && remaining != null && status === 'running' && (
+                {isCur && remaining != null && status === 'running' && (
                   <span class="ml-2 text-accent">noch {fmtDuration(remaining)}</span>
                 )}
-                {cur && status === 'awaiting' && (
+                {isCur && status === 'awaiting' && (
                   <span class="ml-2 text-amber-600">↳ Freigabe</span>
                 )}
-                {cur && status === 'paused' && (
+                {isCur && status === 'paused' && (
                   <span class="ml-2 text-sky-600">pausiert</span>
                 )}
               </span>
@@ -123,7 +149,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
         })}
       </ol>
 
-      <div class="mt-3 flex flex-wrap gap-1.5">
+      <div class={`mt-3 flex flex-wrap gap-1.5 ${fill ? 'lg:mt-auto lg:pt-3' : ''}`}>
         {(status === 'idle' || status === 'done') && (
           <Btn action="start" label="▶ Start" primary />
         )}
