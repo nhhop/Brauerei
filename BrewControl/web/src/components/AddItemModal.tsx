@@ -5,7 +5,7 @@ import {
   deleteSensor, deleteActuator, deleteController,
   scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
-import { btnPrimary, btnSecondary, dialogFrame } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -435,12 +435,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     setPending(false);
   }
 
-  const inp = 'w-full rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-fg';
+  const inp = `${inpBase} font-mono`;
   const lbl = 'block text-xs text-muted mb-1';
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' :
-      active ? 'bg-fg text-bg' : 'bg-fg/5 text-muted hover:bg-fg/10'
+      active ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
 
   return (
@@ -449,15 +449,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       onClick={() => { if (!pending) onClose(); }}
     >
       <div
-        class={`w-full max-w-md overflow-y-auto p-5 ${dialogFrame}`}
-        style={{ maxHeight: '90vh' }}
+        class={`max-h-[90vh] w-full max-w-md ${dialogFrame}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 class="text-base font-medium text-fg">
-          {isEdit ? 'Item bearbeiten' : 'Item hinzufügen'}
-        </h2>
-
-        <form onSubmit={handleSubmit} class="mt-4 space-y-4">
+        <form onSubmit={handleSubmit} class="flex min-h-0 flex-col">
+          <div class="min-h-0 space-y-4 overflow-y-auto p-5">
+          <h2 class="text-base font-medium text-fg">
+            {isEdit ? 'Item bearbeiten' : 'Item hinzufügen'}
+          </h2>
 
           {/* Role selector */}
           <div>
@@ -700,12 +699,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
-                  <input type="checkbox" checked={diInvert}
+                  <input type="checkbox" checked={diInvert} class="accent-accent"
                     onChange={(e) => setDiInvert((e.target as HTMLInputElement).checked)} />
                   Invertieren
                 </label>
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
-                  <input type="checkbox" checked={diPullup}
+                  <input type="checkbox" checked={diPullup} class="accent-accent"
                     onChange={(e) => setDiPullup((e.target as HTMLInputElement).checked)} />
                   Pullup aktivieren
                 </label>
@@ -804,7 +803,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 </select>
               </div>
               <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
-                <input type="checkbox" checked={invertOut}
+                <input type="checkbox" checked={invertOut} class="accent-accent"
                   onChange={(e) => setInvertOut((e.target as HTMLInputElement).checked)} />
                 Invertieren (active-low)
               </label>
@@ -981,7 +980,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 </div>
               </div>
               <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
-                <input type="checkbox" checked={inverted}
+                <input type="checkbox" checked={inverted} class="accent-accent"
                   onChange={(e) => setInverted((e.target as HTMLInputElement).checked)} />
                 Invertiert (Kühlung statt Heizung)
               </label>
@@ -1100,7 +1099,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                       {AUTOTUNE_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                     <button type="button" onClick={onStartAutotune} disabled={atBusy}
-                      class="rounded bg-fg px-2 py-1 text-xs text-bg hover:bg-fg/80 disabled:opacity-50">
+                      class="rounded bg-accent px-2 py-1 text-xs text-accent-fg hover:bg-accent/90 disabled:opacity-50">
                       Starten
                     </button>
                   </div>
@@ -1111,16 +1110,19 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           )}
 
           {err && <p class="text-xs text-red-600">{err}</p>}
+          </div>
 
-          <div class="flex justify-end gap-2">
-            <button type="button" onClick={onClose} disabled={pending} class={btnSecondary}>
-              Abbrechen
-            </button>
-            <button type="submit" disabled={pending || autotuneState === 'running'}
-              title={autotuneState === 'running' ? 'AutoTune läuft — erst abbrechen' : undefined}
-              class={btnPrimary}>
-              {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
-            </button>
+          <div class={dialogFooter}>
+            <div class={`w-full ${dialogBtnRow}`}>
+              <button type="button" onClick={onClose} disabled={pending} class={btnSecondary}>
+                Abbrechen
+              </button>
+              <button type="submit" disabled={pending || autotuneState === 'running'}
+                title={autotuneState === 'running' ? 'AutoTune läuft — erst abbrechen' : undefined}
+                class={btnPrimary}>
+                {pending ? (isEdit ? 'Speichern…' : 'Erstellen…') : (isEdit ? 'Speichern' : 'Erstellen')}
+              </button>
+            </div>
           </div>
         </form>
       </div>

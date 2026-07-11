@@ -57,7 +57,7 @@ export function AppearancePage(_: { path?: string }) {
             {(['light', 'dark', 'system'] as const).map((m) => (
               <button key={m} type="button"
                 class={`px-4 py-1.5 transition-colors ${
-                  settings.mode === m ? 'bg-fg text-bg' : 'text-muted hover:text-fg'
+                  settings.mode === m ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
                 }`}
                 onClick={() => update({ mode: m })}>
                 {m === 'light' ? 'Hell' : m === 'dark' ? 'Dunkel' : 'System'}
@@ -93,7 +93,7 @@ export function AppearancePage(_: { path?: string }) {
             {(['neutral', 'warm', 'cool'] as const).map((b) => (
               <button key={b} type="button"
                 class={`px-4 py-1.5 transition-colors ${
-                  settings.background === b ? 'bg-fg text-bg' : 'text-muted hover:text-fg'
+                  settings.background === b ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
                 }`}
                 onClick={() => update({ background: b })}>
                 {b === 'neutral' ? 'Neutral' : b === 'warm' ? 'Warm' : 'Kalt'}

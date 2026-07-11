@@ -871,3 +871,39 @@ Roadmap Welle 2. Zeitgesteuerte Setpoint-Folge mit Rasten — treibt `Controller
 **Verifikation:** esp32dev **SUCCESS** (00:03:11); `pnpm typecheck` 0 Fehler; `pnpm build` ok (175 KB JS / 56 KB gzip).
 
 **HW-E2E grün (2026-06-08, LilyGo S3-AMOLED, COM7):** Firmware (lilygo-Env) geflasht + GUI per `webui.tar` (ustar) über `POST /api/update/assets` deployt; `GET /api/programs` ✓ (neuer Endpunkt), Index ✓. **API-E2E gegen `mash`-Regler, 13/13 PASS:** create (Schrittnamen/confirm erhalten) → start (running, step0, mashSp=40, enabled) → Auto-Advance step0→1 nach hold (sp=50) → `confirm`-Schritt → `awaiting` (sp bleibt) → next → step2 (sp=60) → pause (Restzeit eingefroren) → resume → prev (step1, sp=50) → stop (idle, step0) → Negativtest `resume@idle` → 400 → delete. **Reboot-Resume verifiziert:** Programm mit 180-s-Schritt gestartet (Restzeit 179s), Power-Cycle mitten im Schritt → nach Boot weiterhin `running`/step0, Restzeit **112s** (die ~67s Stromlos-Zeit real mitgezählt — Wall-Clock-Epoch-Design bestätigt), `mash`-Sollwert auf 42 re-appliziert + reaktiviert. Aufgeräumt (Test-Programme gelöscht, `mash` deaktiviert).
+
+## Session 2026-07-10 — Fluent/WinUI-3-Redesign des Web-Frontends
+
+**Runde 1 (gemerged: PR #10 + #11):**
+- `NavShell` (linke NavigationView-Rail, kompakt/expandiert via Hamburger, auf
+  Mobile Overlay-Drawer mit Acrylic + Backdrop), `Breadcrumb`-Komponente statt
+  Zurück-Pfeilen in allen 8 Settings-Unterseiten.
+- Fluent-Design-Tokens in `styles.css` (`--elev-2/8/16/64`-Schatten, Acrylic-
+  Surface, Segoe-UI-Font-Stack), `lucide-preact` als Icon-Paket (tree-shaked),
+  Unicode-Glyphen (`✎`, `×`, `🗑`, `⚠`, `↺`) durch Icons ersetzt.
+- Karten mit Elevation (`shadow-elev-2` → hover `elev-8`), Dialoge `elev-64`;
+  gemeinsame Button-Konstanten in neuem `src/ui.ts`.
+
+**Runde 2 (dieses Update — näher an echtes WinUI 3):**
+- **Akzentfarbe als Steuerfarbe**: `btnPrimary` + alle 8 rohen `bg-fg`-Primär-
+  Buttons + alle Segmented-Aktivzustände auf `bg-accent text-accent-fg`
+  umgestellt (folgt der Laufzeit-Akzentfarbe aus `theme.ts`). NavShell-Aktiv-
+  eintrag mit vertikalem Akzent-Pill (WinUI-NavigationView-Stil, Text bleibt fg).
+- **WinUI-Controls**: kanonische `inp`-Konstante in `ui.ts` (Akzent-Unterstrich
+  bei Fokus via Inset-Box-Shadow, kein Layout-Shift) — ~20 Roh-Input-Strings +
+  AddItemModal-`inp` migriert. Neue `ToggleSwitch`-Komponente (role=switch),
+  ersetzt LogsPage-Aktiv-Pill, ControllerCard-Power-Icon und ActuatorCard-
+  BinaryToggle. Nackte Checkboxen → `accent-accent`.
+- **Settings wie Windows 11**: Breadcrumb in Titelgröße (Eltern muted,
+  aktueller Crumb semibold — wie Win11-Settings), SettingsIndex-Karten mit
+  lucide-Icon links + ChevronRight, Titel-`h1` auf `text-2xl font-semibold`.
+- **ContentDialog-Footer**: alle 5 Modals auf Content-/Footer-Zonen umgebaut
+  (`dialogFrame` = flex-col + overflow-hidden, `dialogFooter` = abgesetzte
+  Leiste mit Trennlinie, `dialogBtnRow` = gleich breite Buttons); bei
+  scrollbaren Modals bleibt der Footer unterhalb des Scrollbereichs sichtbar.
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (178,9 kB JS / 59,7 kB
+gzip, kein Bundle-Sprung). Browser-E2E gegen echten ESP32 via Dev-Proxy
+(`brewcontrol.local`): Nav-Pill, Akzent-Buttons/-Switches (Nutzer-Akzent Grün
+schlägt überall durch), Fokus-Unterstrich, Win11-Settings-Karten, 3-stufige
+Archiv-Breadcrumb, Dialog-Footer — jeweils hell/dunkel + Desktop/Mobile.
