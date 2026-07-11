@@ -167,7 +167,7 @@ export function Dashboard({ snap, err }: {
   // ── Header ────────────────────────────────────────────────────────────────
   const header = (
     <header class="flex items-center justify-between gap-3">
-      <h1 class="text-xl font-medium tracking-tight">BrewControl</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">BrewControl</h1>
     </header>
   );
 

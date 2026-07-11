@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, DashboardConfig, LogConfig, ProgramConfig } from '../types';
 import { AddItemModal } from './AddItemModal';
-import { btnPrimary, btnSecondary, linkDanger, dialogFrame } from '../ui';
+import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
 
 interface Props {
   open: boolean; snap: Snapshot | null; initial?: DashboardConfig; logs?: LogConfig[]; programs?: ProgramConfig[];
@@ -53,14 +53,15 @@ export function DashboardEditorModal({ open, snap, initial, logs, programs, onSa
   return (
     <>
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`w-full max-w-md p-6 ${dialogFrame}`}>
+      <form onSubmit={handleSubmit} class={`w-full max-w-md ${dialogFrame}`}>
+        <div class="p-6">
         <h2 class="mb-4 text-base font-medium text-fg">
           {initial ? 'Dashboard bearbeiten' : 'Neues Dashboard'}
         </h2>
 
         <label class="mb-4 block">
           <span class="text-xs text-muted">Name</span>
-          <input class="mt-1 w-full rounded border border-border bg-surface px-2 py-1.5 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+          <input class={`mt-1 ${inp}`}
             value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)}
             placeholder="z.B. Maischen" autoFocus />
         </label>
@@ -158,13 +159,15 @@ export function DashboardEditorModal({ open, snap, initial, logs, programs, onSa
           )}
         </div>
 
-        <div class="mt-4 flex items-center justify-between gap-2">
+        </div>
+
+        <div class={`${dialogFooter} justify-between`}>
           {onDelete ? (
             <button type="button" onClick={onDelete} class={linkDanger}>
               Löschen
             </button>
           ) : <span />}
-          <div class="flex gap-2">
+          <div class={dialogBtnRow}>
             <button type="button" onClick={onClose} class={btnSecondary}>
               Abbrechen
             </button>

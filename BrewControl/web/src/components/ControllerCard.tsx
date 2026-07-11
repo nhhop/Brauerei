@@ -1,7 +1,9 @@
 import { useState } from 'preact/hooks';
-import { Power, Pencil, X } from 'lucide-preact';
+import { Pencil, X } from 'lucide-preact';
 import type { Controller, Sensor, Actuator } from '../types';
 import { setControllerSetpoint, enableController, writeActuator } from '../api';
+import { ToggleSwitch } from './ToggleSwitch';
+import { btnPrimary, inp } from '../ui';
 
 interface Props {
   controller: Controller;
@@ -61,13 +63,9 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-1.5">
-          <button type="button" onClick={toggleEnabled} disabled={toggling}
+          <ToggleSwitch checked={enabled} disabled={toggling}
             title={enabled ? 'Regler deaktivieren' : 'Regler aktivieren'}
-            class={`disabled:opacity-40 transition-colors ${
-              enabled ? 'text-emerald-600 hover:text-faint' : 'text-faint hover:text-emerald-600'
-            }`}>
-            <Power size={16} />
-          </button>
+            onChange={() => toggleEnabled()} />
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="text-faint hover:text-fg"><Pencil size={14} /></button>
@@ -118,9 +116,8 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
         <div class="mt-1 flex gap-2">
           <input id={`sp-${id}`} type="number" step="any" value={sp}
             onInput={(e) => setSp((e.target as HTMLInputElement).value)}
-            class="w-full rounded border border-border bg-surface px-2 py-1 font-mono text-sm text-fg" />
-          <button onClick={applySp}
-            class="rounded bg-fg px-3 py-1 text-sm text-bg hover:bg-fg/80">
+            class={`${inp} font-mono`} />
+          <button onClick={applySp} class={btnPrimary}>
             Apply
           </button>
         </div>

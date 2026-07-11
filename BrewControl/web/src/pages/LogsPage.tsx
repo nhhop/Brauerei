@@ -7,6 +7,8 @@ import { ChartCard } from '../components/ChartCard';
 import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { ToggleSwitch } from '../components/ToggleSwitch';
+import { btnPrimary } from '../ui';
 import { Pencil, Trash2 } from 'lucide-preact';
 
 export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
@@ -62,7 +64,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
       <header class="mb-6 flex items-center justify-between gap-3">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Logs & Charts' }]} />
         <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }}
-          class="rounded-md bg-fg px-3 py-1.5 text-sm text-bg hover:bg-fg/80">
+          class={btnPrimary}>
           + Neues Log
         </button>
       </header>
@@ -88,12 +90,12 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                       ⛓ {log.bindEnableTo}
                     </span>
                   ) : (
-                    <button type="button" onClick={() => toggleEnabled(log)}
-                      class={`rounded-md border px-2 py-1 ${log.enabled
-                        ? 'border-green-600 text-green-600'
-                        : 'border-border text-muted'} hover:bg-fg/10`}>
-                      {log.enabled ? '● Aktiv' : '○ Aus'}
-                    </button>
+                    <span class="flex items-center gap-1.5">
+                      <ToggleSwitch checked={log.enabled}
+                        title={log.enabled ? 'Aufzeichnung stoppen' : 'Aufzeichnung starten'}
+                        onChange={() => toggleEnabled(log)} />
+                      <span class={log.enabled ? 'text-fg' : 'text-muted'}>Aktiv</span>
+                    </span>
                   )}
                   <a href={`/settings/logs/${log.id}/archive`}
                     class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">

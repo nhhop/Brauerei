@@ -6,6 +6,7 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { btnPrimary } from '../ui';
 import { TriangleAlert } from 'lucide-preact';
 
 export function FirmwarePage(_: { path?: string }) {
@@ -54,13 +55,13 @@ export function FirmwarePage(_: { path?: string }) {
           {(['stable', 'preview'] as const).map((c) => (
             <button key={c} onClick={() => setChannel(c)} disabled={busy}
               class={`rounded-md px-3 py-1.5 text-sm ${channel === c
-                ? 'bg-fg text-bg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
+                ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
               {c}
             </button>
           ))}
         </div>
         <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={st.autoCheck}
+          <input type="checkbox" checked={st.autoCheck} class="accent-accent"
             onChange={(e) => setAuto((e.target as HTMLInputElement).checked)} />
           Täglich automatisch auf Updates prüfen
         </label>
@@ -75,8 +76,7 @@ export function FirmwarePage(_: { path?: string }) {
             <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
             {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
             {st.state === 'updateAvailable' && (
-              <button onClick={() => setConfirmInstall(true)}
-                class="mt-2 rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg">
+              <button onClick={() => setConfirmInstall(true)} class={`mt-2 ${btnPrimary}`}>
                 Installieren
               </button>
             )}

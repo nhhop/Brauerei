@@ -46,9 +46,12 @@ export function NavShell({ children }: { children: ComponentChildren }) {
     return (
       <a key={item.href} href={item.href} title={item.label}
         onClick={() => setMobileOpen(false)}
-        class={`flex items-center gap-3 rounded px-3 py-2 text-sm transition-colors ${
-          active ? 'bg-accent/15 font-medium text-accent' : 'text-muted hover:bg-fg/5 hover:text-fg'
+        class={`relative flex items-center gap-3 rounded px-3 py-2 text-sm transition-colors ${
+          active ? 'bg-fg/5 font-medium text-fg' : 'text-muted hover:bg-fg/5 hover:text-fg'
         }`}>
+        {active && (
+          <span class="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
+        )}
         <Icon size={20} class="shrink-0" />
         {showLabels && <span class="truncate">{item.label}</span>}
       </a>

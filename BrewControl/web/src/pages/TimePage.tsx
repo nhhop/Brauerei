@@ -4,6 +4,7 @@ import type { TimeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { formatTime, formatDate } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { inp } from '../ui';
 
 interface TzEntry {
   label: string;
@@ -111,7 +112,7 @@ export function TimePage(_: { path?: string }) {
           <select
             value={tzIdx >= 0 ? tzIdx : ''}
             onChange={(e) => onTzChange(Number((e.target as HTMLSelectElement).value))}
-            class="block w-full rounded border border-border bg-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-border"
+            class={inp}
           >
             {tzIdx < 0 && <option value="">— Benutzerdefiniert —</option>}
             {TIMEZONES.map((tz, i) => (
@@ -131,7 +132,7 @@ export function TimePage(_: { path?: string }) {
             {(['24h', '12h'] as const).map((f) => (
               <button key={f} type="button"
                 class={`px-4 py-1.5 transition-colors ${
-                  settings.timeFormat === f ? 'bg-fg text-bg' : 'text-muted hover:text-fg'
+                  settings.timeFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
                 }`}
                 onClick={() => update({ timeFormat: f })}>
                 {f === '24h' ? '24 Stunden' : '12 Stunden'}
@@ -147,7 +148,7 @@ export function TimePage(_: { path?: string }) {
             {(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] as const).map((f) => (
               <button key={f} type="button"
                 class={`px-4 py-1.5 transition-colors ${
-                  settings.dateFormat === f ? 'bg-fg text-bg' : 'text-muted hover:text-fg'
+                  settings.dateFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
                 }`}
                 onClick={() => update({ dateFormat: f })}>
                 {f}
@@ -163,7 +164,7 @@ export function TimePage(_: { path?: string }) {
             type="text"
             value={settings.ntpServer}
             onBlur={(e) => update({ ntpServer: (e.target as HTMLInputElement).value.trim() || 'pool.ntp.org' })}
-            class="block w-full rounded border border-border bg-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-border"
+            class={inp}
           />
           <div class="mt-1 text-xs text-faint">Standard: pool.ntp.org</div>
         </div>

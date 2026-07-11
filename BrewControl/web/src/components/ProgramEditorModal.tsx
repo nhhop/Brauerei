@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, ProgramConfig, ProgramStep } from '../types';
-import { btnPrimary, btnSecondary, linkDanger, dialogFrame } from '../ui';
+import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
 
 type SaveCfg = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
@@ -88,7 +88,8 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
 
   return (
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 ${dialogFrame}`}>
+      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-lg ${dialogFrame}`}>
+        <div class="min-h-0 overflow-y-auto p-6">
         <h2 class="mb-4 text-base font-medium text-fg">
           {initial ? 'Programm bearbeiten' : 'Neues Programm'}
         </h2>
@@ -96,13 +97,13 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
         <div class="mb-4 flex gap-3">
           <label class="block flex-1">
             <span class="text-xs text-muted">Name</span>
-            <input class="mt-1 w-full rounded border border-border bg-surface px-2 py-1.5 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+            <input class={`mt-1 ${inp}`}
               value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)}
               placeholder="z.B. Pils-Maische" autoFocus />
           </label>
           <label class="block flex-1">
             <span class="text-xs text-muted">Regler</span>
-            <select class="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+            <select class={`mt-1 ${inp}`}
               value={controller}
               onChange={(e) => setController((e.target as HTMLSelectElement).value)}>
               <option value="">— wählen —</option>
@@ -117,7 +118,7 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
             <div key={i} class="rounded-md border border-border p-2">
               <div class="flex items-center gap-2">
                 <span class="w-5 shrink-0 text-center text-xs text-faint">{i + 1}</span>
-                <input class="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1 text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+                <input class={`${inp} min-w-0 flex-1`}
                   value={r.name} placeholder="Name (optional, z.B. Maltoserast)"
                   onInput={(e) => patchRow(i, { name: (e.target as HTMLInputElement).value })} />
                 <div class="flex shrink-0 flex-col gap-0.5">
@@ -133,14 +134,14 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
                 <label class="flex items-center gap-1 text-xs text-muted">
                   Sollwert
                   <input type="text" inputMode="decimal"
-                    class="w-20 rounded border border-border bg-surface px-1.5 py-1 text-right text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+                    class={`${inp} w-20 text-right`}
                     value={r.setpoint}
                     onInput={(e) => patchRow(i, { setpoint: (e.target as HTMLInputElement).value })} />
                 </label>
                 <label class="flex items-center gap-1 text-xs text-muted">
                   Haltezeit (min)
                   <input type="text" inputMode="decimal"
-                    class="w-20 rounded border border-border bg-surface px-1.5 py-1 text-right text-sm text-fg focus:outline-none focus:ring-1 focus:ring-border"
+                    class={`${inp} w-20 text-right`}
                     value={r.holdMin}
                     onInput={(e) => patchRow(i, { holdMin: (e.target as HTMLInputElement).value })} />
                 </label>
@@ -160,13 +161,15 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
           + Schritt hinzufügen
         </button>
 
-        <div class="mt-5 flex items-center justify-between gap-2">
+        </div>
+
+        <div class={`${dialogFooter} justify-between`}>
           {onDelete ? (
             <button type="button" onClick={onDelete} class={linkDanger}>
               Löschen
             </button>
           ) : <span />}
-          <div class="flex gap-2">
+          <div class={dialogBtnRow}>
             <button type="button" onClick={onClose} class={btnSecondary}>
               Abbrechen
             </button>

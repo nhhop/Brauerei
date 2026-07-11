@@ -5,6 +5,7 @@ import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { btnPrimary, inp } from '../ui';
 
 // Coarse signal-strength bucket from RSSI (dBm) for a 0–4 bar display.
 function signalBars(rssi: number): number {
@@ -214,11 +215,11 @@ export function NetworkPage(_: { path?: string }) {
                 <input type="text" value={selSsid} title="SSID" placeholder="Netzwerkname (SSID)"
                   autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
                   onInput={(e) => setSelSsid((e.target as HTMLInputElement).value)}
-                  class="block w-full rounded border border-border bg-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-border" />
+                  class={inp} />
               ) : (
                 <select value={selSsid} title="Netzwerk"
                   onChange={(e) => setSelSsid((e.target as HTMLSelectElement).value)}
-                  class="block w-full rounded border border-border bg-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-border">
+                  class={inp}>
                   {nets.map((n) => (
                     <option key={n.ssid} value={n.ssid}>
                       {n.ssid} ({n.rssi} dBm){n.open ? ' · offen' : ''}
@@ -237,10 +238,10 @@ export function NetworkPage(_: { path?: string }) {
               <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
                 autoComplete="off"
                 onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                class="block w-full rounded border border-border bg-bg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-border" />
+                class={inp} />
             </div>
             <button type="button" onClick={() => setSwitchOpen(true)} disabled={!ssid.trim()}
-              class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg/80 disabled:opacity-50">
+              class={btnPrimary}>
               Verbinden
             </button>
           </>
@@ -254,14 +255,14 @@ export function NetworkPage(_: { path?: string }) {
           <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
             autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
             onInput={(e) => setHost((e.target as HTMLInputElement).value)}
-            class="block w-full rounded border border-border bg-bg px-3 py-1.5 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-border" />
+            class={`${inp} font-mono`} />
           <span class="shrink-0 font-mono text-sm text-faint">.local</span>
         </div>
         {!hostValid && host.length > 0 && (
           <p class="text-xs text-red-600">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
         )}
         <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
-          class="rounded-md bg-fg px-3 py-1.5 text-sm font-medium text-bg hover:bg-fg/80 disabled:opacity-50">
+          class={btnPrimary}>
           Speichern
         </button>
       </div>
