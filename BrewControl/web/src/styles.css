@@ -3,48 +3,62 @@
 /* ── Semantic tokens ─────────────────────────────────────────────────────── */
 
 :root {
-  --bg:         #fafaf9;   /* stone-50  — page background */
-  --surface:    #ffffff;   /* white     — card / modal background */
-  --fg:         #1c1917;   /* stone-900 — primary text */
-  --muted:      #78716c;   /* stone-500 — secondary text */
-  --faint:      #a8a29e;   /* stone-400 — placeholder / tertiary */
-  --border:     #e7e5e4;   /* stone-200 — dividers / input borders */
-  --accent:     #d97706;   /* amber-600 — default accent (overridden by theme.ts) */
+  /* Neutral Windows-11 grays (Mica base + layered cards) — no warm/brown tint. */
+  --bg:         #f3f3f3;   /* Win11 SolidBackgroundFillColorBase (light) */
+  --surface:    #ffffff;   /* card / modal background */
+  --fg:         #1a1a1a;   /* Win11 TextFillColorPrimary (light) */
+  --muted:      #5f5f5f;   /* secondary text */
+  --faint:      #909090;   /* placeholder / tertiary */
+  --border:     #e5e5e5;   /* Win11 ControlStrokeColorDefault (light) */
+  --accent:     #0078d4;   /* Windows accent blue — default (overridden by theme.ts) */
   --accent-fg:  #ffffff;   /* contrast on accent (overridden by theme.ts) */
+
+  /* Semantic status colors — mirror WinUI SystemFillColor{Success,Caution,
+     Critical}. Tuned per theme so text/icons stay legible on --surface; badge
+     fills are derived via color-mix in ui.ts (tint over the card surface). */
+  --success:    #0f7b0f;   /* WinUI Success (light) */
+  --caution:    #9a5b00;   /* WinUI Caution (light) */
+  --critical:   #c42b1c;   /* WinUI Critical (light) */
 }
 
 [data-theme="dark"] {
-  --bg:         #1c1917;   /* stone-900 */
-  --surface:    #292524;   /* stone-800 */
-  --fg:         #fafaf9;   /* stone-50  */
-  --muted:      #a8a29e;   /* stone-400 */
-  --faint:      #57534e;   /* stone-600 */
-  --border:     #44403c;   /* stone-700 */
+  --bg:         #202020;   /* Win11 SolidBackgroundFillColorBase (dark) */
+  --surface:    #2b2b2b;   /* Win11 layer / card fill (dark) */
+  --fg:         #fafafa;   /* neutral near-white */
+  --muted:      #a0a0a0;   /* secondary text */
+  --faint:      #6a6a6a;   /* placeholder / tertiary */
+  --border:     #363636;   /* Win11 ControlStroke (dark) */
+  --success:    #6ccb5f;   /* WinUI Success (dark) */
+  --caution:    #fcd34d;   /* legible amber on dark surface */
+  --critical:   #ff99a4;   /* WinUI Critical (dark) */
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg:         #1c1917;
-    --surface:    #292524;
-    --fg:         #fafaf9;
-    --muted:      #a8a29e;
-    --faint:      #57534e;
-    --border:     #44403c;
+    --bg:         #202020;
+    --surface:    #2b2b2b;
+    --fg:         #fafafa;
+    --muted:      #a0a0a0;
+    --faint:      #6a6a6a;
+    --border:     #363636;
+    --success:    #6ccb5f;
+    --caution:    #fcd34d;
+    --critical:   #ff99a4;
   }
 }
 
 /* ── Background tint overrides (only --bg shifts; --surface stays neutral) ── */
 
-:root[data-tint="warm"] { --bg: #faf8f5; }
-[data-theme="dark"][data-tint="warm"] { --bg: #201c17; }
+:root[data-tint="warm"] { --bg: #f5f2ee; }
+[data-theme="dark"][data-tint="warm"] { --bg: #221f1c; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme])[data-tint="warm"] { --bg: #201c17; }
+  :root:not([data-theme])[data-tint="warm"] { --bg: #221f1c; }
 }
 
-:root[data-tint="cool"] { --bg: #f7f9fa; }
-[data-theme="dark"][data-tint="cool"] { --bg: #171a1e; }
+:root[data-tint="cool"] { --bg: #eef2f5; }
+[data-theme="dark"][data-tint="cool"] { --bg: #1d2023; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme])[data-tint="cool"] { --bg: #171a1e; }
+  :root:not([data-theme])[data-tint="cool"] { --bg: #1d2023; }
 }
 
 /* ── Fluent elevation + surface tokens ───────────────────────────────────── */
@@ -69,6 +83,9 @@
   --color-accent:     var(--accent);
   --color-accent-fg:  var(--accent-fg);
   --color-surface-acrylic: var(--acrylic);
+  --color-success:    var(--success);
+  --color-caution:    var(--caution);
+  --color-critical:   var(--critical);
 
   --font-sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, system-ui, sans-serif;
 

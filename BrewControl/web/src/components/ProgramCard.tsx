@@ -86,13 +86,13 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
           <h3 class="truncate font-medium text-fg">{name}</h3>
           <div class="text-xs text-muted">
             Regler: <span class="font-mono text-fg">{controller}</span>
-            {!controllerExists && <span class="ml-1 text-red-600">(fehlt)</span>}
+            {!controllerExists && <span class="ml-1 text-critical">(fehlt)</span>}
           </div>
         </div>
         <div class="flex shrink-0 items-center gap-1.5">
           <span class={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-            status === 'running' ? 'bg-emerald-500/15 text-emerald-600'
-            : status === 'awaiting' ? 'bg-amber-500/15 text-amber-600'
+            status === 'running' ? 'bg-[color-mix(in_srgb,var(--success)_16%,transparent)] text-success'
+            : status === 'awaiting' ? 'bg-[color-mix(in_srgb,var(--caution)_16%,transparent)] text-caution'
             : status === 'paused' ? 'bg-sky-500/15 text-sky-600'
             : 'bg-fg/10 text-muted'
           }`}>{STATUS_LABEL[status] ?? status}</span>
@@ -102,7 +102,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Aus Dashboard entfernen"
-              class="leading-none text-faint hover:text-red-600">×</button>
+              class="leading-none text-faint hover:text-critical">×</button>
           )}
         </div>
       </div>
@@ -130,7 +130,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
             }`}>
               <span class="min-w-0 truncate">
                 {s.name || `Schritt ${i + 1}`}
-                {s.confirm && <span class="ml-1 text-[10px] text-amber-600" title="Freigabe abwarten">✋</span>}
+                {s.confirm && <span class="ml-1 text-[10px] text-caution" title="Freigabe abwarten">✋</span>}
               </span>
               <span class="shrink-0 font-mono text-xs">
                 {s.setpoint}° · {fmtDuration(s.holdSec)}
@@ -138,7 +138,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
                   <span class="ml-2 text-accent">noch {fmtDuration(remaining)}</span>
                 )}
                 {isCur && status === 'awaiting' && (
-                  <span class="ml-2 text-amber-600">↳ Freigabe</span>
+                  <span class="ml-2 text-caution">↳ Freigabe</span>
                 )}
                 {isCur && status === 'paused' && (
                   <span class="ml-2 text-sky-600">pausiert</span>
@@ -164,9 +164,9 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
       </div>
 
       {!controllerExists && (
-        <p class="mt-2 text-xs text-red-600">Regler „{controller}" existiert nicht — Steuerung deaktiviert.</p>
+        <p class="mt-2 text-xs text-critical">Regler „{controller}" existiert nicht — Steuerung deaktiviert.</p>
       )}
-      {err && <p class="mt-2 text-xs text-red-600">{err}</p>}
+      {err && <p class="mt-2 text-xs text-critical">{err}</p>}
     </div>
   );
 }

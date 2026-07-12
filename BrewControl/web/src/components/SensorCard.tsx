@@ -1,5 +1,6 @@
 import { Pencil, RotateCcw, X, TriangleAlert } from 'lucide-preact';
 import type { Sensor } from '../types';
+import { badgeCaution } from '../ui';
 
 export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sensor; onDelete?: () => void; onReset?: () => void; onEdit?: () => void }) {
   const { id, meta, state } = sensor;
@@ -22,11 +23,11 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
           {onReset && (
             <button type="button" onClick={onReset}
               title={meta.quantity === 'Mass' ? 'Tare' : 'Reset volume'}
-              class="text-faint hover:text-blue-600"><RotateCcw size={14} /></button>
+              class="text-faint hover:text-accent"><RotateCcw size={14} /></button>
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Delete"
-              class="text-faint hover:text-red-600"><X size={16} /></button>
+              class="text-faint hover:text-critical"><X size={16} /></button>
           )}
         </div>
       </div>
@@ -36,9 +37,7 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
         </span>
         <span class="text-sm text-muted">{meta.unit}</span>
         {!state.ok && (
-          <span class="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
-            stale
-          </span>
+          <span class={`ml-auto ${badgeCaution}`}>stale</span>
         )}
       </div>
       <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-fg/10">
@@ -52,7 +51,7 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
         <span>{meta.max}</span>
       </div>
       {sensor.fault && (
-        <span class="mt-2 inline-flex items-center gap-1 rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
+        <span class={`mt-2 ${badgeCaution}`}>
           <TriangleAlert size={12} /> {sensor.fault}
         </span>
       )}

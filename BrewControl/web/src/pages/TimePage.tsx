@@ -4,6 +4,7 @@ import type { TimeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { formatTime, formatDate } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { inp } from '../ui';
 
 interface TzEntry {
@@ -100,75 +101,70 @@ export function TimePage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Zeit & Formate' }]} />
       </header>
 
-      <div class="mt-4 rounded-lg border border-border bg-surface px-4 py-3">
+      <div class="mt-4 mb-4 rounded-md border border-border bg-surface px-4 py-3">
         <div class="text-2xl font-mono font-medium tabular-nums">{formatTime(now, settings)}</div>
         <div class="text-xs text-muted">{formatDate(now, settings)}</div>
       </div>
 
-      <div class="space-y-5 rounded-lg border border-border bg-surface p-4">
-        {/* Zeitzone */}
-        <div>
-          <div class="mb-2 text-xs text-muted">Zeitzone</div>
-          <select
-            value={tzIdx >= 0 ? tzIdx : ''}
-            onChange={(e) => onTzChange(Number((e.target as HTMLSelectElement).value))}
-            class={inp}
-          >
-            {tzIdx < 0 && <option value="">— Benutzerdefiniert —</option>}
-            {TIMEZONES.map((tz, i) => (
-              <option key={i} value={i}>{tz.label}</option>
-            ))}
-          </select>
-          <div class="mt-1 text-xs text-faint">
-            UTC{settings.utcOffsetSec >= 0 ? '+' : ''}{settings.utcOffsetSec / 3600}
-            {settings.dstOffsetSec > 0 ? `, Sommerzeit +${settings.dstOffsetSec / 3600}h` : ''}
+      <SettingsGroup>
+        <SettingsCard title="Zeitzone" desc="Für Anzeige und NTP-Synchronisation">
+          <div class="space-y-1">
+            <select
+              value={tzIdx >= 0 ? tzIdx : ''}
+              onChange={(e) => onTzChange(Number((e.target as HTMLSelectElement).value))}
+              class={inp}
+            >
+              {tzIdx < 0 && <option value="">— Benutzerdefiniert —</option>}
+              {TIMEZONES.map((tz, i) => (
+                <option key={i} value={i}>{tz.label}</option>
+              ))}
+            </select>
+            <div class="text-xs text-faint">
+              UTC{settings.utcOffsetSec >= 0 ? '+' : ''}{settings.utcOffsetSec / 3600}
+              {settings.dstOffsetSec > 0 ? `, Sommerzeit +${settings.dstOffsetSec / 3600}h` : ''}
+            </div>
           </div>
-        </div>
+        </SettingsCard>
 
-        {/* Zeitformat */}
-        <div>
-          <div class="mb-2 text-xs text-muted">Zeitformat</div>
-          <div class="inline-flex overflow-hidden rounded-lg border border-border text-sm">
-            {(['24h', '12h'] as const).map((f) => (
-              <button key={f} type="button"
-                class={`px-4 py-1.5 transition-colors ${
-                  settings.timeFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                }`}
-                onClick={() => update({ timeFormat: f })}>
-                {f === '24h' ? '24 Stunden' : '12 Stunden'}
-              </button>
-            ))}
-          </div>
-        </div>
+        <SettingsCard title="Zeitformat"
+          control={
+            <div class="inline-flex overflow-hidden rounded-md border border-border text-sm">
+              {(['24h', '12h'] as const).map((f) => (
+                <button key={f} type="button"
+                  class={`px-4 py-1.5 transition-colors ${
+                    settings.timeFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
+                  }`}
+                  onClick={() => update({ timeFormat: f })}>
+                  {f === '24h' ? '24 Stunden' : '12 Stunden'}
+                </button>
+              ))}
+            </div>
+          } />
 
-        {/* Datumsformat */}
-        <div>
-          <div class="mb-2 text-xs text-muted">Datumsformat</div>
-          <div class="inline-flex overflow-hidden rounded-lg border border-border text-sm">
-            {(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] as const).map((f) => (
-              <button key={f} type="button"
-                class={`px-4 py-1.5 transition-colors ${
-                  settings.dateFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                }`}
-                onClick={() => update({ dateFormat: f })}>
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
+        <SettingsCard title="Datumsformat"
+          control={
+            <div class="inline-flex overflow-hidden rounded-md border border-border text-sm">
+              {(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] as const).map((f) => (
+                <button key={f} type="button"
+                  class={`px-4 py-1.5 transition-colors ${
+                    settings.dateFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
+                  }`}
+                  onClick={() => update({ dateFormat: f })}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          } />
 
-        {/* NTP-Server */}
-        <div>
-          <div class="mb-2 text-xs text-muted">NTP-Server</div>
+        <SettingsCard title="NTP-Server" desc="Standard: pool.ntp.org">
           <input
             type="text"
             value={settings.ntpServer}
             onBlur={(e) => update({ ntpServer: (e.target as HTMLInputElement).value.trim() || 'pool.ntp.org' })}
             class={inp}
           />
-          <div class="mt-1 text-xs text-faint">Standard: pool.ntp.org</div>
-        </div>
-      </div>
+        </SettingsCard>
+      </SettingsGroup>
     </div>
   );
 }

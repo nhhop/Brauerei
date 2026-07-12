@@ -6,6 +6,7 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnPrimary } from '../ui';
 import { TriangleAlert } from 'lucide-preact';
 
@@ -40,62 +41,66 @@ export function FirmwarePage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Firmware-Update' }]} />
       </header>
 
-      <div class="mt-4 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+      <div class="mt-4 flex items-center gap-2 rounded-md border border-caution/40 bg-[color-mix(in_srgb,var(--caution)_12%,transparent)] px-4 py-3 text-sm text-caution">
         <TriangleAlert size={16} class="shrink-0" /> Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
       </div>
 
-      <section class="mt-6 rounded-lg border border-border bg-surface p-4">
-        <div class="text-sm text-muted">Aktuelle Version</div>
-        <div class="font-mono">{st.currentVersion} · {st.variant}</div>
-      </section>
+      <div class="mt-6">
+        <SettingsGroup>
+          <SettingsCard title="Aktuelle Version"
+            control={<span class="font-mono text-sm">{st.currentVersion} · {st.variant}</span>} />
 
-      <section class="mt-4 rounded-lg border border-border bg-surface p-4 space-y-3">
-        <div class="font-medium">Server-Update (GitHub)</div>
-        <div class="flex gap-2">
-          {(['stable', 'preview'] as const).map((c) => (
-            <button key={c} onClick={() => setChannel(c)} disabled={busy}
-              class={`rounded-md px-3 py-1.5 text-sm ${channel === c
-                ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
-              {c}
-            </button>
-          ))}
-        </div>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={st.autoCheck} class="accent-accent"
-            onChange={(e) => setAuto((e.target as HTMLInputElement).checked)} />
-          Täglich automatisch auf Updates prüfen
-        </label>
+          <SettingsCard title="Server-Update (GitHub)" desc="Kanal wählen und auf neue Releases prüfen">
+            <div class="space-y-3">
+              <div class="flex gap-2">
+                {(['stable', 'preview'] as const).map((c) => (
+                  <button key={c} onClick={() => setChannel(c)} disabled={busy}
+                    class={`rounded-md px-3 py-1.5 text-sm ${channel === c
+                      ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={st.autoCheck} class="accent-accent"
+                  onChange={(e) => setAuto((e.target as HTMLInputElement).checked)} />
+                Täglich automatisch auf Updates prüfen
+              </label>
 
-        <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
-          class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium hover:bg-fg/10 disabled:opacity-50">
-          {st.state === 'checking' ? 'Prüfe…' : 'Auf Updates prüfen'}
-        </button>
-
-        {st.available && (
-          <div class="rounded-md bg-fg/5 p-3 text-sm">
-            <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
-            {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
-            {st.state === 'updateAvailable' && (
-              <button onClick={() => setConfirmInstall(true)} class={`mt-2 ${btnPrimary}`}>
-                Installieren
+              <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
+                class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium hover:bg-fg/10 disabled:opacity-50">
+                {st.state === 'checking' ? 'Prüfe…' : 'Auf Updates prüfen'}
               </button>
-            )}
-          </div>
-        )}
 
-        {(st.state === 'downloading' || st.state === 'flashing') && (
-          <ProgressBar label={st.state === 'downloading' ? 'Lade…' : 'Flashe…'} pct={st.progress} />
-        )}
-        {st.state === 'error' && <div class="text-sm text-red-500">Fehler: {st.error}</div>}
-      </section>
+              {st.available && (
+                <div class="rounded-md bg-fg/5 p-3 text-sm">
+                  <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
+                  {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
+                  {st.state === 'updateAvailable' && (
+                    <button onClick={() => setConfirmInstall(true)} class={`mt-2 ${btnPrimary}`}>
+                      Installieren
+                    </button>
+                  )}
+                </div>
+              )}
 
-      <section class="mt-4 rounded-lg border border-border bg-surface p-4 space-y-4">
-        <div class="font-medium">Manueller Upload</div>
-        <FileUpload label="Firmware (.bin)" accept=".bin" pct={fwPct}
-          onPick={(f) => { setFwPct(0); uploadFirmware(f, setFwPct).then(() => setFwPct(100)).catch(() => setFwPct(null)); }} />
-        <FileUpload label="UI-Paket (.tar)" accept=".tar" pct={tarPct}
-          onPick={(f) => { setTarPct(0); uploadAssets(f, setTarPct).then(() => setTarPct(100)).catch(() => setTarPct(null)); }} />
-      </section>
+              {(st.state === 'downloading' || st.state === 'flashing') && (
+                <ProgressBar label={st.state === 'downloading' ? 'Lade…' : 'Flashe…'} pct={st.progress} />
+              )}
+              {st.state === 'error' && <div class="text-sm text-critical">Fehler: {st.error}</div>}
+            </div>
+          </SettingsCard>
+
+          <SettingsCard title="Manueller Upload" desc="Firmware- oder UI-Paket direkt hochladen">
+            <div class="space-y-4">
+              <FileUpload label="Firmware (.bin)" accept=".bin" pct={fwPct}
+                onPick={(f) => { setFwPct(0); uploadFirmware(f, setFwPct).then(() => setFwPct(100)).catch(() => setFwPct(null)); }} />
+              <FileUpload label="UI-Paket (.tar)" accept=".tar" pct={tarPct}
+                onPick={(f) => { setTarPct(0); uploadAssets(f, setTarPct).then(() => setTarPct(100)).catch(() => setTarPct(null)); }} />
+            </div>
+          </SettingsCard>
+        </SettingsGroup>
+      </div>
 
       <ConfirmModal open={confirmInstall} title="Update installieren?"
         confirmLabel="Installieren" cancelLabel="Abbrechen" destructive

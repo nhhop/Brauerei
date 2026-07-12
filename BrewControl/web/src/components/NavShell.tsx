@@ -64,9 +64,9 @@ export function NavShell({ children }: { children: ComponentChildren }) {
         <div class="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      <nav class={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col border-r border-border
+      <nav class={`fixed inset-y-0 left-0 z-50 flex w-60 flex-col
         bg-surface-acrylic backdrop-blur-md transition-transform duration-200
-        md:static md:z-auto md:translate-x-0 md:transition-[width]
+        md:static md:z-auto md:translate-x-0 md:bg-transparent md:backdrop-blur-none md:transition-[width]
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
         ${expanded ? 'md:w-60' : 'md:w-14'}`}>
         <div class="flex flex-col gap-1 p-2">

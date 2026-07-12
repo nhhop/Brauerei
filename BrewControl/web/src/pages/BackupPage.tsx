@@ -2,6 +2,8 @@ import { useRef, useState } from 'preact/hooks';
 import { downloadBackup, restoreBackup } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
+import { btnSecondary } from '../ui';
 import { TriangleAlert } from 'lucide-preact';
 
 export function BackupPage(_: { path?: string }) {
@@ -48,32 +50,33 @@ export function BackupPage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Backup & Restore' }]} />
       </header>
 
-      <section class="mt-6 rounded-lg border border-border bg-surface p-4 space-y-2">
-        <div class="font-medium">Export</div>
-        <div class="text-sm text-muted">
-          Lädt die gesamte Konfiguration (Geräte, Dashboards, Einstellungen) als
-          JSON-Datei herunter.
-        </div>
-        <button onClick={() => downloadBackup().catch((e) => setError(String(e)))}
-          disabled={restoring}
-          class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium hover:bg-fg/10 disabled:opacity-50">
-          Backup herunterladen
-        </button>
-      </section>
+      <div class="mt-6">
+        <SettingsGroup>
+          <SettingsCard title="Export"
+            desc="Lädt die gesamte Konfiguration (Geräte, Dashboards, Einstellungen) als JSON-Datei herunter."
+            control={
+              <button onClick={() => downloadBackup().catch((e) => setError(String(e)))}
+                disabled={restoring} class={btnSecondary}>
+                Backup herunterladen
+              </button>
+            } />
 
-      <section class="mt-4 rounded-lg border border-border bg-surface p-4 space-y-2">
-        <div class="font-medium">Restore</div>
-        <div class="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-          <TriangleAlert size={16} class="shrink-0" /> Überschreibt die komplette Konfiguration und startet das Gerät neu.
-        </div>
-        <input type="file" accept=".json,application/json" ref={fileRef}
-          class="mt-1 block w-full text-sm"
-          onChange={(e) => {
-            const f = (e.currentTarget as HTMLInputElement).files?.[0];
-            if (f) setPendingFile(f);
-          }} />
-        {error && <div class="text-sm text-red-500">Fehler: {error}</div>}
-      </section>
+          <SettingsCard title="Restore" desc="Konfiguration aus einer Backup-Datei wiederherstellen.">
+            <div class="space-y-2">
+              <div class="flex items-center gap-2 rounded-md border border-caution/40 bg-[color-mix(in_srgb,var(--caution)_12%,transparent)] px-3 py-2 text-sm text-caution">
+                <TriangleAlert size={16} class="shrink-0" /> Überschreibt die komplette Konfiguration und startet das Gerät neu.
+              </div>
+              <input type="file" accept=".json,application/json" ref={fileRef}
+                class="block w-full text-sm"
+                onChange={(e) => {
+                  const f = (e.currentTarget as HTMLInputElement).files?.[0];
+                  if (f) setPendingFile(f);
+                }} />
+              {error && <div class="text-sm text-critical">Fehler: {error}</div>}
+            </div>
+          </SettingsCard>
+        </SettingsGroup>
+      </div>
 
       <ConfirmModal open={pendingFile !== null} title="Backup wiederherstellen?"
         confirmLabel="Wiederherstellen" cancelLabel="Abbrechen" destructive

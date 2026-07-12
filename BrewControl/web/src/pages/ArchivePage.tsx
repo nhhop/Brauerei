@@ -75,7 +75,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
                 </a>
                 {!s.active && (
                   <button type="button" onClick={() => remove(s.start)}
-                    class="rounded-md border border-border px-2 py-1 text-red-500 hover:bg-fg/10">
+                    class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
                     <Trash2 size={14} />
                   </button>
                 )}

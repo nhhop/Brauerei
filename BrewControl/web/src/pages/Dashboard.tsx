@@ -270,7 +270,7 @@ export function Dashboard({ snap, err }: {
   if (err) return (
     <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       {header}{tabBar}
-      <p class="text-sm text-red-600">{err}</p>
+      <p class="text-sm text-critical">{err}</p>
       {modals}
     </div>
   );
@@ -324,7 +324,7 @@ export function Dashboard({ snap, err }: {
                       {editMode && (
                         <button type="button" onClick={() => removeChartRef(cid)}
                           title="Aus Dashboard entfernen"
-                          class="text-faint hover:text-red-600"><X size={16} /></button>
+                          class="text-faint hover:text-critical"><X size={16} /></button>
                       )}
                     </div>
                     <ChartCard log={log} snap={snap} />
