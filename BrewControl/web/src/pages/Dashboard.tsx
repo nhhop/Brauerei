@@ -13,9 +13,10 @@ import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
 import { ProgramCard } from '../components/ProgramCard';
 import { AddItemModal } from '../components/AddItemModal';
-import { DashboardEditorModal } from '../components/DashboardEditorModal';
+import { DashboardMetaModal } from '../components/DashboardMetaModal';
+import { DashboardContentModal } from '../components/DashboardContentModal';
 import { ProgramEditorModal } from '../components/ProgramEditorModal';
-import { Pencil } from 'lucide-preact';
+import { Pencil, Check, Plus, X } from 'lucide-preact';
 
 type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
@@ -46,8 +47,11 @@ export function Dashboard({ snap, err }: {
   const [logs, setLogs] = useState<LogConfig[]>([]);
   const [programs, setPrograms] = useState<ProgramConfig[]>([]);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
-  const [dashEditorOpen, setDashEditorOpen] = useState(false);
-  const [editingDash, setEditingDash] = useState<DashboardConfig | null>(null);
+  // Dashboard edit mode: gates the per-card ✎/× affordances. Off = clean view.
+  const [editMode, setEditMode] = useState(false);
+  // Meta dialog (create / rename+delete) and the checkbox content modal.
+  const [meta, setMeta] = useState<null | 'create' | 'edit'>(null);
+  const [contentOpen, setContentOpen] = useState(false);
 
   useEffect(() => {
     getDashboards().then(ds => {
@@ -66,25 +70,13 @@ export function Dashboard({ snap, err }: {
     return () => clearInterval(t);
   }, []);
 
-  function openCreateDash() { setEditingDash(null); setDashEditorOpen(true); }
-  function openEditDash(d: DashboardConfig) { setEditingDash(d); setDashEditorOpen(true); }
-
-  async function saveDashboard(
-    name: string, sensors: string[], actuators: string[], controllers: string[],
-    charts: string[], programs: string[]
-  ) {
-    if (editingDash) {
-      await updateDashboard(editingDash.id, { name, sensors, actuators, controllers, charts, programs });
-      setDashboards(ds => ds.map(d =>
-        d.id === editingDash.id ? { ...d, name, sensors, actuators, controllers, charts, programs } : d
-      ));
-    } else {
-      const id = await createDashboard({ name, sensors, actuators, controllers, charts, programs });
-      setDashboards(ds => [...ds, { id, name, sensors, actuators, controllers, charts, programs }]);
-      setActiveTab({ kind: 'dashboard', id });
-    }
-    setDashEditorOpen(false);
-    setEditingDash(null);
+  async function createDashboardNamed(name: string) {
+    const empty = { name, sensors: [], actuators: [], controllers: [], charts: [], programs: [] };
+    const id = await createDashboard(empty);
+    setDashboards(ds => [...ds, { id, ...empty }]);
+    setActiveTab({ kind: 'dashboard', id });
+    setEditMode(true);   // land in edit mode so the new (empty) board can be filled
+    setMeta(null);
   }
 
   async function doDeleteDashboard(id: string) {
@@ -97,21 +89,8 @@ export function Dashboard({ snap, err }: {
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
 
-  async function removeFromDashboard(role: Role, id: string) {
-    if (!activeDash) return;
-    const updated = {
-      name: activeDash.name,
-      sensors: role === 'sensor' ? activeDash.sensors.filter(s => s !== id) : activeDash.sensors,
-      actuators: role === 'actuator' ? activeDash.actuators.filter(a => a !== id) : activeDash.actuators,
-      controllers: role === 'controller' ? activeDash.controllers.filter(c => c !== id) : activeDash.controllers,
-      charts: activeDash.charts ?? [],
-      programs: activeDash.programs ?? [],
-    };
-    await updateDashboard(activeDash.id, updated);
-    setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
-  }
-
-  async function removeProgramRef(id: string) {
+  // Merge a partial change into the active dashboard and persist it.
+  async function patchActiveDash(patch: Partial<DashboardConfig>) {
     if (!activeDash) return;
     const updated = {
       name: activeDash.name,
@@ -119,10 +98,25 @@ export function Dashboard({ snap, err }: {
       actuators: activeDash.actuators,
       controllers: activeDash.controllers,
       charts: activeDash.charts ?? [],
-      programs: (activeDash.programs ?? []).filter(p => p !== id),
+      programs: activeDash.programs ?? [],
+      ...patch,
     };
     await updateDashboard(activeDash.id, updated);
     setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
+  }
+
+  async function removeFromDashboard(role: Role, id: string) {
+    if (!activeDash) return;
+    const key = role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers';
+    await patchActiveDash({ [key]: activeDash[key].filter(x => x !== id) } as Partial<DashboardConfig>);
+  }
+
+  async function removeProgramRef(id: string) {
+    await patchActiveDash({ programs: (activeDash?.programs ?? []).filter(p => p !== id) });
+  }
+
+  async function removeChartRef(id: string) {
+    await patchActiveDash({ charts: (activeDash?.charts ?? []).filter(c => c !== id) });
   }
 
   // ── Programs (create / edit / delete) ─────────────────────────────────────
@@ -175,26 +169,51 @@ export function Dashboard({ snap, err }: {
   const tabBar = (
     <div class="my-4 flex items-end gap-2 border-b border-border lg:mb-0">
       <div class="flex flex-1 overflow-x-auto">
-        {dashboards.map(d => (
-          <TabBtn key={d.id}
-            active={activeTab?.id === d.id}
-            onClick={() => setActiveTab({ kind: 'dashboard', id: d.id })}>
-            {d.name}
-          </TabBtn>
-        ))}
-        <button type="button"
-          class="shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 pb-2 pt-1.5 text-sm text-muted hover:text-fg"
-          onClick={openCreateDash}>
-          + Neu
-        </button>
+        {dashboards.map(d => {
+          const active = activeTab?.id === d.id;
+          return (
+            <TabBtn key={d.id} active={active}
+              onClick={() => { if (!active) setActiveTab({ kind: 'dashboard', id: d.id }); }}>
+              {d.name}
+              {editMode && active && (
+                <button type="button" title="Umbenennen / Löschen"
+                  onClick={(e) => { e.stopPropagation(); setMeta('edit'); }}
+                  class="ml-1.5 text-faint hover:text-fg"><Pencil size={12} /></button>
+              )}
+            </TabBtn>
+          );
+        })}
+        {(editMode || dashboards.length === 0) && (
+          <button type="button"
+            class="shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 pb-2 pt-1.5 text-sm text-muted hover:text-fg"
+            onClick={() => setMeta('create')}>
+            + Neu
+          </button>
+        )}
       </div>
-      {activeDash && (
+      {activeDash && !editMode && (
         <button type="button"
           class="mb-2 flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
-          onClick={() => openEditDash(activeDash)}
+          onClick={() => setEditMode(true)}
           title="Dashboard bearbeiten">
           <Pencil size={12} /> Bearbeiten
         </button>
+      )}
+      {activeDash && editMode && (
+        <div class="mb-2 flex shrink-0 items-center gap-1.5">
+          <button type="button"
+            class="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
+            onClick={() => setContentOpen(true)}
+            title="Inhalte hinzufügen">
+            <Plus size={12} /> Hinzufügen
+          </button>
+          <button type="button"
+            class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-fg hover:bg-accent/90"
+            onClick={() => setEditMode(false)}
+            title="Bearbeiten beenden">
+            <Check size={12} /> Fertig
+          </button>
+        </div>
       )}
     </div>
   );
@@ -210,21 +229,32 @@ export function Dashboard({ snap, err }: {
         editRole={editItem?.role}
       />
 
-      <DashboardEditorModal
-        open={dashEditorOpen}
-        snap={snap}
-        logs={logs}
-        programs={programs}
-        initial={editingDash ?? undefined}
-        onSave={saveDashboard}
-        onNewProgram={openCreateProgram}
-        onDelete={editingDash ? async () => {
-          await doDeleteDashboard(editingDash.id);
-          setDashEditorOpen(false);
-          setEditingDash(null);
+      <DashboardMetaModal
+        open={meta !== null}
+        initial={meta === 'edit' ? (activeDash ?? undefined) : undefined}
+        onSave={meta === 'edit'
+          ? (name) => { patchActiveDash({ name }); setMeta(null); }
+          : createDashboardNamed}
+        onDelete={meta === 'edit' && activeDash ? async () => {
+          await doDeleteDashboard(activeDash.id);
+          setMeta(null);
+          setEditMode(false);
         } : undefined}
-        onClose={() => { setDashEditorOpen(false); setEditingDash(null); }}
+        onClose={() => setMeta(null)}
       />
+
+      {activeDash && (
+        <DashboardContentModal
+          open={contentOpen}
+          snap={snap}
+          logs={logs}
+          programs={programs}
+          dash={activeDash}
+          onSave={(m) => { patchActiveDash(m); setContentOpen(false); }}
+          onNewProgram={openCreateProgram}
+          onClose={() => setContentOpen(false)}
+        />
+      )}
 
       <ProgramEditorModal
         open={progEditorOpen}
@@ -257,6 +287,11 @@ export function Dashboard({ snap, err }: {
     <div class="min-h-full bg-bg p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
       {header}
       {tabBar}
+      {editMode && (
+        <p class="mt-3 shrink-0 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-muted lg:mt-4">
+          Bearbeiten-Modus aktiv — Karten mit dem Stift konfigurieren, mit × entfernen. Inhalte über „Hinzufügen“; Name & Löschen über den Stift am Tab.
+        </p>
+      )}
       <div class="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
         {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
           <div class="max-lg:contents lg:h-full lg:w-80 lg:shrink-0 lg:space-y-4 lg:overflow-y-auto lg:pt-4 lg:pb-6">
@@ -268,8 +303,8 @@ export function Dashboard({ snap, err }: {
                 <ProgramCard key={pid} program={prog}
                   controllerExists={ctrlExists}
                   onChanged={refreshPrograms}
-                  onEdit={() => openEditProgram(prog)}
-                  onDelete={() => removeProgramRef(pid)}
+                  onEdit={editMode ? () => openEditProgram(prog) : undefined}
+                  onDelete={editMode ? () => removeProgramRef(pid) : undefined}
                   fill={activeDash.programs!.length === 1}
                 />
               );
@@ -284,7 +319,14 @@ export function Dashboard({ snap, err }: {
                 if (!log) return null;
                 return (
                   <div key={cid} class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
-                    <div class="mb-2 text-sm font-medium">{log.name}</div>
+                    <div class="mb-2 flex items-center justify-between gap-2">
+                      <span class="text-sm font-medium">{log.name}</span>
+                      {editMode && (
+                        <button type="button" onClick={() => removeChartRef(cid)}
+                          title="Aus Dashboard entfernen"
+                          class="text-faint hover:text-red-600"><X size={16} /></button>
+                      )}
+                    </div>
                     <ChartCard log={log} snap={snap} />
                   </div>
                 );
@@ -297,8 +339,8 @@ export function Dashboard({ snap, err }: {
                 const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
                 return (
                   <SensorCard key={s.id} sensor={s}
-                    onEdit={() => startEdit('sensor', baseId)}
-                    onDelete={() => removeFromDashboard('sensor', baseId)}
+                    onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+                    onDelete={editMode ? () => removeFromDashboard('sensor', baseId) : undefined}
                     onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
                       ? () => resetSensor(baseId) : undefined}
                   />
@@ -310,16 +352,16 @@ export function Dashboard({ snap, err }: {
                 <ControllerCard key={c.id} controller={c}
                   sensors={displaySnap.sensors}
                   actuators={displaySnap.actuators}
-                  onEdit={() => startEdit('controller', c.id)}
-                  onDelete={() => removeFromDashboard('controller', c.id)}
+                  onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
+                  onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
                 />
               ))}
             </Column>
             <Column title="Aktoren" count={displaySnap.actuators.length}>
               {displaySnap.actuators.map((a) => (
                 <ActuatorCard key={a.id} actuator={a}
-                  onEdit={() => startEdit('actuator', a.id)}
-                  onDelete={() => removeFromDashboard('actuator', a.id)}
+                  onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
+                  onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}
                 />
               ))}
             </Column>

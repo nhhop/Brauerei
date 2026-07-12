@@ -940,3 +940,36 @@ ESP32 (`brewcontrol.local`): Desktop — Programm-Sidebar links + rechter Pane,
 scrollen unabhängig. Mobil — Programm oben kompakt eingeklappt, Accordion klappt
 korrekt auf (Fortschritt sichtbar), Steuer-Buttons bleiben beim Scrollen sticky
 unter der Toolbar. Keine Konsolen-Fehler.
+
+## Session 2026-07-13 — Dashboard-Edit-Modus + Bearbeiten-Aufteilung
+
+**Kontext:** Im Dashboard sollte das Bearbeiten überarbeitet werden. Bisher zeigte
+jede Karte permanent ✎/× und ein einzelner „Bearbeiten"-Button öffnete einen
+Sammel-Modal (Name + Mitgliedschafts-Checkboxen + Neu erstellen + Löschen).
+
+**Ergebnis (Edit-Modus + getrennte Zuständigkeiten):**
+- [Dashboard.tsx](web/src/pages/Dashboard.tsx) — Neuer `editMode`-Toggle: normal
+  ist das Dashboard aufgeräumt (keine ✎/×, kein „+ Neu"), nur Laufzeit-Controls
+  (Regler-Toggle, Aktor-Slider, Setpoint/Apply, Programm-Start/Stop, Tare). Der
+  „Bearbeiten"-Button schaltet den Modus ein → Toolbar zeigt „＋ Hinzufügen" +
+  „✓ Fertig" (Akzent), Karten zeigen ✎/× (durch bedingtes Durchreichen von
+  `onEdit`/`onDelete` — Kartenkomponenten unverändert), Chart-Karten bekommen ×,
+  „+ Neu" erscheint. Ein kompakter Hinweis-Streifen erklärt den Modus.
+- **Tab-Name abgetrennt:** Stift am aktiven Tab → [DashboardMetaModal.tsx](web/src/components/DashboardMetaModal.tsx)
+  (nur Name für Erstellen/Umbenennen + Löschen). „+ Neu" legt ein leeres
+  Dashboard an und landet direkt im Edit-Modus.
+- **Inhalte via Checkbox-Modal:** [DashboardContentModal.tsx](web/src/components/DashboardContentModal.tsx)
+  — der bisherige Checkbox-Modal, aber **ohne** Namensfeld und Löschen (die liegen
+  jetzt beim Tab-Stift). Öffnet über „＋ Hinzufügen".
+- Alter [DashboardEditorModal.tsx] entfernt.
+
+**Verworfener Zwischenstand:** Kurzzeitig war der Sammel-Modal in einen
+Quick-Add-Picker (Antipp-Chips + Gruppen-„+") zerlegt; auf Nutzerwunsch zurück
+zum Checkbox-Modal — nur die Tab-Namen-Trennung blieb.
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (182 kB JS / 60,6 kB gzip).
+Browser-E2E gegen echten ESP32 (`brewcontrol.local`): Normalansicht clean;
+Edit-Modus mit Tab-Stift/+Neu/Hinzufügen/Fertig; „Hinzufügen" öffnet
+„Dashboard-Inhalte" mit korrekt vorausgewählten Häkchen; Add/Remove end-to-end
+(Regler in Kochen hinzugefügt, per × zurückgenommen); Meta-Modal; keine
+Konsolen-Fehler.
