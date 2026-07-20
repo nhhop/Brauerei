@@ -74,7 +74,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
       ) : (
         <div class="space-y-4">
           {logs.map((log) => (
-            <div key={log.id} class="rounded-md border border-border bg-surface p-4">
+            <div key={log.id} class="rounded-md border border-card-border bg-card p-4 shadow-elev-2">
               <div class="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <div class="font-medium">{log.name}</div>

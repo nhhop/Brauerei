@@ -55,7 +55,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
         <div class="space-y-2">
           {sessions.map((s) => (
             <div key={s.start}
-              class="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-2.5">
+              class="flex items-center justify-between gap-3 rounded-lg border border-card-border bg-card px-4 py-2.5 shadow-elev-2">
               <div class="min-w-0">
                 <div class="truncate text-sm">
                   {formatDateTime(s.start, time)}
@@ -86,7 +86,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
       )}
 
       {log && selected !== null && (
-        <div class="mt-4 rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+        <div class="mt-4 rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
           <div class="mb-2 text-sm font-medium">{formatDateTime(selected, time)}</div>
           <ChartCard log={log} snap={null} session={selected} />
         </div>

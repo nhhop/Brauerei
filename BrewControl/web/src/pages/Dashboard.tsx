@@ -318,7 +318,7 @@ export function Dashboard({ snap, err }: {
                 const log = logs.find((l) => l.id === cid);
                 if (!log) return null;
                 return (
-                  <div key={cid} class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+                  <div key={cid} class="rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
                     <div class="mb-2 flex items-center justify-between gap-2">
                       <span class="text-sm font-medium">{log.name}</span>
                       {editMode && (

@@ -13,6 +13,11 @@
   --accent:     #0078d4;   /* Windows accent blue — default (overridden by theme.ts) */
   --accent-fg:  #ffffff;   /* contrast on accent (overridden by theme.ts) */
 
+  /* Fluent 2 card tokens — semi-transparent so they composite over --bg (incl.
+     tint). CardBackgroundFillColorDefault + CardStrokeColorDefault (light). */
+  --card-bg:     rgba(255,255,255,0.70);
+  --card-border: rgba(0,0,0,0.0578);
+
   /* Semantic status colors — mirror WinUI SystemFillColor{Success,Caution,
      Critical}. Tuned per theme so text/icons stay legible on --surface; badge
      fills are derived via color-mix in ui.ts (tint over the card surface). */
@@ -31,6 +36,8 @@
   --success:    #6ccb5f;   /* WinUI Success (dark) */
   --caution:    #fcd34d;   /* legible amber on dark surface */
   --critical:   #ff99a4;   /* WinUI Critical (dark) */
+  --card-bg:     rgba(255,255,255,0.0514);   /* Fluent CardBackground (dark) */
+  --card-border: rgba(0,0,0,0.10);           /* Fluent CardStroke (dark) — darker edge */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,6 +51,8 @@
     --success:    #6ccb5f;
     --caution:    #fcd34d;
     --critical:   #ff99a4;
+    --card-bg:     rgba(255,255,255,0.0514);
+    --card-border: rgba(0,0,0,0.10);
   }
 }
 
@@ -80,6 +89,8 @@
   --color-muted:      var(--muted);
   --color-faint:      var(--faint);
   --color-border:     var(--border);
+  --color-card:        var(--card-bg);
+  --color-card-border: var(--card-border);
   --color-accent:     var(--accent);
   --color-accent-fg:  var(--accent-fg);
   --color-surface-acrylic: var(--acrylic);

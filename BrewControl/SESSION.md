@@ -1062,3 +1062,33 @@ gleiche Fläche, Win11-Zeilenkarten mit Titel/Desc/Control, Windows-Blau-Akzent
 
 **Offen:** Deploy aufs Gerät via `pnpm build:sd` + `webui.tar` (bisher nur Dev-
 Proxy). Firmware-Default-Akzent greift erst nach Reflash der Firmware.
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 3: Fluent-2-Karten-Tokens
+
+**Kontext:** Nutzer hat im offiziellen MS-Figma die kanonischen Karten-Tokens
+nachgeschlagen und wollte Kartenhintergrund + -rand exakt darauf. Bisher nutzten
+Karten `bg-surface`/`border-border` (wie Inputs/Dialoge/Nav); der Dark-Rand
+(`#363636`) war **heller** als die Fläche — Fluent macht es umgekehrt.
+
+**Zielwerte (Fluent 2, als Alpha-Overlays):** CardBackgroundFillColorDefault
+`#fff @ 70%` hell / `@ 5,14%` dunkel; CardStrokeColorDefault `#000 @ 5,78%` hell /
+`@ 10%` dunkel.
+
+**Umsetzung:**
+- **Eigene Karten-Tokens** ([styles.css](web/src/styles.css)): `--card-bg` /
+  `--card-border` (halbtransparent → komponieren über `--bg` inkl. Tint), in
+  `:root`/dark/media-query; `@theme inline` → Utilities `bg-card` / `border-card`.
+  `--surface`/`--border` **unverändert** (Controls behalten sichtbareren
+  ControlStroke — WinUI-korrekt: ControlStroke ≠ CardStroke).
+- **Karten migriert** `bg-surface`→`bg-card`, `border-border`→`border-card`:
+  Sensor/Aktor/Regler/Programm-Cards, Chart-Wrapper, `SettingsCard`, Geräte-/
+  Logs-/Zeit-/Archiv-Zeilen. ControllerCard konditionaler Rand
+  (`border-card-border` / `…/50`) erhalten. Flache Zeilen bekamen `shadow-elev-2`
+  (Fluent Card „shadow2"). **Nicht** angefasst: `inp`/`dialogFrame`,
+  Mobile-Toolbar, Edit-Toolbar-Buttons.
+
+**Verifikation:** typecheck + build grün (61,0 kB gzip). Browser hell+dunkel;
+Computed-Style-Probe einer Karte trifft die Zielwerte exakt (hell
+`rgba(255,255,255,0.7)` / Rand `rgba(0,0,0,0.06)`; dunkel `rgba(255,255,255,0.05)` /
+Rand `rgba(0,0,0,0.1)` — dunkler als Fläche). Screenshots Dashboard + Settings je
+hell/dunkel: Karten heben sich über Fläche + Kante + Schatten ab.

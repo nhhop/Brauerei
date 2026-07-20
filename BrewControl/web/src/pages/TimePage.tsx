@@ -101,7 +101,7 @@ export function TimePage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Zeit & Formate' }]} />
       </header>
 
-      <div class="mt-4 mb-4 rounded-md border border-border bg-surface px-4 py-3">
+      <div class="mt-4 mb-4 rounded-md border border-card-border bg-card px-4 py-3 shadow-elev-2">
         <div class="text-2xl font-mono font-medium tabular-nums">{formatTime(now, settings)}</div>
         <div class="text-xs text-muted">{formatDate(now, settings)}</div>
       </div>

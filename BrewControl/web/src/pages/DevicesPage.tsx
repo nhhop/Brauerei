@@ -119,7 +119,7 @@ function DeviceRow({ label, badge, onEdit, onDelete }: {
   label: string; badge?: string; onEdit: () => void; onDelete: () => void;
 }) {
   return (
-    <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-surface px-4 py-3">
+    <div class="flex items-center justify-between gap-3 rounded-md border border-card-border bg-card px-4 py-3 shadow-elev-2">
       <div class="flex min-w-0 items-center gap-2">
         <span class="truncate font-medium">{label}</span>
         {badge && (

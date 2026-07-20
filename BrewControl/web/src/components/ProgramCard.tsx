@@ -79,7 +79,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
   }
 
   return (
-    <div class={`rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
+    <div class={`rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
       ${fill ? 'max-lg:sticky max-md:top-14 md:top-2 max-lg:z-10 lg:flex lg:h-full lg:flex-col lg:overflow-hidden' : ''}`}>
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">

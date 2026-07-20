@@ -19,7 +19,7 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
   }
 
   return (
-    <div class="rounded-lg border border-border bg-surface p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+    <div class="rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">
