@@ -1,8 +1,10 @@
 // BrewControl/web/src/pages/SettingsIndex.tsx
 import { useEffect, useState } from 'preact/hooks';
 import { getUpdateStatus } from '../api';
+import { SettingsCard } from '../components/SettingsCard';
+import { badgeCaution } from '../ui';
 import {
-  Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, ChevronRight,
+  Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -35,22 +37,13 @@ export function SettingsIndex(_: { path?: string }) {
       <header class="flex items-center gap-3">
         <h1 class="text-2xl font-semibold tracking-tight">Einstellungen</h1>
       </header>
-      <div class="mt-4 space-y-2">
-        {ENTRIES.map(({ href, icon: Icon, title, desc }) => (
-          <a key={href} href={href}
-            class="flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3 hover:bg-fg/5">
-            <Icon size={20} class="shrink-0 text-muted" />
-            <div class="min-w-0 flex-1">
-              <div class="font-medium">
-                {title}
-                {href === '/settings/firmware' && updateAvail && (
-                  <span class="ml-2 rounded-full bg-amber-500 px-2 py-0.5 text-xs text-white">Update verfügbar</span>
-                )}
-              </div>
-              <div class="text-xs text-muted">{desc}</div>
-            </div>
-            <ChevronRight size={16} class="shrink-0 text-faint" />
-          </a>
+      <div class="mt-4 space-y-1">
+        {ENTRIES.map(({ href, icon, title, desc }) => (
+          <SettingsCard key={href} href={href} icon={icon} title={title} desc={desc}
+            control={href === '/settings/firmware' && updateAvail
+              ? <span class={badgeCaution}>Update verfügbar</span>
+              : undefined}
+          />
         ))}
       </div>
     </div>

@@ -57,8 +57,8 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   }
 
   return (
-    <div class={`rounded-lg border bg-surface p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
-      enabled ? 'border-border' : 'border-border/50 opacity-60'
+    <div class={`rounded-lg border bg-card p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
+      enabled ? 'border-card-border' : 'border-card-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
@@ -72,7 +72,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
           )}
           {onDelete && (
             <button type="button" onClick={onDelete} title="Löschen"
-              class="text-faint hover:text-red-600"><X size={16} /></button>
+              class="text-faint hover:text-critical"><X size={16} /></button>
           )}
         </div>
       </div>
@@ -126,17 +126,17 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
       {isPid && autotuneState && (
         <div class="mt-3 border-t border-border/50 pt-3">
           {autotuneState === 'running' && (
-            <span class="text-xs text-amber-600">AutoTune läuft…</span>
+            <span class="text-xs text-caution">AutoTune läuft…</span>
           )}
           {autotuneState === 'done' && (
-            <span class="text-xs text-emerald-600 font-mono">
+            <span class="text-xs text-success font-mono">
               Kp {Number(params?.Kp).toFixed(2)} · Ki {Number(params?.Ki).toFixed(2)} · Kd {Number(params?.Kd).toFixed(2)}
             </span>
           )}
         </div>
       )}
 
-      {err && <p class="mt-2 text-xs text-red-600">{err}</p>}
+      {err && <p class="mt-2 text-xs text-critical">{err}</p>}
     </div>
   );
 }

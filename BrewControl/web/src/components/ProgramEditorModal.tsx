@@ -128,7 +128,7 @@ export function ProgramEditorModal({ open, snap, initial, onSave, onDelete, onCl
                     class="text-xs leading-none text-faint hover:text-fg disabled:opacity-30" title="nach unten">▼</button>
                 </div>
                 <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
-                  class="shrink-0 leading-none text-faint hover:text-red-600 disabled:opacity-30" title="Schritt entfernen">×</button>
+                  class="shrink-0 leading-none text-faint hover:text-critical disabled:opacity-30" title="Schritt entfernen">×</button>
               </div>
               <div class="mt-2 flex flex-wrap items-center gap-3 pl-7">
                 <label class="flex items-center gap-1 text-xs text-muted">

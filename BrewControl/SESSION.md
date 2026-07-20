@@ -973,3 +973,163 @@ Edit-Modus mit Tab-Stift/+Neu/Hinzufügen/Fertig; „Hinzufügen" öffnet
 „Dashboard-Inhalte" mit korrekt vorausgewählten Häkchen; Add/Remove end-to-end
 (Regler in Kochen hinzugefügt, per × zurückgenommen); Meta-Modal; keine
 Konsolen-Fehler.
+
+## Session 2026-07-13 — WinUI-3-Politur: semantisches Farbsystem
+
+**Kontext:** Auf Wunsch „WinUI-3 verfeinern, ganzes Frontend". Kein Umbau,
+sondern eine Konsistenz-/Politur-Runde auf dem bestehenden Fluent-Stil. Analyse
+fand 44 hartcodierte Tailwind-Farbklassen über 15 Dateien + einen echten
+Dark-Mode-Bug: Status-Badges als `bg-amber-100 text-amber-800` /
+`bg-yellow-100 text-yellow-800` (Stale-/Fault-Badge) → helle Füllung + dunkler
+Text auf dunkler Karte, unleserlich.
+
+**Umgesetzt:**
+- **Semantisches Farbsystem** ([styles.css](web/src/styles.css)): Tokens
+  `--success/--caution/--critical` (Spiegel der WinUI `SystemFillColor`), pro
+  Theme getunt (hell: #0f7b0f/#9a5b00/#c42b1c; dunkel: #6ccb5f/#fcd34d/#ff99a4),
+  in `[data-theme=dark]` **und** im `prefers-color-scheme`-Media-Query (konsistent
+  zur bestehenden Doppel-Definition). In `@theme inline` gemappt →
+  `text-success/-caution/-critical`.
+- **Geteilte Klassen** ([ui.ts](web/src/ui.ts)): Badge-Konstanten
+  `badge{Caution,Success,Critical}` — getönte Füllung via
+  `bg-[color-mix(in_srgb,var(--…)_16%,transparent)]` (mischt den Semantik-Ton
+  über die Kartenfläche → adaptiert hell/dunkel automatisch) + legible Textfarbe.
+  `btnPrimary/Secondary/Danger` um WinUI-Pressed (`active:`) + Focus-Stroke
+  (`focus-visible:ring-…`) erweitert; `linkDanger` auf `text-critical`.
+- **Roh-Farben migriert** (Karten, Modals, 7 Settings-Seiten): Stale-/Fault-
+  Badges → `badgeCaution`; Programm-Status-Pills → Success/Caution-Tint;
+  Fehlertexte/Delete-Hover `red-*` → `text-critical`/`hover:text-critical`;
+  AutoTune läuft/fertig → `text-caution`/`text-success`; Sensor-Reset-Hover
+  `blue` → `hover:text-accent`. **Bewusst belassen** (kein Bug, in beiden Themes
+  lesbar): solider Danger-Button (`red-600`), alpha-getönte Info-Leisten
+  (`amber-500/10`), solide Emphasis-Pills („aktiv"/„Update verfügbar"),
+  `sky` „pausiert".
+
+**Verifikation:** `pnpm typecheck` grün; `pnpm build` grün (182,5 kB JS /
+60,7 kB gzip — kein Sprung; `color-mix`-Arbitrary-Values kompilieren). Browser
+gegen echten ESP32 (`brewcontrol.local` via Dev-Proxy): Dashboard lädt mit Live-
+Daten, keine Konsolen-Fehler. **Dark-Mode-Fix belegt** per Computed-Style-Probe:
+`badgeCaution` liefert hell dunklen Text (#9a5b00) auf hellem 16%-Amber-Tint,
+dunkel hellen Text (#fcd34d) auf dunklem 16%-Tint — beide lesbar, statt der alten
+hellen Fläche auf dunkler Karte. (Screenshot-Capture der Preview timeoutet
+umgebungsbedingt — visueller Beleg daher über read_page + Computed-Styles.)
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 2: neutrale Palette, Mica-Shell, Win11-Settings
+
+**Kontext:** Nutzer-Feedback nach Teil 1: (1) Farbschema „gar nicht nach WinUI",
+im Dark-Mode „alles irgendwie braun"; (2) Trennlinie + unterschiedliche
+Hintergründe zwischen Seitenleiste und Inhalt passen nicht zu WinUI; (3) Settings
+sollen sich mehr an Windows 11 anlehnen. Abgestimmt: Windows-Blau als Default,
+Win11-Zeilenlook über **alle** Settings-Seiten.
+
+**1. Palette entbraunt ([styles.css](web/src/styles.css)):** Das warme stone-*
+verursachte den Braunstich. Ersetzt durch neutrale Windows-11-Grautöne (nur
+Token-**Werte**, Namen unverändert → propagiert auf alle `bg-surface`/`bg-bg`/
+Border/Text). Hell: `--bg #f3f3f3`, `--fg #1a1a1a`, `--border #e5e5e5`. Dunkel:
+`--bg #202020`, `--surface #2b2b2b`, `--fg #fafafa`, `--border #363636`. Tints
+(warm/kalt) auf die neutrale Basis rebased.
+
+**2. Windows-Blau als Default-Akzent:** `--accent #0078d4` in styles.css;
+AppearancePage-Initialwert + neues „Windows-Blau"-Preset an erster Stelle;
+Firmware-Default [SettingsStore.h](firmware/src/SettingsStore.h) `#d97706`→`#0078d4`.
+⚠ Greift nur bei **ungesetztem** Wert — Geräte mit gespeicherter Farbe (Testgerät:
+Grün) behalten ihre Wahl; frische Config / Preset-Klick → Blau. Firmware-Default
+braucht Reflash.
+
+**3. Mica-Shell ([NavShell.tsx](web/src/components/NavShell.tsx)):** `border-r`
+entfernt; Desktop-Nav `md:bg-transparent md:backdrop-blur-none` → teilt die
+Shell-Fläche mit dem Content (durchgehendes Mica, keine Trennlinie, kein
+Hintergrundunterschied). Mobile-Drawer behält Acrylic + Backdrop. Aktiv-Eintrag
+weiter `bg-fg/5` + Akzent-Pill.
+
+**4. Win11-Settings ([SettingsCard.tsx](web/src/components/SettingsCard.tsx), neu):**
+`SettingsGroup` (optionaler uppercase-Sektionslabel) + `SettingsCard` (Icon +
+Titel + Beschreibung links, Control/Chevron rechts, optional Full-width-`children`
+für komplexe Controls; rendert als `a`/`button`/`div`). Alle 8 Seiten umgestellt:
+Index (Kachel-Links + Update-Badge auf `badgeCaution`), Appearance (3 Control-
+Zeilen), Devices (SettingsGroup je Rolle, DeviceRow `rounded-md`), Firmware
+(Version/Server-Update/Upload als Cards, Warnleiste amber→Caution-Token), Backup
+(Export/Restore-Cards, Warnleiste→Caution-Token), Time (Zeitzone/Format/NTP-Cards),
+Network (Status/Wechseln/Hostname/Reset-Cards), Logs (Karten `rounded-md`).
+
+**Verifikation:** `pnpm typecheck` grün; `pnpm build` grün (181,8 kB JS /
+61,0 kB gzip — kein Sprung). Browser-Preview gegen echten ESP32
+(`brewcontrol.local`, Screenshots funktionieren nach Öffnen des integrierten
+Browsers): Dashboard + Settings-Index + Appearance + Network + Firmware je
+**hell und dunkel** — neutrale Graustufen (kein Braun), Nav ohne Trennlinie/
+gleiche Fläche, Win11-Zeilenkarten mit Titel/Desc/Control, Windows-Blau-Akzent
+(per Override im Preview gezeigt — Testgerät speichert Grün), keine Konsolen-Fehler.
+
+**Offen:** Deploy aufs Gerät via `pnpm build:sd` + `webui.tar` (bisher nur Dev-
+Proxy). Firmware-Default-Akzent greift erst nach Reflash der Firmware.
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 3: Fluent-2-Karten-Tokens
+
+**Kontext:** Nutzer hat im offiziellen MS-Figma die kanonischen Karten-Tokens
+nachgeschlagen und wollte Kartenhintergrund + -rand exakt darauf. Bisher nutzten
+Karten `bg-surface`/`border-border` (wie Inputs/Dialoge/Nav); der Dark-Rand
+(`#363636`) war **heller** als die Fläche — Fluent macht es umgekehrt.
+
+**Zielwerte (Fluent 2, als Alpha-Overlays):** CardBackgroundFillColorDefault
+`#fff @ 70%` hell / `@ 5,14%` dunkel; CardStrokeColorDefault `#000 @ 5,78%` hell /
+`@ 10%` dunkel.
+
+**Umsetzung:**
+- **Eigene Karten-Tokens** ([styles.css](web/src/styles.css)): `--card-bg` /
+  `--card-border` (halbtransparent → komponieren über `--bg` inkl. Tint), in
+  `:root`/dark/media-query; `@theme inline` → Utilities `bg-card` / `border-card`.
+  `--surface`/`--border` **unverändert** (Controls behalten sichtbareren
+  ControlStroke — WinUI-korrekt: ControlStroke ≠ CardStroke).
+- **Karten migriert** `bg-surface`→`bg-card`, `border-border`→`border-card`:
+  Sensor/Aktor/Regler/Programm-Cards, Chart-Wrapper, `SettingsCard`, Geräte-/
+  Logs-/Zeit-/Archiv-Zeilen. ControllerCard konditionaler Rand
+  (`border-card-border` / `…/50`) erhalten. Flache Zeilen bekamen `shadow-elev-2`
+  (Fluent Card „shadow2"). **Nicht** angefasst: `inp`/`dialogFrame`,
+  Mobile-Toolbar, Edit-Toolbar-Buttons.
+
+**Verifikation:** typecheck + build grün (61,0 kB gzip). Browser hell+dunkel;
+Computed-Style-Probe einer Karte trifft die Zielwerte exakt (hell
+`rgba(255,255,255,0.7)` / Rand `rgba(0,0,0,0.06)`; dunkel `rgba(255,255,255,0.05)` /
+Rand `rgba(0,0,0,0.1)` — dunkler als Fläche). Screenshots Dashboard + Settings je
+hell/dunkel: Karten heben sich über Fläche + Kante + Schatten ab.
+
+**Nachtrag — SubtleFill Hover/Pressed:** Nav-Menüpunkte nutzten `hover:bg-fg/5`
+(Näherung, kein Pressed). Ersetzt durch exakte WinUI-`SubtleFillColor`-Tokens
+`--subtle-hover` (Secondary) / `--subtle-pressed` (Tertiary): hell
+`#000 @3,73%`/`@2,41%`, dunkel `#fff @6,05%`/`@4,19%`; gemappt zu
+`bg-subtle-hover`/`bg-subtle-pressed`. NavShell (Menüpunkte aktiv+hover, Hamburger,
+Mobile-Open) auf `hover:bg-subtle-hover active:bg-subtle-pressed`. Computed-Werte
+treffen die Zielwerte exakt. `SettingsCard` (interaktive `a`/`button`-Varianten)
+danach ebenfalls von `hover:bg-fg/5` auf die SubtleFill-Tokens umgestellt.
+(Übrige `hover:bg-fg/10`-Stellen sind Buttons/Chips = ControlFill, bewusst nicht
+angefasst.)
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 4: Firmware-Seite
+
+Firmware-Update-Seite ([FirmwarePage.tsx](web/src/pages/FirmwarePage.tsx)) auf
+WinUI-Muster gebracht:
+- **Neue [Segmented.tsx](web/src/components/Segmented.tsx)** — wiederverwendbares
+  Segmented-Control (bordered Pill-Gruppe, Akzent-Aktiv, SubtleFill-Hover/Pressed
+  inaktiv). Kanal `stable/preview` → `Stabil`/`Vorschau` als Segmented (vorher zwei
+  lose `bg-fg/5`-Pills). (AppearancePage-Segmenteds könnten später darauf migrieren.)
+- **Auto-Check** von nackter Checkbox → eigene `SettingsCard`-Zeile mit
+  `ToggleSwitch` (Label links, Schalter rechts).
+- **Buttons** auf geteilte `btnSecondary` (Pressed/Focus) statt selbstgestyltem
+  `bg-fg/5`; „Installieren" bleibt `btnPrimary`.
+- **File-Upload** (`FileUpload`): nackter `<input type=file>` → versteckter Input +
+  `btnSecondary` „Durchsuchen…" + Dateiname-Anzeige.
+
+**Verifikation:** typecheck + build grün (61,2 kB gzip). Browser: Segmented,
+Toggle-Zeile, gestylte Upload-Buttons — sauber im Win11-Look. („Fehler: check
+failed" = erwartet ohne erreichbares Release, kein Design-Bug.)
+
+**Nachtrag — Controls rechts (auf Nutzer-Mockup):** Bedienelemente in den
+`control`-Slot (rechts) verschoben: „Auf Updates prüfen" in die „Aktuelle
+Version"-Zeile (Version wandert als Mono-`desc` nach links), Segmented rechts in
+die „Server-Update"-Zeile. `SettingsCard.desc` von `string` → `ComponentChildren`
+(für die Mono-Version). Upload-Zeilen: Label + Dateiname links, „Durchsuchen…"
+(`btnSecondary`) rechts — passt platztechnisch (gestapelt, nicht nebeneinander).
+Verifiziert mit gemocktem `/api/update/status` (Gerät lieferte zeitweise HTTP 500
+nach ~20 s — hängender Auto-Check, geräteseitig). Danach Header-Icons auf die vier
+Karten (`Package`/`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in der
+lucide-Version nicht mehr → `CloudDownload`).

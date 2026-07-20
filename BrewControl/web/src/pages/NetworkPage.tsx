@@ -5,6 +5,7 @@ import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnPrimary, inp } from '../ui';
 
 // Coarse signal-strength bucket from RSSI (dBm) for a 0–4 bar display.
@@ -178,106 +179,106 @@ export function NetworkPage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Netzwerk' }]} />
       </header>
 
-      {/* ── Status ─────────────────────────────────────────────────────── */}
-      <div class="mb-4 rounded-lg border border-border bg-surface p-4">
-        <div class="mb-3 text-xs font-medium uppercase tracking-wider text-muted">Status</div>
-        {status?.connected ? (
-          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt class="text-muted">Netzwerk</dt>
-            <dd class="font-medium">{status.ssid || '—'}</dd>
-            <dt class="text-muted">Signal</dt>
-            <dd class="flex items-center gap-2"><SignalBars rssi={status.rssi} /><span class="text-faint">{status.rssi} dBm</span></dd>
-            <dt class="text-muted">IP-Adresse</dt>
-            <dd class="font-mono">{status.ip}</dd>
-            <dt class="text-muted">Hostname</dt>
-            <dd class="font-mono">{status.hostname}.local</dd>
-            <dt class="text-muted">MAC</dt>
-            <dd class="font-mono text-faint">{status.mac}</dd>
-          </dl>
-        ) : (
-          <p class="text-sm text-muted">Nicht verbunden.</p>
-        )}
-      </div>
+      <SettingsGroup>
+        {/* ── Status ─────────────────────────────────────────────────── */}
+        <SettingsCard title="Status">
+          {status?.connected ? (
+            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt class="text-muted">Netzwerk</dt>
+              <dd class="font-medium">{status.ssid || '—'}</dd>
+              <dt class="text-muted">Signal</dt>
+              <dd class="flex items-center gap-2"><SignalBars rssi={status.rssi} /><span class="text-faint">{status.rssi} dBm</span></dd>
+              <dt class="text-muted">IP-Adresse</dt>
+              <dd class="font-mono">{status.ip}</dd>
+              <dt class="text-muted">Hostname</dt>
+              <dd class="font-mono">{status.hostname}.local</dd>
+              <dt class="text-muted">MAC</dt>
+              <dd class="font-mono text-faint">{status.mac}</dd>
+            </dl>
+          ) : (
+            <p class="text-sm text-muted">Nicht verbunden.</p>
+          )}
+        </SettingsCard>
 
-      {/* ── WLAN wechseln ──────────────────────────────────────────────── */}
-      <div class="mb-4 space-y-3 rounded-lg border border-border bg-surface p-4">
-        <div class="text-xs font-medium uppercase tracking-wider text-muted">WLAN wechseln</div>
-        <button type="button" onClick={doScan} disabled={scanning}
-          class="rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/5 disabled:opacity-50">
-          {scanning ? 'Suche…' : 'Netzwerke suchen'}
-        </button>
-        {scanErr && <p class="text-sm text-red-600">{scanErr}</p>}
-        {(nets.length > 0 || manual) && (
-          <>
-            <div>
-              <div class="mb-1 text-xs text-muted">Netzwerk</div>
-              {manual ? (
-                <input type="text" value={selSsid} title="SSID" placeholder="Netzwerkname (SSID)"
-                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
-                  onInput={(e) => setSelSsid((e.target as HTMLInputElement).value)}
-                  class={inp} />
-              ) : (
-                <select value={selSsid} title="Netzwerk"
-                  onChange={(e) => setSelSsid((e.target as HTMLSelectElement).value)}
-                  class={inp}>
-                  {nets.map((n) => (
-                    <option key={n.ssid} value={n.ssid}>
-                      {n.ssid} ({n.rssi} dBm){n.open ? ' · offen' : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button type="button"
-                onClick={() => { setManual((m) => !m); setSelSsid(''); }}
-                class="mt-1 text-xs text-faint underline hover:text-fg">
-                {manual ? 'Aus Liste wählen' : 'Netzwerk manuell eingeben'}
-              </button>
-            </div>
-            <div>
-              <div class="mb-1 text-xs text-muted">Passwort</div>
-              <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
-                autoComplete="off"
-                onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                class={inp} />
-            </div>
-            <button type="button" onClick={() => setSwitchOpen(true)} disabled={!ssid.trim()}
-              class={btnPrimary}>
-              Verbinden
+        {/* ── WLAN wechseln ──────────────────────────────────────────── */}
+        <SettingsCard title="WLAN wechseln">
+          <div class="space-y-3">
+            <button type="button" onClick={doScan} disabled={scanning}
+              class="rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/5 disabled:opacity-50">
+              {scanning ? 'Suche…' : 'Netzwerke suchen'}
             </button>
-          </>
-        )}
-      </div>
+            {scanErr && <p class="text-sm text-critical">{scanErr}</p>}
+            {(nets.length > 0 || manual) && (
+              <>
+                <div>
+                  <div class="mb-1 text-xs text-muted">Netzwerk</div>
+                  {manual ? (
+                    <input type="text" value={selSsid} title="SSID" placeholder="Netzwerkname (SSID)"
+                      autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
+                      onInput={(e) => setSelSsid((e.target as HTMLInputElement).value)}
+                      class={inp} />
+                  ) : (
+                    <select value={selSsid} title="Netzwerk"
+                      onChange={(e) => setSelSsid((e.target as HTMLSelectElement).value)}
+                      class={inp}>
+                      {nets.map((n) => (
+                        <option key={n.ssid} value={n.ssid}>
+                          {n.ssid} ({n.rssi} dBm){n.open ? ' · offen' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button type="button"
+                    onClick={() => { setManual((m) => !m); setSelSsid(''); }}
+                    class="mt-1 text-xs text-faint underline hover:text-fg">
+                    {manual ? 'Aus Liste wählen' : 'Netzwerk manuell eingeben'}
+                  </button>
+                </div>
+                <div>
+                  <div class="mb-1 text-xs text-muted">Passwort</div>
+                  <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
+                    autoComplete="off"
+                    onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+                    class={inp} />
+                </div>
+                <button type="button" onClick={() => setSwitchOpen(true)} disabled={!ssid.trim()}
+                  class={btnPrimary}>
+                  Verbinden
+                </button>
+              </>
+            )}
+          </div>
+        </SettingsCard>
 
-      {/* ── Hostname ───────────────────────────────────────────────────── */}
-      <div class="mb-4 space-y-2 rounded-lg border border-border bg-surface p-4">
-        <div class="text-xs font-medium uppercase tracking-wider text-muted">Hostname</div>
-        <div class="flex items-center gap-2">
-          <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
-            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
-            onInput={(e) => setHost((e.target as HTMLInputElement).value)}
-            class={`${inp} font-mono`} />
-          <span class="shrink-0 font-mono text-sm text-faint">.local</span>
-        </div>
-        {!hostValid && host.length > 0 && (
-          <p class="text-xs text-red-600">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
-        )}
-        <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
-          class={btnPrimary}>
-          Speichern
-        </button>
-      </div>
+        {/* ── Hostname ───────────────────────────────────────────────── */}
+        <SettingsCard title="Hostname">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
+                onInput={(e) => setHost((e.target as HTMLInputElement).value)}
+                class={`${inp} font-mono`} />
+              <span class="shrink-0 font-mono text-sm text-faint">.local</span>
+            </div>
+            {!hostValid && host.length > 0 && (
+              <p class="text-xs text-critical">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
+            )}
+            <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
+              class={btnPrimary}>
+              Speichern
+            </button>
+          </div>
+        </SettingsCard>
 
-      {/* ── Zurücksetzen ───────────────────────────────────────────────── */}
-      <div class="space-y-2 rounded-lg border border-border bg-surface p-4">
-        <div class="text-xs font-medium uppercase tracking-wider text-muted">WLAN zurücksetzen</div>
-        <p class="text-sm text-muted">
-          Löscht die gespeicherten Zugangsdaten und startet das Gerät in den Setup-Modus.
-        </p>
-        <button type="button" onClick={() => setResetOpen(true)}
-          class="rounded-md border border-red-600/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-600/10">
-          WLAN zurücksetzen
-        </button>
-      </div>
+        {/* ── Zurücksetzen ───────────────────────────────────────────── */}
+        <SettingsCard title="WLAN zurücksetzen"
+          desc="Löscht die gespeicherten Zugangsdaten und startet das Gerät in den Setup-Modus.">
+          <button type="button" onClick={() => setResetOpen(true)}
+            class="rounded-md border border-critical/40 px-3 py-1.5 text-sm font-medium text-critical hover:bg-critical/10">
+            WLAN zurücksetzen
+          </button>
+        </SettingsCard>
+      </SettingsGroup>
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}
       <ConfirmModal open={switchOpen} title="Netzwerk wechseln?"
@@ -289,7 +290,7 @@ export function NetworkPage(_: { path?: string }) {
           <code class="mx-1 rounded bg-fg/10 px-1 font-mono">{ssid.trim()}</code>.
           Diese Oberfläche ist während des Wechsels kurz nicht erreichbar.
         </p>
-        {actErr && <p class="mt-2 text-red-600">{actErr}</p>}
+        {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
 
       <ConfirmModal open={hostOpen} title="Hostname ändern?"
@@ -301,7 +302,7 @@ export function NetworkPage(_: { path?: string }) {
           <code class="mx-1 rounded bg-fg/10 px-1 font-mono">{host.trim().toLowerCase()}.local</code>
           erreichbar.
         </p>
-        {actErr && <p class="mt-2 text-red-600">{actErr}</p>}
+        {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
 
       <ConfirmModal open={resetOpen} title="WLAN-Zugangsdaten zurücksetzen?" destructive
@@ -314,7 +315,7 @@ export function NetworkPage(_: { path?: string }) {
           <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
           neu verbinden.
         </p>
-        {actErr && <p class="mt-2 text-red-600">{actErr}</p>}
+        {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
     </div>
   );

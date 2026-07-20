@@ -74,7 +74,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
       ) : (
         <div class="space-y-4">
           {logs.map((log) => (
-            <div key={log.id} class="rounded-lg border border-border bg-surface p-4">
+            <div key={log.id} class="rounded-md border border-card-border bg-card p-4 shadow-elev-2">
               <div class="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <div class="font-medium">{log.name}</div>
@@ -115,7 +115,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                     <Pencil size={14} />
                   </button>
                   <button type="button" onClick={() => setDeleteTarget(log)}
-                    class="rounded-md border border-border px-2 py-1 text-red-500 hover:bg-fg/10">
+                    class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
                     <Trash2 size={14} />
                   </button>
                 </div>

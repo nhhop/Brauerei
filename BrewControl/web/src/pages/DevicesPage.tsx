@@ -5,6 +5,7 @@ import { deleteSensor, deleteActuator, deleteController, getConfig } from '../ap
 import { ConfirmModal } from '../components/ConfirmModal';
 import { AddItemModal } from '../components/AddItemModal';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { SettingsGroup } from '../components/SettingsCard';
 import { btnPrimary } from '../ui';
 import { Pencil, X } from 'lucide-preact';
 
@@ -57,52 +58,43 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
         </button>
       </header>
 
-      <div class="mt-6 space-y-6">
+      <div class="mt-6 space-y-4">
         {!snap && <p class="text-sm text-muted">Laden…</p>}
 
         {sensors.length > 0 && (
-          <section>
-            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-muted">Sensoren</h2>
-            <div class="space-y-2">
-              {sensors.map((s) => {
-                const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-                return (
-                  <DeviceRow key={base} label={base} badge={s.meta.quantity}
-                    onEdit={() => startEdit('sensor', base)}
-                    onDelete={() => setDeleteTarget({ role: 'sensor', id: base })} />
-                );
-              })}
-            </div>
-          </section>
+          <SettingsGroup title="Sensoren">
+            {sensors.map((s) => {
+              const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+              return (
+                <DeviceRow key={base} label={base} badge={s.meta.quantity}
+                  onEdit={() => startEdit('sensor', base)}
+                  onDelete={() => setDeleteTarget({ role: 'sensor', id: base })} />
+              );
+            })}
+          </SettingsGroup>
         )}
 
         {snap && snap.controllers.length > 0 && (
-          <section>
-            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-muted">Regler</h2>
-            <div class="space-y-2">
-              {snap.controllers.map((c) => (
-                <DeviceRow key={c.id} label={c.id}
-                  badge={c.params?.sensor && c.params?.actuator
-                    ? `${c.params.sensor} → ${c.params.actuator}`
-                    : undefined}
-                  onEdit={() => startEdit('controller', c.id)}
-                  onDelete={() => setDeleteTarget({ role: 'controller', id: c.id })} />
-              ))}
-            </div>
-          </section>
+          <SettingsGroup title="Regler">
+            {snap.controllers.map((c) => (
+              <DeviceRow key={c.id} label={c.id}
+                badge={c.params?.sensor && c.params?.actuator
+                  ? `${c.params.sensor} → ${c.params.actuator}`
+                  : undefined}
+                onEdit={() => startEdit('controller', c.id)}
+                onDelete={() => setDeleteTarget({ role: 'controller', id: c.id })} />
+            ))}
+          </SettingsGroup>
         )}
 
         {snap && snap.actuators.length > 0 && (
-          <section>
-            <h2 class="mb-2 text-sm font-medium uppercase tracking-wider text-muted">Aktoren</h2>
-            <div class="space-y-2">
-              {snap.actuators.map((a) => (
-                <DeviceRow key={a.id} label={a.id} badge={a.meta.kind}
-                  onEdit={() => startEdit('actuator', a.id)}
-                  onDelete={() => setDeleteTarget({ role: 'actuator', id: a.id })} />
-              ))}
-            </div>
-          </section>
+          <SettingsGroup title="Aktoren">
+            {snap.actuators.map((a) => (
+              <DeviceRow key={a.id} label={a.id} badge={a.meta.kind}
+                onEdit={() => startEdit('actuator', a.id)}
+                onDelete={() => setDeleteTarget({ role: 'actuator', id: a.id })} />
+            ))}
+          </SettingsGroup>
         )}
       </div>
 
@@ -112,7 +104,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
         onCancel={() => { setDeleteTarget(null); setDeleteErr(null); }}
         onConfirm={doDelete}>
         <p>Das Item wird dauerhaft entfernt und die SD-Konfiguration aktualisiert.</p>
-        {deleteErr && <p class="mt-2 text-red-600">{deleteErr}</p>}
+        {deleteErr && <p class="mt-2 text-critical">{deleteErr}</p>}
       </ConfirmModal>
 
       <AddItemModal open={addOpen} snap={snap}
@@ -127,7 +119,7 @@ function DeviceRow({ label, badge, onEdit, onDelete }: {
   label: string; badge?: string; onEdit: () => void; onDelete: () => void;
 }) {
   return (
-    <div class="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3">
+    <div class="flex items-center justify-between gap-3 rounded-md border border-card-border bg-card px-4 py-3 shadow-elev-2">
       <div class="flex min-w-0 items-center gap-2">
         <span class="truncate font-medium">{label}</span>
         {badge && (
@@ -138,7 +130,7 @@ function DeviceRow({ label, badge, onEdit, onDelete }: {
         <button type="button" onClick={onEdit} title="Bearbeiten"
           class="text-faint hover:text-fg"><Pencil size={14} /></button>
         <button type="button" onClick={onDelete} title="Löschen"
-          class="text-faint hover:text-red-600"><X size={16} /></button>
+          class="text-faint hover:text-critical"><X size={16} /></button>
       </div>
     </div>
   );
