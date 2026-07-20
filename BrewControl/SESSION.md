@@ -1103,3 +1103,22 @@ treffen die Zielwerte exakt. `SettingsCard` (interaktive `a`/`button`-Varianten)
 danach ebenfalls von `hover:bg-fg/5` auf die SubtleFill-Tokens umgestellt.
 (Übrige `hover:bg-fg/10`-Stellen sind Buttons/Chips = ControlFill, bewusst nicht
 angefasst.)
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 4: Firmware-Seite
+
+Firmware-Update-Seite ([FirmwarePage.tsx](web/src/pages/FirmwarePage.tsx)) auf
+WinUI-Muster gebracht:
+- **Neue [Segmented.tsx](web/src/components/Segmented.tsx)** — wiederverwendbares
+  Segmented-Control (bordered Pill-Gruppe, Akzent-Aktiv, SubtleFill-Hover/Pressed
+  inaktiv). Kanal `stable/preview` → `Stabil`/`Vorschau` als Segmented (vorher zwei
+  lose `bg-fg/5`-Pills). (AppearancePage-Segmenteds könnten später darauf migrieren.)
+- **Auto-Check** von nackter Checkbox → eigene `SettingsCard`-Zeile mit
+  `ToggleSwitch` (Label links, Schalter rechts).
+- **Buttons** auf geteilte `btnSecondary` (Pressed/Focus) statt selbstgestyltem
+  `bg-fg/5`; „Installieren" bleibt `btnPrimary`.
+- **File-Upload** (`FileUpload`): nackter `<input type=file>` → versteckter Input +
+  `btnSecondary` „Durchsuchen…" + Dateiname-Anzeige.
+
+**Verifikation:** typecheck + build grün (61,2 kB gzip). Browser: Segmented,
+Toggle-Zeile, gestylte Upload-Buttons — sauber im Win11-Look. („Fehler: check
+failed" = erwartet ohne erreichbares Release, kein Design-Bug.)

@@ -7,7 +7,9 @@ import {
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
-import { btnPrimary } from '../ui';
+import { Segmented } from '../components/Segmented';
+import { ToggleSwitch } from '../components/ToggleSwitch';
+import { btnPrimary, btnSecondary } from '../ui';
 import { TriangleAlert } from 'lucide-preact';
 
 export function FirmwarePage(_: { path?: string }) {
@@ -52,23 +54,12 @@ export function FirmwarePage(_: { path?: string }) {
 
           <SettingsCard title="Server-Update (GitHub)" desc="Kanal wählen und auf neue Releases prüfen">
             <div class="space-y-3">
-              <div class="flex gap-2">
-                {(['stable', 'preview'] as const).map((c) => (
-                  <button key={c} onClick={() => setChannel(c)} disabled={busy}
-                    class={`rounded-md px-3 py-1.5 text-sm ${channel === c
-                      ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={st.autoCheck} class="accent-accent"
-                  onChange={(e) => setAuto((e.target as HTMLInputElement).checked)} />
-                Täglich automatisch auf Updates prüfen
-              </label>
+              <Segmented value={channel} disabled={busy}
+                options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
+                onChange={setChannel} />
 
               <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
-                class="rounded-md bg-fg/5 px-3 py-1.5 text-sm font-medium hover:bg-fg/10 disabled:opacity-50">
+                class={btnSecondary}>
                 {st.state === 'checking' ? 'Prüfe…' : 'Auf Updates prüfen'}
               </button>
 
@@ -90,6 +81,10 @@ export function FirmwarePage(_: { path?: string }) {
               {st.state === 'error' && <div class="text-sm text-critical">Fehler: {st.error}</div>}
             </div>
           </SettingsCard>
+
+          <SettingsCard title="Automatisch prüfen" desc="Täglich auf neue Releases prüfen"
+            control={<ToggleSwitch checked={st.autoCheck} disabled={busy} onChange={setAuto}
+              title="Automatische Update-Prüfung" />} />
 
           <SettingsCard title="Manueller Upload" desc="Firmware- oder UI-Paket direkt hochladen">
             <div class="space-y-4">
@@ -126,14 +121,22 @@ function ProgressBar({ label, pct }: { label: string; pct: number }) {
 function FileUpload({ label, accept, pct, onPick }: {
   label: string; accept: string; pct: number | null; onPick: (f: File) => void;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState<string | null>(null);
   return (
     <div>
-      <label class="text-sm">{label}</label>
-      <input type="file" accept={accept} class="mt-1 block w-full text-sm"
-        onChange={(e) => {
-          const f = (e.target as HTMLInputElement).files?.[0];
-          if (f) onPick(f);
-        }} />
+      <div class="text-sm font-medium">{label}</div>
+      <div class="mt-1.5 flex items-center gap-3">
+        <button type="button" class={btnSecondary} onClick={() => ref.current?.click()}>
+          Durchsuchen…
+        </button>
+        <span class="min-w-0 truncate text-sm text-muted">{name ?? 'Keine Datei ausgewählt'}</span>
+        <input ref={ref} type="file" accept={accept} class="hidden"
+          onChange={(e) => {
+            const f = (e.target as HTMLInputElement).files?.[0];
+            if (f) { setName(f.name); onPick(f); }
+          }} />
+      </div>
       {pct !== null && <ProgressBar label="Upload" pct={pct} />}
     </div>
   );
