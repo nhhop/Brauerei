@@ -20,7 +20,7 @@ export function SettingsGroup({ title, children }: { title?: string; children: C
 interface CardProps {
   icon?: LucideIcon;
   title?: string;
-  desc?: string;
+  desc?: ComponentChildren;
   href?: string;
   onClick?: () => void;
   control?: ComponentChildren;   // right-aligned control (toggle, dropdown, button…)

@@ -1122,3 +1122,12 @@ WinUI-Muster gebracht:
 **Verifikation:** typecheck + build grün (61,2 kB gzip). Browser: Segmented,
 Toggle-Zeile, gestylte Upload-Buttons — sauber im Win11-Look. („Fehler: check
 failed" = erwartet ohne erreichbares Release, kein Design-Bug.)
+
+**Nachtrag — Controls rechts (auf Nutzer-Mockup):** Bedienelemente in den
+`control`-Slot (rechts) verschoben: „Auf Updates prüfen" in die „Aktuelle
+Version"-Zeile (Version wandert als Mono-`desc` nach links), Segmented rechts in
+die „Server-Update"-Zeile. `SettingsCard.desc` von `string` → `ComponentChildren`
+(für die Mono-Version). Upload-Zeilen: Label + Dateiname links, „Durchsuchen…"
+(`btnSecondary`) rechts — passt platztechnisch (gestapelt, nicht nebeneinander).
+Verifiziert mit gemocktem `/api/update/status` (Gerät lieferte zeitweise HTTP 500
+nach ~20 s — hängender Auto-Check, geräteseitig).

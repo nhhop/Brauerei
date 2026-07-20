@@ -50,19 +50,21 @@ export function FirmwarePage(_: { path?: string }) {
       <div class="mt-6">
         <SettingsGroup>
           <SettingsCard title="Aktuelle Version"
-            control={<span class="font-mono text-sm">{st.currentVersion} · {st.variant}</span>} />
-
-          <SettingsCard title="Server-Update (GitHub)" desc="Kanal wählen und auf neue Releases prüfen">
-            <div class="space-y-3">
-              <Segmented value={channel} disabled={busy}
-                options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
-                onChange={setChannel} />
-
+            desc={<span class="font-mono">{st.currentVersion} · {st.variant}</span>}
+            control={
               <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
                 class={btnSecondary}>
                 {st.state === 'checking' ? 'Prüfe…' : 'Auf Updates prüfen'}
               </button>
+            } />
 
+          <SettingsCard title="Server-Update (GitHub)" desc="Kanal wählen und auf neue Releases prüfen"
+            control={
+              <Segmented value={channel} disabled={busy}
+                options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
+                onChange={setChannel} />
+            }>
+            <div class="space-y-3">
               {st.available && (
                 <div class="rounded-md bg-fg/5 p-3 text-sm">
                   <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
@@ -125,12 +127,14 @@ function FileUpload({ label, accept, pct, onPick }: {
   const [name, setName] = useState<string | null>(null);
   return (
     <div>
-      <div class="text-sm font-medium">{label}</div>
-      <div class="mt-1.5 flex items-center gap-3">
-        <button type="button" class={btnSecondary} onClick={() => ref.current?.click()}>
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-sm font-medium">{label}</div>
+          <div class="truncate text-xs text-muted">{name ?? 'Keine Datei ausgewählt'}</div>
+        </div>
+        <button type="button" class={`shrink-0 ${btnSecondary}`} onClick={() => ref.current?.click()}>
           Durchsuchen…
         </button>
-        <span class="min-w-0 truncate text-sm text-muted">{name ?? 'Keine Datei ausgewählt'}</span>
         <input ref={ref} type="file" accept={accept} class="hidden"
           onChange={(e) => {
             const f = (e.target as HTMLInputElement).files?.[0];
