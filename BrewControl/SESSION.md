@@ -1099,5 +1099,7 @@ hell/dunkel: Karten heben sich über Fläche + Kante + Schatten ab.
 `#000 @3,73%`/`@2,41%`, dunkel `#fff @6,05%`/`@4,19%`; gemappt zu
 `bg-subtle-hover`/`bg-subtle-pressed`. NavShell (Menüpunkte aktiv+hover, Hamburger,
 Mobile-Open) auf `hover:bg-subtle-hover active:bg-subtle-pressed`. Computed-Werte
-treffen die Zielwerte exakt. (Dieselben Tokens könnten später auch SettingsCard-
-/Listen-Zeilen-Hover ersetzen — bewusst noch nicht angefasst.)
+treffen die Zielwerte exakt. `SettingsCard` (interaktive `a`/`button`-Varianten)
+danach ebenfalls von `hover:bg-fg/5` auf die SubtleFill-Tokens umgestellt.
+(Übrige `hover:bg-fg/10`-Stellen sind Buttons/Chips = ControlFill, bewusst nicht
+angefasst.)

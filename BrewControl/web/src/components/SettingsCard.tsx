@@ -54,7 +54,7 @@ export function SettingsCard({ icon: Icon, title, desc, href, onClick, control, 
   );
 
   const base = 'block rounded-md border border-card-border bg-card px-4 py-3 text-left shadow-elev-2';
-  if (href) return <a href={href} class={`${base} transition-colors hover:bg-fg/5`}>{body}</a>;
-  if (onClick) return <button type="button" onClick={onClick} class={`${base} w-full transition-colors hover:bg-fg/5`}>{body}</button>;
+  if (href) return <a href={href} class={`${base} transition-colors hover:bg-subtle-hover active:bg-subtle-pressed`}>{body}</a>;
+  if (onClick) return <button type="button" onClick={onClick} class={`${base} w-full transition-colors hover:bg-subtle-hover active:bg-subtle-pressed`}>{body}</button>;
   return <div class={base}>{body}</div>;
 }
