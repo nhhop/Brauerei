@@ -1130,4 +1130,6 @@ die „Server-Update"-Zeile. `SettingsCard.desc` von `string` → `ComponentChil
 (für die Mono-Version). Upload-Zeilen: Label + Dateiname links, „Durchsuchen…"
 (`btnSecondary`) rechts — passt platztechnisch (gestapelt, nicht nebeneinander).
 Verifiziert mit gemocktem `/api/update/status` (Gerät lieferte zeitweise HTTP 500
-nach ~20 s — hängender Auto-Check, geräteseitig).
+nach ~20 s — hängender Auto-Check, geräteseitig). Danach Header-Icons auf die vier
+Karten (`Package`/`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in der
+lucide-Version nicht mehr → `CloudDownload`).

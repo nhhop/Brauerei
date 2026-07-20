@@ -10,7 +10,7 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary, btnSecondary } from '../ui';
-import { TriangleAlert } from 'lucide-preact';
+import { TriangleAlert, Package, CloudDownload, RefreshCw, Upload } from 'lucide-preact';
 
 export function FirmwarePage(_: { path?: string }) {
   const [st, setSt] = useState<UpdateStatus | null>(null);
@@ -49,7 +49,7 @@ export function FirmwarePage(_: { path?: string }) {
 
       <div class="mt-6">
         <SettingsGroup>
-          <SettingsCard title="Aktuelle Version"
+          <SettingsCard title="Aktuelle Version" icon={Package}
             desc={<span class="font-mono">{st.currentVersion} · {st.variant}</span>}
             control={
               <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
@@ -58,7 +58,7 @@ export function FirmwarePage(_: { path?: string }) {
               </button>
             } />
 
-          <SettingsCard title="Server-Update (GitHub)" desc="Kanal wählen und auf neue Releases prüfen"
+          <SettingsCard title="Server-Update (GitHub)" icon={CloudDownload} desc="Kanal wählen und auf neue Releases prüfen"
             control={
               <Segmented value={channel} disabled={busy}
                 options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
@@ -84,11 +84,11 @@ export function FirmwarePage(_: { path?: string }) {
             </div>
           </SettingsCard>
 
-          <SettingsCard title="Automatisch prüfen" desc="Täglich auf neue Releases prüfen"
+          <SettingsCard title="Automatisch prüfen" icon={RefreshCw} desc="Täglich auf neue Releases prüfen"
             control={<ToggleSwitch checked={st.autoCheck} disabled={busy} onChange={setAuto}
               title="Automatische Update-Prüfung" />} />
 
-          <SettingsCard title="Manueller Upload" desc="Firmware- oder UI-Paket direkt hochladen">
+          <SettingsCard title="Manueller Upload" icon={Upload} desc="Firmware- oder UI-Paket direkt hochladen">
             <div class="space-y-4">
               <FileUpload label="Firmware (.bin)" accept=".bin" pct={fwPct}
                 onPick={(f) => { setFwPct(0); uploadFirmware(f, setFwPct).then(() => setFwPct(100)).catch(() => setFwPct(null)); }} />
