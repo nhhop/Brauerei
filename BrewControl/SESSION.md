@@ -1092,3 +1092,12 @@ Computed-Style-Probe einer Karte trifft die Zielwerte exakt (hell
 `rgba(255,255,255,0.7)` / Rand `rgba(0,0,0,0.06)`; dunkel `rgba(255,255,255,0.05)` /
 Rand `rgba(0,0,0,0.1)` — dunkler als Fläche). Screenshots Dashboard + Settings je
 hell/dunkel: Karten heben sich über Fläche + Kante + Schatten ab.
+
+**Nachtrag — SubtleFill Hover/Pressed:** Nav-Menüpunkte nutzten `hover:bg-fg/5`
+(Näherung, kein Pressed). Ersetzt durch exakte WinUI-`SubtleFillColor`-Tokens
+`--subtle-hover` (Secondary) / `--subtle-pressed` (Tertiary): hell
+`#000 @3,73%`/`@2,41%`, dunkel `#fff @6,05%`/`@4,19%`; gemappt zu
+`bg-subtle-hover`/`bg-subtle-pressed`. NavShell (Menüpunkte aktiv+hover, Hamburger,
+Mobile-Open) auf `hover:bg-subtle-hover active:bg-subtle-pressed`. Computed-Werte
+treffen die Zielwerte exakt. (Dieselben Tokens könnten später auch SettingsCard-
+/Listen-Zeilen-Hover ersetzen — bewusst noch nicht angefasst.)

@@ -46,8 +46,8 @@ export function NavShell({ children }: { children: ComponentChildren }) {
     return (
       <a key={item.href} href={item.href} title={item.label}
         onClick={() => setMobileOpen(false)}
-        class={`relative flex items-center gap-3 rounded px-3 py-2 text-sm transition-colors ${
-          active ? 'bg-fg/5 font-medium text-fg' : 'text-muted hover:bg-fg/5 hover:text-fg'
+        class={`relative flex items-center gap-3 rounded px-3 py-2 text-sm transition-colors active:bg-subtle-pressed ${
+          active ? 'bg-subtle-hover font-medium text-fg' : 'text-muted hover:bg-subtle-hover hover:text-fg'
         }`}>
         {active && (
           <span class="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
@@ -72,7 +72,7 @@ export function NavShell({ children }: { children: ComponentChildren }) {
         <div class="flex flex-col gap-1 p-2">
           <button type="button" onClick={toggle}
             title={expanded ? 'Menü einklappen' : 'Menü ausklappen'}
-            class="flex items-center gap-3 rounded px-3 py-2 text-muted hover:bg-fg/5 hover:text-fg">
+            class="flex items-center gap-3 rounded px-3 py-2 text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
             <Menu size={20} class="shrink-0" />
           </button>
           {mainItems.map(renderItem)}
@@ -84,7 +84,7 @@ export function NavShell({ children }: { children: ComponentChildren }) {
       <main class="min-w-0 flex-1 overflow-y-auto">
         <div class="sticky top-0 z-20 flex h-12 items-center border-b border-border bg-surface-acrylic px-3 backdrop-blur-md md:hidden">
           <button type="button" onClick={() => setMobileOpen(true)} title="Menü öffnen"
-            class="flex h-9 w-9 items-center justify-center rounded-md text-muted hover:bg-fg/5 hover:text-fg">
+            class="flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
             <Menu size={20} />
           </button>
         </div>

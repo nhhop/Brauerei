@@ -18,6 +18,10 @@
   --card-bg:     rgba(255,255,255,0.70);
   --card-border: rgba(0,0,0,0.0578);
 
+  /* WinUI SubtleFillColor — list/nav item hover + pressed (light). */
+  --subtle-hover:   rgba(0,0,0,0.0373);   /* SubtleFillColorSecondary */
+  --subtle-pressed: rgba(0,0,0,0.0241);   /* SubtleFillColorTertiary */
+
   /* Semantic status colors — mirror WinUI SystemFillColor{Success,Caution,
      Critical}. Tuned per theme so text/icons stay legible on --surface; badge
      fills are derived via color-mix in ui.ts (tint over the card surface). */
@@ -38,6 +42,8 @@
   --critical:   #ff99a4;   /* WinUI Critical (dark) */
   --card-bg:     rgba(255,255,255,0.0514);   /* Fluent CardBackground (dark) */
   --card-border: rgba(0,0,0,0.10);           /* Fluent CardStroke (dark) — darker edge */
+  --subtle-hover:   rgba(255,255,255,0.0605);   /* SubtleFillColorSecondary (dark) */
+  --subtle-pressed: rgba(255,255,255,0.0419);   /* SubtleFillColorTertiary (dark) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,6 +59,8 @@
     --critical:   #ff99a4;
     --card-bg:     rgba(255,255,255,0.0514);
     --card-border: rgba(0,0,0,0.10);
+    --subtle-hover:   rgba(255,255,255,0.0605);
+    --subtle-pressed: rgba(255,255,255,0.0419);
   }
 }
 
@@ -91,6 +99,8 @@
   --color-border:     var(--border);
   --color-card:        var(--card-bg);
   --color-card-border: var(--card-border);
+  --color-subtle-hover:   var(--subtle-hover);
+  --color-subtle-pressed: var(--subtle-pressed);
   --color-accent:     var(--accent);
   --color-accent-fg:  var(--accent-fg);
   --color-surface-acrylic: var(--acrylic);
