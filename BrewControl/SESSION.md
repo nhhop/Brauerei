@@ -1203,3 +1203,31 @@ Stolperstein: ein transienter Vite-HMR-Fehler durch einen kurzzeitig unbalancier
 JSX-Tag während der LogsPage-Bearbeitung (vor dem Commit behoben, kein Rest im
 finalen Diff) hatte kurzzeitig einen veralteten Render-State im Tab hinterlassen —
 ein harter Reload hat das aufgelöst; kein tatsächlicher Code-Bug.
+
+## Session 2026-07-25 — Netzwerk-Seite: mDNS-Kartenlayout + Netzwerk-Liste statt Dropdown
+
+Nutzer-Mockup (Screenshot) für die mDNS-Karte + Wunsch nach Listen- statt
+Dropdown-Auswahl für „WLAN wechseln".
+
+**mDNS-Karte** ([NetworkPage.tsx](web/src/pages/NetworkPage.tsx)): Titel
+„Hostname" → „mDNS", neue `desc` „Name vergeben, unter dem das Gerät gefunden
+werden kann". Input+„.local"+„Speichern" nicht mehr im `control`-Slot der
+Kopfzeile, sondern als volle Zeile im Body (`justify-between`: Input+Suffix
+links, Button rechts) — mehr Platz, matcht das Mockup exakt.
+
+**WLAN wechseln — Liste statt Dropdown:** `<select>` ersetzt durch anklickbare
+Zeilen (`SignalBars` + SSID links, Status rechts). State umgebaut: `selSsid`/
+`manual` (boolean) → einheitliches `expanded: string | null` (SSID der
+aufgeklappten Zeile, oder Sentinel `'manual'` für die freie Eingabe — nur eine
+Zeile gleichzeitig aufgeklappt). Klick auf eine Zeile klappt darunter Passwort-
+Feld + „Verbinden"-Button auf (`selectNet`, toggelt beim erneuten Klick zu).
+Status pro Zeile: `text-success` „Verbunden" wenn `status.ssid === n.ssid`,
+sonst „Offen" (`n.open`) oder „Gesichert" — Farben/Text exakt wie vom Nutzer
+vorgegeben. „Netzwerk manuell eingeben" bleibt als Fallback-Link unten in der
+Liste (Scan-Fehler klappt es automatisch auf, wie zuvor).
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (186,6 kB JS / 62,7 kB
+gzip). Browser gegen echten ESP32: Scan liefert echte Netzwerke (FRITZ!Box 7490
+als „Verbunden" in Akzent-Grün, o2-WLAN-AB40 als „Gesichert"), Klick klappt
+Passwort+Verbinden korrekt auf, „Netzwerk manuell eingeben" klappt die vorherige
+Zeile ein und zeigt SSID+Passwort+Verbinden — hell und dunkel geprüft.
