@@ -1231,3 +1231,20 @@ gzip). Browser gegen echten ESP32: Scan liefert echte Netzwerke (FRITZ!Box 7490
 als „Verbunden" in Akzent-Grün, o2-WLAN-AB40 als „Gesichert"), Klick klappt
 Passwort+Verbinden korrekt auf, „Netzwerk manuell eingeben" klappt die vorherige
 Zeile ein und zeigt SSID+Passwort+Verbinden — hell und dunkel geprüft.
+
+**Nachtrag — Feinschliff Netzwerk-Liste (Nutzerfeedback):**
+- Verbundenes Netz zeigt kein Passwortfeld/Verbinden-Button mehr (Klick
+  highlightet die Zeile weiterhin, aber `{isExpanded && !isConnected && …}`).
+- Highlight (`bg-subtle-pressed`) liegt jetzt auf dem äußeren Zeilen-Container
+  statt nur auf dem Button — Passwortfeld + Verbinden-Button sitzen dadurch
+  sichtbar *innerhalb* derselben hervorgehobenen Box wie die Zeile.
+- Status („Verbunden"/„Offen"/„Gesichert") von rechts neben der SSID nach
+  darunter verschoben, `text-xs` (Verbunden zusätzlich `text-success`) —
+  gleiches Muster wie `SettingsCard.desc`.
+- Farbiger Indikator links an der ausgewählten Zeile (Akzent-Pill,
+  `absolute left-0 h-4 w-[3px] rounded-full bg-accent`) — identisches Muster
+  zum Nav-Aktiv-Eintrag in [NavShell.tsx](web/src/components/NavShell.tsx).
+
+Verifiziert gegen echtes Gerät: FRITZ!Box-Zeile (verbunden) zeigt Pill + „Verbunden"
+ohne Formularfelder; Klick auf o2-WLAN-AB40 klappt Passwort+Verbinden innerhalb
+der hervorgehobenen Box auf, vorherige Zeile klappt korrekt ein — hell und dunkel.

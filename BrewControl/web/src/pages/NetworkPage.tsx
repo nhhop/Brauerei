@@ -226,21 +226,25 @@ export function NetworkPage(_: { path?: string }) {
                 const isConnected = status?.connected && status.ssid === n.ssid;
                 const isExpanded = expanded === n.ssid;
                 return (
-                  <div key={n.ssid}>
+                  <div key={n.ssid}
+                    class={`relative overflow-hidden rounded-md transition-colors ${
+                      isExpanded ? 'bg-subtle-pressed' : 'hover:bg-subtle-hover active:bg-subtle-pressed'
+                    }`}>
+                    {isExpanded && (
+                      <span class="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
+                    )}
                     <button type="button" onClick={() => selectNet(n.ssid)}
-                      class={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                        isExpanded ? 'bg-subtle-pressed' : 'hover:bg-subtle-hover active:bg-subtle-pressed'
-                      }`}>
-                      <span class="flex min-w-0 items-center gap-2">
-                        <SignalBars rssi={n.rssi} />
-                        <span class="truncate font-medium">{n.ssid}</span>
-                      </span>
-                      <span class={`shrink-0 text-xs ${isConnected ? 'text-success' : 'text-muted'}`}>
-                        {isConnected ? 'Verbunden' : n.open ? 'Offen' : 'Gesichert'}
+                      class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm">
+                      <SignalBars rssi={n.rssi} />
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate font-medium">{n.ssid}</span>
+                        <span class={`block text-xs ${isConnected ? 'text-success' : 'text-muted'}`}>
+                          {isConnected ? 'Verbunden' : n.open ? 'Offen' : 'Gesichert'}
+                        </span>
                       </span>
                     </button>
-                    {isExpanded && (
-                      <div class="flex items-center gap-2 px-3 pb-2 pt-1">
+                    {isExpanded && !isConnected && (
+                      <div class="flex items-center gap-2 px-3 pb-2">
                         <input type="password" value={password} title="Passwort"
                           placeholder={n.open ? 'Kein Passwort nötig' : 'WLAN-Passwort'}
                           autoComplete="off"
