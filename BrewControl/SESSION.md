@@ -1130,6 +1130,15 @@ die „Server-Update"-Zeile. `SettingsCard.desc` von `string` → `ComponentChil
 (für die Mono-Version). Upload-Zeilen: Label + Dateiname links, „Durchsuchen…"
 (`btnSecondary`) rechts — passt platztechnisch (gestapelt, nicht nebeneinander).
 Verifiziert mit gemocktem `/api/update/status` (Gerät lieferte zeitweise HTTP 500
-nach ~20 s — hängender Auto-Check, geräteseitig). Danach Header-Icons auf die vier
+nach ~20 s — hängender Auto-Check, geräteseitig).
+
+**Nachtrag — Icons + leerer-Children-Bug:** `SettingsCard.icon` gesetzt (`Package`/
+`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in `lucide-preact` nicht
+mehr, daher `CloudDownload`). Dabei aufgefallen: die Server-Update-Karte hatte
+sichtbar mehr Bottom-Padding als die anderen — Ursache war, dass `children` in
+`SettingsCard` immer als (leeres) `<div class="space-y-3">` durchgereicht wurde,
+auch ohne Fehler/Fortschritt/verfügbares Update → `{children && <div class="mt-3">}`
+wrappte trotzdem. Fix: die `space-y-3`-Div nur rendern, wenn tatsächlich Inhalt da
+ist (`st.available || downloading/flashing || error`). Danach Header-Icons auf die vier
 Karten (`Package`/`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in der
 lucide-Version nicht mehr → `CloudDownload`).

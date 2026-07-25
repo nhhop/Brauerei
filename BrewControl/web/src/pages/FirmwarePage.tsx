@@ -64,24 +64,26 @@ export function FirmwarePage(_: { path?: string }) {
                 options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
                 onChange={setChannel} />
             }>
-            <div class="space-y-3">
-              {st.available && (
-                <div class="rounded-md bg-fg/5 p-3 text-sm">
-                  <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
-                  {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
-                  {st.state === 'updateAvailable' && (
-                    <button onClick={() => setConfirmInstall(true)} class={`mt-2 ${btnPrimary}`}>
-                      Installieren
-                    </button>
-                  )}
-                </div>
-              )}
+            {(st.available || st.state === 'downloading' || st.state === 'flashing' || st.state === 'error') && (
+              <div class="space-y-3">
+                {st.available && (
+                  <div class="rounded-md bg-fg/5 p-3 text-sm">
+                    <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
+                    {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
+                    {st.state === 'updateAvailable' && (
+                      <button onClick={() => setConfirmInstall(true)} class={`mt-2 ${btnPrimary}`}>
+                        Installieren
+                      </button>
+                    )}
+                  </div>
+                )}
 
-              {(st.state === 'downloading' || st.state === 'flashing') && (
-                <ProgressBar label={st.state === 'downloading' ? 'Lade…' : 'Flashe…'} pct={st.progress} />
-              )}
-              {st.state === 'error' && <div class="text-sm text-critical">Fehler: {st.error}</div>}
-            </div>
+                {(st.state === 'downloading' || st.state === 'flashing') && (
+                  <ProgressBar label={st.state === 'downloading' ? 'Lade…' : 'Flashe…'} pct={st.progress} />
+                )}
+                {st.state === 'error' && <div class="text-sm text-critical">Fehler: {st.error}</div>}
+              </div>
+            )}
           </SettingsCard>
 
           <SettingsCard title="Automatisch prüfen" icon={RefreshCw} desc="Täglich auf neue Releases prüfen"
