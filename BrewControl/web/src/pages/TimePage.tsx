@@ -5,7 +5,9 @@ import { getSettings, updateSettings } from '../api';
 import { formatTime, formatDate } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
+import { Segmented } from '../components/Segmented';
 import { inp } from '../ui';
+import { Globe, Server, Clock, CalendarDays } from 'lucide-preact';
 
 interface TzEntry {
   label: string;
@@ -101,69 +103,53 @@ export function TimePage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Zeit & Formate' }]} />
       </header>
 
-      <div class="mt-4 mb-4 rounded-md border border-card-border bg-card px-4 py-3 shadow-elev-2">
-        <div class="text-2xl font-mono font-medium tabular-nums">{formatTime(now, settings)}</div>
-        <div class="text-xs text-muted">{formatDate(now, settings)}</div>
+      <div class="mt-4 mb-6 px-1">
+        <div class="text-5xl font-mono font-medium tabular-nums">{formatTime(now, settings)}</div>
+        <div class="mt-1 text-sm text-muted">{formatDate(now, settings)}</div>
       </div>
 
       <SettingsGroup>
-        <SettingsCard title="Zeitzone" desc="Für Anzeige und NTP-Synchronisation">
-          <div class="space-y-1">
+        <SettingsCard title="Zeitzone" icon={Globe}
+          desc={
+            <>UTC{settings.utcOffsetSec >= 0 ? '+' : ''}{settings.utcOffsetSec / 3600}
+              {settings.dstOffsetSec > 0 ? `, Sommerzeit +${settings.dstOffsetSec / 3600}h` : ''}</>
+          }
+          control={
             <select
               value={tzIdx >= 0 ? tzIdx : ''}
               onChange={(e) => onTzChange(Number((e.target as HTMLSelectElement).value))}
-              class={inp}
+              class={`${inp} w-56`}
             >
               {tzIdx < 0 && <option value="">— Benutzerdefiniert —</option>}
               {TIMEZONES.map((tz, i) => (
                 <option key={i} value={i}>{tz.label}</option>
               ))}
             </select>
-            <div class="text-xs text-faint">
-              UTC{settings.utcOffsetSec >= 0 ? '+' : ''}{settings.utcOffsetSec / 3600}
-              {settings.dstOffsetSec > 0 ? `, Sommerzeit +${settings.dstOffsetSec / 3600}h` : ''}
-            </div>
-          </div>
-        </SettingsCard>
-
-        <SettingsCard title="Zeitformat"
-          control={
-            <div class="inline-flex overflow-hidden rounded-md border border-border text-sm">
-              {(['24h', '12h'] as const).map((f) => (
-                <button key={f} type="button"
-                  class={`px-4 py-1.5 transition-colors ${
-                    settings.timeFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                  }`}
-                  onClick={() => update({ timeFormat: f })}>
-                  {f === '24h' ? '24 Stunden' : '12 Stunden'}
-                </button>
-              ))}
-            </div>
           } />
 
-        <SettingsCard title="Datumsformat"
+        <SettingsCard title="Zeitformat" icon={Clock}
           control={
-            <div class="inline-flex overflow-hidden rounded-md border border-border text-sm">
-              {(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] as const).map((f) => (
-                <button key={f} type="button"
-                  class={`px-4 py-1.5 transition-colors ${
-                    settings.dateFormat === f ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                  }`}
-                  onClick={() => update({ dateFormat: f })}>
-                  {f}
-                </button>
-              ))}
-            </div>
+            <Segmented value={settings.timeFormat}
+              options={[{ value: '24h', label: '24 Stunden' }, { value: '12h', label: '12 Stunden' }]}
+              onChange={(f) => update({ timeFormat: f })} />
           } />
 
-        <SettingsCard title="NTP-Server" desc="Standard: pool.ntp.org">
-          <input
-            type="text"
-            value={settings.ntpServer}
-            onBlur={(e) => update({ ntpServer: (e.target as HTMLInputElement).value.trim() || 'pool.ntp.org' })}
-            class={inp}
-          />
-        </SettingsCard>
+        <SettingsCard title="Datumsformat" icon={CalendarDays}
+          control={
+            <Segmented value={settings.dateFormat}
+              options={(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] as const).map((f) => ({ value: f, label: f }))}
+              onChange={(f) => update({ dateFormat: f })} />
+          } />
+
+        <SettingsCard title="NTP-Server" icon={Server} desc="Standard: pool.ntp.org"
+          control={
+            <input
+              type="text"
+              value={settings.ntpServer}
+              onBlur={(e) => update({ ntpServer: (e.target as HTMLInputElement).value.trim() || 'pool.ntp.org' })}
+              class={`${inp} w-48`}
+            />
+          } />
       </SettingsGroup>
     </div>
   );

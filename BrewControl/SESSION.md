@@ -1142,3 +1142,64 @@ wrappte trotzdem. Fix: die `space-y-3`-Div nur rendern, wenn tatsächlich Inhalt
 ist (`st.available || downloading/flashing || error`). Danach Header-Icons auf die vier
 Karten (`Package`/`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in der
 lucide-Version nicht mehr → `CloudDownload`).
+
+## Session 2026-07-25 — WinUI-3-Politur Teil 5: Icons + Control-Positionen auf allen Settings-Seiten, TimePage-Uhr
+
+Fortsetzung des Firmware-Musters auf die restlichen 6 Settings-Unterseiten
+(Darstellung, Geräte, Backup, Zeit, Netzwerk, Logs) + Settings-Index bereits
+vorher icon-versehen.
+
+**Icons** (`SettingsCard.icon` bzw. neues `icon`-Prop an `DeviceRow`/Log-Zeile):
+- Darstellung: `Contrast` (Modus), `Palette` (Akzentfarbe), `PaintBucket`
+  (Hintergrund-Tönung).
+- Geräte: `DeviceRow` bekommt ein Pflicht-`icon`-Prop, pro Rolle vom Aufrufer
+  gesetzt — `Gauge` (Sensor), `SlidersHorizontal` (Regler), `Zap` (Aktor).
+- Backup: `Download` (Export), `Upload` (Restore).
+- Zeit: `Globe` (Zeitzone), `Clock` (Zeitformat), `CalendarDays` (Datumsformat),
+  `Server` (NTP-Server).
+- Netzwerk: `Signal` (Status), `Wifi` (WLAN wechseln), `Tag` (Hostname),
+  `RotateCcw` (WLAN zurücksetzen).
+- Logs: `LineChart` vor dem Lognamen in jeder Log-Zeile (kein `SettingsCard`,
+  eigenes Listen-Layout).
+
+**Controls nach rechts** (analog Firmware-Seite — Aktion/Eingabe in den
+`control`-Slot, Beschreibungstext bleibt links):
+- Netzwerk „WLAN wechseln": „Netzwerke suchen"-Button in `control`; Dropdown/
+  Passwort/Verbinden bleiben als (jetzt korrekt geleerte) `children` darunter —
+  Bug aus dem Firmware-Nachtrag (leere Children erzeugen trotzdem `mt-3`-Gap)
+  hier direkt mit Guard vermieden (`{(scanErr || nets.length > 0 || manual) && …}`).
+- Netzwerk „Hostname": Input + „.local" + „Speichern"-Button jetzt als eine Zeile
+  in `control`; Validierungsfehler bleibt als (geguardete) `children`.
+- Netzwerk „WLAN zurücksetzen": Button in `control`, `desc` bleibt links.
+- Zeit „Zeitzone": Dropdown in `control`, UTC-Offset-Hinweis wandert nach `desc`.
+- Zeit „NTP-Server": Input (schmaler, `w-48`) in `control`.
+- Backup „Restore": nackter `<input type=file>` → verstecktes Input + `control`-
+  Button „Durchsuchen…" (gleiches Pattern wie Firmware-`FileUpload`, hier ohne
+  Progress-Bar da Restore über den `ConfirmModal`-Flow läuft, kein Direct-Upload).
+
+**Segmented-Migration:** Die inline nachgebauten Segmented-Controls in Darstellung
+(Modus, Hintergrund-Tönung) und Zeit (Zeitformat, Datumsformat) liefen noch auf
+dem alten Pattern (`hover:text-fg` ohne SubtleFill, keine Pressed-States) —
+jetzt auf die geteilte [Segmented.tsx](web/src/components/Segmented.tsx)
+umgestellt (aus der Firmware-Session). Weniger Code, einheitliches Hover/Pressed.
+
+**TimePage — Uhrzeit-Anzeige (Nutzerwunsch):** Box (`border`/`bg-card`/
+`shadow-elev-2`) um die große Uhrzeit entfernt (`px-1`-Padding statt Card);
+Schriftgröße `text-2xl` → `text-5xl`. Datum bleibt als `text-sm text-muted`
+darunter.
+
+**Nachtrag — SettingsCard.desc erweitert:** Prop-Typ von `string` → `ComponentChildren`
+(bereits in der Firmware-Session gemacht, hier für die Zeitzone-Karte
+wiederverwendet — UTC-Offset-Text mit interpolierten Werten statt reinem String).
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (185,7 kB JS / 62,5 kB gzip,
+kein nennenswerter Sprung). Browser gegen echten ESP32 (`brewcontrol.local`):
+alle 7 Unterseiten hell/dunkel durchgeklickt (Screenshots funktionieren jetzt
+zuverlässig — Timeout-Problem aus den Vorsessions trat nicht mehr auf, sobald
+der Browser vorher schon offen war, wie vom Nutzer vermutet). Netzwerk-Scan
+end-to-end gegen die echte Fritzbox getestet (5 Netzwerke gefunden, Dropdown +
+Passwort-Feld + Verbinden-Button rendern korrekt nach dem Öffnen). Einziger
+Stolperstein: ein transienter Vite-HMR-Fehler durch einen kurzzeitig unbalancierten
+JSX-Tag während der LogsPage-Bearbeitung (vor dem Commit behoben, kein Rest im
+finalen Diff) hatte kurzzeitig einen veralteten Render-State im Tab hinterlassen —
+ein harter Reload hat das aufgelöst; kein tatsächlicher Code-Bug.

@@ -5,6 +5,8 @@ import { getSettings, updateSettings } from '../api';
 import { applyTheme } from '../theme';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
+import { Segmented } from '../components/Segmented';
+import { Contrast, Palette, PaintBucket } from 'lucide-preact';
 
 const ACCENT_PRESETS: { label: string; value: string }[] = [
   { label: 'Windows-Blau', value: '#0078d4' },
@@ -51,22 +53,14 @@ export function AppearancePage(_: { path?: string }) {
       </header>
 
       <SettingsGroup>
-        <SettingsCard title="Modus" desc="Hell, dunkel oder dem System folgen"
+        <SettingsCard title="Modus" icon={Contrast} desc="Hell, dunkel oder dem System folgen"
           control={
-            <div class="inline-flex overflow-hidden rounded-md border border-border text-sm">
-              {(['light', 'dark', 'system'] as const).map((m) => (
-                <button key={m} type="button"
-                  class={`px-4 py-1.5 transition-colors ${
-                    settings.mode === m ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                  }`}
-                  onClick={() => update({ mode: m })}>
-                  {m === 'light' ? 'Hell' : m === 'dark' ? 'Dunkel' : 'System'}
-                </button>
-              ))}
-            </div>
+            <Segmented value={settings.mode}
+              options={[{ value: 'light', label: 'Hell' }, { value: 'dark', label: 'Dunkel' }, { value: 'system', label: 'System' }]}
+              onChange={(m) => update({ mode: m })} />
           } />
 
-        <SettingsCard title="Akzentfarbe" desc="Steuerfarbe für Buttons, Schalter und Auswahl"
+        <SettingsCard title="Akzentfarbe" icon={Palette} desc="Steuerfarbe für Buttons, Schalter und Auswahl"
           control={
             <div class="flex flex-wrap items-center gap-2">
               {ACCENT_PRESETS.map((p) => (
@@ -85,19 +79,11 @@ export function AppearancePage(_: { path?: string }) {
             </div>
           } />
 
-        <SettingsCard title="Hintergrund-Tönung" desc="Neutral oder leicht warm/kalt getönt"
+        <SettingsCard title="Hintergrund-Tönung" icon={PaintBucket} desc="Neutral oder leicht warm/kalt getönt"
           control={
-            <div class="inline-flex overflow-hidden rounded-md border border-border text-sm">
-              {(['neutral', 'warm', 'cool'] as const).map((b) => (
-                <button key={b} type="button"
-                  class={`px-4 py-1.5 transition-colors ${
-                    settings.background === b ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg'
-                  }`}
-                  onClick={() => update({ background: b })}>
-                  {b === 'neutral' ? 'Neutral' : b === 'warm' ? 'Warm' : 'Kalt'}
-                </button>
-              ))}
-            </div>
+            <Segmented value={settings.background}
+              options={[{ value: 'neutral', label: 'Neutral' }, { value: 'warm', label: 'Warm' }, { value: 'cool', label: 'Kalt' }]}
+              onChange={(b) => update({ background: b })} />
           } />
       </SettingsGroup>
     </div>

@@ -7,7 +7,7 @@ import { AddItemModal } from '../components/AddItemModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup } from '../components/SettingsCard';
 import { btnPrimary } from '../ui';
-import { Pencil, X } from 'lucide-preact';
+import { Pencil, X, Gauge, SlidersHorizontal, Zap, type LucideIcon } from 'lucide-preact';
 
 type Role = 'sensor' | 'actuator' | 'controller';
 
@@ -66,7 +66,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
             {sensors.map((s) => {
               const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
               return (
-                <DeviceRow key={base} label={base} badge={s.meta.quantity}
+                <DeviceRow key={base} label={base} badge={s.meta.quantity} icon={Gauge}
                   onEdit={() => startEdit('sensor', base)}
                   onDelete={() => setDeleteTarget({ role: 'sensor', id: base })} />
               );
@@ -77,7 +77,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
         {snap && snap.controllers.length > 0 && (
           <SettingsGroup title="Regler">
             {snap.controllers.map((c) => (
-              <DeviceRow key={c.id} label={c.id}
+              <DeviceRow key={c.id} label={c.id} icon={SlidersHorizontal}
                 badge={c.params?.sensor && c.params?.actuator
                   ? `${c.params.sensor} → ${c.params.actuator}`
                   : undefined}
@@ -90,7 +90,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
         {snap && snap.actuators.length > 0 && (
           <SettingsGroup title="Aktoren">
             {snap.actuators.map((a) => (
-              <DeviceRow key={a.id} label={a.id} badge={a.meta.kind}
+              <DeviceRow key={a.id} label={a.id} badge={a.meta.kind} icon={Zap}
                 onEdit={() => startEdit('actuator', a.id)}
                 onDelete={() => setDeleteTarget({ role: 'actuator', id: a.id })} />
             ))}
@@ -115,12 +115,13 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
   );
 }
 
-function DeviceRow({ label, badge, onEdit, onDelete }: {
-  label: string; badge?: string; onEdit: () => void; onDelete: () => void;
+function DeviceRow({ label, badge, icon: Icon, onEdit, onDelete }: {
+  label: string; badge?: string; icon: LucideIcon; onEdit: () => void; onDelete: () => void;
 }) {
   return (
     <div class="flex items-center justify-between gap-3 rounded-md border border-card-border bg-card px-4 py-3 shadow-elev-2">
-      <div class="flex min-w-0 items-center gap-2">
+      <div class="flex min-w-0 items-center gap-3">
+        <Icon size={20} class="shrink-0 text-muted" />
         <span class="truncate font-medium">{label}</span>
         {badge && (
           <span class="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-xs text-muted">{badge}</span>

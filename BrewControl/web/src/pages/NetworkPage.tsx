@@ -6,7 +6,8 @@ import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '..
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
-import { btnPrimary, inp } from '../ui';
+import { btnPrimary, btnSecondary, inp } from '../ui';
+import { Signal, Wifi, Tag, RotateCcw } from 'lucide-preact';
 
 // Coarse signal-strength bucket from RSSI (dBm) for a 0–4 bar display.
 function signalBars(rssi: number): number {
@@ -181,7 +182,7 @@ export function NetworkPage(_: { path?: string }) {
 
       <SettingsGroup>
         {/* ── Status ─────────────────────────────────────────────────── */}
-        <SettingsCard title="Status">
+        <SettingsCard title="Status" icon={Signal}>
           {status?.connected ? (
             <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
               <dt class="text-muted">Netzwerk</dt>
@@ -201,83 +202,87 @@ export function NetworkPage(_: { path?: string }) {
         </SettingsCard>
 
         {/* ── WLAN wechseln ──────────────────────────────────────────── */}
-        <SettingsCard title="WLAN wechseln">
-          <div class="space-y-3">
-            <button type="button" onClick={doScan} disabled={scanning}
-              class="rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/5 disabled:opacity-50">
+        <SettingsCard title="WLAN wechseln" icon={Wifi}
+          control={
+            <button type="button" onClick={doScan} disabled={scanning} class={btnSecondary}>
               {scanning ? 'Suche…' : 'Netzwerke suchen'}
             </button>
-            {scanErr && <p class="text-sm text-critical">{scanErr}</p>}
-            {(nets.length > 0 || manual) && (
-              <>
-                <div>
-                  <div class="mb-1 text-xs text-muted">Netzwerk</div>
-                  {manual ? (
-                    <input type="text" value={selSsid} title="SSID" placeholder="Netzwerkname (SSID)"
-                      autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
-                      onInput={(e) => setSelSsid((e.target as HTMLInputElement).value)}
+          }>
+          {(scanErr || nets.length > 0 || manual) && (
+            <div class="space-y-3">
+              {scanErr && <p class="text-sm text-critical">{scanErr}</p>}
+              {(nets.length > 0 || manual) && (
+                <>
+                  <div>
+                    <div class="mb-1 text-xs text-muted">Netzwerk</div>
+                    {manual ? (
+                      <input type="text" value={selSsid} title="SSID" placeholder="Netzwerkname (SSID)"
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
+                        onInput={(e) => setSelSsid((e.target as HTMLInputElement).value)}
+                        class={inp} />
+                    ) : (
+                      <select value={selSsid} title="Netzwerk"
+                        onChange={(e) => setSelSsid((e.target as HTMLSelectElement).value)}
+                        class={inp}>
+                        {nets.map((n) => (
+                          <option key={n.ssid} value={n.ssid}>
+                            {n.ssid} ({n.rssi} dBm){n.open ? ' · offen' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <button type="button"
+                      onClick={() => { setManual((m) => !m); setSelSsid(''); }}
+                      class="mt-1 text-xs text-faint underline hover:text-fg">
+                      {manual ? 'Aus Liste wählen' : 'Netzwerk manuell eingeben'}
+                    </button>
+                  </div>
+                  <div>
+                    <div class="mb-1 text-xs text-muted">Passwort</div>
+                    <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
+                      autoComplete="off"
+                      onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                       class={inp} />
-                  ) : (
-                    <select value={selSsid} title="Netzwerk"
-                      onChange={(e) => setSelSsid((e.target as HTMLSelectElement).value)}
-                      class={inp}>
-                      {nets.map((n) => (
-                        <option key={n.ssid} value={n.ssid}>
-                          {n.ssid} ({n.rssi} dBm){n.open ? ' · offen' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <button type="button"
-                    onClick={() => { setManual((m) => !m); setSelSsid(''); }}
-                    class="mt-1 text-xs text-faint underline hover:text-fg">
-                    {manual ? 'Aus Liste wählen' : 'Netzwerk manuell eingeben'}
+                  </div>
+                  <button type="button" onClick={() => setSwitchOpen(true)} disabled={!ssid.trim()}
+                    class={btnPrimary}>
+                    Verbinden
                   </button>
-                </div>
-                <div>
-                  <div class="mb-1 text-xs text-muted">Passwort</div>
-                  <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
-                    autoComplete="off"
-                    onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                    class={inp} />
-                </div>
-                <button type="button" onClick={() => setSwitchOpen(true)} disabled={!ssid.trim()}
-                  class={btnPrimary}>
-                  Verbinden
-                </button>
-              </>
-            )}
-          </div>
+                </>
+              )}
+            </div>
+          )}
         </SettingsCard>
 
         {/* ── Hostname ───────────────────────────────────────────────── */}
-        <SettingsCard title="Hostname">
-          <div class="space-y-2">
+        <SettingsCard title="Hostname" icon={Tag}
+          control={
             <div class="flex items-center gap-2">
               <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
                 onInput={(e) => setHost((e.target as HTMLInputElement).value)}
-                class={`${inp} font-mono`} />
+                class={`${inp} w-40 font-mono`} />
               <span class="shrink-0 font-mono text-sm text-faint">.local</span>
+              <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
+                class={btnPrimary}>
+                Speichern
+              </button>
             </div>
-            {!hostValid && host.length > 0 && (
-              <p class="text-xs text-critical">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
-            )}
-            <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
-              class={btnPrimary}>
-              Speichern
-            </button>
-          </div>
+          }>
+          {!hostValid && host.length > 0 && (
+            <p class="text-xs text-critical">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
+          )}
         </SettingsCard>
 
         {/* ── Zurücksetzen ───────────────────────────────────────────── */}
-        <SettingsCard title="WLAN zurücksetzen"
-          desc="Löscht die gespeicherten Zugangsdaten und startet das Gerät in den Setup-Modus.">
-          <button type="button" onClick={() => setResetOpen(true)}
-            class="rounded-md border border-critical/40 px-3 py-1.5 text-sm font-medium text-critical hover:bg-critical/10">
-            WLAN zurücksetzen
-          </button>
-        </SettingsCard>
+        <SettingsCard title="WLAN zurücksetzen" icon={RotateCcw}
+          desc="Löscht die gespeicherten Zugangsdaten und startet das Gerät in den Setup-Modus."
+          control={
+            <button type="button" onClick={() => setResetOpen(true)}
+              class="rounded-md border border-critical/40 px-3 py-1.5 text-sm font-medium text-critical hover:bg-critical/10">
+              WLAN zurücksetzen
+            </button>
+          } />
       </SettingsGroup>
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}

@@ -4,7 +4,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnSecondary } from '../ui';
-import { TriangleAlert } from 'lucide-preact';
+import { TriangleAlert, Download, Upload } from 'lucide-preact';
 
 export function BackupPage(_: { path?: string }) {
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function BackupPage(_: { path?: string }) {
 
       <div class="mt-6">
         <SettingsGroup>
-          <SettingsCard title="Export"
+          <SettingsCard title="Export" icon={Download}
             desc="Lädt die gesamte Konfiguration (Geräte, Dashboards, Einstellungen) als JSON-Datei herunter."
             control={
               <button onClick={() => downloadBackup().catch((e) => setError(String(e)))}
@@ -61,13 +61,18 @@ export function BackupPage(_: { path?: string }) {
               </button>
             } />
 
-          <SettingsCard title="Restore" desc="Konfiguration aus einer Backup-Datei wiederherstellen.">
+          <SettingsCard title="Restore" icon={Upload} desc="Konfiguration aus einer Backup-Datei wiederherstellen."
+            control={
+              <button type="button" class={btnSecondary} onClick={() => fileRef.current?.click()}>
+                Durchsuchen…
+              </button>
+            }>
             <div class="space-y-2">
               <div class="flex items-center gap-2 rounded-md border border-caution/40 bg-[color-mix(in_srgb,var(--caution)_12%,transparent)] px-3 py-2 text-sm text-caution">
                 <TriangleAlert size={16} class="shrink-0" /> Überschreibt die komplette Konfiguration und startet das Gerät neu.
               </div>
               <input type="file" accept=".json,application/json" ref={fileRef}
-                class="block w-full text-sm"
+                class="hidden"
                 onChange={(e) => {
                   const f = (e.currentTarget as HTMLInputElement).files?.[0];
                   if (f) setPendingFile(f);

@@ -9,7 +9,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary } from '../ui';
-import { Pencil, Trash2 } from 'lucide-preact';
+import { Pencil, Trash2, LineChart } from 'lucide-preact';
 
 export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [logs, setLogs] = useState<LogConfig[]>([]);
@@ -76,11 +76,14 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
           {logs.map((log) => (
             <div key={log.id} class="rounded-md border border-card-border bg-card p-4 shadow-elev-2">
               <div class="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <div class="font-medium">{log.name}</div>
-                  <div class="text-xs text-muted">
-                    {log.intervalSec}s · {log.series.length} Serie{log.series.length === 1 ? '' : 'n'}
-                    {log.algo !== 'none' && ` · ${log.algo === 'swingingdoor' ? 'Swinging Door' : 'Linear'}`}
+                <div class="flex items-start gap-2.5">
+                  <LineChart size={20} class="mt-0.5 shrink-0 text-muted" />
+                  <div>
+                    <div class="font-medium">{log.name}</div>
+                    <div class="text-xs text-muted">
+                      {log.intervalSec}s · {log.series.length} Serie{log.series.length === 1 ? '' : 'n'}
+                      {log.algo !== 'none' && ` · ${log.algo === 'swingingdoor' ? 'Swinging Door' : 'Linear'}`}
+                    </div>
                   </div>
                 </div>
                 <div class="flex shrink-0 items-center gap-2 text-xs">
