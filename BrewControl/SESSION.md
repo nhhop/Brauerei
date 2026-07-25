@@ -1258,3 +1258,12 @@ jetzt exakt auf gleicher X-Position wie das `Wifi`-Icon der Kartenüberschrift
 über die ganze (bei Passwort-Eingabe höhere) Box zu mitteln. Manual-Entry-Block
 verlor sein Extra-`px-3` (war nur nötig, um mit dem alten Zeilen-Offset zu
 fluchten; jetzt erbt er direkt die Card-Einrückung).
+
+**Nachtrag 3 — Highlight als „floating chip" (Nutzer-Referenzbild, Windows-11-
+Settings-WLAN-Liste):** `-mx-4`/`px-4` → `-mx-2`/`px-2` — Icon bleibt exakt auf
+der Header-Flucht (33px, per `getBoundingClientRect` erneut bestätigt), aber die
+Highlight-Box bekommt jetzt ~9px sichtbaren Abstand zum Kartenrand (gemessen)
++ `rounded-md` (6px) statt kantenbündig. `space-y-1` zwischen den Zeilen für
+kleinen vertikalen Abstand. Indikator `h-6 w-[3px]` → `h-8 w-1` (32×4px, größer,
+bleibt vertikal zentriert auf der Kopfzeile). Verifiziert per Computed-Style-
+Messung (Box-Rect vs. Card-Rect) und Screenshot hell/dunkel gegen echtes Gerät.

@@ -222,19 +222,19 @@ export function NetworkPage(_: { path?: string }) {
             <div class="space-y-1">
               {scanErr && <p class="mb-2 text-sm text-critical">{scanErr}</p>}
 
-              <div class="-mx-4">
+              <div class="-mx-2 space-y-1">
                 {nets.map((n) => {
                   const isConnected = status?.connected && status.ssid === n.ssid;
                   const isExpanded = expanded === n.ssid;
                   return (
                     <div key={n.ssid}
-                      class={`transition-colors ${
+                      class={`rounded-md transition-colors ${
                         isExpanded ? 'bg-subtle-pressed' : 'hover:bg-subtle-hover active:bg-subtle-pressed'
                       }`}>
                       <button type="button" onClick={() => selectNet(n.ssid)}
-                        class="relative flex w-full items-center gap-3 px-4 py-2 text-left text-sm">
+                        class="relative flex w-full items-center gap-3 px-2 py-2 text-left text-sm">
                         {isExpanded && (
-                          <span class="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
+                          <span class="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-accent" />
                         )}
                         <SignalBars rssi={n.rssi} />
                         <span class="min-w-0 flex-1">
@@ -245,7 +245,7 @@ export function NetworkPage(_: { path?: string }) {
                         </span>
                       </button>
                       {isExpanded && !isConnected && (
-                        <div class="flex items-center gap-2 px-4 pb-2">
+                        <div class="flex items-center gap-2 px-2 pb-2">
                           <input type="password" value={password} title="Passwort"
                             placeholder={n.open ? 'Kein Passwort nötig' : 'WLAN-Passwort'}
                             autoComplete="off"
