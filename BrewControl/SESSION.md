@@ -1267,3 +1267,18 @@ Highlight-Box bekommt jetzt ~9px sichtbaren Abstand zum Kartenrand (gemessen)
 kleinen vertikalen Abstand. Indikator `h-6 w-[3px]` → `h-8 w-1` (32×4px, größer,
 bleibt vertikal zentriert auf der Kopfzeile). Verifiziert per Computed-Style-
 Messung (Box-Rect vs. Card-Rect) und Screenshot hell/dunkel gegen echtes Gerät.
+
+**Nachtrag 4 — Indikator-Inset statt fixer Höhe + Text-Einrückung (Nutzerfeedback):**
+- Indikator war trotz `top-1/2 -translate-y-1/2` nicht sauber mittig und zu breit
+  (`w-1`=4px). Fix: `top-1.5 bottom-1.5 w-[3px]` statt `h-8 -translate-y-1/2` —
+  fester Ober-/Unterabstand (6px) statt fixer Höhe, dadurch **konstruktiv**
+  zentriert (Höhe ergibt sich aus `Containerhöhe − 2×6px`), unabhängig von der
+  tatsächlichen Zeilenhöhe. Verifiziert: `gapTop === gapBottom === 6px` an zwei
+  unabhängigen Zeilen.
+- Passwortfeld + mDNS-Textbox waren bündig mit der Icon-Spalte statt mit dem
+  Titel-Text eingerückt. Fix: Passwort-Zeile `px-2` → `pl-[42px] pr-2`
+  (42px = Button-`px-2`(8) + `SignalBars`-Breite(22) + `gap-3`(12), exakt der
+  X-Offset des SSID-Texts). mDNS-Inputzeile + Validierungstext bekommen `pl-9`
+  (36px = Icon-Größe 20 + `SettingsCard`-`gap-x-4`(16), exakter Text-Offset des
+  Headers). Verifiziert: `pwInputLeft === ssidTextLeft` und
+  `mdnsInputLeft === mdnsDescLeft` (beide 67px bzw. 69px, exakte Übereinstimmung).

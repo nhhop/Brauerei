@@ -234,7 +234,7 @@ export function NetworkPage(_: { path?: string }) {
                       <button type="button" onClick={() => selectNet(n.ssid)}
                         class="relative flex w-full items-center gap-3 px-2 py-2 text-left text-sm">
                         {isExpanded && (
-                          <span class="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-full bg-accent" />
+                          <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent" />
                         )}
                         <SignalBars rssi={n.rssi} />
                         <span class="min-w-0 flex-1">
@@ -245,7 +245,7 @@ export function NetworkPage(_: { path?: string }) {
                         </span>
                       </button>
                       {isExpanded && !isConnected && (
-                        <div class="flex items-center gap-2 px-2 pb-2">
+                        <div class="flex items-center gap-2 py-1 pr-2 pl-[42px]">
                           <input type="password" value={password} title="Passwort"
                             placeholder={n.open ? 'Kein Passwort nötig' : 'WLAN-Passwort'}
                             autoComplete="off"
@@ -289,7 +289,7 @@ export function NetworkPage(_: { path?: string }) {
 
         {/* ── mDNS ───────────────────────────────────────────────────── */}
         <SettingsCard title="mDNS" icon={Tag} desc="Name vergeben, unter dem das Gerät gefunden werden kann">
-          <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center justify-between gap-3 pl-9">
             <div class="flex items-center gap-2">
               <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
@@ -303,7 +303,7 @@ export function NetworkPage(_: { path?: string }) {
             </button>
           </div>
           {!hostValid && host.length > 0 && (
-            <p class="mt-2 text-xs text-critical">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
+            <p class="mt-2 pl-9 text-xs text-critical">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
           )}
         </SettingsCard>
 
