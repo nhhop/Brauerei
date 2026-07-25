@@ -222,49 +222,51 @@ export function NetworkPage(_: { path?: string }) {
             <div class="space-y-1">
               {scanErr && <p class="mb-2 text-sm text-critical">{scanErr}</p>}
 
-              {nets.map((n) => {
-                const isConnected = status?.connected && status.ssid === n.ssid;
-                const isExpanded = expanded === n.ssid;
-                return (
-                  <div key={n.ssid}
-                    class={`relative overflow-hidden rounded-md transition-colors ${
-                      isExpanded ? 'bg-subtle-pressed' : 'hover:bg-subtle-hover active:bg-subtle-pressed'
-                    }`}>
-                    {isExpanded && (
-                      <span class="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
-                    )}
-                    <button type="button" onClick={() => selectNet(n.ssid)}
-                      class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm">
-                      <SignalBars rssi={n.rssi} />
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate font-medium">{n.ssid}</span>
-                        <span class={`block text-xs ${isConnected ? 'text-success' : 'text-muted'}`}>
-                          {isConnected ? 'Verbunden' : n.open ? 'Offen' : 'Gesichert'}
+              <div class="-mx-4">
+                {nets.map((n) => {
+                  const isConnected = status?.connected && status.ssid === n.ssid;
+                  const isExpanded = expanded === n.ssid;
+                  return (
+                    <div key={n.ssid}
+                      class={`transition-colors ${
+                        isExpanded ? 'bg-subtle-pressed' : 'hover:bg-subtle-hover active:bg-subtle-pressed'
+                      }`}>
+                      <button type="button" onClick={() => selectNet(n.ssid)}
+                        class="relative flex w-full items-center gap-3 px-4 py-2 text-left text-sm">
+                        {isExpanded && (
+                          <span class="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
+                        )}
+                        <SignalBars rssi={n.rssi} />
+                        <span class="min-w-0 flex-1">
+                          <span class="block truncate font-medium">{n.ssid}</span>
+                          <span class={`block text-xs ${isConnected ? 'text-success' : 'text-muted'}`}>
+                            {isConnected ? 'Verbunden' : n.open ? 'Offen' : 'Gesichert'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                    {isExpanded && !isConnected && (
-                      <div class="flex items-center gap-2 px-3 pb-2">
-                        <input type="password" value={password} title="Passwort"
-                          placeholder={n.open ? 'Kein Passwort nötig' : 'WLAN-Passwort'}
-                          autoComplete="off"
-                          onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                          class={`${inp} flex-1`} />
-                        <button type="button" onClick={() => setSwitchOpen(true)} class={btnPrimary}>
-                          Verbinden
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      </button>
+                      {isExpanded && !isConnected && (
+                        <div class="flex items-center gap-2 px-4 pb-2">
+                          <input type="password" value={password} title="Passwort"
+                            placeholder={n.open ? 'Kein Passwort nötig' : 'WLAN-Passwort'}
+                            autoComplete="off"
+                            onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+                            class={`${inp} flex-1`} />
+                          <button type="button" onClick={() => setSwitchOpen(true)} class={btnPrimary}>
+                            Verbinden
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
               <button type="button" onClick={toggleManual}
-                class="mt-1 px-3 text-xs text-faint underline hover:text-fg">
+                class="mt-1 text-xs text-faint underline hover:text-fg">
                 {expanded === 'manual' ? 'Abbrechen' : 'Netzwerk manuell eingeben'}
               </button>
               {expanded === 'manual' && (
-                <div class="space-y-2 px-3 pt-1">
+                <div class="space-y-2 pt-1">
                   <input type="text" value={manualSsid} title="SSID" placeholder="Netzwerkname (SSID)"
                     autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
                     onInput={(e) => setManualSsid((e.target as HTMLInputElement).value)}

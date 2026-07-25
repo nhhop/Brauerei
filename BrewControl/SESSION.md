@@ -1248,3 +1248,13 @@ Zeile ein und zeigt SSID+Passwort+Verbinden — hell und dunkel geprüft.
 Verifiziert gegen echtes Gerät: FRITZ!Box-Zeile (verbunden) zeigt Pill + „Verbunden"
 ohne Formularfelder; Klick auf o2-WLAN-AB40 klappt Passwort+Verbinden innerhalb
 der hervorgehobenen Box auf, vorherige Zeile klappt korrekt ein — hell und dunkel.
+
+**Nachtrag 2 — Icon-Flucht + Indikator-Höhe:** Liste bekam `-mx-4` (kompensiert
+die Card-Padding `px-4`), jede Zeile `px-4` statt `px-3` → `SignalBars` sitzt
+jetzt exakt auf gleicher X-Position wie das `Wifi`-Icon der Kartenüberschrift
+(per `getBoundingClientRect` verifiziert: beide `left: 33px`). Akzent-Indikator
+`h-4`→`h-6` (höher) und von der Zeilen-Hülle in den `<button>` verschoben
+(`relative` jetzt am Button) — bleibt dadurch an der Kopfzeile zentriert statt
+über die ganze (bei Passwort-Eingabe höhere) Box zu mitteln. Manual-Entry-Block
+verlor sein Extra-`px-3` (war nur nötig, um mit dem alten Zeilen-Offset zu
+fluchten; jetzt erbt er direkt die Card-Einrückung).
