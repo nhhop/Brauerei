@@ -1305,3 +1305,12 @@ Zwei isolierte Nutzerfeedback-Punkte, unabhängig von der Netzwerk-Seite:
 Dev-Proxy): Zeit-Seite zeigt beide Untertitel; Firmware-Seite misst
 `Firmware (.bin)`/`UI-Paket (.tar)`/Karten-`desc` alle auf identischer
 X-Position.
+
+**Nachtrag — Settings-Übersicht: oberer Kartenabstand:** Die Index-Seite
+([SettingsIndex.tsx](web/src/pages/SettingsIndex.tsx)) hatte `header` ohne
+`mb-6` und stattdessen `mt-4` auf der Kartenliste (16px Abstand), während
+alle Unterseiten `header class="mb-6"` (24px) direkt vor der Kartenliste
+nutzen. Fix: `mb-6` auf den Header verschoben, `mt-4` von der Kartenliste
+entfernt — Muster jetzt identisch zu z. B. `AppearancePage.tsx`. Verifiziert
+per `getBoundingClientRect`: Header-Unterkante 56px, erste Karte 80px
+(24px Abstand) — auf `/settings` und `/settings/appearance` identisch.

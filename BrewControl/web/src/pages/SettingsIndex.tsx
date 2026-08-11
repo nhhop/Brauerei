@@ -34,10 +34,10 @@ export function SettingsIndex(_: { path?: string }) {
 
   return (
     <div class="min-h-full bg-bg p-4 text-fg md:p-6">
-      <header class="flex items-center gap-3">
+      <header class="mb-6 flex items-center gap-3">
         <h1 class="text-2xl font-semibold tracking-tight">Einstellungen</h1>
       </header>
-      <div class="mt-4 space-y-1">
+      <div class="space-y-1">
         {ENTRIES.map(({ href, icon, title, desc }) => (
           <SettingsCard key={href} href={href} icon={icon} title={title} desc={desc}
             control={href === '/settings/firmware' && updateAvail
