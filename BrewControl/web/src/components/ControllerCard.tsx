@@ -57,7 +57,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   }
 
   return (
-    <div class={`rounded-lg border bg-card p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
+    <div class={`min-h-[160px] rounded-lg border bg-card p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
       enabled ? 'border-card-border' : 'border-card-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">

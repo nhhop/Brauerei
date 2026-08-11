@@ -1314,3 +1314,25 @@ nutzen. Fix: `mb-6` auf den Header verschoben, `mt-4` von der Kartenliste
 entfernt — Muster jetzt identisch zu z. B. `AppearancePage.tsx`. Verifiziert
 per `getBoundingClientRect`: Header-Unterkante 56px, erste Karte 80px
 (24px Abstand) — auf `/settings` und `/settings/appearance` identisch.
+
+## Dashboard-Karten: einheitliche Höhe 2026-08-11
+
+Nutzerfeedback: Sensor-, Regler- und Aktor-Karten im Dashboard hatten je
+nach Inhalt unterschiedliche Höhe (gemessen: Sensor 135px, Regler 149px,
+Aktor 114px) — die Reihe wirkte dadurch uneben statt bündig.
+
+**Fix:** gemeinsames `min-h-[160px]` auf den Karten-Root-`<div>` in
+[SensorCard.tsx](web/src/components/SensorCard.tsx),
+[ActuatorCard.tsx](web/src/components/ActuatorCard.tsx) und
+[ControllerCard.tsx](web/src/components/ControllerCard.tsx) (160px orientiert
+sich am bisher höchsten Fall, der Regler-Karte mit Setpoint-Zeile). Karten mit
+mehr Inhalt (z. B. Regler mit sichtbarem AutoTune-Status) wachsen weiterhin
+natürlich über die Mindesthöhe hinaus — das ist gewollt, betrifft aber nicht
+den Normalfall.
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün. Browser-Check gegen
+echtes Gerät auf beiden vorhandenen Dashboards („Maischen": 1 Sensor/1 Regler/
+1 Aktor; „Kochen": 1 Sensor/2 Aktoren, keine Regler) — alle Karten messen
+exakt 160px, `getBoundingClientRect` bestätigt identische Bottom-Kante
+(837px) für alle drei Karten der ersten Reihe auf „Maischen". Dark-Mode
+gegengecheckt; Höhe ist themeunabhängig (reine Layout-Eigenschaft).
