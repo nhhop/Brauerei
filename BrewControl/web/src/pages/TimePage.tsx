@@ -127,14 +127,14 @@ export function TimePage(_: { path?: string }) {
             </select>
           } />
 
-        <SettingsCard title="Zeitformat" icon={Clock}
+        <SettingsCard title="Zeitformat" icon={Clock} desc="12- oder 24-Stunden-Anzeige"
           control={
             <Segmented value={settings.timeFormat}
               options={[{ value: '24h', label: '24 Stunden' }, { value: '12h', label: '12 Stunden' }]}
               onChange={(f) => update({ timeFormat: f })} />
           } />
 
-        <SettingsCard title="Datumsformat" icon={CalendarDays}
+        <SettingsCard title="Datumsformat" icon={CalendarDays} desc="Reihenfolge von Tag, Monat und Jahr"
           control={
             <Segmented value={settings.dateFormat}
               options={(['DD.MM.YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD'] as const).map((f) => ({ value: f, label: f }))}

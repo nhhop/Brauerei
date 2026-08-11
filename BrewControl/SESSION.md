@@ -1282,3 +1282,26 @@ Messung (Box-Rect vs. Card-Rect) und Screenshot hell/dunkel gegen echtes Gerät.
   (36px = Icon-Größe 20 + `SettingsCard`-`gap-x-4`(16), exakter Text-Offset des
   Headers). Verifiziert: `pwInputLeft === ssidTextLeft` und
   `mdnsInputLeft === mdnsDescLeft` (beide 67px bzw. 69px, exakte Übereinstimmung).
+
+## Kleinere Fixes 2026-08-11
+
+Zwei isolierte Nutzerfeedback-Punkte, unabhängig von der Netzwerk-Seite:
+
+- **Zeit & Formate — fehlende Untertitel:** Die Karten „Zeitformat" und
+  „Datumsformat" hatten (anders als alle anderen `SettingsCard`s auf der
+  Seite) keinen `desc`-Text. Ergänzt: „12- oder 24-Stunden-Anzeige" bzw.
+  „Reihenfolge von Tag, Monat und Jahr" ([TimePage.tsx](web/src/pages/TimePage.tsx)).
+- **Firmware-Update — Einrückung „Manueller Upload":** Die beiden
+  `FileUpload`-Zeilen („Firmware (.bin)", „UI-Paket (.tar)") saßen bündig
+  am Kartenrand statt mit dem Beschreibungstext der Karte zu fluchten.
+  Fix: `pl-9` (36px = Icon-Größe 20 + `SettingsCard`-`gap-x-4` 16, selbes
+  Muster wie beim mDNS-Textfeld) auf den umgebenden `space-y-4`-Container
+  ([FirmwarePage.tsx](web/src/pages/FirmwarePage.tsx)). Verifiziert per
+  `getBoundingClientRect`: beide Label und der Karten-`desc` liegen exakt
+  auf `left: 69px`.
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (186.85 kB JS /
+62.83 kB gzip). Browser-Check gegen echtes Gerät (`brewcontrol.local` via
+Dev-Proxy): Zeit-Seite zeigt beide Untertitel; Firmware-Seite misst
+`Firmware (.bin)`/`UI-Paket (.tar)`/Karten-`desc` alle auf identischer
+X-Position.

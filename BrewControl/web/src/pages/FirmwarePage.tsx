@@ -91,7 +91,7 @@ export function FirmwarePage(_: { path?: string }) {
               title="Automatische Update-Prüfung" />} />
 
           <SettingsCard title="Manueller Upload" icon={Upload} desc="Firmware- oder UI-Paket direkt hochladen">
-            <div class="space-y-4">
+            <div class="space-y-4 pl-9">
               <FileUpload label="Firmware (.bin)" accept=".bin" pct={fwPct}
                 onPick={(f) => { setFwPct(0); uploadFirmware(f, setFwPct).then(() => setFwPct(100)).catch(() => setFwPct(null)); }} />
               <FileUpload label="UI-Paket (.tar)" accept=".tar" pct={tarPct}
