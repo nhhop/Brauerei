@@ -1336,3 +1336,54 @@ echtes Gerät auf beiden vorhandenen Dashboards („Maischen": 1 Sensor/1 Regler
 exakt 160px, `getBoundingClientRect` bestätigt identische Bottom-Kante
 (837px) für alle drei Karten der ersten Reihe auf „Maischen". Dark-Mode
 gegengecheckt; Höhe ist themeunabhängig (reine Layout-Eigenschaft).
+
+## Hardware-Flash + E2E-Verifikation 2026-08-12
+
+Gesamtes WinUI-3-Design bisher nur über den Vite-Dev-Proxy gegen die echte
+Hardware verifiziert. Jetzt Firmware + UI-Paket direkt aufs Gerät
+(LilyGo T-Display-S3-AMOLED-1.43, `brewcontrol.local`) geflasht und die
+PLAN.md-Testsequenz gegen das Gerät durchgespielt.
+
+**Build-Blocker gefunden + gefixt:** `firmware/platformio.ini` erwartet
+`symlink://../../../IdsInductionCooker` (Sibling-Checkout neben dem
+Repo-Root) — fehlte auf dieser Maschine, Build brach mit
+`PackageException: Can not create a symbolic link` ab. Fix: Repo per
+`git clone https://github.com/nhhop/IdsInductionCooker.git` an die
+erwartete Sibling-Stelle geklont (kein Eingriff in `platformio.ini` —
+das Symlink-Pattern ist laut CI-Notiz oben so vorgesehen). Reiner
+Umgebungs-Fix, keine Repo-Änderung.
+
+**Deploy:**
+- Firmware für `env:lilygo_t_display_s3_amoled` gebaut (Flash 18,5 %,
+  RAM 15,2 %) und per `POST /api/update/firmware` (OTA, kein USB nötig)
+  eingespielt. Gerät rebootete automatisch, `currentVersion` danach exakt
+  auf dem gepushten Commit (`9c9449a`, vorher `…-dirty`).
+- `pnpm build:sd` + `tar --format=ustar -cf webui.tar .` (aus `web/dist/`,
+  `./`-präfigiert) und per `POST /api/update/assets` eingespielt (Swap läuft
+  asynchron im `loopTask`, kein Reboot nötig). Verifiziert: neues
+  `index.html` (276 B) und `assets/index-*.js.gz` (62714 B) exakt auf den
+  lokal gebauten Bytes.
+
+**API-Testsequenz gegen `brewcontrol.local` (PLAN.md-Checkliste, ohne
+Browser — s. u.):**
+- `GET /api/snapshot` — liefert `mlt`/`kettle`/`pump`/`mash`, wie im
+  Dashboard gesehen.
+- `POST /api/actuators/pump {"v":1}` → 204, Snapshot zeigt `state.v:1`;
+  zurückgesetzt auf 0.
+- `POST /api/controllers/mash/setpoint {"v":68}` → 204, Snapshot zeigt
+  `setpoint:68`; zurückgesetzt auf 65.
+- `GET /api/events` mit `Accept: text/event-stream` → SSE liefert
+  laufende `snapshot`-Events (ohne den Header 404, da `AsyncEventSource`
+  danach matcht — kein Bug, nur curl-Eigenheit).
+- Negativtest `POST /api/actuators/does_not_exist` → 404, wie in PLAN.md
+  gefordert.
+- `GET /api/settings` zeigt `theme.accent:"#0078d4"` — bestätigt den
+  Windows-Blau-Default aus `SettingsStore.h` jetzt **live nach Reflash**
+  (vorher als „Offen" in dieser Datei vermerkt, jetzt erledigt).
+
+**Nicht durchgeführt:** visuelle Browser-Verifikation gegen
+`brewcontrol.local` — die Browser-Vorschau verlangt für Nicht-Localhost-
+Origins eine manuelle Freigabe-Karte, die sich nicht automatisiert
+bestätigen lässt. Das gesamte Design wurde bereits in den vorherigen
+Sessions Karte für Karte hell/dunkel über den Dev-Proxy (der dieselbe
+Firmware anspricht) geprüft; hier ging es nur um den Deploy-Pfad selbst.
