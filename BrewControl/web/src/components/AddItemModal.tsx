@@ -1079,7 +1079,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               <label class={lbl}>AutoTune</label>
               {autotuneState === 'running' ? (
                 <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs text-amber-600">AutoTune läuft…</span>
+                  <span class="text-xs text-caution">AutoTune läuft…</span>
                   <button type="button" onClick={onStopAutotune} disabled={atBusy}
                     class="rounded bg-fg/5 px-2 py-1 text-xs text-fg hover:bg-fg/10 disabled:opacity-50">
                     Abbrechen
@@ -1088,7 +1088,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               ) : (
                 <div class="space-y-2">
                   {autotuneState === 'done' && (
-                    <p class="text-xs text-emerald-600 font-mono">
+                    <p class="text-xs text-success font-mono">
                       Kp {Number(liveController?.params?.Kp).toFixed(2)} · Ki {Number(liveController?.params?.Ki).toFixed(2)} · Kd {Number(liveController?.params?.Kd).toFixed(2)}
                     </p>
                   )}
@@ -1105,11 +1105,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   </div>
                 </div>
               )}
-              {atErr && <p class="mt-1 text-xs text-red-600">{atErr}</p>}
+              {atErr && <p class="mt-1 text-xs text-critical">{atErr}</p>}
             </div>
           )}
 
-          {err && <p class="text-xs text-red-600">{err}</p>}
+          {err && <p class="text-xs text-critical">{err}</p>}
           </div>
 
           <div class={dialogFooter}>

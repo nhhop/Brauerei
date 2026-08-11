@@ -973,3 +973,366 @@ Edit-Modus mit Tab-Stift/+Neu/Hinzufügen/Fertig; „Hinzufügen" öffnet
 „Dashboard-Inhalte" mit korrekt vorausgewählten Häkchen; Add/Remove end-to-end
 (Regler in Kochen hinzugefügt, per × zurückgenommen); Meta-Modal; keine
 Konsolen-Fehler.
+
+## Session 2026-07-13 — WinUI-3-Politur: semantisches Farbsystem
+
+**Kontext:** Auf Wunsch „WinUI-3 verfeinern, ganzes Frontend". Kein Umbau,
+sondern eine Konsistenz-/Politur-Runde auf dem bestehenden Fluent-Stil. Analyse
+fand 44 hartcodierte Tailwind-Farbklassen über 15 Dateien + einen echten
+Dark-Mode-Bug: Status-Badges als `bg-amber-100 text-amber-800` /
+`bg-yellow-100 text-yellow-800` (Stale-/Fault-Badge) → helle Füllung + dunkler
+Text auf dunkler Karte, unleserlich.
+
+**Umgesetzt:**
+- **Semantisches Farbsystem** ([styles.css](web/src/styles.css)): Tokens
+  `--success/--caution/--critical` (Spiegel der WinUI `SystemFillColor`), pro
+  Theme getunt (hell: #0f7b0f/#9a5b00/#c42b1c; dunkel: #6ccb5f/#fcd34d/#ff99a4),
+  in `[data-theme=dark]` **und** im `prefers-color-scheme`-Media-Query (konsistent
+  zur bestehenden Doppel-Definition). In `@theme inline` gemappt →
+  `text-success/-caution/-critical`.
+- **Geteilte Klassen** ([ui.ts](web/src/ui.ts)): Badge-Konstanten
+  `badge{Caution,Success,Critical}` — getönte Füllung via
+  `bg-[color-mix(in_srgb,var(--…)_16%,transparent)]` (mischt den Semantik-Ton
+  über die Kartenfläche → adaptiert hell/dunkel automatisch) + legible Textfarbe.
+  `btnPrimary/Secondary/Danger` um WinUI-Pressed (`active:`) + Focus-Stroke
+  (`focus-visible:ring-…`) erweitert; `linkDanger` auf `text-critical`.
+- **Roh-Farben migriert** (Karten, Modals, 7 Settings-Seiten): Stale-/Fault-
+  Badges → `badgeCaution`; Programm-Status-Pills → Success/Caution-Tint;
+  Fehlertexte/Delete-Hover `red-*` → `text-critical`/`hover:text-critical`;
+  AutoTune läuft/fertig → `text-caution`/`text-success`; Sensor-Reset-Hover
+  `blue` → `hover:text-accent`. **Bewusst belassen** (kein Bug, in beiden Themes
+  lesbar): solider Danger-Button (`red-600`), alpha-getönte Info-Leisten
+  (`amber-500/10`), solide Emphasis-Pills („aktiv"/„Update verfügbar"),
+  `sky` „pausiert".
+
+**Verifikation:** `pnpm typecheck` grün; `pnpm build` grün (182,5 kB JS /
+60,7 kB gzip — kein Sprung; `color-mix`-Arbitrary-Values kompilieren). Browser
+gegen echten ESP32 (`brewcontrol.local` via Dev-Proxy): Dashboard lädt mit Live-
+Daten, keine Konsolen-Fehler. **Dark-Mode-Fix belegt** per Computed-Style-Probe:
+`badgeCaution` liefert hell dunklen Text (#9a5b00) auf hellem 16%-Amber-Tint,
+dunkel hellen Text (#fcd34d) auf dunklem 16%-Tint — beide lesbar, statt der alten
+hellen Fläche auf dunkler Karte. (Screenshot-Capture der Preview timeoutet
+umgebungsbedingt — visueller Beleg daher über read_page + Computed-Styles.)
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 2: neutrale Palette, Mica-Shell, Win11-Settings
+
+**Kontext:** Nutzer-Feedback nach Teil 1: (1) Farbschema „gar nicht nach WinUI",
+im Dark-Mode „alles irgendwie braun"; (2) Trennlinie + unterschiedliche
+Hintergründe zwischen Seitenleiste und Inhalt passen nicht zu WinUI; (3) Settings
+sollen sich mehr an Windows 11 anlehnen. Abgestimmt: Windows-Blau als Default,
+Win11-Zeilenlook über **alle** Settings-Seiten.
+
+**1. Palette entbraunt ([styles.css](web/src/styles.css)):** Das warme stone-*
+verursachte den Braunstich. Ersetzt durch neutrale Windows-11-Grautöne (nur
+Token-**Werte**, Namen unverändert → propagiert auf alle `bg-surface`/`bg-bg`/
+Border/Text). Hell: `--bg #f3f3f3`, `--fg #1a1a1a`, `--border #e5e5e5`. Dunkel:
+`--bg #202020`, `--surface #2b2b2b`, `--fg #fafafa`, `--border #363636`. Tints
+(warm/kalt) auf die neutrale Basis rebased.
+
+**2. Windows-Blau als Default-Akzent:** `--accent #0078d4` in styles.css;
+AppearancePage-Initialwert + neues „Windows-Blau"-Preset an erster Stelle;
+Firmware-Default [SettingsStore.h](firmware/src/SettingsStore.h) `#d97706`→`#0078d4`.
+⚠ Greift nur bei **ungesetztem** Wert — Geräte mit gespeicherter Farbe (Testgerät:
+Grün) behalten ihre Wahl; frische Config / Preset-Klick → Blau. Firmware-Default
+braucht Reflash.
+
+**3. Mica-Shell ([NavShell.tsx](web/src/components/NavShell.tsx)):** `border-r`
+entfernt; Desktop-Nav `md:bg-transparent md:backdrop-blur-none` → teilt die
+Shell-Fläche mit dem Content (durchgehendes Mica, keine Trennlinie, kein
+Hintergrundunterschied). Mobile-Drawer behält Acrylic + Backdrop. Aktiv-Eintrag
+weiter `bg-fg/5` + Akzent-Pill.
+
+**4. Win11-Settings ([SettingsCard.tsx](web/src/components/SettingsCard.tsx), neu):**
+`SettingsGroup` (optionaler uppercase-Sektionslabel) + `SettingsCard` (Icon +
+Titel + Beschreibung links, Control/Chevron rechts, optional Full-width-`children`
+für komplexe Controls; rendert als `a`/`button`/`div`). Alle 8 Seiten umgestellt:
+Index (Kachel-Links + Update-Badge auf `badgeCaution`), Appearance (3 Control-
+Zeilen), Devices (SettingsGroup je Rolle, DeviceRow `rounded-md`), Firmware
+(Version/Server-Update/Upload als Cards, Warnleiste amber→Caution-Token), Backup
+(Export/Restore-Cards, Warnleiste→Caution-Token), Time (Zeitzone/Format/NTP-Cards),
+Network (Status/Wechseln/Hostname/Reset-Cards), Logs (Karten `rounded-md`).
+
+**Verifikation:** `pnpm typecheck` grün; `pnpm build` grün (181,8 kB JS /
+61,0 kB gzip — kein Sprung). Browser-Preview gegen echten ESP32
+(`brewcontrol.local`, Screenshots funktionieren nach Öffnen des integrierten
+Browsers): Dashboard + Settings-Index + Appearance + Network + Firmware je
+**hell und dunkel** — neutrale Graustufen (kein Braun), Nav ohne Trennlinie/
+gleiche Fläche, Win11-Zeilenkarten mit Titel/Desc/Control, Windows-Blau-Akzent
+(per Override im Preview gezeigt — Testgerät speichert Grün), keine Konsolen-Fehler.
+
+**Offen:** Deploy aufs Gerät via `pnpm build:sd` + `webui.tar` (bisher nur Dev-
+Proxy). Firmware-Default-Akzent greift erst nach Reflash der Firmware.
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 3: Fluent-2-Karten-Tokens
+
+**Kontext:** Nutzer hat im offiziellen MS-Figma die kanonischen Karten-Tokens
+nachgeschlagen und wollte Kartenhintergrund + -rand exakt darauf. Bisher nutzten
+Karten `bg-surface`/`border-border` (wie Inputs/Dialoge/Nav); der Dark-Rand
+(`#363636`) war **heller** als die Fläche — Fluent macht es umgekehrt.
+
+**Zielwerte (Fluent 2, als Alpha-Overlays):** CardBackgroundFillColorDefault
+`#fff @ 70%` hell / `@ 5,14%` dunkel; CardStrokeColorDefault `#000 @ 5,78%` hell /
+`@ 10%` dunkel.
+
+**Umsetzung:**
+- **Eigene Karten-Tokens** ([styles.css](web/src/styles.css)): `--card-bg` /
+  `--card-border` (halbtransparent → komponieren über `--bg` inkl. Tint), in
+  `:root`/dark/media-query; `@theme inline` → Utilities `bg-card` / `border-card`.
+  `--surface`/`--border` **unverändert** (Controls behalten sichtbareren
+  ControlStroke — WinUI-korrekt: ControlStroke ≠ CardStroke).
+- **Karten migriert** `bg-surface`→`bg-card`, `border-border`→`border-card`:
+  Sensor/Aktor/Regler/Programm-Cards, Chart-Wrapper, `SettingsCard`, Geräte-/
+  Logs-/Zeit-/Archiv-Zeilen. ControllerCard konditionaler Rand
+  (`border-card-border` / `…/50`) erhalten. Flache Zeilen bekamen `shadow-elev-2`
+  (Fluent Card „shadow2"). **Nicht** angefasst: `inp`/`dialogFrame`,
+  Mobile-Toolbar, Edit-Toolbar-Buttons.
+
+**Verifikation:** typecheck + build grün (61,0 kB gzip). Browser hell+dunkel;
+Computed-Style-Probe einer Karte trifft die Zielwerte exakt (hell
+`rgba(255,255,255,0.7)` / Rand `rgba(0,0,0,0.06)`; dunkel `rgba(255,255,255,0.05)` /
+Rand `rgba(0,0,0,0.1)` — dunkler als Fläche). Screenshots Dashboard + Settings je
+hell/dunkel: Karten heben sich über Fläche + Kante + Schatten ab.
+
+**Nachtrag — SubtleFill Hover/Pressed:** Nav-Menüpunkte nutzten `hover:bg-fg/5`
+(Näherung, kein Pressed). Ersetzt durch exakte WinUI-`SubtleFillColor`-Tokens
+`--subtle-hover` (Secondary) / `--subtle-pressed` (Tertiary): hell
+`#000 @3,73%`/`@2,41%`, dunkel `#fff @6,05%`/`@4,19%`; gemappt zu
+`bg-subtle-hover`/`bg-subtle-pressed`. NavShell (Menüpunkte aktiv+hover, Hamburger,
+Mobile-Open) auf `hover:bg-subtle-hover active:bg-subtle-pressed`. Computed-Werte
+treffen die Zielwerte exakt. `SettingsCard` (interaktive `a`/`button`-Varianten)
+danach ebenfalls von `hover:bg-fg/5` auf die SubtleFill-Tokens umgestellt.
+(Übrige `hover:bg-fg/10`-Stellen sind Buttons/Chips = ControlFill, bewusst nicht
+angefasst.)
+
+## Session 2026-07-13 — WinUI-3-Politur Teil 4: Firmware-Seite
+
+Firmware-Update-Seite ([FirmwarePage.tsx](web/src/pages/FirmwarePage.tsx)) auf
+WinUI-Muster gebracht:
+- **Neue [Segmented.tsx](web/src/components/Segmented.tsx)** — wiederverwendbares
+  Segmented-Control (bordered Pill-Gruppe, Akzent-Aktiv, SubtleFill-Hover/Pressed
+  inaktiv). Kanal `stable/preview` → `Stabil`/`Vorschau` als Segmented (vorher zwei
+  lose `bg-fg/5`-Pills). (AppearancePage-Segmenteds könnten später darauf migrieren.)
+- **Auto-Check** von nackter Checkbox → eigene `SettingsCard`-Zeile mit
+  `ToggleSwitch` (Label links, Schalter rechts).
+- **Buttons** auf geteilte `btnSecondary` (Pressed/Focus) statt selbstgestyltem
+  `bg-fg/5`; „Installieren" bleibt `btnPrimary`.
+- **File-Upload** (`FileUpload`): nackter `<input type=file>` → versteckter Input +
+  `btnSecondary` „Durchsuchen…" + Dateiname-Anzeige.
+
+**Verifikation:** typecheck + build grün (61,2 kB gzip). Browser: Segmented,
+Toggle-Zeile, gestylte Upload-Buttons — sauber im Win11-Look. („Fehler: check
+failed" = erwartet ohne erreichbares Release, kein Design-Bug.)
+
+**Nachtrag — Controls rechts (auf Nutzer-Mockup):** Bedienelemente in den
+`control`-Slot (rechts) verschoben: „Auf Updates prüfen" in die „Aktuelle
+Version"-Zeile (Version wandert als Mono-`desc` nach links), Segmented rechts in
+die „Server-Update"-Zeile. `SettingsCard.desc` von `string` → `ComponentChildren`
+(für die Mono-Version). Upload-Zeilen: Label + Dateiname links, „Durchsuchen…"
+(`btnSecondary`) rechts — passt platztechnisch (gestapelt, nicht nebeneinander).
+Verifiziert mit gemocktem `/api/update/status` (Gerät lieferte zeitweise HTTP 500
+nach ~20 s — hängender Auto-Check, geräteseitig).
+
+**Nachtrag — Icons + leerer-Children-Bug:** `SettingsCard.icon` gesetzt (`Package`/
+`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in `lucide-preact` nicht
+mehr, daher `CloudDownload`). Dabei aufgefallen: die Server-Update-Karte hatte
+sichtbar mehr Bottom-Padding als die anderen — Ursache war, dass `children` in
+`SettingsCard` immer als (leeres) `<div class="space-y-3">` durchgereicht wurde,
+auch ohne Fehler/Fortschritt/verfügbares Update → `{children && <div class="mt-3">}`
+wrappte trotzdem. Fix: die `space-y-3`-Div nur rendern, wenn tatsächlich Inhalt da
+ist (`st.available || downloading/flashing || error`). Danach Header-Icons auf die vier
+Karten (`Package`/`CloudDownload`/`RefreshCw`/`Upload`; `Github` existiert in der
+lucide-Version nicht mehr → `CloudDownload`).
+
+## Session 2026-07-25 — WinUI-3-Politur Teil 5: Icons + Control-Positionen auf allen Settings-Seiten, TimePage-Uhr
+
+Fortsetzung des Firmware-Musters auf die restlichen 6 Settings-Unterseiten
+(Darstellung, Geräte, Backup, Zeit, Netzwerk, Logs) + Settings-Index bereits
+vorher icon-versehen.
+
+**Icons** (`SettingsCard.icon` bzw. neues `icon`-Prop an `DeviceRow`/Log-Zeile):
+- Darstellung: `Contrast` (Modus), `Palette` (Akzentfarbe), `PaintBucket`
+  (Hintergrund-Tönung).
+- Geräte: `DeviceRow` bekommt ein Pflicht-`icon`-Prop, pro Rolle vom Aufrufer
+  gesetzt — `Gauge` (Sensor), `SlidersHorizontal` (Regler), `Zap` (Aktor).
+- Backup: `Download` (Export), `Upload` (Restore).
+- Zeit: `Globe` (Zeitzone), `Clock` (Zeitformat), `CalendarDays` (Datumsformat),
+  `Server` (NTP-Server).
+- Netzwerk: `Signal` (Status), `Wifi` (WLAN wechseln), `Tag` (Hostname),
+  `RotateCcw` (WLAN zurücksetzen).
+- Logs: `LineChart` vor dem Lognamen in jeder Log-Zeile (kein `SettingsCard`,
+  eigenes Listen-Layout).
+
+**Controls nach rechts** (analog Firmware-Seite — Aktion/Eingabe in den
+`control`-Slot, Beschreibungstext bleibt links):
+- Netzwerk „WLAN wechseln": „Netzwerke suchen"-Button in `control`; Dropdown/
+  Passwort/Verbinden bleiben als (jetzt korrekt geleerte) `children` darunter —
+  Bug aus dem Firmware-Nachtrag (leere Children erzeugen trotzdem `mt-3`-Gap)
+  hier direkt mit Guard vermieden (`{(scanErr || nets.length > 0 || manual) && …}`).
+- Netzwerk „Hostname": Input + „.local" + „Speichern"-Button jetzt als eine Zeile
+  in `control`; Validierungsfehler bleibt als (geguardete) `children`.
+- Netzwerk „WLAN zurücksetzen": Button in `control`, `desc` bleibt links.
+- Zeit „Zeitzone": Dropdown in `control`, UTC-Offset-Hinweis wandert nach `desc`.
+- Zeit „NTP-Server": Input (schmaler, `w-48`) in `control`.
+- Backup „Restore": nackter `<input type=file>` → verstecktes Input + `control`-
+  Button „Durchsuchen…" (gleiches Pattern wie Firmware-`FileUpload`, hier ohne
+  Progress-Bar da Restore über den `ConfirmModal`-Flow läuft, kein Direct-Upload).
+
+**Segmented-Migration:** Die inline nachgebauten Segmented-Controls in Darstellung
+(Modus, Hintergrund-Tönung) und Zeit (Zeitformat, Datumsformat) liefen noch auf
+dem alten Pattern (`hover:text-fg` ohne SubtleFill, keine Pressed-States) —
+jetzt auf die geteilte [Segmented.tsx](web/src/components/Segmented.tsx)
+umgestellt (aus der Firmware-Session). Weniger Code, einheitliches Hover/Pressed.
+
+**TimePage — Uhrzeit-Anzeige (Nutzerwunsch):** Box (`border`/`bg-card`/
+`shadow-elev-2`) um die große Uhrzeit entfernt (`px-1`-Padding statt Card);
+Schriftgröße `text-2xl` → `text-5xl`. Datum bleibt als `text-sm text-muted`
+darunter.
+
+**Nachtrag — SettingsCard.desc erweitert:** Prop-Typ von `string` → `ComponentChildren`
+(bereits in der Firmware-Session gemacht, hier für die Zeitzone-Karte
+wiederverwendet — UTC-Offset-Text mit interpolierten Werten statt reinem String).
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (185,7 kB JS / 62,5 kB gzip,
+kein nennenswerter Sprung). Browser gegen echten ESP32 (`brewcontrol.local`):
+alle 7 Unterseiten hell/dunkel durchgeklickt (Screenshots funktionieren jetzt
+zuverlässig — Timeout-Problem aus den Vorsessions trat nicht mehr auf, sobald
+der Browser vorher schon offen war, wie vom Nutzer vermutet). Netzwerk-Scan
+end-to-end gegen die echte Fritzbox getestet (5 Netzwerke gefunden, Dropdown +
+Passwort-Feld + Verbinden-Button rendern korrekt nach dem Öffnen). Einziger
+Stolperstein: ein transienter Vite-HMR-Fehler durch einen kurzzeitig unbalancierten
+JSX-Tag während der LogsPage-Bearbeitung (vor dem Commit behoben, kein Rest im
+finalen Diff) hatte kurzzeitig einen veralteten Render-State im Tab hinterlassen —
+ein harter Reload hat das aufgelöst; kein tatsächlicher Code-Bug.
+
+## Session 2026-07-25 — Netzwerk-Seite: mDNS-Kartenlayout + Netzwerk-Liste statt Dropdown
+
+Nutzer-Mockup (Screenshot) für die mDNS-Karte + Wunsch nach Listen- statt
+Dropdown-Auswahl für „WLAN wechseln".
+
+**mDNS-Karte** ([NetworkPage.tsx](web/src/pages/NetworkPage.tsx)): Titel
+„Hostname" → „mDNS", neue `desc` „Name vergeben, unter dem das Gerät gefunden
+werden kann". Input+„.local"+„Speichern" nicht mehr im `control`-Slot der
+Kopfzeile, sondern als volle Zeile im Body (`justify-between`: Input+Suffix
+links, Button rechts) — mehr Platz, matcht das Mockup exakt.
+
+**WLAN wechseln — Liste statt Dropdown:** `<select>` ersetzt durch anklickbare
+Zeilen (`SignalBars` + SSID links, Status rechts). State umgebaut: `selSsid`/
+`manual` (boolean) → einheitliches `expanded: string | null` (SSID der
+aufgeklappten Zeile, oder Sentinel `'manual'` für die freie Eingabe — nur eine
+Zeile gleichzeitig aufgeklappt). Klick auf eine Zeile klappt darunter Passwort-
+Feld + „Verbinden"-Button auf (`selectNet`, toggelt beim erneuten Klick zu).
+Status pro Zeile: `text-success` „Verbunden" wenn `status.ssid === n.ssid`,
+sonst „Offen" (`n.open`) oder „Gesichert" — Farben/Text exakt wie vom Nutzer
+vorgegeben. „Netzwerk manuell eingeben" bleibt als Fallback-Link unten in der
+Liste (Scan-Fehler klappt es automatisch auf, wie zuvor).
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (186,6 kB JS / 62,7 kB
+gzip). Browser gegen echten ESP32: Scan liefert echte Netzwerke (FRITZ!Box 7490
+als „Verbunden" in Akzent-Grün, o2-WLAN-AB40 als „Gesichert"), Klick klappt
+Passwort+Verbinden korrekt auf, „Netzwerk manuell eingeben" klappt die vorherige
+Zeile ein und zeigt SSID+Passwort+Verbinden — hell und dunkel geprüft.
+
+**Nachtrag — Feinschliff Netzwerk-Liste (Nutzerfeedback):**
+- Verbundenes Netz zeigt kein Passwortfeld/Verbinden-Button mehr (Klick
+  highlightet die Zeile weiterhin, aber `{isExpanded && !isConnected && …}`).
+- Highlight (`bg-subtle-pressed`) liegt jetzt auf dem äußeren Zeilen-Container
+  statt nur auf dem Button — Passwortfeld + Verbinden-Button sitzen dadurch
+  sichtbar *innerhalb* derselben hervorgehobenen Box wie die Zeile.
+- Status („Verbunden"/„Offen"/„Gesichert") von rechts neben der SSID nach
+  darunter verschoben, `text-xs` (Verbunden zusätzlich `text-success`) —
+  gleiches Muster wie `SettingsCard.desc`.
+- Farbiger Indikator links an der ausgewählten Zeile (Akzent-Pill,
+  `absolute left-0 h-4 w-[3px] rounded-full bg-accent`) — identisches Muster
+  zum Nav-Aktiv-Eintrag in [NavShell.tsx](web/src/components/NavShell.tsx).
+
+Verifiziert gegen echtes Gerät: FRITZ!Box-Zeile (verbunden) zeigt Pill + „Verbunden"
+ohne Formularfelder; Klick auf o2-WLAN-AB40 klappt Passwort+Verbinden innerhalb
+der hervorgehobenen Box auf, vorherige Zeile klappt korrekt ein — hell und dunkel.
+
+**Nachtrag 2 — Icon-Flucht + Indikator-Höhe:** Liste bekam `-mx-4` (kompensiert
+die Card-Padding `px-4`), jede Zeile `px-4` statt `px-3` → `SignalBars` sitzt
+jetzt exakt auf gleicher X-Position wie das `Wifi`-Icon der Kartenüberschrift
+(per `getBoundingClientRect` verifiziert: beide `left: 33px`). Akzent-Indikator
+`h-4`→`h-6` (höher) und von der Zeilen-Hülle in den `<button>` verschoben
+(`relative` jetzt am Button) — bleibt dadurch an der Kopfzeile zentriert statt
+über die ganze (bei Passwort-Eingabe höhere) Box zu mitteln. Manual-Entry-Block
+verlor sein Extra-`px-3` (war nur nötig, um mit dem alten Zeilen-Offset zu
+fluchten; jetzt erbt er direkt die Card-Einrückung).
+
+**Nachtrag 3 — Highlight als „floating chip" (Nutzer-Referenzbild, Windows-11-
+Settings-WLAN-Liste):** `-mx-4`/`px-4` → `-mx-2`/`px-2` — Icon bleibt exakt auf
+der Header-Flucht (33px, per `getBoundingClientRect` erneut bestätigt), aber die
+Highlight-Box bekommt jetzt ~9px sichtbaren Abstand zum Kartenrand (gemessen)
++ `rounded-md` (6px) statt kantenbündig. `space-y-1` zwischen den Zeilen für
+kleinen vertikalen Abstand. Indikator `h-6 w-[3px]` → `h-8 w-1` (32×4px, größer,
+bleibt vertikal zentriert auf der Kopfzeile). Verifiziert per Computed-Style-
+Messung (Box-Rect vs. Card-Rect) und Screenshot hell/dunkel gegen echtes Gerät.
+
+**Nachtrag 4 — Indikator-Inset statt fixer Höhe + Text-Einrückung (Nutzerfeedback):**
+- Indikator war trotz `top-1/2 -translate-y-1/2` nicht sauber mittig und zu breit
+  (`w-1`=4px). Fix: `top-1.5 bottom-1.5 w-[3px]` statt `h-8 -translate-y-1/2` —
+  fester Ober-/Unterabstand (6px) statt fixer Höhe, dadurch **konstruktiv**
+  zentriert (Höhe ergibt sich aus `Containerhöhe − 2×6px`), unabhängig von der
+  tatsächlichen Zeilenhöhe. Verifiziert: `gapTop === gapBottom === 6px` an zwei
+  unabhängigen Zeilen.
+- Passwortfeld + mDNS-Textbox waren bündig mit der Icon-Spalte statt mit dem
+  Titel-Text eingerückt. Fix: Passwort-Zeile `px-2` → `pl-[42px] pr-2`
+  (42px = Button-`px-2`(8) + `SignalBars`-Breite(22) + `gap-3`(12), exakt der
+  X-Offset des SSID-Texts). mDNS-Inputzeile + Validierungstext bekommen `pl-9`
+  (36px = Icon-Größe 20 + `SettingsCard`-`gap-x-4`(16), exakter Text-Offset des
+  Headers). Verifiziert: `pwInputLeft === ssidTextLeft` und
+  `mdnsInputLeft === mdnsDescLeft` (beide 67px bzw. 69px, exakte Übereinstimmung).
+
+## Kleinere Fixes 2026-08-11
+
+Zwei isolierte Nutzerfeedback-Punkte, unabhängig von der Netzwerk-Seite:
+
+- **Zeit & Formate — fehlende Untertitel:** Die Karten „Zeitformat" und
+  „Datumsformat" hatten (anders als alle anderen `SettingsCard`s auf der
+  Seite) keinen `desc`-Text. Ergänzt: „12- oder 24-Stunden-Anzeige" bzw.
+  „Reihenfolge von Tag, Monat und Jahr" ([TimePage.tsx](web/src/pages/TimePage.tsx)).
+- **Firmware-Update — Einrückung „Manueller Upload":** Die beiden
+  `FileUpload`-Zeilen („Firmware (.bin)", „UI-Paket (.tar)") saßen bündig
+  am Kartenrand statt mit dem Beschreibungstext der Karte zu fluchten.
+  Fix: `pl-9` (36px = Icon-Größe 20 + `SettingsCard`-`gap-x-4` 16, selbes
+  Muster wie beim mDNS-Textfeld) auf den umgebenden `space-y-4`-Container
+  ([FirmwarePage.tsx](web/src/pages/FirmwarePage.tsx)). Verifiziert per
+  `getBoundingClientRect`: beide Label und der Karten-`desc` liegen exakt
+  auf `left: 69px`.
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün (186.85 kB JS /
+62.83 kB gzip). Browser-Check gegen echtes Gerät (`brewcontrol.local` via
+Dev-Proxy): Zeit-Seite zeigt beide Untertitel; Firmware-Seite misst
+`Firmware (.bin)`/`UI-Paket (.tar)`/Karten-`desc` alle auf identischer
+X-Position.
+
+**Nachtrag — Settings-Übersicht: oberer Kartenabstand:** Die Index-Seite
+([SettingsIndex.tsx](web/src/pages/SettingsIndex.tsx)) hatte `header` ohne
+`mb-6` und stattdessen `mt-4` auf der Kartenliste (16px Abstand), während
+alle Unterseiten `header class="mb-6"` (24px) direkt vor der Kartenliste
+nutzen. Fix: `mb-6` auf den Header verschoben, `mt-4` von der Kartenliste
+entfernt — Muster jetzt identisch zu z. B. `AppearancePage.tsx`. Verifiziert
+per `getBoundingClientRect`: Header-Unterkante 56px, erste Karte 80px
+(24px Abstand) — auf `/settings` und `/settings/appearance` identisch.
+
+## Dashboard-Karten: einheitliche Höhe 2026-08-11
+
+Nutzerfeedback: Sensor-, Regler- und Aktor-Karten im Dashboard hatten je
+nach Inhalt unterschiedliche Höhe (gemessen: Sensor 135px, Regler 149px,
+Aktor 114px) — die Reihe wirkte dadurch uneben statt bündig.
+
+**Fix:** gemeinsames `min-h-[160px]` auf den Karten-Root-`<div>` in
+[SensorCard.tsx](web/src/components/SensorCard.tsx),
+[ActuatorCard.tsx](web/src/components/ActuatorCard.tsx) und
+[ControllerCard.tsx](web/src/components/ControllerCard.tsx) (160px orientiert
+sich am bisher höchsten Fall, der Regler-Karte mit Setpoint-Zeile). Karten mit
+mehr Inhalt (z. B. Regler mit sichtbarem AutoTune-Status) wachsen weiterhin
+natürlich über die Mindesthöhe hinaus — das ist gewollt, betrifft aber nicht
+den Normalfall.
+
+**Verifikation:** `pnpm typecheck` + `pnpm build` grün. Browser-Check gegen
+echtes Gerät auf beiden vorhandenen Dashboards („Maischen": 1 Sensor/1 Regler/
+1 Aktor; „Kochen": 1 Sensor/2 Aktoren, keine Regler) — alle Karten messen
+exakt 160px, `getBoundingClientRect` bestätigt identische Bottom-Kante
+(837px) für alle drei Karten der ersten Reihe auf „Maischen". Dark-Mode
+gegengecheckt; Höhe ist themeunabhängig (reine Layout-Eigenschaft).

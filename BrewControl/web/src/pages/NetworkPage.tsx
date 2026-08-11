@@ -5,7 +5,9 @@ import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
-import { btnPrimary, inp } from '../ui';
+import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
+import { btnPrimary, btnSecondary, inp } from '../ui';
+import { Signal, Wifi, Tag, RotateCcw } from 'lucide-preact';
 
 // Coarse signal-strength bucket from RSSI (dBm) for a 0–4 bar display.
 function signalBars(rssi: number): number {
@@ -33,21 +35,32 @@ export function NetworkPage(_: { path?: string }) {
   const [status, setStatus] = useState<NetworkStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // WLAN-Wechsel — one SSID source (selSsid), fed by the scan dropdown or, when
-  // `manual` is set (hidden network / scan failed), a free-text input.
+  // WLAN-Wechsel — Liste statt Dropdown. `expanded` ist entweder die SSID der
+  // aufgeklappten Zeile (Passwort-Eingabe) oder das Sentinel 'manual' für die
+  // freie Eingabe (verstecktes Netz / Scan fehlgeschlagen).
   const [nets, setNets] = useState<ScanNetwork[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanErr, setScanErr] = useState<string | null>(null);
-  const [selSsid, setSelSsid] = useState('');
-  const [manual, setManual] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [manualSsid, setManualSsid] = useState('');
   const [password, setPassword] = useState('');
   const [switchOpen, setSwitchOpen] = useState(false);
-  const ssid = selSsid;
+  const ssid = expanded === 'manual' ? manualSsid : (expanded ?? '');
+
+  function selectNet(netSsid: string) {
+    setExpanded((cur) => (cur === netSsid ? null : netSsid));
+    setPassword('');
+  }
+
+  function toggleManual() {
+    setExpanded((cur) => (cur === 'manual' ? null : 'manual'));
+    setPassword('');
+    setManualSsid('');
+  }
 
   async function doScan() {
     setScanning(true);
     setScanErr(null);
-    setManual(false);
     try {
       const found = await scanNetworks();
       // De-dupe by SSID (strongest wins), drop hidden/empty, sort by signal.
@@ -59,10 +72,9 @@ export function NetworkPage(_: { path?: string }) {
       }
       const list = [...best.values()].sort((a, b) => b.rssi - a.rssi);
       setNets(list);
-      if (list.length && !selSsid) setSelSsid(list[0].ssid);
     } catch (e) {
       setScanErr(`${e} — du kannst den Namen unten manuell eintragen.`);
-      setManual(true);   // scan failed → fall back to free-text SSID entry
+      setExpanded('manual');   // scan failed → fall back to free-text SSID entry
     }
     setScanning(false);
   }
@@ -178,106 +190,133 @@ export function NetworkPage(_: { path?: string }) {
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Netzwerk' }]} />
       </header>
 
-      {/* ── Status ─────────────────────────────────────────────────────── */}
-      <div class="mb-4 rounded-lg border border-border bg-surface p-4">
-        <div class="mb-3 text-xs font-medium uppercase tracking-wider text-muted">Status</div>
-        {status?.connected ? (
-          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt class="text-muted">Netzwerk</dt>
-            <dd class="font-medium">{status.ssid || '—'}</dd>
-            <dt class="text-muted">Signal</dt>
-            <dd class="flex items-center gap-2"><SignalBars rssi={status.rssi} /><span class="text-faint">{status.rssi} dBm</span></dd>
-            <dt class="text-muted">IP-Adresse</dt>
-            <dd class="font-mono">{status.ip}</dd>
-            <dt class="text-muted">Hostname</dt>
-            <dd class="font-mono">{status.hostname}.local</dd>
-            <dt class="text-muted">MAC</dt>
-            <dd class="font-mono text-faint">{status.mac}</dd>
-          </dl>
-        ) : (
-          <p class="text-sm text-muted">Nicht verbunden.</p>
-        )}
-      </div>
+      <SettingsGroup>
+        {/* ── Status ─────────────────────────────────────────────────── */}
+        <SettingsCard title="Status" icon={Signal}>
+          {status?.connected ? (
+            <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+              <dt class="text-muted">Netzwerk</dt>
+              <dd class="font-medium">{status.ssid || '—'}</dd>
+              <dt class="text-muted">Signal</dt>
+              <dd class="flex items-center gap-2"><SignalBars rssi={status.rssi} /><span class="text-faint">{status.rssi} dBm</span></dd>
+              <dt class="text-muted">IP-Adresse</dt>
+              <dd class="font-mono">{status.ip}</dd>
+              <dt class="text-muted">Hostname</dt>
+              <dd class="font-mono">{status.hostname}.local</dd>
+              <dt class="text-muted">MAC</dt>
+              <dd class="font-mono text-faint">{status.mac}</dd>
+            </dl>
+          ) : (
+            <p class="text-sm text-muted">Nicht verbunden.</p>
+          )}
+        </SettingsCard>
 
-      {/* ── WLAN wechseln ──────────────────────────────────────────────── */}
-      <div class="mb-4 space-y-3 rounded-lg border border-border bg-surface p-4">
-        <div class="text-xs font-medium uppercase tracking-wider text-muted">WLAN wechseln</div>
-        <button type="button" onClick={doScan} disabled={scanning}
-          class="rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg/5 disabled:opacity-50">
-          {scanning ? 'Suche…' : 'Netzwerke suchen'}
-        </button>
-        {scanErr && <p class="text-sm text-red-600">{scanErr}</p>}
-        {(nets.length > 0 || manual) && (
-          <>
-            <div>
-              <div class="mb-1 text-xs text-muted">Netzwerk</div>
-              {manual ? (
-                <input type="text" value={selSsid} title="SSID" placeholder="Netzwerkname (SSID)"
-                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
-                  onInput={(e) => setSelSsid((e.target as HTMLInputElement).value)}
-                  class={inp} />
-              ) : (
-                <select value={selSsid} title="Netzwerk"
-                  onChange={(e) => setSelSsid((e.target as HTMLSelectElement).value)}
-                  class={inp}>
-                  {nets.map((n) => (
-                    <option key={n.ssid} value={n.ssid}>
-                      {n.ssid} ({n.rssi} dBm){n.open ? ' · offen' : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button type="button"
-                onClick={() => { setManual((m) => !m); setSelSsid(''); }}
-                class="mt-1 text-xs text-faint underline hover:text-fg">
-                {manual ? 'Aus Liste wählen' : 'Netzwerk manuell eingeben'}
-              </button>
-            </div>
-            <div>
-              <div class="mb-1 text-xs text-muted">Passwort</div>
-              <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
-                autoComplete="off"
-                onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                class={inp} />
-            </div>
-            <button type="button" onClick={() => setSwitchOpen(true)} disabled={!ssid.trim()}
-              class={btnPrimary}>
-              Verbinden
+        {/* ── WLAN wechseln ──────────────────────────────────────────── */}
+        <SettingsCard title="WLAN wechseln" icon={Wifi}
+          control={
+            <button type="button" onClick={doScan} disabled={scanning} class={btnSecondary}>
+              {scanning ? 'Suche…' : 'Netzwerke suchen'}
             </button>
-          </>
-        )}
-      </div>
+          }>
+          {(scanErr || nets.length > 0 || expanded === 'manual') && (
+            <div class="space-y-1">
+              {scanErr && <p class="mb-2 text-sm text-critical">{scanErr}</p>}
 
-      {/* ── Hostname ───────────────────────────────────────────────────── */}
-      <div class="mb-4 space-y-2 rounded-lg border border-border bg-surface p-4">
-        <div class="text-xs font-medium uppercase tracking-wider text-muted">Hostname</div>
-        <div class="flex items-center gap-2">
-          <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
-            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
-            onInput={(e) => setHost((e.target as HTMLInputElement).value)}
-            class={`${inp} font-mono`} />
-          <span class="shrink-0 font-mono text-sm text-faint">.local</span>
-        </div>
-        {!hostValid && host.length > 0 && (
-          <p class="text-xs text-red-600">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
-        )}
-        <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
-          class={btnPrimary}>
-          Speichern
-        </button>
-      </div>
+              <div class="-mx-2 space-y-1">
+                {nets.map((n) => {
+                  const isConnected = status?.connected && status.ssid === n.ssid;
+                  const isExpanded = expanded === n.ssid;
+                  return (
+                    <div key={n.ssid}
+                      class={`rounded-md transition-colors ${
+                        isExpanded ? 'bg-subtle-pressed' : 'hover:bg-subtle-hover active:bg-subtle-pressed'
+                      }`}>
+                      <button type="button" onClick={() => selectNet(n.ssid)}
+                        class="relative flex w-full items-center gap-3 px-2 py-2 text-left text-sm">
+                        {isExpanded && (
+                          <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent" />
+                        )}
+                        <SignalBars rssi={n.rssi} />
+                        <span class="min-w-0 flex-1">
+                          <span class="block truncate font-medium">{n.ssid}</span>
+                          <span class={`block text-xs ${isConnected ? 'text-success' : 'text-muted'}`}>
+                            {isConnected ? 'Verbunden' : n.open ? 'Offen' : 'Gesichert'}
+                          </span>
+                        </span>
+                      </button>
+                      {isExpanded && !isConnected && (
+                        <div class="flex items-center gap-2 py-1 pr-2 pl-[42px]">
+                          <input type="password" value={password} title="Passwort"
+                            placeholder={n.open ? 'Kein Passwort nötig' : 'WLAN-Passwort'}
+                            autoComplete="off"
+                            onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+                            class={`${inp} flex-1`} />
+                          <button type="button" onClick={() => setSwitchOpen(true)} class={btnPrimary}>
+                            Verbinden
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
-      {/* ── Zurücksetzen ───────────────────────────────────────────────── */}
-      <div class="space-y-2 rounded-lg border border-border bg-surface p-4">
-        <div class="text-xs font-medium uppercase tracking-wider text-muted">WLAN zurücksetzen</div>
-        <p class="text-sm text-muted">
-          Löscht die gespeicherten Zugangsdaten und startet das Gerät in den Setup-Modus.
-        </p>
-        <button type="button" onClick={() => setResetOpen(true)}
-          class="rounded-md border border-red-600/40 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-600/10">
-          WLAN zurücksetzen
-        </button>
-      </div>
+              <button type="button" onClick={toggleManual}
+                class="mt-1 text-xs text-faint underline hover:text-fg">
+                {expanded === 'manual' ? 'Abbrechen' : 'Netzwerk manuell eingeben'}
+              </button>
+              {expanded === 'manual' && (
+                <div class="space-y-2 pt-1">
+                  <input type="text" value={manualSsid} title="SSID" placeholder="Netzwerkname (SSID)"
+                    autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
+                    onInput={(e) => setManualSsid((e.target as HTMLInputElement).value)}
+                    class={inp} />
+                  <div class="flex items-center gap-2">
+                    <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
+                      autoComplete="off"
+                      onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
+                      class={`${inp} flex-1`} />
+                    <button type="button" onClick={() => setSwitchOpen(true)} disabled={!manualSsid.trim()}
+                      class={btnPrimary}>
+                      Verbinden
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </SettingsCard>
+
+        {/* ── mDNS ───────────────────────────────────────────────────── */}
+        <SettingsCard title="mDNS" icon={Tag} desc="Name vergeben, unter dem das Gerät gefunden werden kann">
+          <div class="flex items-center justify-between gap-3 pl-9">
+            <div class="flex items-center gap-2">
+              <input type="text" value={host} title="Hostname" placeholder="brewcontrol"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
+                onInput={(e) => setHost((e.target as HTMLInputElement).value)}
+                class={`${inp} w-40 font-mono`} />
+              <span class="shrink-0 font-mono text-sm text-faint">.local</span>
+            </div>
+            <button type="button" onClick={() => setHostOpen(true)} disabled={!hostValid || !hostChanged}
+              class={btnPrimary}>
+              Speichern
+            </button>
+          </div>
+          {!hostValid && host.length > 0 && (
+            <p class="mt-2 pl-9 text-xs text-critical">Nur Kleinbuchstaben, Ziffern und Bindestriche (kein führender/abschließender Bindestrich), max. 32 Zeichen.</p>
+          )}
+        </SettingsCard>
+
+        {/* ── Zurücksetzen ───────────────────────────────────────────── */}
+        <SettingsCard title="WLAN zurücksetzen" icon={RotateCcw}
+          desc="Löscht die gespeicherten Zugangsdaten und startet das Gerät in den Setup-Modus."
+          control={
+            <button type="button" onClick={() => setResetOpen(true)}
+              class="rounded-md border border-critical/40 px-3 py-1.5 text-sm font-medium text-critical hover:bg-critical/10">
+              WLAN zurücksetzen
+            </button>
+          } />
+      </SettingsGroup>
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}
       <ConfirmModal open={switchOpen} title="Netzwerk wechseln?"
@@ -289,7 +328,7 @@ export function NetworkPage(_: { path?: string }) {
           <code class="mx-1 rounded bg-fg/10 px-1 font-mono">{ssid.trim()}</code>.
           Diese Oberfläche ist während des Wechsels kurz nicht erreichbar.
         </p>
-        {actErr && <p class="mt-2 text-red-600">{actErr}</p>}
+        {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
 
       <ConfirmModal open={hostOpen} title="Hostname ändern?"
@@ -301,7 +340,7 @@ export function NetworkPage(_: { path?: string }) {
           <code class="mx-1 rounded bg-fg/10 px-1 font-mono">{host.trim().toLowerCase()}.local</code>
           erreichbar.
         </p>
-        {actErr && <p class="mt-2 text-red-600">{actErr}</p>}
+        {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
 
       <ConfirmModal open={resetOpen} title="WLAN-Zugangsdaten zurücksetzen?" destructive
@@ -314,7 +353,7 @@ export function NetworkPage(_: { path?: string }) {
           <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>
           neu verbinden.
         </p>
-        {actErr && <p class="mt-2 text-red-600">{actErr}</p>}
+        {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
     </div>
   );
