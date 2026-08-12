@@ -83,6 +83,9 @@ export interface ControllerParams {
   changeoverMs?: number;
   heatOut?: number;
   coolOut?: number;
+  // Rate limiter (any controller type, decorator-based — optional)
+  maxRatePerSec?: number;
+  effectiveSetpoint?: number;
   [key: string]: unknown;
 }
 

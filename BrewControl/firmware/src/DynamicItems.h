@@ -77,6 +77,9 @@ class DynamicItems {
     std::string actuatorId;      // heating actuator for dual-output controllers
     std::string coolActuatorId;  // cooling actuator (DualStage / SplitRangePID)
     std::string cfgJson;
+    // innerPtr holds the concrete controller when wrapped by RateLimitedController
+    // (max_rate_per_sec set); ptr is always what's registered with the Registry.
+    std::unique_ptr<SensActCtrl::Controller> innerPtr;
     std::unique_ptr<SensActCtrl::Controller> ptr;
   };
 

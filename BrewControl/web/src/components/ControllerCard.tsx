@@ -77,7 +77,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
         </div>
       </div>
 
-      {(linkedSensor || linkedActuator || dualOutput) && (
+      {(linkedSensor || linkedActuator || dualOutput || params?.maxRatePerSec != null) && (
         <div class="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
           {linkedSensor && (
             <span>Ist:{' '}
@@ -106,6 +106,15 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
               <span class="font-mono text-fg">
                 {fmtActuatorOut(linkedCool.state.v, linkedCool.meta.max)}
               </span>
+            </span>
+          )}
+          {params?.maxRatePerSec != null && (
+            <span>Ziel: <span class="font-mono text-fg">{setpoint.toFixed(1)}</span>
+              {' · aktuell: '}
+              <span class="font-mono text-fg">
+                {(params.effectiveSetpoint ?? setpoint).toFixed(1)}
+              </span>
+              {Math.abs((params.effectiveSetpoint ?? setpoint) - setpoint) > 0.05 && ' (rampt)'}
             </span>
           )}
         </div>

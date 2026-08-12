@@ -17,6 +17,7 @@
 #include "controllers/PIDController.h"
 #include "controllers/DualStageController.h"
 #include "controllers/SplitRangePIDController.h"
+#include "controllers/RateLimitedController.h"
 
 #include "actuators/DigitalOutputActuator.h"
 #include "actuators/PulseOutputActuator.h"

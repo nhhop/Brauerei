@@ -962,3 +962,46 @@ POST /api/actuators
 | `pnpm typecheck` | 0 Fehler |
 | `pio run -e esp32dev` | SUCCESS — 62.3 % Flash, 15.5 % RAM |
 | HW-E2E (NTP-Sync, Formatwechsel, serverTime im Snapshot) | ausstehend |
+
+---
+
+## 2026-08-12 — Sollwert-Ratenbegrenzung (RateLimitedController-Decorator)
+
+**Ausgangslage:** Bei den Sollwert-Programmen (2026-06-08) wurde bewusst auf echtes Rampen verzichtet — der Sollwert springt sofort aufs Ziel. Wunsch: die Änderungsrate eines Sollwerts (z. B. °C/min beim Aufheizen) begrenzbar machen, um Bauteile vor zu schnellen Sprüngen zu schützen. Diskutiert und verworfen: Rate-Begrenzung direkt in der `Controller`-Basisklasse — die meisten Regler (z. B. `TwoPointController` an einem Relais) brauchen das nie. Stattdessen: **Decorator**, der einen bestehenden `Controller` umschließt.
+
+### Library (SensActCtrl)
+
+Neue Klasse `RateLimitedController` (`src/controllers/RateLimitedController.h/.cpp`) — implementiert `Controller`, hält eine nicht-besitzende `Controller&`-Referenz (Library-Konvention). `setSetpoint()` speichert nur das Ziel; `tick()` bewegt einen internen Ist-Sollwert pro Sekunde um max. `maxRatePerSec` und ruft **jeden Zyklus unbedingt** `inner_.setSetpoint(effective_)` auf, bevor an `inner_.tick()` delegiert wird — dadurch ist die Rampe selbstkorrigierend, ohne dass ein eingebetteter `"setpoint"`-Key aus `setParamsJson()` herausgeschnitten werden müsste. `setpoint()` liefert weiterhin das Ziel (nicht den Rampenwert) — konsistent mit allen anderen Reglern und dem Snapshot-Feld `obj["setpoint"]`. `enabled()`/`setEnabled()`/`begin()`/`end()` reichen unverändert an `inner_` durch (kein eigener Zustand, eine Quelle der Wahrheit). Erster `setSetpoint()`-Aufruf springt sofort (kein Rampen ab 0 beim Boot), jeder folgende rampt normal (`initialized_`-Flag). `paramsJson()` spleißt eigene Felder (`maxRatePerSec`, `effectiveSetpoint`) in das JSON des inneren Reglers. 11 neue native Tests (`test/test_ratelimited/`, u. a. Rampen-Kappung beide Richtungen, Zielerreichung ohne Überschwingen, Boot-Snap, `enabled`-Durchreichen, PID-Wrap-Smoke-Test für Typ-Agnostik).
+
+### Firmware (BrewControl)
+
+`DynamicItems.h`: `CtrlEntry` um `innerPtr` erweitert (hält den konkreten Regler, wenn gewrappt; `ptr` ist immer das bei der Registry registrierte Objekt). `DynamicItems.cpp`: `addControllerNoBegin()` baut jeden der vier Reglertypen wie bisher, wrapped aber **einmalig, gemeinsam für alle Typen** am Ende, wenn `max_rate_per_sec` (snake_case, Create-Config-Konvention) gesetzt ist. Keine Änderung an `WebUI.cpp`/`ProgramRunner.cpp` nötig — beide lösen den Controller bei jedem Aufruf frisch über `Registry::findController(id)` auf, laufen also transparent durch den Decorator, wenn er das registrierte Objekt ist.
+
+### Frontend (BrewControl/web)
+
+`types.ts`: `ControllerParams` um `maxRatePerSec?`/`effectiveSetpoint?` erweitert. `AddItemModal.tsx`: ein geteiltes, typ-unabhängiges Feld „Max. Änderungsrate (°/min, leer = unbegrenzt)" (nicht pro Reglertyp dupliziert), Anzeige in °/min, Umrechnung auf `max_rate_per_sec` beim Submit (÷60). `ControllerCard.tsx`: neue Zeile „Ziel: X · aktuell: Y (rampt)", nur sichtbar wenn `params.maxRatePerSec` gesetzt ist.
+
+### Wire-Format
+
+```json
+POST /api/controllers
+{ "type":"TwoPoint","id":"mash","sensor":"mlt","actuator":"heater",
+  "setpoint":65,"hyst_low":-0.5,"hyst_high":0.5,"max_rate_per_sec":0.008333333 }
+
+// Snapshot-params (zusätzlich zu den regulären Reglerfeldern)
+{ "maxRatePerSec":0.0083, "effectiveSetpoint":42.3 }
+```
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 120/120 PASSED (109 alt + 11 neu) |
+| `pio run -e esp32dev` | SUCCESS |
+| `pio run -e lilygo_t_display_s3_amoled` | SUCCESS — 18,5 % Flash |
+| `pnpm typecheck` / `pnpm build` | 0 Fehler |
+| **HW-E2E (LilyGo T-Display-S3-AMOLED, geflasht über USB/COM9)** | **grün:** Boot-Snap (erster Sollwert springt, kein Rampen ab 0), Live-Rampen numerisch verifiziert (Δeffective ≈ Δt·Rate über mehrere Polls), `setSetpoint`/`setParamsJson` laufen korrekt durch den Decorator, AddItemModal-Rundlauf (Speichern → `/api/config` → Edit-Modal erneut öffnen → Wert exakt vorbelegt) gegen echtes Gerät (`brewcontrol.local`) |
+
+**Nebenbefund (kein Bug):** Das innere `params.setpoint` (aus dem gewrappten Reglers eigenem `paramsJson()`) spiegelt während einer laufenden Rampe den Ist-Rampenwert, nicht das Ziel — erwartet, da `tick()` genau diesen Wert an `inner_.setSetpoint()` durchreicht. Das Top-Level-`setpoint`-Feld (vom Decorator) bleibt korrekt das Ziel; UI liest ausschließlich dieses Feld.
+
+**Umgebungshinweis:** Auf dieser Maschine fehlte ein nativer GCC-Toolchain (nur ESP32-Xtensa/RISC-V-Toolchains via PlatformIO vorhanden). Behoben durch `winget install BrechtSanders.WinLibs.POSIX.UCRT` (Nutzer-Scope, kein Admin nötig) — Chocolatey scheiterte an fehlenden Admin-Rechten.

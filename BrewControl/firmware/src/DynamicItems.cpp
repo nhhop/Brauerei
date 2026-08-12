@@ -219,6 +219,8 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
   e->id = id;
   serializeJson(cfg, e->cfgJson);
 
+  Controller* built = nullptr;
+
   if (strcmp(type, "PID") == 0) {
     const char* sId = cfg["sensor"]   | "";
     const char* aId = cfg["actuator"] | "";
@@ -233,11 +235,10 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     float maxOut = cfg["max"] | 1.0f;
     auto* ctrl = new PIDController(e->id.c_str(), *s, *a, minOut, maxOut);
     ctrl->setTunings(cfg["Kp"] | 2.0f, cfg["Ki"] | 0.1f, cfg["Kd"] | 0.0f);
-    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
 
     e->sensorId   = sId;
     e->actuatorId = aId;
-    e->ptr.reset(ctrl);
+    built = ctrl;
   } else if (strcmp(type, "TwoPoint") == 0) {
     const char* sId = cfg["sensor"]   | "";
     const char* aId = cfg["actuator"] | "";
@@ -253,10 +254,9 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     auto* ctrl = new TwoPointController(e->id.c_str(), *s, *a);
     ctrl->setHysteresis(hystLow, hystHigh);
     ctrl->setInverted(inverted);
-    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
     e->sensorId   = sId;
     e->actuatorId = aId;
-    e->ptr.reset(ctrl);
+    built = ctrl;
   } else if (strcmp(type, "DualStage") == 0) {
     const char* sId = cfg["sensor"]        | "";
     const char* hId = cfg["heat_actuator"] | "";
@@ -271,7 +271,6 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     if (cId[0]) { cl = reg.findActuator(cId); if (!cl) return {false, "cool actuator not found"}; }
 
     auto* ctrl = new DualStageController(e->id.c_str(), *s, h, cl);
-    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
     ctrl->setDifferentials(cfg["heat_diff"] | 0.5f, cfg["cool_diff"] | 0.5f);
     ctrl->setCoolCycleLimits(cfg["cool_min_on_ms"]  | 0u,
                              cfg["cool_min_off_ms"] | 0u);
@@ -280,7 +279,7 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     e->sensorId       = sId;
     e->actuatorId     = hId;
     e->coolActuatorId = cId;
-    e->ptr.reset(ctrl);
+    built = ctrl;
   } else if (strcmp(type, "SplitRangePID") == 0) {
     const char* sId = cfg["sensor"]        | "";
     const char* hId = cfg["heat_actuator"] | "";
@@ -295,7 +294,6 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     if (cId[0]) { cl = reg.findActuator(cId); if (!cl) return {false, "cool actuator not found"}; }
 
     auto* ctrl = new SplitRangePIDController(e->id.c_str(), *s, h, cl);
-    ctrl->setSetpoint(cfg["setpoint"] | 0.0f);
     ctrl->setTunings(cfg["Kp"] | 2.0f, cfg["Ki"] | 0.1f, cfg["Kd"] | 0.0f);
     ctrl->setDeadband(cfg["deadband"] | 0.05f);
     ctrl->setChangeoverMs(cfg["changeover_ms"] | 0u);
@@ -303,10 +301,21 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     e->sensorId       = sId;
     e->actuatorId     = hId;
     e->coolActuatorId = cId;
-    e->ptr.reset(ctrl);
+    built = ctrl;
   } else {
     return {false, "unknown controller type"};
   }
+
+  std::unique_ptr<Controller> concrete(built);
+  float maxRate = cfg["max_rate_per_sec"] | 0.0f;
+  if (maxRate > 0.0f) {
+    auto* rl = new RateLimitedController(*concrete, maxRate);
+    e->innerPtr = std::move(concrete);
+    e->ptr.reset(rl);
+  } else {
+    e->ptr = std::move(concrete);
+  }
+  e->ptr->setSetpoint(cfg["setpoint"] | 0.0f);  // first call ⇒ snaps instantly
 
   reg.add(e->ptr.get());
   controllers_.push_back(std::move(e));

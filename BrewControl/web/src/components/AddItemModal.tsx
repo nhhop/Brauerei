@@ -98,6 +98,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [sensorId, setSensorId] = useState('');
   const [actuatorId, setActuatorId] = useState('');
   const [setpoint, setSetpoint] = useState('65');
+  // Rate limiter (any controller type, decorator-based) — empty = unbegrenzt.
+  // Displayed in °/min, stored as max_rate_per_sec (÷60) — see submit below.
+  const [maxRatePerMin, setMaxRatePerMin] = useState('');
   // PID
   const [kp, setKp] = useState('8');
   const [ki, setKi] = useState('0.2');
@@ -199,6 +202,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
         setSensorId(String(editConfig.sensor ?? ''));
         setActuatorId(String(editConfig.actuator ?? ''));
         setSetpoint(String(editConfig.setpoint ?? '0'));
+        if (editConfig.max_rate_per_sec != null) {
+          const perMin = Number(editConfig.max_rate_per_sec) * 60;
+          setMaxRatePerMin(String(Math.round(perMin * 10000) / 10000));
+        } else {
+          setMaxRatePerMin('');
+        }
         if (t === 'PID') {
           setKp(String(editConfig.Kp ?? '8'));
           setKi(String(editConfig.Ki ?? '0.2'));
@@ -249,6 +258,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setSensorId(snap?.sensors[0]?.id ?? '');
       setActuatorId(snap?.actuators[0]?.id ?? '');
       setSetpoint('65');
+      setMaxRatePerMin('');
       setKp('8'); setKi('0.2'); setKd('0.5'); setMinOut('0'); setMaxOut('1');
       setHystLow('-0.5'); setHystHigh('0.5'); setInverted(false);
       setHeatActuatorId(snap?.actuators[0]?.id ?? '');
@@ -424,6 +434,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             deadband: parseFloat(srDeadband) || 0.05,
             changeover_ms: Math.round((parseFloat(changeoverS) || 0) * 1000),
           };
+        }
+        if (maxRatePerMin.trim()) {
+          const perMin = parseFloat(maxRatePerMin);
+          if (!isNaN(perMin) && perMin > 0) cfg.max_rate_per_sec = perMin / 60;
         }
         if (isEdit) await deleteController(String(editConfig!.id));
         await createController(cfg);
@@ -929,6 +943,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   </div>
                 </>
               )}
+              <div>
+                <label class={lbl}>Max. Änderungsrate (°/min, leer = unbegrenzt)</label>
+                <input type="number" step="any" min="0" value={maxRatePerMin}
+                  onInput={(e) => setMaxRatePerMin((e.target as HTMLInputElement).value)}
+                  placeholder="unbegrenzt" class={inp} />
+              </div>
             </>
           )}
 
