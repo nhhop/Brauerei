@@ -82,6 +82,13 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
 
     const char* f = a->fault();
     if (f) obj["fault"] = f;
+
+    const IntervalConfig iv = a->interval();
+    if (iv.has) {
+      JsonObject ivObj = obj["interval"].to<JsonObject>();
+      ivObj["onSec"] = iv.onSec;
+      ivObj["periodSec"] = iv.periodSec;
+    }
   }
 
   JsonArray ctrlArr = doc["controllers"].to<JsonArray>();

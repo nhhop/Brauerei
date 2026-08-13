@@ -1,8 +1,18 @@
 #pragma once
 
+#include <stdint.h>
+
 #include "ActuatorMeta.h"
 
 namespace SensActCtrl {
+
+// Duty-cycle schedule reported by interval()/set via setInterval(). has=false
+// (the default) means the actuator isn't interval-scheduled.
+struct IntervalConfig {
+  bool has = false;
+  uint32_t onSec = 0;
+  uint32_t periodSec = 0;
+};
 
 // Actuator interface. Subclasses implement write/tick; tick() is called from
 // Registry::tick() (Actuators-last phase) and drives any non-blocking
@@ -31,6 +41,11 @@ class Actuator {
   // EnableGuardActuator give it real meaning.
   virtual bool enabled() const { return true; }
   virtual void setEnabled(bool) {}
+
+  // Duty-cycle schedule (on-time per period). Most actuators ignore it —
+  // only IntervalActuator gives it real meaning.
+  virtual IntervalConfig interval() const { return {}; }
+  virtual void setInterval(uint32_t /*onSec*/, uint32_t /*periodSec*/) {}
 };
 
 }  // namespace SensActCtrl

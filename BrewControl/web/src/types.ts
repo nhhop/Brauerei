@@ -54,6 +54,9 @@ export interface Actuator {
   // Master on/off switch, independent of state.v. Always true unless the
   // firmware wrapped this actuator in EnableGuardActuator (Continuous kind).
   enabled: boolean;
+  // Duty-cycle schedule ("on" for onSec out of every periodSec). Present
+  // only when the firmware wrapped this actuator in IntervalActuator.
+  interval?: { onSec: number; periodSec: number };
 }
 
 export interface ControllerParams {

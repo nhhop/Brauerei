@@ -32,6 +32,12 @@ class EnableGuardActuator : public Actuator {
   void setEnabled(bool e) override;
   bool enabled() const override { return enabled_; }
 
+  // Transparent forwarding — lets a further-wrapped IntervalActuator (or any
+  // future decorator) stay reachable through this one, since the Registry
+  // only ever holds the outermost pointer.
+  IntervalConfig interval() const override { return inner_.interval(); }
+  void setInterval(uint32_t onSec, uint32_t periodSec) override { inner_.setInterval(onSec, periodSec); }
+
  private:
   Actuator& inner_;
   bool enabled_ = true;

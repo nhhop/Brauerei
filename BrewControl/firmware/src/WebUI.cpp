@@ -198,8 +198,19 @@ void WebUI::begin() {
         if (!a) { req->send(404); return; }
         bool hasEnabled = !doc["enabled"].isNull();
         bool hasV = !doc["v"].isNull();
-        if (!hasV && !hasEnabled) { req->send(400, "text/plain", "missing v"); return; }
+        bool hasInterval = doc["interval"].is<JsonObject>();
+        if (!hasV && !hasEnabled && !hasInterval) { req->send(400, "text/plain", "missing v"); return; }
         if (hasEnabled) a->setEnabled(doc["enabled"].as<bool>());
+        if (hasInterval) {
+          JsonObject iv = doc["interval"];
+          uint32_t onSec = iv["onSec"] | 0u;
+          uint32_t periodSec = iv["periodSec"] | 0u;
+          if (periodSec == 0 || onSec > periodSec) {
+            req->send(400, "text/plain", "invalid interval");
+            return;
+          }
+          a->setInterval(onSec, periodSec);
+        }
         if (hasV) a->write(doc["v"].as<float>());
         pushSnapshot_();
         req->send(204);

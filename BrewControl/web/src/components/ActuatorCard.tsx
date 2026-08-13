@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X, TriangleAlert } from 'lucide-preact';
 import type { Actuator } from '../types';
-import { writeActuator, enableActuator } from '../api';
+import { writeActuator, enableActuator, setActuatorInterval } from '../api';
+import { pickIntervalUnit, intervalUnitMultiplier } from '../intervalUnit';
 import { ToggleSwitch } from './ToggleSwitch';
 import { btnPrimary, inp, badgeCaution } from '../ui';
 
 export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuator; onDelete?: () => void; onEdit?: () => void }) {
-  const { id, meta, state, enabled } = actuator;
+  const { id, meta, state, enabled, interval } = actuator;
   const [pending, setPending] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -25,6 +26,12 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
     try { await enableActuator(id, !enabled); }
     catch (e) { setErr(String(e)); }
     finally { setToggling(false); }
+  }
+
+  async function sendInterval(onSec: number, periodSec: number) {
+    setErr(null);
+    try { await setActuatorInterval(id, onSec, periodSec); }
+    catch (e) { setErr(String(e)); }
   }
 
   return (
@@ -62,6 +69,9 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
           <DiscreteInput value={state.v ?? 0} disabled={pending} onSubmit={send} />
         )}
       </div>
+      {interval && (
+        <IntervalSlider periodSec={interval.periodSec} onSec={interval.onSec} onChange={sendInterval} />
+      )}
       {err && <p class="mt-2 text-xs text-critical">{err}</p>}
       {actuator.fault && (
         <span class={`mt-2 ${badgeCaution}`}>
@@ -102,6 +112,30 @@ function ContinuousSlider({ value, min, max, step, unit, disabled, onChange }: {
         <span class="font-mono text-fg">{local.toFixed(2)} {unit}</span>
         <span>{max}</span>
       </div>
+    </div>
+  );
+}
+
+// Only the "on" amount is live-adjustable here — cycle length/unit are
+// creation-time config (Edit modal), same split as Controller setpoint
+// (live on the card) vs. Kp/Ki/Kd (modal-only).
+function IntervalSlider({ periodSec, onSec, onChange }: {
+  periodSec: number; onSec: number; onChange: (onSec: number, periodSec: number) => void;
+}) {
+  const unit = pickIntervalUnit(periodSec);
+  const mult = intervalUnitMultiplier(unit);
+  const periodDisplay = periodSec / mult;
+  const [local, setLocal] = useState(onSec / mult);
+  useEffect(() => { setLocal(onSec / mult); }, [onSec, periodSec]);
+  return (
+    <div class="mt-3 border-t border-border/50 pt-3">
+      <label class="block text-xs text-muted mb-1">
+        Intervall: {Math.round(local * 100) / 100} / {periodDisplay} {unit} an
+      </label>
+      <input type="range" min={0} max={periodDisplay} step="any" value={local}
+        onInput={(e) => setLocal(parseFloat((e.target as HTMLInputElement).value))}
+        onChange={(e) => onChange(Math.round(parseFloat((e.target as HTMLInputElement).value) * mult), periodSec)}
+        class="w-full accent-accent" />
     </div>
   );
 }

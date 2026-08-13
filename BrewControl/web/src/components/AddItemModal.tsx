@@ -6,6 +6,7 @@ import {
   scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
+import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -92,6 +93,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [analogMax, setAnalogMax] = useState('1');
   const [analogUnit, setAnalogUnit] = useState('');
   const [invertOut, setInvertOut] = useState(false);
+  // Interval / duty-cycle scheduling (DigitalOutput + AnalogOutput, decorator-
+  // based) — empty period = disabled (no wrap). Wire format is always seconds.
+  const [intervalShow, setIntervalShow] = useState(false);
+  const [intervalPeriod, setIntervalPeriod] = useState('');
+  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>('min');
+  const [intervalOn, setIntervalOn] = useState('0');
 
   // controller
   const [ctrlType, setCtrlType] = useState<ControllerType>('PID');
@@ -196,6 +203,20 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setPinYellow(String(editConfig.pin_yellow ?? '12'));
           setPinInterrupt(String(editConfig.pin_interrupt ?? '13'));
         }
+        if (t === 'DigitalOutput' || t === 'AnalogOutput') {
+          const periodSec = Number(editConfig.interval_period_sec ?? 0);
+          const hasInterval = periodSec > 0;
+          setIntervalShow(hasInterval);
+          if (hasInterval) {
+            const unit = pickIntervalUnit(periodSec);
+            const mult = intervalUnitMultiplier(unit);
+            setIntervalUnit(unit);
+            setIntervalPeriod(String(periodSec / mult));
+            setIntervalOn(String(Number(editConfig.interval_on_sec ?? 0) / mult));
+          } else {
+            setIntervalUnit('min'); setIntervalPeriod(''); setIntervalOn('0');
+          }
+        }
       } else if (editRole === 'controller') {
         const t = String(editConfig.type ?? 'PID') as ControllerType;
         setCtrlType(t);
@@ -254,6 +275,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setPinWhite('14'); setPinYellow('12'); setPinInterrupt('13');
       setAnalogPin(''); setAnalogMode('pwm'); setAnalogShowRange(false);
       setAnalogMin('0'); setAnalogMax('1'); setAnalogUnit('');
+      setIntervalShow(false); setIntervalPeriod(''); setIntervalUnit('min'); setIntervalOn('0');
       setCtrlType('PID');
       setSensorId(snap?.sensors[0]?.id ?? '');
       setActuatorId(snap?.actuators[0]?.id ?? '');
@@ -386,6 +408,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           if (isNaN(p)) throw new Error('invalid pin');
           cfg = { type: 'DigitalOutput', id: trimId, pin: p, mode, invert: invertOut };
         }
+        if ((actuatorType === 'DigitalOutput' || actuatorType === 'AnalogOutput') && intervalShow) {
+          const period = parseFloat(intervalPeriod);
+          const onAmt = parseFloat(intervalOn);
+          if (isNaN(period) || period <= 0) throw new Error('Zykluslänge ungültig');
+          if (isNaN(onAmt) || onAmt < 0 || onAmt > period) throw new Error('An-Anteil ungültig');
+          const mult = intervalUnitMultiplier(intervalUnit);
+          cfg.interval_period_sec = Math.round(period * mult);
+          cfg.interval_on_sec = Math.round(onAmt * mult);
+        }
         if (isEdit) await deleteActuator(String(editConfig!.id));
         await createActuator(cfg);
 
@@ -456,6 +487,50 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       disabled ? 'opacity-50 cursor-not-allowed' :
       active ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
+
+  // Shared by DigitalOutput + AnalogOutput — decorator-based, any actuator kind.
+  function intervalFields() {
+    const period = parseFloat(intervalPeriod);
+    const maxOn = !isNaN(period) && period > 0 ? period : 0;
+    return (
+      <div>
+        <button type="button" onClick={() => setIntervalShow(!intervalShow)}
+          class="text-xs text-muted hover:text-fg">
+          {intervalShow ? '▼' : '▶'} Intervallbetrieb (optional)
+        </button>
+        {intervalShow && (
+          <div class="mt-2 space-y-2">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class={lbl}>Zykluslänge</label>
+                <input type="number" step="any" min="0" value={intervalPeriod}
+                  onInput={(e) => setIntervalPeriod((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. 60" class={inp} />
+              </div>
+              <div>
+                <label class={lbl}>Einheit</label>
+                <select value={intervalUnit} title="Einheit"
+                  onChange={(e) => setIntervalUnit((e.target as HTMLSelectElement).value as IntervalUnit)}
+                  class={inp}>
+                  <option value="s">Sekunden</option>
+                  <option value="min">Minuten</option>
+                  <option value="h">Stunden</option>
+                </select>
+              </div>
+            </div>
+            {maxOn > 0 && (
+              <div>
+                <label class={lbl}>An-Anteil: {intervalOn} / {intervalPeriod} {intervalUnit}</label>
+                <input type="range" min="0" max={maxOn} step="any" value={intervalOn}
+                  onInput={(e) => setIntervalOn((e.target as HTMLInputElement).value)}
+                  class="w-full accent-accent" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -821,6 +896,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   onChange={(e) => setInvertOut((e.target as HTMLInputElement).checked)} />
                 Invertieren (active-low)
               </label>
+              {intervalFields()}
             </>
           )}
 
@@ -864,6 +940,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   </div>
                 )}
               </div>
+              {intervalFields()}
             </div>
           )}
 

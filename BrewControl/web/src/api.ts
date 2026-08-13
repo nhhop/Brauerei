@@ -38,6 +38,10 @@ export function enableActuator(id: string, enabled: boolean): Promise<void> {
   return postJson(`/api/actuators/${encodeURIComponent(id)}`, { enabled });
 }
 
+export function setActuatorInterval(id: string, onSec: number, periodSec: number): Promise<void> {
+  return postJson(`/api/actuators/${encodeURIComponent(id)}`, { interval: { onSec, periodSec } });
+}
+
 export function setControllerSetpoint(id: string, v: number): Promise<void> {
   return postJson(`/api/controllers/${encodeURIComponent(id)}/setpoint`, { v });
 }
