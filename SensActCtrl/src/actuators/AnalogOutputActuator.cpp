@@ -13,6 +13,8 @@
   // Native test stubs — Arduino ESP32 Core 2.x signatures.
   static double ledcSetup(uint8_t, double, uint8_t) { return 0.0; }
   static void   ledcAttachPin(uint8_t, uint8_t) {}
+  static uint8_t ledcDetachPinCallCount_ = 0;
+  static void   ledcDetachPin(uint8_t)          { ++ledcDetachPinCallCount_; }
   static void   ledcWrite(uint8_t, uint32_t)    {}
   static void   dacWrite(uint8_t, uint8_t)      {}
   #define SENSACTCTRL_HAS_DAC 1  // stubs cover it in native builds
@@ -86,6 +88,17 @@ void AnalogOutputActuator::begin() {
 
 void AnalogOutputActuator::end() {
     write(valueMin_);
+    // Dac mode drives the pin via the DAC peripheral directly (no GPIO
+    // matrix routing), so there's nothing to detach there.
+    if (mode_ == Mode::Pwm) {
+        ledcDetachPin(static_cast<uint8_t>(pin_));
+    }
 }
+
+#ifndef ARDUINO
+uint8_t analogOutputActuatorLedcDetachCallCountForTest() {
+    return ledcDetachPinCallCount_;
+}
+#endif
 
 }  // namespace SensActCtrl

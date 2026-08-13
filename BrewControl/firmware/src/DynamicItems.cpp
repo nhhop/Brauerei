@@ -360,6 +360,7 @@ DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
   for (auto it = sensors_.begin(); it != sensors_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
+      (*it)->ptr->end();
       sensors_.erase(it);
       return {true};
     }
@@ -376,6 +377,7 @@ DynamicItems::Result DynamicItems::removeActuator(const char* id,
   for (auto it = actuators_.begin(); it != actuators_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
+      (*it)->ptr->end();
       actuators_.erase(it);
       return {true};
     }

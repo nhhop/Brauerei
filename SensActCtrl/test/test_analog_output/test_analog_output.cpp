@@ -96,6 +96,22 @@ void test_state_clamped_above() {
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, a.state());
 }
 
+void test_end_detaches_ledc_pin_in_pwm_mode() {
+    AnalogOutputActuator a("a", 1, AnalogOutputActuator::Mode::Pwm);
+    a.begin();
+    uint8_t before = analogOutputActuatorLedcDetachCallCountForTest();
+    a.end();
+    TEST_ASSERT_EQUAL_UINT8(before + 1, analogOutputActuatorLedcDetachCallCountForTest());
+}
+
+void test_end_does_not_detach_ledc_pin_in_dac_mode() {
+    AnalogOutputActuator a("a", 1, AnalogOutputActuator::Mode::Dac);
+    a.begin();
+    uint8_t before = analogOutputActuatorLedcDetachCallCountForTest();
+    a.end();
+    TEST_ASSERT_EQUAL_UINT8(before, analogOutputActuatorLedcDetachCallCountForTest());
+}
+
 void setUp()    {}
 void tearDown() {}
 
@@ -115,5 +131,7 @@ int main(int, char**) {
     RUN_TEST(test_state_after_write);
     RUN_TEST(test_state_clamped_below);
     RUN_TEST(test_state_clamped_above);
+    RUN_TEST(test_end_detaches_ledc_pin_in_pwm_mode);
+    RUN_TEST(test_end_does_not_detach_ledc_pin_in_dac_mode);
     return UNITY_END();
 }

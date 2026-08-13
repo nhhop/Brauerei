@@ -1065,3 +1065,28 @@ Neu: `src/intervalUnit.ts` — geteilte Konvertierung Sekunden ↔ Anzeige-Einhe
 **Nebenbefund (kein Bug, während der Verifikation entdeckt):** Der Vite-Dev-Proxy (`VITE_ESP_HOST=http://brewcontrol.local`) lieferte zwischenzeitlich leere 500er auf alle `/api/*`-Requests — Ursache war eine transiente mDNS-Auflösung auf Windows-Seite (bekannte Einschränkung, s. `BrewControl/PLAN.md`), nicht die Firmware. Direktes Ansprechen der Geräte-IP umging das Problem zuverlässig.
 
 **Vorfall (echter Bug, durch den HW-Test verursacht):** Der Test-Aktor (`iv_test`, AnalogOutput/PWM) wurde auf GPIO 2 angelegt, ohne auf Pin-Konflikte zu prüfen (keine Konflikt-Prüfung vorhanden — s. Roadmap „Pin-Manager"). GPIO 2 ist aber der OneWire-Pin des `mlt`-DS18B20-Sensors. `ledcAttachPin()` (in `AnalogOutputActuator::begin()`) routet den Pin fest durch die LEDC-Peripherie; weder `AnalogOutputActuator::end()` noch `DynamicItems::removeActuator()` lösen das beim Löschen wieder (kein `ledcDetachPin()`-Aufruf, `end()` wird beim Entfernen gar nicht erst aufgerufen) — der Sensor lieferte danach dauerhaft `ok:false`/`v:-127`, bis der Nutzer das Gerät manuell neu gestartet hat (GPIO/LEDC-Routing ist reine Laufzeit-Konfiguration, ein Reboot setzt sie zurück). **Nach Reboot bestätigt: Sensor liefert wieder Werte.** Der zugrundeliegende Fix (Aktoren beim Entfernen sauber freigeben) ist als eigener Task vorgemerkt, nicht Teil dieser Session.
+
+---
+
+## 2026-08-14 — Fix: GPIO/LEDC-Leak beim Entfernen von Aktoren/Sensoren
+
+**Ausgangslage:** Direkter Folge-Fix zum obigen Vorfall (Aktor-Intervallbetrieb-Session, gleicher Tag). Zwei Lücken behoben, keine Konflikt-Prävention (bleibt Pin-Manager-Roadmap-Punkt).
+
+### Fix 1 — `end()` fehlte beim Entfernen (BrewControl)
+
+`DynamicItems.cpp`: `removeActuator()` und `removeSensor()` riefen bisher nur `reg.remove(ptr.get())` + Vector-Erase auf, nie `ptr->end()`. Beide Methoden rufen jetzt `(*it)->ptr->end()` vor dem Erase auf. `ptr` ist bei Aktoren immer die äußerste Decorator-Schicht (`EnableGuardActuator`/`IntervalActuator`) — beide reichen `end()` transparent an `inner_` durch (bestehendes Forwarding-Muster), erreicht also zuverlässig den konkreten Aktor am Ende der Kette.
+
+### Fix 2 — `AnalogOutputActuator::end()` löste PWM-Pin nicht (SensActCtrl)
+
+`end()` rief bisher nur `write(valueMin_)` auf (Duty-Cycle 0), ließ den Pin aber über die LEDC-Peripherie geroutet. Ergänzt: `ledcDetachPin(pin_)` im PWM-Fall. DAC-Modus bewusst ausgenommen — `dacWrite()` nutzt kein GPIO-Matrix-Routing wie LEDC, es gibt kein Pendant zu detachen (gegen ESP32-Arduino-Core-Header verifiziert).
+
+**Tests:** 2 neue native Tests (`test_end_detaches_ledc_pin_in_pwm_mode`, `test_end_does_not_detach_ledc_pin_in_dac_mode`) — Zählerstand eines Native-Test-Hooks (`analogOutputActuatorLedcDetachCallCountForTest()`) vor/nach `end()`. `removeActuator()`/`removeSensor()` selbst sind nativ nicht testbar (`DynamicItems.cpp` hängt an `ArduinoJson`/`FS.h`/`OneWire` — kein natives Mock-Setup vorhanden, `[env:native]` in `BrewControl/firmware` deckt bisher nur reine Algorithmus-Files wie `TarExtractor` ab); Verifikation dort über Codelesen (`ptr->end()` steht jetzt eindeutig vor dem Erase) + Firmware-Compile.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 141/141 PASSED (139 alt + 2 neu) |
+| `pio run -e esp32dev` | SUCCESS — 65.4 % Flash, 15.7 % RAM |
+| `ledcDetachPin`-Symbol gegen ESP32-Arduino-Core geprüft | vorhanden (`esp32-hal-ledc.h`), bereits transitiv über `Arduino.h` verfügbar wie `ledcSetup`/`ledcAttachPin` |
+| HW-Verifikation (Pin nach Löschen erneut mit Sensor testen) | **ausstehend** — kein Board für diese Session verfügbar; nächster praktischer Test: Aktor auf GPIO 2 anlegen, löschen, danach `mlt`-Sensor-Reads prüfen (ohne Reboot) |

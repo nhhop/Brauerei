@@ -53,4 +53,9 @@ private:
     static uint8_t nextChannel_;
 };
 
+#ifndef ARDUINO
+// Test hook: native builds have no real LEDC peripheral to inspect.
+uint8_t analogOutputActuatorLedcDetachCallCountForTest();
+#endif
+
 }  // namespace SensActCtrl
