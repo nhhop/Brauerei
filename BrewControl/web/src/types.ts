@@ -51,6 +51,9 @@ export interface Actuator {
   meta: ItemMeta;
   state: ItemState;
   fault?: string;
+  // Master on/off switch, independent of state.v. Always true unless the
+  // firmware wrapped this actuator in EnableGuardActuator (Continuous kind).
+  enabled: boolean;
 }
 
 export interface ControllerParams {

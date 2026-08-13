@@ -69,6 +69,10 @@ class DynamicItems {
   struct ActuatorEntry {
     std::string id;
     std::string cfgJson;
+    // innerPtr holds the concrete actuator when wrapped by EnableGuardActuator
+    // (Continuous-kind actuators only); ptr is always what's registered with
+    // the Registry.
+    std::unique_ptr<SensActCtrl::Actuator> innerPtr;
     std::unique_ptr<SensActCtrl::Actuator> ptr;
   };
   struct CtrlEntry {

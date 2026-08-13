@@ -22,6 +22,7 @@
 #include "actuators/DigitalOutputActuator.h"
 #include "actuators/PulseOutputActuator.h"
 #include "actuators/AnalogOutputActuator.h"
+#include "actuators/EnableGuardActuator.h"
 #ifdef ARDUINO
 #include "actuators/IdsActuator.h"
 #endif

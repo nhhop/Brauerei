@@ -196,9 +196,11 @@ void WebUI::begin() {
         String id = req->url().substring(strlen("/api/actuators/"));
         auto* a = reg_.findActuator(id.c_str());
         if (!a) { req->send(404); return; }
-        float v = doc["v"] | NAN;
-        if (isnan(v)) { req->send(400, "text/plain", "missing v"); return; }
-        a->write(v);
+        bool hasEnabled = !doc["enabled"].isNull();
+        bool hasV = !doc["v"].isNull();
+        if (!hasV && !hasEnabled) { req->send(400, "text/plain", "missing v"); return; }
+        if (hasEnabled) a->setEnabled(doc["enabled"].as<bool>());
+        if (hasV) a->write(doc["v"].as<float>());
         pushSnapshot_();
         req->send(204);
       }));

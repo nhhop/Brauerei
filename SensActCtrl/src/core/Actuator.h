@@ -25,6 +25,12 @@ class Actuator {
   virtual void write(float value) = 0;
   virtual float state() const = 0;
   virtual const char* fault() const { return nullptr; }
+
+  // Master on/off switch, independent of write()'s value. Most actuators
+  // ignore it (default: always enabled) — only decorators like
+  // EnableGuardActuator give it real meaning.
+  virtual bool enabled() const { return true; }
+  virtual void setEnabled(bool) {}
 };
 
 }  // namespace SensActCtrl

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X, TriangleAlert } from 'lucide-preact';
 import type { Actuator } from '../types';
-import { writeActuator } from '../api';
+import { writeActuator, enableActuator } from '../api';
 import { ToggleSwitch } from './ToggleSwitch';
 import { btnPrimary, inp, badgeCaution } from '../ui';
 
 export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuator; onDelete?: () => void; onEdit?: () => void }) {
-  const { id, meta, state } = actuator;
+  const { id, meta, state, enabled } = actuator;
   const [pending, setPending] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function send(v: number) {
@@ -18,12 +19,25 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
     finally { setPending(false); }
   }
 
+  async function toggleEnabled() {
+    setToggling(true);
+    setErr(null);
+    try { await enableActuator(id, !enabled); }
+    catch (e) { setErr(String(e)); }
+    finally { setToggling(false); }
+  }
+
   return (
     <div class="min-h-[160px] rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.kind}</span>
+          {meta.kind === 'Continuous' && (
+            <ToggleSwitch checked={enabled} disabled={toggling}
+              title={enabled ? 'Aktor ausschalten' : 'Aktor einschalten'}
+              onChange={() => toggleEnabled()} />
+          )}
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="text-faint hover:text-fg"><Pencil size={14} /></button>
@@ -34,14 +48,14 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
           )}
         </div>
       </div>
-      <div class="mt-3">
+      <div class={`mt-3 ${meta.kind === 'Continuous' && !enabled ? 'opacity-60' : ''}`}>
         {meta.kind === 'Binary' && (
           <BinaryToggle value={state.v ?? 0} disabled={pending} onChange={send} />
         )}
         {meta.kind === 'Continuous' && (
           <ContinuousSlider
             value={state.v ?? meta.min} min={meta.min} max={meta.max}
-            step={meta.res || 0.01} unit={meta.unit} disabled={pending} onChange={send}
+            step={meta.res || 0.01} unit={meta.unit} disabled={pending || !enabled} onChange={send}
           />
         )}
         {(meta.kind === 'Discrete' || meta.kind === 'Cumulative') && (

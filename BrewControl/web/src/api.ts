@@ -34,6 +34,10 @@ export function writeActuator(id: string, v: number): Promise<void> {
   return postJson(`/api/actuators/${encodeURIComponent(id)}`, { v });
 }
 
+export function enableActuator(id: string, enabled: boolean): Promise<void> {
+  return postJson(`/api/actuators/${encodeURIComponent(id)}`, { enabled });
+}
+
 export function setControllerSetpoint(id: string, v: number): Promise<void> {
   return postJson(`/api/controllers/${encodeURIComponent(id)}/setpoint`, { v });
 }

@@ -1005,3 +1005,31 @@ POST /api/controllers
 **Nebenbefund (kein Bug):** Das innere `params.setpoint` (aus dem gewrappten Reglers eigenem `paramsJson()`) spiegelt während einer laufenden Rampe den Ist-Rampenwert, nicht das Ziel — erwartet, da `tick()` genau diesen Wert an `inner_.setSetpoint()` durchreicht. Das Top-Level-`setpoint`-Feld (vom Decorator) bleibt korrekt das Ziel; UI liest ausschließlich dieses Feld.
 
 **Umgebungshinweis:** Auf dieser Maschine fehlte ein nativer GCC-Toolchain (nur ESP32-Xtensa/RISC-V-Toolchains via PlatformIO vorhanden). Behoben durch `winget install BrechtSanders.WinLibs.POSIX.UCRT` (Nutzer-Scope, kein Admin nötig) — Chocolatey scheiterte an fehlenden Admin-Rechten.
+
+---
+
+## 2026-08-13 — Aktor-Master-Schalter (EnableGuardActuator-Decorator)
+
+**Ausgangslage:** Continuous-Aktoren (Slider im UI, z. B. `AnalogOutputActuator` für PWM/DAC) hatten keinen eigenständigen on/off-Status — „Aus" hieß bisher: Slider auf `min` ziehen, der zuletzt gesetzte Wert ging dabei verloren. Wunsch: ein echter Ein/Aus-Schalter, der den zuletzt gesetzten Wert merkt und beim Wiedereinschalten automatisch reaktiviert (Anwendungsfall: Rührwerk-Drehzahl). Bewusst nur für `Continuous`-Kind — `Binary`-Aktoren haben mit ihrem Toggle bereits ein on/off (der Wert *ist* der Schalter), `Discrete` (Zahl+Send) ist unbetroffen. Diskutiert und verworfen: Vererbungs-Umbau der Aktor-Klassen (z. B. „Binary als Basisklasse") — `write(0/1)` und `write(0.37)` haben keine gemeinsame Semantik, das hätte nur künstliche Kopplung erzeugt. Stattdessen wieder ein **Decorator**, exakt nach dem Vorbild von `RateLimitedController` (2026-08-12, s. o.) — dort bereits als Muster etabliert und hier 1:1 auf Aktoren übertragen.
+
+### Library (SensActCtrl)
+
+`core/Actuator.h`: zwei neue default-implementierte virtuelle Methoden `enabled()`/`setEnabled(bool)`, analog zum bestehenden `fault()`-Default-Pattern — bestehende Aktor-Klassen bleiben unverändert, melden einfach `enabled()==true`. Neue Klasse `EnableGuardActuator` (`src/actuators/EnableGuardActuator.h/.cpp`) — hält eine nicht-besitzende `Actuator&`-Referenz. `write(v)` merkt sich `v` als Ziel und schreibt bei deaktiviertem Zustand stattdessen `meta().min` an den inneren Aktor; `setEnabled(true)` spielt das gemerkte Ziel erneut ein (Aktor springt auf den zuletzt gesetzten Wert zurück, nicht auf `min`). `id()`/`meta()`/`begin()`/`end()`/`tick()`/`state()`/`fault()` reichen unverändert an `inner_` durch. 7 neue native Tests (`test/test_enable_guard_actuator/`): Passthrough bei enabled, Disable fährt auf min, Re-Enable stellt Ziel wieder her, Schreiben während disabled aktualisiert nur das Ziel, redundantes `setEnabled(true)` ist ein No-Op, Forwarding von id/meta/fault/state/tick.
+
+### Firmware (BrewControl)
+
+`DynamicItems.h`: `ActuatorEntry` um `innerPtr` erweitert (identisches Muster wie `CtrlEntry` bei `RateLimitedController`). `DynamicItems.cpp`, `addActuatorNoBegin()`: nach dem Bauen des konkreten Aktors automatischer Wrap in `EnableGuardActuator`, wenn `meta().kind == ValueKind::Continuous` — kein Opt-in-Config-Flag nötig (anders als `max_rate_per_sec` bei Reglern), da das Feature für alle Slider-Aktoren gilt. `removeActuator()` unverändert, `unique_ptr`-Destruktoren räumen `innerPtr`+`ptr` symmetrisch auf. `RegistrySnapshot.cpp`: `obj["enabled"] = a->enabled()` für jeden Aktor ergänzt (unconditional, mirrors die bestehende Controller-Zeile). `WebUI.cpp`, `/api/actuators/:id`-Handler: Validierung gelockert — `v` bleibt der Hauptpfad, `enabled` optional zusätzlich unterstützt, 400 nur wenn beide Felder fehlen.
+
+### Frontend (BrewControl/web)
+
+`types.ts`: `Actuator.enabled: boolean` ergänzt (mirrors `Controller.enabled`). `api.ts`: neue Funktion `enableActuator(id, enabled)`, Schwester von `writeActuator`. `ActuatorCard.tsx`: neuer ⏻-Toggle nur bei `meta.kind === 'Continuous'`, im Header neben dem Kind-Badge (Muster von `ControllerCard`s `toggleEnabled()` übernommen — eigener `toggling`-State); Slider bekommt `opacity-60` + `disabled`, solange `!enabled`. Binary/Discrete-Rendering unverändert.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 127/127 PASSED (120 alt + 7 neu) |
+| `pio run -e esp32dev` | SUCCESS — 65.3 % Flash, 15.7 % RAM |
+| `pnpm typecheck` | 0 Fehler |
+| Browser-Check gegen echtes Gerät (`brewcontrol.local`, Dev-Server-Proxy) | Toggle erscheint korrekt nur bei den zwei Continuous-Aktoren (`kettle`, `dfsdfdf`), nicht beim Binary-Aktor (`pump`). Klick sendet korrekt `POST {"enabled":false}` ohne `v` |
+| **HW-E2E (LilyGo T-Display-S3-AMOLED, geflasht über USB/COM9)** | **grün:** nach Flash meldet der Snapshot `enabled:true` für alle Aktoren (vorher fehlte das Feld komplett). Direkt gegen das Gerät verifiziert: `write 0.42` → `state.v=0.42`; `enabled:false` → `state.v=0` (min), `enabled` im Snapshot `false`; `enabled:true` → `state.v` springt automatisch zurück auf `0.42` — Restore-Verhalten bestätigt. Nebenbei bestätigt: der laufende `mash`-Regler (TwoPoint, Sensor unter Setpoint) treibt seinen Aktor `dfsdfdf` unverändert korrekt durch den Wrapper (transparent für Controller-gesteuerte Schreibzugriffe). `kettle` nach dem Test auf Ausgangswert (0.19) zurückgesetzt. |

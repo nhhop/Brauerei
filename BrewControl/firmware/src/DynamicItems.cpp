@@ -193,6 +193,15 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
     return {false, "unknown actuator type"};
   }
 
+  // Continuous-kind actuators (sliders) get an independent on/off master
+  // switch; Binary (toggle IS the value) and Discrete (explicit send) don't
+  // need it.
+  if (e->ptr->meta().kind == ValueKind::Continuous) {
+    auto* guard = new EnableGuardActuator(*e->ptr);
+    e->innerPtr = std::move(e->ptr);
+    e->ptr.reset(guard);
+  }
+
   reg.add(e->ptr.get());
   actuators_.push_back(std::move(e));
   return {true};

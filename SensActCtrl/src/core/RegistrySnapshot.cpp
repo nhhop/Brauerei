@@ -73,6 +73,7 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
     JsonObject obj = actuatorsArr.add<JsonObject>();
     obj["id"] = a->id();
     writeMeta(obj["meta"].to<JsonObject>(), a->meta());
+    obj["enabled"] = a->enabled();
 
     JsonObject state = obj["state"].to<JsonObject>();
     state["v"]  = a->state();
