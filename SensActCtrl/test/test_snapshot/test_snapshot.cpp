@@ -84,6 +84,7 @@ void test_snapshot_includes_sensor_and_actuator_meta_plus_state() {
   TEST_ASSERT_EQUAL_STRING("Binary", a0["meta"]["kind"].as<const char*>());
   TEST_ASSERT_EQUAL_STRING("None", a0["meta"]["quantity"].as<const char*>());
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, a0["state"]["v"].as<float>());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, a0["target"].as<float>());  // undecorated: same as state
 }
 
 void test_snapshot_controller_params_are_nested_object() {

@@ -15,8 +15,9 @@
   static void   ledcAttachPin(uint8_t, uint8_t) {}
   static uint8_t ledcDetachPinCallCount_ = 0;
   static void   ledcDetachPin(uint8_t)          { ++ledcDetachPinCallCount_; }
-  static void   ledcWrite(uint8_t, uint32_t)    {}
-  static void   dacWrite(uint8_t, uint8_t)      {}
+  static uint32_t lastRawWritten_ = 0;
+  static void   ledcWrite(uint8_t, uint32_t raw) { lastRawWritten_ = raw; }
+  static void   dacWrite(uint8_t, uint8_t raw)   { lastRawWritten_ = raw; }
   #define SENSACTCTRL_HAS_DAC 1  // stubs cover it in native builds
 #endif
 
@@ -62,7 +63,17 @@ void AnalogOutputActuator::write(float value) {
     if (value < valueMin_) value = valueMin_;
     if (value > valueMax_) value = valueMax_;
     state_ = value;
-    const uint32_t raw = valueToRaw(value);
+    applyOutput();
+}
+
+void AnalogOutputActuator::applyEnabled(bool /*e*/) {
+    applyOutput();
+}
+
+void AnalogOutputActuator::applyOutput() {
+    // Single choke point: while disabled the peripheral is driven to the
+    // range minimum, but state_ keeps the commanded value for the re-enable.
+    const uint32_t raw = valueToRaw(enabled_ ? state_ : valueMin_);
     if (mode_ == Mode::Dac) {
 #if defined(SENSACTCTRL_HAS_DAC)
         dacWrite(static_cast<uint8_t>(pin_), static_cast<uint8_t>(raw));
@@ -98,6 +109,10 @@ void AnalogOutputActuator::end() {
 #ifndef ARDUINO
 uint8_t analogOutputActuatorLedcDetachCallCountForTest() {
     return ledcDetachPinCallCount_;
+}
+
+uint32_t analogOutputActuatorLastRawForTest() {
+    return lastRawWritten_;
 }
 #endif
 

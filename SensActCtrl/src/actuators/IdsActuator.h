@@ -25,8 +25,11 @@ class IdsActuator : public Actuator {
   void        end()   override {}
   void        tick()  override;
   void        write(float v) override;
-  float       state() const override { return state_; }
+  float       target() const override { return state_; }
   const char* fault() const override;
+
+ protected:
+  void applyEnabled(bool e) override;
 
  private:
   const char*                id_;

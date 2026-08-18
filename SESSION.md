@@ -1090,3 +1090,106 @@ Neu: `src/intervalUnit.ts` — geteilte Konvertierung Sekunden ↔ Anzeige-Einhe
 | `pio run -e esp32dev` | SUCCESS — 65.4 % Flash, 15.7 % RAM |
 | `ledcDetachPin`-Symbol gegen ESP32-Arduino-Core geprüft | vorhanden (`esp32-hal-ledc.h`), bereits transitiv über `Arduino.h` verfügbar wie `ledcSetup`/`ledcAttachPin` |
 | HW-Verifikation (Pin nach Löschen erneut mit Sensor testen) | **ausstehend** — kein Board für diese Session verfügbar; nächster praktischer Test: Aktor auf GPIO 2 anlegen, löschen, danach `mlt`-Sensor-Reads prüfen (ohne Reboot) |
+
+---
+
+## 2026-08-18 — Aktor-Sollwert vs. Ist-Wert (`target()`/`forceOutput()`, Decorator-Reihenfolge getauscht)
+
+**⚠️ Zwischenstand, am Folgetag ersetzt.** Der hier beschriebene Ansatz (Decorator-Reihenfolge tauschen, `forceOutput()` einführen) wurde noch am 2026-08-19 durch einen Basisklassen-Umbau ersetzt — `EnableGuardActuator` existiert nicht mehr, `forceOutput()` ist wieder entfallen. Siehe den Eintrag „Aktor-Enable in die Actuator-Basisklasse" weiter unten für den aktuellen Stand. Dieser Eintrag bleibt als Protokoll der Diagnose stehen (Befund 1–3 sind weiterhin die korrekte Ursachenanalyse).
+
+**Ausgangslage:** Nutzer-Befund an der `ActuatorCard`: stellt man den Master-Schalter auf „aus", springt der Wert-Slider auf 0; gleicher Effekt, wenn der Intervallbetrieb in die Aus-Phase schaltet. Frage war, ob das reines UI ist oder ob Decorator-Reihenfolge/Klassenstruktur (Binary als Basisklasse) angefasst werden muss.
+
+**Diagnose — drei Befunde, nicht einer:**
+
+1. **UI/Wire-Format:** Beide Decorator reichen `state()` unverändert an `inner_` durch, `state()` meldet also immer den *physikalischen* Ist-Wert. Das intern gemerkte `target_` (Restore-Wert bzw. An-Anteil) war nirgends nach außen sichtbar — `RegistrySnapshot` emittierte nur `state.v`, und genau daran hing der Slider.
+2. **Target-Korruption:** `EnableGuardActuator::write()` schickte bei disabled *immer* `inner_.write(meta().min)` nach unten. Da `inner_` der `IntervalActuator` war, überschrieb das dessen `target_` — der An-Anteil ging bei jedem Disable und jedem Slider-Drag während disabled verloren.
+3. **Der eigentlich gefährliche Befund (erst beim Testschreiben aufgefallen):** Befund 2 war *load-bearing*. Behebt man ihn allein, bleibt `IntervalActuator::target_` beim Disable korrekt erhalten — und beim nächsten Phasenwechsel auf „an" treibt `tick()` den Ausgang wieder hoch, **an einem ausgeschalteten Master-Schalter vorbei**. `tick()` läuft weiter, `EnableGuardActuator` sitzt darüber und sieht diesen Pfad nie. Vorher war das nur deshalb harmlos, weil der korrumpierte `target_` zufällig `min` war.
+
+**Konsequenz — die Reihenfolge war doch relevant (Korrektur einer früheren Einschätzung im Gespräch):** Ein autonom treibender Decorator kann nicht von einem Gate *über* ihm kontrolliert werden. Der Master-Schalter muss deshalb **hardware-nah nach innen**, das Zeitschema nach außen: **Interval(außen) → Enable(innen) → konkret**. Nicht angefasst: Binary als Basisklasse — die Sollwert/Ist-Wert-Unterscheidung ist `ValueKind`-unabhängig (Interval wrapt alle Arten) und gehört generisch auf `Actuator`.
+
+### Library (SensActCtrl)
+
+`core/Actuator.h`: zwei neue default-implementierte virtuelle Methoden, viertes Vorkommen des `fault()`/`enabled()`/`interval()`-Musters — `target()` (zuletzt kommandierter Wert, Default `state()`) und `forceOutput(v)` (physikalisch treiben, ohne als Sollwert zu zählen, Default `write(v)`). Keine bestehende Aktor-Klasse musste angefasst werden.
+
+`EnableGuardActuator`: `target()` meldet `target_`. `write()` reicht nur noch bei `enabled_` nach unten (statt `min` durchzuschieben). **`forceOutput()` überschrieben und mit demselben Gate versehen** — das ist der Kern von Befund 3: als innerste Schicht filtert der Guard jetzt *jeden* von oben kommenden Wert, egal ob Nutzer-Sollwert oder Zeitschema. Der Wert wird dabei als `target_` mitgeführt, damit Re-Enable dort weitermacht, wo das Schema gerade steht. `setEnabled()`: Enable-Pfad über `write()` (echter Sollwert), Disable-Pfad über `forceOutput(min)`.
+
+`IntervalActuator`: `target()` meldet `target_`; `tick()`-Phasenwechsel treibt über `forceOutput()` statt `write()`. `forceOutput()` selbst reine Durchreiche.
+
+`RegistrySnapshot.cpp`: neues Feld `"target"` unconditional (analog `enabled`).
+
+**Tests:** 141 → 146. Neu u. a. `test_disabled_master_survives_an_interval_phase_flip_back_on` (Master aus, Phase kippt auf „an" → Ausgang muss auf min bleiben) und `test_force_output_is_gated_by_the_master_switch`. Komposition-Tests auf die neue Reihenfolge umgestellt. **Gegenprobe durchgeführt:** Gate in `forceOutput()` testweise entfernt → beide Tests schlagen fehl (`Expected 0 Was 0.8`), Gate zurück → grün. Die Tests sind also nicht vacuous.
+
+### Firmware (BrewControl)
+
+`DynamicItems.cpp`, `addActuatorNoBegin()`: die zwei Wrap-Blöcke getauscht — erst `EnableGuardActuator` (Continuous-only, innen), dann `IntervalActuator` (Opt-in, außen). Sonst unverändert; `chain`-Vektor und Kind-Prüfung tragen beide Reihenfolgen (alle Decorator reichen `meta()` durch).
+
+### Frontend (BrewControl/web)
+
+`types.ts`: `Actuator.target: number` (nicht-optional, analog `enabled`). `ActuatorCard.tsx`: `BinaryToggle`/`ContinuousSlider`/`DiscreteInput` binden an `target` statt `state.v`; `state` dadurch in der Komponente ungenutzt → aus der Destrukturierung entfernt. **Bewusst unverändert:** `ControllerCard.tsx` und `resolveRef()` in `api.ts` (Charts/Logs) — die wollen den echten physikalischen Ist-Wert, damit die Taktung im Trend-Chart weiter als Rechtecksignal sichtbar bleibt.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 146/146 PASSED (141 alt + 5 neu) |
+| Gegenprobe: Gate entfernt | 2 Tests FAILED wie erwartet, danach wieder grün |
+| `pio run -e esp32dev` (BrewControl) | SUCCESS — 65.4 % Flash, 15.7 % RAM (unverändert) |
+| `pnpm typecheck` | 0 Fehler |
+| **HW-E2E (LilyGo T-Display-S3-AMOLED, geflasht über USB/COM9)** | **grün** — verifiziert am vorhandenen Test-Aktor `dfsdfdf` (AnalogOutput/PWM, Pin 3, Intervall 1 s/2 s; kein Pin-Konflikt mit `mlt`/Pin 2 oder `durchfluss`/Pin 9, Kessel und Pumpe unangetastet). (1) Master an, `v=0.8`: `state.v` taktet sauber 0 ↔ 0,8 im 1s/2s-Rhythmus, `target` steht konstant auf 0,8 — der Slider würde nicht mehr mitspringen. (2) Master aus: `state.v` bleibt über ~3,5 volle Zyklen durchgehend 0, `target` weiter 0,8 — **genau die Regression aus Befund 3, die ohne das `forceOutput()`-Gate aufgetreten wäre.** (3) Master wieder an: springt zurück auf 0,8 und taktet weiter. Aktor danach auf `v=0` zurückgesetzt; `mlt` liefert unverändert Werte (24,875 °C, `ok:true`). |
+
+**Nebenbefund (nicht angefasst):** `state.t` wird im Frontend nirgends ausgewertet — der „stale"-Badge in `SensorCard.tsx` hängt an `state.ok`. `BrewControl/PLAN.md` beschreibt dort noch die ursprüngliche Idee `(now - state.t) > 5000`. Bei Aktoren ist `t` ohnehin nur der Serialisierungszeitpunkt (`millis()`), trägt also keine Information.
+
+---
+
+## 2026-08-19 — Aktor-Enable in die Actuator-Basisklasse (`EnableGuardActuator` entfällt)
+
+**Ausgangslage:** Neuer Nutzer-Befund direkt nach dem gestrigen Fix: Bei einem Aktor mit Intervallbetrieb dauert es nach dem Wiedereinschalten des Master-Schalters 3-4 Sekunden, bis er tatsächlich schaltet. Ursachensuche legte einen tieferliegenden Konstruktionsfehler frei, der über den reinen Latenz-Bug hinausging.
+
+**Diagnose:** `EnableGuardActuator` gated den *Wertefluss* (`write()`/`forceOutput()`), nicht die *Ausgabe an die Hardware*. Der Zeitplan schrieb bei jedem Phasenwechsel in `EnableGuardActuator::target_` (auch während disabled, um korrekt „bereit" zu bleiben) — beim Re-Enable wurde exakt dieser gerade aktuelle Phasenwert reappliziert. War die Phase zufällig „aus", wartete die Freigabe bis zum nächsten planmäßigen An-Fenster. Diskussion mit dem Nutzer (s. Transkript) verwarf zunächst zwei Reparaturvarianten am bestehenden Decorator (Zyklus-Neustart im `IntervalActuator` erzwingen — bricht die Unabhängigkeit der beiden Decorator-Klassen, `IntervalActuator` müsste `EnableGuardActuator`s internen Zustand kennen) und landete stattdessen bei der Idee des Nutzers: **`EnableGuardActuator` ersatzlos streichen.** `enabled_` wird konkreter State auf `Actuator` selbst — analog zu `Controller.h`, das exakt so schon lange kein `EnableGuardController` braucht. Jede konkrete Aktor-Klasse gated ihren eigenen Ausgang an der Stelle, wo sie tatsächlich Hardware anfasst; `tick()` läuft ungestört weiter.
+
+**Präzisierung unterwegs:** „Kein Pin auf aktiv" trägt nicht für jede Klasse. Eine Machbarkeitsprüfung (Explore-Agent) ergab: `IdsActuator`/`RemoteActuator` sprechen ein Keep-Alive-Protokoll — den Aufruf auszulassen hieße „verstummen", nicht „aus"; sie müssen aktiv „0"/`min` senden. `PulseOutputActuator` darf `tick()` nicht einfach weiterlaufen lassen, sonst „verbraucht" die Pulsqueue Pulse, die nie physisch stattfanden — hier muss `tick()` einfrieren. Der allgemeine Vertrag lautet deshalb „bring dich selbst in deinen inaktiven Zustand", nicht „setz keinen Pin".
+
+**Startzustand-Frage:** Damit der Master-Schalter bei Binary-Aktoren dieselbe Bedeutung hat wie bei Continuous, muss der Wert feststehen (`target=1`) und allein der Schalter entscheiden — sonst wäre `enabled=true` bei `v=0` wirkungslos. Konsequenz: ein Binary-Aktor **startet disabled** (Nutzer-Idee, um zu verhindern, dass ein Reboot ein Relais von selbst schließt).
+
+### Library (SensActCtrl)
+
+`core/Actuator.h`: `target()` bleibt (pure-virtual jetzt, `state()` hat einen Default `enabled_ ? target() : meta().min`). `forceOutput()` ist wieder entfallen. Neu: `setEnabled()` ruft bei echter Zustandsänderung `applyEnabled(bool)` (protected, Default no-op) — der Hook, den jede Klasse für ihr eigenes „sicher aus" überschreibt.
+
+Pro konkreter Klasse (alle in `SensActCtrl/src/actuators/` + `src/remote/RemoteActuator`):
+- **`DigitalOutputActuator`**: einziger `digitalWrite`-Aufruf steckt in `applyPin()` — ein `if (!enabled_) on = false;` deckt Binary **und** TimeProportional gleichzeitig ab. Binary-Konstruktor setzt jetzt `state_=1.0f, enabled_=false` (Startzustand s.o.).
+- **`AnalogOutputActuator`**: `write()` in `applyOutput()` extrahiert, PWM/DAC-Raw wird aus `enabled_ ? state_ : valueMin_` berechnet.
+- **`PulseOutputActuator`**: `tick()` steigt bei `!enabled_` sofort aus (Queue eingefroren, nichts wird „abgearbeitet"); `applyEnabled(false)` bricht einen laufenden Puls sauber ab (`setPin(false)`, `phase_=Idle`) statt den Pin auf aktiv hängen zu lassen.
+- **`IdsActuator`**: `cooker_->Update()`-Aufruf bleibt (Keep-Alive!), Argument wird zu `enabled_ ? power_ : 0`; `applyEnabled()` setzt `nextTickMs_=0`, damit die Änderung sofort statt erst nach ≤500 ms greift.
+- **`RemoteActuator`**: `write()`/`applyEnabled()` publizieren aktiv `enabled_ ? value : meta_.min` statt nur bei echten Writes zu senden.
+- **`MockActuator`** (Test): gated jetzt ebenfalls, `outputs`-Vektor zusätzlich zu `writes` für Assertions auf „was kam wirklich an".
+
+`IntervalActuator`: `forceOutput()`-Aufrufe zurück auf `write()`. Neues `setEnabled()`: reicht an `inner_` durch **und** startet bei der Flanke aus→an den Zyklus neu (`cycleStartMs_=millis()`, `onPhase_=true`, Ziel sofort angewendet) — das ist der eigentliche Fix für die 3-4 Sekunden. Ausnahme `onSec_==0` (dauerhaft-aus-Schema): kein Neustart, bliebe ohnehin sofort wieder aus.
+
+Gelöscht: `EnableGuardActuator.{h,cpp}`, `test/test_enable_guard_actuator/` (9 Tests). `DynamicItems.h`: `ActuatorEntry.chain`-Vektor zurückgebaut auf `innerPtr` (Einzelfeld, spiegelt `CtrlEntry`) — nur noch maximal eine Decorator-Schicht (`IntervalActuator`, opt-in) möglich.
+
+**Neue Tests:** `test_digital_output/` komplett neu (8 Tests — die Klasse hatte vorher gar keine eigene Suite), inkl. Startzustand, active-low, TPO-Duty-Überleben. `test_analog_output`: 2 neue (Gate + Write-während-disabled). `test_pulse_output`: 3 neue (Queue-Freeze, Pin-Release mitten im Puls, Writes-während-disabled werden nicht verloren). `test_interval_actuator`: Komposition-Tests gegen einen gate-fähigen `MockActuator` neu geschrieben, plus `test_reenable_restarts_the_cycle_and_switches_immediately` (der eigentliche Regressionstest) und `test_reenable_on_a_permanently_off_schedule_stays_off` (Edge-Case `onSec=0`). **Gegenprobe:** Gate in `DigitalOutputActuator::applyPin()` testweise entfernt → 4 Tests schlagen fehl, zurückgesetzt → grün.
+
+### Firmware (BrewControl)
+
+`DynamicItems.cpp`, `addActuatorNoBegin()`: `EnableGuardActuator`-Wrap-Block komplett entfernt; `IntervalActuator` bleibt die einzige optionale Schicht, schreibt jetzt in `e->innerPtr` statt `e->chain`.
+
+### Frontend (BrewControl/web)
+
+Jede Aktor-Karte hat jetzt genau einen ⏻-Schalter (vorher nur Continuous), und der sendet überall nur `{enabled}` — kein kind-abhängiges Request-Format. Bei Binary ersetzt der Schalter den bisherigen Wert-Toggle komplett (Wert steht serverseitig fest auf 1); das bisherige `ON`/`OFF`-Label bleibt, zeigt aber jetzt `state.v` (physikalischer Ist-Zustand) statt der Schalterstellung — bei regler- oder intervallgetriebenen Binary-Aktoren sieht man so Freigabe und Ist-Zustand nebeneinander. `ActuatorCard.tsx`: `BinaryToggle` → `BinaryState` (reine Anzeige, kein `onChange`); kind-Gate vor dem ⏻-Button entfernt; Dimmung (`opacity-60`) jetzt an `enabled` statt `meta.kind==='Continuous' && !enabled`; Discrete/Cumulative-Eingabe zusätzlich `disabled={!enabled}`. `types.ts`: Kommentar bei `enabled` aktualisiert (gilt für alle Arten).
+
+### Wire-Format
+
+`enabled` unverändert (schon vorher unconditional emittiert und angenommen — nur bisher wirkungslos für Nicht-Continuous). Kein neues Feld, keine Breaking Change am JSON-Schema.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 150/150 PASSED (146 alt − 9 gelöscht + 13 neu) |
+| Gegenprobe: Gate in `applyPin()` entfernt | 4 Tests FAILED wie erwartet, danach wieder grün |
+| `pio run -e esp32dev` (BrewControl) | SUCCESS — 65,4 % Flash |
+| `pnpm typecheck` | 0 Fehler |
+| **HW-E2E (LilyGo T-Display-S3-AMOLED, geflasht über USB/COM9)** | **grün.** Nach Flash: `pump` (Binary) kommt mit `enabled:false, target:1, state.v:0` — Relais aus, aber scharf, kein Reboot-Autostart. **Kernnachweis Re-Enable-Latenz:** `dfsdfdf` (AnalogOutput/PWM, Pin 3) auf 10 s an / 60 s Periode gestellt, in die Aus-Phase gewartet, Schalter aus dann sofort wieder an → Aktor reagiert nach **0,27 s** (reine HTTP-Poll-Rundlaufzeit) statt der vorher möglichen bis zu 50 s. `mlt`-Sensor unverändert grün (25,3 °C). |
+| **Frontend-Deploy auf SD** | `pnpm build:sd` → `tar -C dist -cf ../webui.tar .` (unkomprimiert, `./`-relative Pfade, plain + `.gz`-Geschwister nebeneinander) → `POST /api/update/assets` (Multipart-Feld `f`) → Swap auf `/www.new`→`/www` im nächsten Loop-Tick, kein Reboot nötig. Im Browser gegen das Gerät verifiziert: `kettle`/`dfsdfdf` (Continuous) je ein ⏻ + Slider, `pump` (Binary) nur noch ein ⏻ + ON/OFF-Label, Intervall-Sub-Slider bei `dfsdfdf` weiterhin sichtbar. |
+
+**Nebenbefund:** Während der Verifikation stand `dfsdfdf.target` unerwartet auf `0.16` statt dem zuletzt per Skript gesetzten `0` — vermutlich eine parallele Interaktion mit dem Live-Gerät (Browser/Display) während der Session, nicht untersucht, da unkritisch für die Verifikation und der Aktor ein Test-Objekt ohne reale Funktion ist.

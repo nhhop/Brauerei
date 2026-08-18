@@ -74,6 +74,7 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
     obj["id"] = a->id();
     writeMeta(obj["meta"].to<JsonObject>(), a->meta());
     obj["enabled"] = a->enabled();
+    obj["target"] = a->target();
 
     JsonObject state = obj["state"].to<JsonObject>();
     state["v"]  = a->state();

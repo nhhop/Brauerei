@@ -51,6 +51,11 @@ void PulseOutputActuator::write(float v) {
 }
 
 void PulseOutputActuator::tick() {
+  // Disabled: freeze the queue rather than suppress the pin. Letting the
+  // phase machine run would drain remaining_ and silently "emit" pulses that
+  // never physically happened (a hop dispenser would lose additions).
+  if (!enabled_) return;
+
   const uint32_t now = millis();
 
   switch (phase_) {
@@ -81,6 +86,14 @@ void PulseOutputActuator::tick() {
       }
       break;
   }
+}
+
+void PulseOutputActuator::applyEnabled(bool e) {
+  if (e) return;  // tick() picks the queue back up from Idle
+  // Abort a pulse in flight so the pin can't be left stuck at its active
+  // level; the outstanding count survives untouched.
+  setPin(false);
+  phase_ = Phase::Idle;
 }
 
 void PulseOutputActuator::setPin(bool on) {

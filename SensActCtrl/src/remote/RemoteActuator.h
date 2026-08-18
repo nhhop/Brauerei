@@ -22,9 +22,16 @@ class RemoteActuator : public Actuator {
   void begin() override;
   void tick() override {}
   void write(float value) override;
+  float target() const override { return target_; }
+  // The remote's reported state, ungated — it's what the far end actually
+  // does, so it stands on its own rather than being derived from enabled().
   float state() const override { return state_; }
 
+ protected:
+  void applyEnabled(bool e) override;
+
  private:
+  void publishCommand(float value);
   void onState(const char* payload, size_t length);
   void onMeta(const char* payload, size_t length);
 
@@ -37,6 +44,7 @@ class RemoteActuator : public Actuator {
   std::string unitStorage_;
   ActuatorMeta meta_{};
   float state_ = 0.0f;
+  float target_ = 0.0f;
 };
 
 }  // namespace SensActCtrl

@@ -7,7 +7,7 @@ import { ToggleSwitch } from './ToggleSwitch';
 import { btnPrimary, inp, badgeCaution } from '../ui';
 
 export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuator; onDelete?: () => void; onEdit?: () => void }) {
-  const { id, meta, state, enabled, interval } = actuator;
+  const { id, meta, state, target, enabled, interval } = actuator;
   const [pending, setPending] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -40,11 +40,9 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.kind}</span>
-          {meta.kind === 'Continuous' && (
-            <ToggleSwitch checked={enabled} disabled={toggling}
-              title={enabled ? 'Aktor ausschalten' : 'Aktor einschalten'}
-              onChange={() => toggleEnabled()} />
-          )}
+          <ToggleSwitch checked={enabled} disabled={toggling}
+            title={enabled ? 'Aktor ausschalten' : 'Aktor einschalten'}
+            onChange={() => toggleEnabled()} />
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="text-faint hover:text-fg"><Pencil size={14} /></button>
@@ -55,18 +53,21 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
           )}
         </div>
       </div>
-      <div class={`mt-3 ${meta.kind === 'Continuous' && !enabled ? 'opacity-60' : ''}`}>
+      <div class={`mt-3 ${enabled ? '' : 'opacity-60'}`}>
         {meta.kind === 'Binary' && (
-          <BinaryToggle value={state.v ?? 0} disabled={pending} onChange={send} />
+          // No value control: the master switch above is the whole story for
+          // a Binary actuator. This just reports what the pin is doing, which
+          // a controller or an interval schedule may drive on its own.
+          <BinaryState value={state.v ?? 0} />
         )}
         {meta.kind === 'Continuous' && (
           <ContinuousSlider
-            value={state.v ?? meta.min} min={meta.min} max={meta.max}
+            value={target} min={meta.min} max={meta.max}
             step={meta.res || 0.01} unit={meta.unit} disabled={pending || !enabled} onChange={send}
           />
         )}
         {(meta.kind === 'Discrete' || meta.kind === 'Cumulative') && (
-          <DiscreteInput value={state.v ?? 0} disabled={pending} onSubmit={send} />
+          <DiscreteInput value={target} disabled={pending || !enabled} onSubmit={send} />
         )}
       </div>
       {interval && (
@@ -82,12 +83,13 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
   );
 }
 
-function BinaryToggle({ value, disabled, onChange }: { value: number; disabled: boolean; onChange: (v: number) => void }) {
+// Live physical state, not the switch position — the two differ whenever a
+// controller or an interval schedule is driving the actuator.
+function BinaryState({ value }: { value: number }) {
   const on = value >= 0.5;
   return (
     <div class="flex items-center gap-2">
-      <ToggleSwitch checked={on} disabled={disabled}
-        onChange={(next) => onChange(next ? 1 : 0)} />
+      <span class={`h-2.5 w-2.5 rounded-full ${on ? 'bg-accent' : 'bg-fg/20'}`} />
       <span class={`text-sm font-medium ${on ? 'text-fg' : 'text-muted'}`}>
         {on ? 'ON' : 'OFF'}
       </span>

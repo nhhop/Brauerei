@@ -1,12 +1,10 @@
 #include <unity.h>
 
 #include "actuators/IntervalActuator.h"
-#include "actuators/EnableGuardActuator.h"
 #include "../mocks/MockActuator.h"
 
 using SensActCtrl::IntervalActuator;
 using SensActCtrl::intervalActuatorSetMillisForTest;
-using SensActCtrl::EnableGuardActuator;
 using SensActCtrl::ActuatorMeta;
 using SensActCtrl::ValueKind;
 using SensActCtrl::Quantity;
@@ -25,11 +23,11 @@ void test_always_on_when_on_equals_period() {
   intervalActuatorSetMillisForTest(0);
   iv.write(0.7f);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.7f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.7f, inner.output());
 
   intervalActuatorSetMillisForTest(59000);  // still within the 60s cycle
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.7f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.7f, inner.output());
 }
 
 void test_always_off_when_on_is_zero() {
@@ -38,10 +36,10 @@ void test_always_off_when_on_is_zero() {
 
   intervalActuatorSetMillisForTest(0);
   iv.tick();  // first tick already detects the off-phase
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());  // meta().min
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());  // meta().min
 
   iv.write(0.9f);  // slider moved while off-schedule — target updates, hw stays at min
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
 }
 
 void test_phase_flips_at_on_boundary_60s_cycle() {
@@ -51,23 +49,23 @@ void test_phase_flips_at_on_boundary_60s_cycle() {
   intervalActuatorSetMillisForTest(0);
   iv.write(0.5f);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, inner.writes.back());  // on-phase
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, inner.output());  // on-phase
 
   intervalActuatorSetMillisForTest(19999);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, inner.writes.back());  // still on
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, inner.output());  // still on
 
   intervalActuatorSetMillisForTest(20000);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());  // off now
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());  // off now
 
   intervalActuatorSetMillisForTest(59999);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());  // still off
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());  // still off
 
   intervalActuatorSetMillisForTest(60000);  // new cycle
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, inner.writes.back());  // back on
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, inner.output());  // back on
 }
 
 void test_phase_flips_at_on_boundary_3600s_cycle() {
@@ -77,19 +75,19 @@ void test_phase_flips_at_on_boundary_3600s_cycle() {
   intervalActuatorSetMillisForTest(0);
   iv.write(1.0f);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, inner.output());
 
   intervalActuatorSetMillisForTest(1500u * 1000u - 1);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, inner.output());
 
   intervalActuatorSetMillisForTest(1500u * 1000u);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
 
   intervalActuatorSetMillisForTest(3600u * 1000u);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, inner.output());
 }
 
 void test_set_interval_changes_schedule_live() {
@@ -102,11 +100,11 @@ void test_set_interval_changes_schedule_live() {
 
   intervalActuatorSetMillisForTest(15000);  // past the 10s on-window
   iv.tick();  // flips off under the old schedule
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
 
   iv.setInterval(20, 60);  // widen on-window to 20s — elapsed(15s) is inside it again
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.4f, inner.writes.back());  // flips back on, no cycle reset needed
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.4f, inner.output());  // flips back on, no cycle reset needed
 }
 
 void test_set_interval_clamps_on_to_period() {
@@ -152,51 +150,116 @@ void test_interval_reports_has_true() {
   TEST_ASSERT_EQUAL_UINT32(60u, cfg.periodSec);
 }
 
-// ── Composition, matching production wrap order: Enable(outer) → Interval(inner) ──
+void test_target_survives_phase_flips() {
+  MockActuator inner("m", dutyMeta());
+  IntervalActuator iv(inner, /*onSec*/20, /*periodSec*/60);
 
-void test_enable_guard_forwards_interval_getter_and_setter() {
+  intervalActuatorSetMillisForTest(0);
+  iv.write(0.5f);
+  iv.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, iv.target());
+
+  intervalActuatorSetMillisForTest(20000);
+  iv.tick();  // off-phase
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, iv.state());   // hw off …
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, iv.target());  // … slider unmoved
+
+  intervalActuatorSetMillisForTest(60000);
+  iv.tick();  // back on
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, iv.target());
+}
+
+// ── Master switch, which now lives on the wrapped actuator itself ────────
+
+void test_enabled_forwards_to_inner() {
   MockActuator inner("m", dutyMeta());
   IntervalActuator iv(inner, 10, 60);
-  EnableGuardActuator guard(iv);
 
-  auto cfg = guard.interval();
-  TEST_ASSERT_TRUE(cfg.has);
-  TEST_ASSERT_EQUAL_UINT32(10u, cfg.onSec);
-
-  guard.setInterval(45, 90);
-  TEST_ASSERT_EQUAL_UINT32(45u, iv.interval().onSec);
-  TEST_ASSERT_EQUAL_UINT32(90u, iv.interval().periodSec);
+  TEST_ASSERT_TRUE(iv.enabled());
+  iv.setEnabled(false);
+  TEST_ASSERT_FALSE(inner.enabled());
+  TEST_ASSERT_FALSE(iv.enabled());
 }
 
 void test_master_disable_forces_off_regardless_of_interval_phase() {
   MockActuator inner("m", dutyMeta());
   IntervalActuator iv(inner, /*onSec*/60, /*periodSec*/60);  // always on-phase
-  EnableGuardActuator guard(iv);
 
   intervalActuatorSetMillisForTest(0);
-  guard.write(0.8f);
-  iv.tick();  // let the interval layer actually drive inner once
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.8f, inner.writes.back());
+  iv.write(0.8f);
+  iv.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.8f, inner.output());
 
-  guard.setEnabled(false);
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());  // forced off despite always-on schedule
+  iv.setEnabled(false);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());  // off despite always-on schedule
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.8f, iv.target());     // slider still shows what the user set
 }
 
-void test_reenable_during_interval_off_phase_stays_off() {
+// The schedule keeps ticking while disabled; the gate lives in the concrete
+// actuator, so a phase flip back to "on" must not reach the hardware.
+void test_disabled_master_survives_an_interval_phase_flip_back_on() {
   MockActuator inner("m", dutyMeta());
-  IntervalActuator iv(inner, /*onSec*/0, /*periodSec*/60);  // always off-phase
-  EnableGuardActuator guard(iv);
+  IntervalActuator iv(inner, /*onSec*/20, /*periodSec*/60);
 
   intervalActuatorSetMillisForTest(0);
-  guard.write(0.6f);
+  iv.write(0.8f);
   iv.tick();
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());  // interval keeps it off
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.8f, inner.output());
 
-  guard.setEnabled(false);
-  guard.setEnabled(true);
-  // Re-enabling replays the target into IntervalActuator, which itself is
-  // still in its off-phase — must not force the actuator on.
-  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.writes.back());
+  iv.setEnabled(false);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+
+  intervalActuatorSetMillisForTest(20000);
+  iv.tick();  // flips off while disabled
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+
+  intervalActuatorSetMillisForTest(60000);
+  iv.tick();  // flips back ON while still disabled — must stay off
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.8f, iv.target());
+}
+
+// Regression: re-enabling used to wait out the remainder of the off-window
+// (reported as a 3-4 second delay on real hardware).
+void test_reenable_restarts_the_cycle_and_switches_immediately() {
+  MockActuator inner("m", dutyMeta());
+  IntervalActuator iv(inner, /*onSec*/20, /*periodSec*/60);
+
+  intervalActuatorSetMillisForTest(0);
+  iv.write(0.6f);
+  iv.tick();  // on-phase
+
+  intervalActuatorSetMillisForTest(30000);
+  iv.tick();  // deep inside the off-window
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+
+  iv.setEnabled(false);
+  iv.setEnabled(true);  // user flips the switch back on, mid off-window
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.6f, inner.output());  // immediate, no waiting
+
+  // …and the restarted cycle runs a full on-window from here.
+  intervalActuatorSetMillisForTest(49999);
+  iv.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.6f, inner.output());
+  intervalActuatorSetMillisForTest(50000);
+  iv.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+}
+
+void test_reenable_on_a_permanently_off_schedule_stays_off() {
+  MockActuator inner("m", dutyMeta());
+  IntervalActuator iv(inner, /*onSec*/0, /*periodSec*/60);  // never on
+
+  intervalActuatorSetMillisForTest(0);
+  iv.write(0.6f);
+  iv.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+
+  iv.setEnabled(false);
+  iv.setEnabled(true);
+  // No on-window exists to restart into, so the schedule keeps winning.
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, inner.output());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.6f, iv.target());
 }
 
 void setUp() {}
@@ -213,8 +276,11 @@ int main(int, char**) {
   RUN_TEST(test_id_meta_fault_state_forward_to_inner);
   RUN_TEST(test_tick_forwards_to_inner);
   RUN_TEST(test_interval_reports_has_true);
-  RUN_TEST(test_enable_guard_forwards_interval_getter_and_setter);
+  RUN_TEST(test_target_survives_phase_flips);
+  RUN_TEST(test_enabled_forwards_to_inner);
   RUN_TEST(test_master_disable_forces_off_regardless_of_interval_phase);
-  RUN_TEST(test_reenable_during_interval_off_phase_stays_off);
+  RUN_TEST(test_disabled_master_survives_an_interval_phase_flip_back_on);
+  RUN_TEST(test_reenable_restarts_the_cycle_and_switches_immediately);
+  RUN_TEST(test_reenable_on_a_permanently_off_schedule_stays_off);
   return UNITY_END();
 }

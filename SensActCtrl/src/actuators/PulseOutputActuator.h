@@ -34,13 +34,19 @@ class PulseOutputActuator : public Actuator {
   // zero values are no-ops.
   void write(float v) override;
 
-  // Outstanding pulses still to emit.
+  // Outstanding pulses still to emit. Not a level, so state() reports it
+  // verbatim rather than the base class's "min while disabled" — a frozen
+  // queue still holds its pulses.
+  float target() const override { return static_cast<float>(remaining_); }
   float state() const override { return static_cast<float>(remaining_); }
 
   void setPulseWidthMs(uint32_t ms) { pulseWidthMs_ = ms; }
   void setGapMs(uint32_t ms) { gapMs_ = ms; }
   void setUnit(const char* unit) { unit_ = unit; }
   void setQuantity(Quantity q) { quantity_ = q; }
+
+ protected:
+  void applyEnabled(bool e) override;
 
  private:
   enum class Phase : uint8_t { Idle, PulseHigh, PulseLow };

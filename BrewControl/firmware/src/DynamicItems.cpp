@@ -193,25 +193,15 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
     return {false, "unknown actuator type"};
   }
 
-  // Opt-in duty-cycle scheduling — any actuator kind. Wrapped before the
-  // EnableGuardActuator check below so the master switch (if applied) ends
-  // up outermost: Enable(outer) → Interval(middle) → concrete(inner).
+  // Opt-in duty-cycle scheduling — any actuator kind. The master switch is
+  // no decorator; every Actuator carries it, so this is the only layer.
   if (!cfg["interval_period_sec"].isNull()) {
     uint32_t onSec = cfg["interval_on_sec"] | 0u;
     uint32_t periodSec = cfg["interval_period_sec"] | 0u;
     if (periodSec == 0 || onSec > periodSec) return {false, "invalid interval"};
     auto* iv = new IntervalActuator(*e->ptr, onSec, periodSec);
-    e->chain.push_back(std::move(e->ptr));
+    e->innerPtr = std::move(e->ptr);
     e->ptr.reset(iv);
-  }
-
-  // Continuous-kind actuators (sliders) get an independent on/off master
-  // switch; Binary (toggle IS the value) and Discrete (explicit send) don't
-  // need it.
-  if (e->ptr->meta().kind == ValueKind::Continuous) {
-    auto* guard = new EnableGuardActuator(*e->ptr);
-    e->chain.push_back(std::move(e->ptr));
-    e->ptr.reset(guard);
   }
 
   reg.add(e->ptr.get());

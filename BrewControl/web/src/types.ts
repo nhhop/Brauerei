@@ -50,9 +50,14 @@ export interface Actuator {
   id: string;
   meta: ItemMeta;
   state: ItemState;
+  // What was last commanded, as opposed to state.v (what's physically driven
+  // right now). The two diverge while the master switch is off or an interval
+  // schedule is in its off-phase — controls bind to this, charts to state.v.
+  target: number;
   fault?: string;
-  // Master on/off switch, independent of state.v. Always true unless the
-  // firmware wrapped this actuator in EnableGuardActuator (Continuous kind).
+  // Master on/off switch, independent of the value. Every actuator has one.
+  // Binary actuators are controlled through it alone (their target is pinned
+  // at 1), so they start disabled — a reboot never closes a relay by itself.
   enabled: boolean;
   // Duty-cycle schedule ("on" for onSec out of every periodSec). Present
   // only when the firmware wrapped this actuator in IntervalActuator.

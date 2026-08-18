@@ -8,7 +8,9 @@ namespace SensActCtrl {
 namespace test {
 
 // Programmable actuator for unit tests. Records every write() so tests can
-// assert on the sequence of commanded values.
+// assert on the sequence of commanded values, and models the master switch
+// the way a real actuator does: `outputs` holds what actually reached the
+// "hardware", which stays at meta().min while disabled.
 class MockActuator : public Actuator {
  public:
   MockActuator(const char* id, ActuatorMeta meta) : id_(id), meta_(meta) {}
@@ -17,18 +19,26 @@ class MockActuator : public Actuator {
   ActuatorMeta meta() const override { return meta_; }
 
   void tick() override { ++tickCount; }
-  void write(float v) override { state_ = v; writes.push_back(v); }
-  float state() const override { return state_; }
+  void write(float v) override { target_ = v; writes.push_back(v); applyOutput(); }
+  float target() const override { return target_; }
 
-  std::vector<float> writes;
+  std::vector<float> writes;   // every commanded value, gated or not
+  std::vector<float> outputs;  // what reached the hardware
   uint32_t tickCount = 0;
   const char* faultMsg = nullptr;
   const char* fault() const override { return faultMsg; }
 
+  float output() const { return outputs.empty() ? meta_.min : outputs.back(); }
+
+ protected:
+  void applyEnabled(bool /*e*/) override { applyOutput(); }
+
  private:
+  void applyOutput() { outputs.push_back(enabled_ ? target_ : meta_.min); }
+
   const char* id_;
   ActuatorMeta meta_;
-  float state_ = 0.0f;
+  float target_ = 0.0f;
 };
 
 }  // namespace test

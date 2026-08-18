@@ -112,6 +112,34 @@ void test_end_does_not_detach_ledc_pin_in_dac_mode() {
     TEST_ASSERT_EQUAL_UINT8(before, analogOutputActuatorLedcDetachCallCountForTest());
 }
 
+void test_disabled_drives_peripheral_to_min_but_keeps_target() {
+    AnalogOutputActuator a("a", 1);
+    a.begin();
+    a.write(0.5f);
+    TEST_ASSERT_EQUAL_UINT32(2047, analogOutputActuatorLastRawForTest());
+
+    a.setEnabled(false);
+    TEST_ASSERT_EQUAL_UINT32(0, analogOutputActuatorLastRawForTest());  // hw at min
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, a.target());  // setpoint remembered
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, a.state());   // …but nothing driven
+
+    a.setEnabled(true);
+    TEST_ASSERT_EQUAL_UINT32(2047, analogOutputActuatorLastRawForTest());  // resumed
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, a.state());
+}
+
+void test_write_while_disabled_updates_target_without_touching_peripheral() {
+    AnalogOutputActuator a("a", 1);
+    a.begin();
+    a.setEnabled(false);
+    a.write(0.75f);
+    TEST_ASSERT_EQUAL_UINT32(0, analogOutputActuatorLastRawForTest());
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.75f, a.target());
+
+    a.setEnabled(true);
+    TEST_ASSERT_EQUAL_UINT32(3071, analogOutputActuatorLastRawForTest());  // 0.75*4095
+}
+
 void setUp()    {}
 void tearDown() {}
 
@@ -133,5 +161,7 @@ int main(int, char**) {
     RUN_TEST(test_state_clamped_above);
     RUN_TEST(test_end_detaches_ledc_pin_in_pwm_mode);
     RUN_TEST(test_end_does_not_detach_ledc_pin_in_dac_mode);
+    RUN_TEST(test_disabled_drives_peripheral_to_min_but_keeps_target);
+    RUN_TEST(test_write_while_disabled_updates_target_without_touching_peripheral);
     return UNITY_END();
 }

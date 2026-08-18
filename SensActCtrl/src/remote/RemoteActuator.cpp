@@ -22,6 +22,19 @@ void RemoteActuator::begin() {
 }
 
 void RemoteActuator::write(float value) {
+  target_ = value;
+  publishCommand(enabled_ ? value : meta_.min);
+}
+
+void RemoteActuator::applyEnabled(bool /*e*/) {
+  // Going silent wouldn't turn the remote off — it would just stop hearing
+  // from us and keep running. Command the off value explicitly instead.
+  // Note meta_ stays default-constructed until the retained meta topic
+  // arrives, so min falls back to 0.0f before then.
+  publishCommand(enabled_ ? target_ : meta_.min);
+}
+
+void RemoteActuator::publishCommand(float value) {
   char buf[64];
   size_t n = remote::serializeSetCommand(value, buf, sizeof(buf));
   if (n == 0) return;

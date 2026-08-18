@@ -19,7 +19,7 @@ public:
     void         end()         override;
     void         tick()        override {}
     void         write(float value) override;
-    float        state() const override { return state_; }
+    float        target() const override { return state_; }
 
     // Ties advertised meta AND value→duty range together. Call before begin().
     // Default: Quantity::DutyCycle, "", 0..1, res 0.01.
@@ -33,7 +33,12 @@ public:
     uint32_t valueToRaw(float v) const;
     uint32_t rawMax()            const;
 
+protected:
+    void applyEnabled(bool e) override;
+
 private:
+    void applyOutput();
+
     const char* id_;
     int         pin_;
     Mode        mode_;
@@ -54,8 +59,9 @@ private:
 };
 
 #ifndef ARDUINO
-// Test hook: native builds have no real LEDC peripheral to inspect.
+// Test hooks: native builds have no real LEDC peripheral to inspect.
 uint8_t analogOutputActuatorLedcDetachCallCountForTest();
+uint32_t analogOutputActuatorLastRawForTest();
 #endif
 
 }  // namespace SensActCtrl

@@ -42,6 +42,18 @@ void IntervalActuator::tick() {
   inner_.tick();
 }
 
+void IntervalActuator::setEnabled(bool e) {
+  const bool was = inner_.enabled();
+  inner_.setEnabled(e);
+  if (!e || was || onSec_ == 0) return;
+  // Switched back on: restart the cycle so the user gets an immediate
+  // on-window instead of waiting out the remainder of an off-window.
+  cycleStartMs_ = millis();
+  hasTicked_ = true;
+  onPhase_ = true;
+  inner_.write(target_);
+}
+
 void IntervalActuator::write(float v) {
   target_ = v;
   if (onPhase_) inner_.write(v);

@@ -69,11 +69,10 @@ class DynamicItems {
   struct ActuatorEntry {
     std::string id;
     std::string cfgJson;
-    // Owned decorator layers, innermost first (IntervalActuator, then
-    // EnableGuardActuator — either may be absent). ptr is always what's
-    // registered with the Registry (the outermost layer, or the concrete
-    // actuator directly if neither decorator applies).
-    std::vector<std::unique_ptr<SensActCtrl::Actuator>> chain;
+    // innerPtr holds the concrete actuator when wrapped by IntervalActuator
+    // (interval_period_sec set); ptr is always what's registered with the
+    // Registry. Mirrors CtrlEntry below.
+    std::unique_ptr<SensActCtrl::Actuator> innerPtr;
     std::unique_ptr<SensActCtrl::Actuator> ptr;
   };
   struct CtrlEntry {

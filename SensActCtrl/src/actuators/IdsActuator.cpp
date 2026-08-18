@@ -33,9 +33,16 @@ void IdsActuator::write(float v) {
 void IdsActuator::tick() {
   unsigned long now = millis();
   if (now >= nextTickMs_) {
-    cooker_->Update(power_);
+    // Update() is the cooker's keep-alive — skipping it while disabled would
+    // just stop talking to the plate and leave it at its last power. Command
+    // zero instead; power_ keeps the setpoint for the re-enable.
+    cooker_->Update(enabled_ ? power_ : 0);
     nextTickMs_ = now + kIntervalMs;
   }
+}
+
+void IdsActuator::applyEnabled(bool /*e*/) {
+  nextTickMs_ = 0;  // apply on the next tick instead of up to 500 ms later
 }
 
 const char* IdsActuator::fault() const {

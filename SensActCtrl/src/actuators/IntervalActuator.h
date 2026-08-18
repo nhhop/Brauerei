@@ -15,12 +15,15 @@ namespace SensActCtrl {
 // write(v) always remembers v as the target; it's applied to the inner
 // actuator immediately only while currently in the "on" phase. tick() drives
 // the inner actuator to target (entering "on") or meta().min (entering
-// "off") whenever the phase flips. The window is a rolling one starting at
-// the first tick() (millis()-based, like RateLimitedController) — no
-// wall-clock alignment, no NTP dependency.
+// "off") whenever the phase flips. target() keeps reporting the remembered
+// value across phase flips, even while state() reads min. The window is a
+// rolling one starting at the first tick() (millis()-based, like
+// RateLimitedController) — no wall-clock alignment, no NTP dependency.
 //
-// enabled()/setEnabled() forward to inner_ so a further-wrapped actuator
-// (e.g. plain concrete) stays reachable regardless of stacking order.
+// enabled()/setEnabled() forward to inner_, which is where the master switch
+// actually lives (every Actuator has one). Switching back on restarts the
+// cycle, so the actuator reacts immediately instead of idling out whatever
+// was left of an off-window.
 class IntervalActuator : public Actuator {
  public:
   IntervalActuator(Actuator& inner, uint32_t onSec, uint32_t periodSec);
@@ -33,9 +36,10 @@ class IntervalActuator : public Actuator {
   void tick() override;
   float state() const override { return inner_.state(); }
   const char* fault() const override { return inner_.fault(); }
+  float target() const override { return target_; }
 
   bool enabled() const override { return inner_.enabled(); }
-  void setEnabled(bool e) override { inner_.setEnabled(e); }
+  void setEnabled(bool e) override;
 
   void write(float v) override;
 

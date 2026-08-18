@@ -14,6 +14,11 @@ namespace SensActCtrl {
 //
 // activeHigh: if false, the logical "on" state drives the pin LOW (e.g. for
 // active-low SSRs or relays).
+//
+// Binary mode starts armed-but-disabled (target 1, enabled false) so the
+// master switch alone is the on/off control, and a reboot never energises a
+// relay on its own. TimeProportional starts enabled at duty 0, which is
+// already inactive.
 class DigitalOutputActuator : public Actuator {
  public:
   enum class Mode : uint8_t { Binary, TimeProportional };
@@ -28,13 +33,16 @@ class DigitalOutputActuator : public Actuator {
   void end() override;
   void tick() override;
   void write(float v) override;
-  float state() const override { return state_; }
+  float target() const override { return state_; }
 
   // Period of one PWM cycle in TimeProportional mode (default 2000 ms).
   void setPeriodMs(uint32_t periodMs) { periodMs_ = periodMs; }
   uint32_t periodMs() const { return periodMs_; }
 
   Mode mode() const { return mode_; }
+
+ protected:
+  void applyEnabled(bool e) override;
 
  private:
   void applyPin(bool on);
