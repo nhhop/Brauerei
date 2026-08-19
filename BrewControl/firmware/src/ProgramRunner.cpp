@@ -4,6 +4,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "SdLock.h"
+
 namespace BrewControl {
 namespace {
 
@@ -68,6 +70,7 @@ bool ProgramRunner::fillFromJson(Program& p, const JsonObject& cfg) {
 
 void ProgramRunner::loadFromSD(fs::FS& sd) {
   ScopedLock lk(mutex_);
+  SdLock sdLock;
   File f = sd.open("/config/programs.json");
   if (!f) return;
   JsonDocument doc;
@@ -92,6 +95,7 @@ void ProgramRunner::loadFromSD(fs::FS& sd) {
 
 void ProgramRunner::saveToSD(fs::FS& sd) const {
   ScopedLock lk(mutex_);
+  SdLock sdLock;
   sd.mkdir("/config");
   File f = sd.open("/config/programs.json", FILE_WRITE);
   if (!f) return;

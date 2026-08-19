@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <FS.h>
 
+#include "SdLock.h"
 #include "TarExtractor.h"
 
 namespace BrewControl {
@@ -18,6 +19,7 @@ class SdTarSink {
     return [this](const std::string& path, uint32_t) {
       // `tar -cf x.tar .` emits "./"-prefixed names; the SD VFS rejects a
       // "/./" path component, so normalize the leading "./" away.
+      SdLock lock;
       const char* p = path.c_str();
       if (p[0] == '.' && p[1] == '/') p += 2;
       String full = base_ + "/" + String(p);
@@ -30,6 +32,7 @@ class SdTarSink {
 
   TarExtractor::WriteCb writeCb() {
     return [this](const uint8_t* data, size_t len) {
+      SdLock lock;
       if (!cur_) return false;
       return cur_.write(data, len) == len;
     };
@@ -37,6 +40,7 @@ class SdTarSink {
 
   TarExtractor::CloseCb closeCb() {
     return [this]() {
+      SdLock lock;
       if (cur_) cur_.close();
       return true;
     };

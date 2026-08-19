@@ -1,5 +1,7 @@
 #include "DynamicItems.h"
 
+#include "SdLock.h"
+
 using namespace SensActCtrl;
 
 namespace BrewControl {
@@ -390,6 +392,7 @@ DynamicItems::Result DynamicItems::removeController(const char* id,
 // ── Persistence ───────────────────────────────────────────────────────────
 
 void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
+  SdLock sdLock;
   File f = sd.open("/config/registry.json");
   if (!f) return;
 
@@ -409,6 +412,7 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
 }
 
 void DynamicItems::saveToSD(fs::FS& sd) const {
+  SdLock sdLock;
   sd.mkdir("/config");
   File f = sd.open("/config/registry.json", FILE_WRITE);
   if (!f) return;
