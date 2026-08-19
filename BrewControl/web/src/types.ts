@@ -255,6 +255,8 @@ export interface MqttSettings {
   clientId: string;
   topicPrefix: string;
   embeddedBrokerSupported?: boolean;  // read-only, server-computed
+  connected?: boolean;                // read-only, live transport state
+  error?: string;                     // read-only, reason when !connected (external mode only)
 }
 
 export interface AppSettings {

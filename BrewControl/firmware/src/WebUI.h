@@ -11,6 +11,7 @@
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
+#include "MqttService.h"
 #include "ProgramRunner.h"
 #include "SdTarSink.h"
 #include "SettingsStore.h"
@@ -65,7 +66,7 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        LogStore& logs, ProgramRunner& programs, uint16_t port = 80);
+        LogStore& logs, ProgramRunner& programs, MqttService& mqtt, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -88,6 +89,7 @@ class WebUI {
   FirmwareUpdater& updater_;
   LogStore& logs_;
   ProgramRunner& programs_;
+  MqttService& mqtt_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;

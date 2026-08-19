@@ -118,10 +118,10 @@ class DeletePrefixHandler : public AsyncWebHandler {
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
-             uint16_t port)
+             MqttService& mqtt, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), logs_(logs), programs_(programs), server_(port),
-      events_("/api/events") {}
+      updater_(updater), logs_(logs), programs_(programs), mqtt_(mqtt),
+      server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -610,7 +610,16 @@ void WebUI::begin() {
 
   // ── Settings ──────────────────────────────────────────────────────────────
   server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* req) {
-    req->send(200, "application/json", settings_.serialize());
+    // Splice in live (non-persisted) state the settings store itself
+    // doesn't know about — whether the configured MQTT broker is actually
+    // reachable right now, not just what was last saved.
+    JsonDocument doc;
+    deserializeJson(doc, settings_.serialize());
+    doc["mqtt"]["connected"] = mqtt_.connected();
+    doc["mqtt"]["error"] = mqtt_.lastErrorMessage();
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
   });
 
   // POST /api/settings — must be BEFORE serveStatic (pattern from rest of file)

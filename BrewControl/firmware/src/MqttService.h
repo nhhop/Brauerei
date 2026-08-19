@@ -50,6 +50,19 @@ class MqttService {
   void begin(const String& fallbackClientId);
   void tick();
 
+  // Live transport connection state (false when disabled/not yet connected/
+  // reconnecting). Surfaced read-only via GET /api/settings so the UI can
+  // show whether the configured broker is actually reachable.
+  bool connected() const { return transport_ && transport_->connected(); }
+
+  // Human-readable reason when !connected() (empty otherwise). Only
+  // MqttTransport (external mode) has anything specific to say —
+  // TinyMqttLocalTransport's connected() can't meaningfully fail once
+  // constructed, so this is "" in embedded mode.
+  const char* lastErrorMessage() const {
+    return transport_ ? transport_->lastErrorMessage() : "";
+  }
+
  private:
   SensActCtrl::Registry& registry_;
   DynamicItems& items_;

@@ -33,6 +33,7 @@ class MqttTransport : public ITransport {
   bool unsubscribe(const char* topic) override;
   void tick() override;
   bool connected() const override;
+  const char* lastErrorMessage() const override;
 
   // Invoked by the static PubSubClient callback. Public so the static
   // bridge function can reach it; not part of the user-facing API.

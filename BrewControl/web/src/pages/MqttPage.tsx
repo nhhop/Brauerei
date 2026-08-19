@@ -7,8 +7,8 @@ import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { ToggleSwitch } from '../components/ToggleSwitch';
-import { btnPrimary, inp } from '../ui';
-import { Radio, Router, Server, KeyRound, Lock, Info } from 'lucide-preact';
+import { btnPrimary, inp, badgeSuccess, badgeCritical } from '../ui';
+import { Radio, Router, Server, KeyRound, Lock, Info, Plug } from 'lucide-preact';
 
 const DEFAULT: MqttSettings = {
   enabled: false,
@@ -93,6 +93,16 @@ export function MqttPage(_: { path?: string }) {
 
         {settings.enabled && (
           <>
+            {settings.mode === 'external' && (
+              <SettingsCard title="Status" icon={Plug}
+                desc={!settings.connected && settings.error ? settings.error : 'Verbindung zum konfigurierten Broker'}
+                control={
+                  <span class={settings.connected ? badgeSuccess : badgeCritical}>
+                    {settings.connected ? 'Verbunden' : 'Nicht verbunden'}
+                  </span>
+                } />
+            )}
+
             <SettingsCard title="Modus" icon={Router} desc={
               !embeddedSupported ? 'Eingebauter Broker auf diesem Board nicht verfügbar (Flash-Budget)' : undefined
             } control={

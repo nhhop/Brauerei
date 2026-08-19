@@ -36,6 +36,13 @@ class ITransport {
   virtual bool unsubscribe(const char* topic) { (void)topic; return false; }
   virtual void tick() = 0;
   virtual bool connected() const = 0;
+
+  // Human-readable reason for the current disconnected state (empty string
+  // when connected or when the transport has nothing more specific to say
+  // than connected()==false). Default empty — only transports with a
+  // meaningful failure reason (e.g. MqttTransport translating PubSubClient's
+  // numeric state) need to override this.
+  virtual const char* lastErrorMessage() const { return ""; }
 };
 
 }  // namespace SensActCtrl

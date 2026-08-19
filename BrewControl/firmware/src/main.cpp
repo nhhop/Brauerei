@@ -47,7 +47,7 @@ BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
-WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner);
+WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService);
 
 // Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
 // the WiFi event handler can re-announce mDNS after a reconnect.

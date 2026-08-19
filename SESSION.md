@@ -1298,4 +1298,32 @@ Alle 4 Schritte bestanden. Damit sind sämtliche in der ursprünglichen Planungs
 | Embedded-Broker-Publish (`mosquitto_sub`) | Sensoren/Aktoren/Regler erscheinen live, retained Meta + periodische State-Updates |
 | Live-Tracking (Add/Remove/Set-auf-gelöschtem-Aktor/Stresstest) | alle 4 grün, HW-verifiziert auf LilyGo S3 |
 
-**Offen (HW-E2E):** externer Broker mit echtem Mosquitto/Home-Assistant (mit/ohne TLS) — bislang nur der embedded Modus vollständig durchgetestet.
+### Externer Broker gegen echtes Mosquitto — letzter offener HW-E2E-Punkt geschlossen
+
+Lokaler Mosquitto-Broker auf dem Entwickler-PC (`choco install mosquitto` bringt neben den Client-Tools auch `mosquitto.exe` mit) als "externer" Broker für den ESP32 — Gerät und PC im selben LAN (192.168.178.x), Konfiguration jeweils per direktem `POST /api/settings` (derselbe Pfad wie die `/settings/mqtt`-Seite, inkl. automatischem Reboot).
+
+Vier Szenarien, alle grün:
+1. **Ohne Auth, plain TCP** (`allow_anonymous true`) — Gerät verbindet, publiziert alle Sensoren/Aktoren mit retained Meta + State (`mosquitto_sub` vom PC aus bestätigt).
+2. **Mit Auth, korrekte Zugangsdaten** (`mosquitto_passwd`-Datei, `allow_anonymous false`) — verbindet und publiziert normal.
+3. **Negativtest — Auth aktiv, aber Gerät noch ohne Zugangsdaten konfiguriert** (Broker-Log): `Sending CONNACK to brewcontrol (0, 5)` → `disconnected: not authorised` — korrekt abgelehnt, bevor die Zugangsdaten nachgereicht wurden.
+4. **TLS + Auth** — selbstsigniertes Zertifikat (`openssl req -x509 ...`, 7 Tage), Broker-Listener auf 8883. Da `MqttService` für den externen Modus `WiFiClientSecure::setInsecure()` nutzt (keine Zertifikatsprüfung, gleiches Muster wie beim OTA-Update), war kein Zertifikat-Trust auf dem Gerät nötig — Broker-Log zeigt durchgehenden verschlüsselten `PUBLISH`-Stream vom Gerät; zusätzlich mit einem eigenen `mosquitto_sub --insecure` visuell bestätigt (der eigene Client brauchte `--insecure`, weil das Testzertifikat keine SAN-Erweiterung hat — rein clientseitige Cosmetics, nicht der ESP32 betreffend).
+
+Gerät danach auf den stabilen Ausgangszustand zurückgesetzt (`mode:"embedded"`, Host/Creds geleert). Test-Broker, Zertifikat und Passwort-Datei lagen nur im Session-Scratchpad, nichts davon landet im Repo.
+
+Damit ist der externe Broker-Modus vollständig HW-verifiziert (Auth, Auth-Negativtest, TLS) — der letzte offene HW-E2E-Punkt aus der MQTT-Planungssession ist geschlossen.
+
+### Verbindungsstatus im UI (Nachfrage: "wird ein Fehler angezeigt, wenn die Verbindung zum Broker nicht zustande kommt?")
+
+Antwort war bis dahin: nein, gar nicht — `GET /api/settings` lieferte nur die gespeicherte Konfiguration, keinen Live-Status; ein falsch konfigurierter Host wäre im UI unsichtbar geblieben. Nachgerüstet:
+
+- `MqttService::connected()` — neuer Getter, `transport_ && transport_->connected()`.
+- `WebUI` bekommt eine neue Konstruktor-Abhängigkeit `MqttService&` (main.cpp: `mqttService` war bereits vor `webUI` deklariert, keine Reihenfolge-Änderung nötig). `GET /api/settings`-Handler parst jetzt `settings_.serialize()` zurück in ein `JsonDocument`, spleißt `mqtt.connected` (live, nicht persistiert) rein und serialisiert neu — sauberer Schnitt, `SettingsStore` bleibt eine reine Persistenzklasse ohne Kenntnis von `MqttService`.
+- Frontend: `MqttSettings.connected?: boolean`, neue "Status"-Card ganz oben (nur sichtbar wenn `enabled`), grüner/roter Badge ("Verbunden"/"Nicht verbunden").
+
+**Verifiziert** (echtes Gerät, beide Richtungen): embedded Modus (immer verbunden, In-Process) → `"connected":true`; externer Modus mit absichtlich unerreichbarem Host (`192.168.178.250`) → `"connected":false`. Im Browser (Dev-Proxy gegen das Live-Gerät) bestätigt: Status-Card zeigt korrekt grünen "Verbunden"-Badge.
+
+**Nachfrage: "macht die Statusanzeige beim eingebauten Broker Sinn?"** — nein. TinyMqtts lokaler Client (`MqttClient::connected()`) liefert für den In-Process-Fall (`local_broker!=nullptr and tcp_client==nullptr`) unbedingt `true`, sobald das Objekt existiert — es gibt dort keinen echten Verbindungsaufbau, der scheitern könnte. Die Karte würde im embedded Modus also immer grün bleiben und eine Healthcheck-Aussage vortäuschen, die es nicht gibt. **Status-Card jetzt nur noch sichtbar wenn `mode==='external'`** — dort ist der Status ein echtes Signal (Host/Port/Auth/Netzwerk können real fehlschlagen). Live gegengeprüft: embedded → keine Karte; extern + erreichbar → grüner Badge; extern + unerreichbar → roter Badge.
+
+**Nachfrage: "gibt nur 'nicht verbunden', oder auch eine Fehlermeldung?"** — Erweiterung um `ITransport::lastErrorMessage()` (nicht-brechender Default `""`, gleiches Muster wie `unsubscribe()`/`fault()`), `MqttTransport` übersetzt `PubSubClient::state()` in deutsche Klartexte (Zeitüberschreitung, Verbindung fehlgeschlagen, ungültige Zugangsdaten, nicht autorisiert, …). `MqttService::lastErrorMessage()` reicht das durch (embedded Modus liefert immer `""`, da `TinyMqttLocalTransport` den Default erbt). `WebUI.cpp`s `GET /api/settings` spleißt zusätzlich `mqtt.error` rein. Frontend zeigt den Text als Beschreibung der Status-Card, sobald nicht verbunden.
+
+**Verifiziert** (echtes Gerät, zwei unterschiedliche Fehlerursachen): unerreichbarer Host → `"Verbindung fehlgeschlagen (Host/Port prüfen)"` (PubSubClient state -2); falsches Passwort gegen einen Auth-Broker → `"Nicht autorisiert"` (state 5) — beide Texte im Browser korrekt als Card-Beschreibung neben dem roten Badge bestätigt.

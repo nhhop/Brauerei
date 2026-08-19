@@ -66,6 +66,23 @@ bool MqttTransport::connected() const {
   return client_ && client_->connected();
 }
 
+const char* MqttTransport::lastErrorMessage() const {
+  if (connected() || !client_) return "";
+  // PubSubClient::state() codes, see PubSubClient.h.
+  switch (client_->state()) {
+    case -4: return "Zeitüberschreitung beim Verbindungsaufbau";
+    case -3: return "Verbindung verloren";
+    case -2: return "Verbindung fehlgeschlagen (Host/Port prüfen)";
+    case -1: return "Getrennt";
+    case 1:  return "Falsches MQTT-Protokoll";
+    case 2:  return "Ungültige Client-ID";
+    case 3:  return "Broker nicht verfügbar";
+    case 4:  return "Ungültige Zugangsdaten";
+    case 5:  return "Nicht autorisiert";
+    default: return "Unbekannter Fehler";
+  }
+}
+
 bool MqttTransport::attemptConnect_() {
   const std::string id = clientId_.empty() ? std::string(String(millis()).c_str())
                                             : clientId_;
@@ -123,6 +140,7 @@ bool MqttTransport::subscribe(const char*, MessageCallback) { return false; }
 bool MqttTransport::unsubscribe(const char*) { return false; }
 void MqttTransport::tick() {}
 bool MqttTransport::connected() const { return false; }
+const char* MqttTransport::lastErrorMessage() const { return ""; }
 void MqttTransport::dispatchIncoming(const char*, const uint8_t*, uint32_t) {}
 bool MqttTransport::attemptConnect_() { return false; }
 
