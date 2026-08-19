@@ -1243,7 +1243,9 @@ Jede Aktor-Karte hat jetzt genau einen ⏻-Schalter (vorher nur Continuous), und
 | `pnpm typecheck` + `pnpm build` (BrewControl/web) | 0 Fehler |
 | Browser-Verifikation (Dev-Server, kein Live-Gerät) | `/settings/mqtt` lädt, Enable-Toggle klappt Formular auf, Modus/Host/Port/Zugangsdaten/TLS korrekt gerendert, TLS-Toggle springt Port 1883→8883, `/settings`-Hub zeigt neuen Eintrag, keine Konsolenfehler |
 
-**Offen (HW-E2E):** externer Broker mit echtem Mosquitto/Home-Assistant (mit/ohne TLS), Negativtest embedded Broker (Verbindung ganz ohne `-u`/`-P` bei aktivierter Auth muss abgelehnt werden — der Praxistest deckte bisher nur „mit korrekten Creds" und „ohne Auth konfiguriert" ab), Live-Tracking am echten Gerät (Sensor zur Laufzeit hinzufügen/löschen, kein Crash).
+**Negativtest bestätigt (User, 2026-08-20):** Verbindung zum embedded Broker ganz ohne `-u`/`-P` bei aktivierter Auth wird korrekt abgelehnt — der TinyMqtt-Patch schließt die FIXME-Lücke damit nachweislich, nicht nur der Erfolgspfad (Creds korrekt / Auth aus) war schon verifiziert.
+
+**Offen (HW-E2E):** externer Broker mit echtem Mosquitto/Home-Assistant (mit/ohne TLS), Live-Tracking am echten Gerät (Sensor zur Laufzeit hinzufügen/löschen, kein Crash).
 
 ### Nebenbefund beim ersten Flash-Versuch: SD-Concurrency-Bug gefunden + gefixt (2026-08-19/20)
 
