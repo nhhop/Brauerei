@@ -1,9 +1,12 @@
 // BrewControl/firmware/src/SettingsStore.cpp
 #include "SettingsStore.h"
 
+#include "SdLock.h"
+
 namespace BrewControl {
 
 void SettingsStore::loadFromSD(fs::FS& sd) {
+  SdLock sdLock;
   File f = sd.open("/config/settings.json");
   if (!f) return;
   JsonDocument doc;
@@ -31,6 +34,7 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
 }
 
 void SettingsStore::saveToSD(fs::FS& sd) const {
+  SdLock sdLock;
   sd.mkdir("/config");
   File f = sd.open("/config/settings.json", FILE_WRITE);
   if (!f) return;

@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "SdLock.h"
+
 namespace BrewControl {
 namespace {
 
@@ -48,6 +50,7 @@ LogStore::LogStore() : mutex_(xSemaphoreCreateRecursiveMutex()) {}
 
 void LogStore::loadFromSD(fs::FS& sd) {
   ScopedLock lk(mutex_);
+  SdLock sdLock;
   File f = sd.open("/config/logs.json");
   if (!f) return;
   JsonDocument doc;
@@ -80,6 +83,7 @@ void LogStore::loadFromSD(fs::FS& sd) {
 
 void LogStore::saveToSD(fs::FS& sd) const {
   ScopedLock lk(mutex_);
+  SdLock sdLock;
   sd.mkdir("/config");
   File f = sd.open("/config/logs.json", FILE_WRITE);
   if (!f) return;
@@ -200,6 +204,7 @@ bool LogStore::clear(const char* id) {
 
 String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
   ScopedLock lk(mutex_);
+  SdLock sdLock;
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& l : logs_) {
@@ -233,6 +238,7 @@ String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
 
 bool LogStore::deleteSession(const char* id, time_t start, fs::FS& sd) {
   ScopedLock lk(mutex_);
+  SdLock sdLock;
   for (const auto& l : logs_) {
     if (l.id != id) continue;
     if (l.sessionStart > 0 && l.sessionStart == start) return false;  // active
@@ -372,6 +378,7 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
 
 void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
                              time_t nowEpoch) {
+  SdLock sdLock;
   const bool created = (l.sessionStart == 0);
   if (created) {
     l.sessionStart = nowEpoch;
@@ -409,6 +416,7 @@ void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
 }
 
 void LogStore::pruneToBudget_(fs::FS& sd) {
+  SdLock sdLock;
   struct Entry { String path; uint32_t size; long start; bool active; };
   std::vector<Entry> entries;
   uint64_t total = 0;

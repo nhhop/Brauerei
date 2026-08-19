@@ -10,6 +10,7 @@
 #include <memory>
 #include <time.h>
 
+#include "SdLock.h"
 #include "version.h"
 
 namespace BrewControl {
@@ -468,7 +469,9 @@ void WebUI::begin() {
         if (req->hasParam("session"))
           start = (time_t)atol(req->getParam("session")->value().c_str());
         String path = logs_.sessionPath(id.c_str(), start);
-        if (path.isEmpty() || !fs_.exists(path)) {
+        bool exists = false;
+        { SdLock lock; exists = !path.isEmpty() && fs_.exists(path); }
+        if (!exists) {
           req->send(404, "text/plain", "no data");
           return;
         }
@@ -733,6 +736,7 @@ void WebUI::begin() {
                                            assetSink_->writeCb(),
                                            assetSink_->closeCb()));
           // Clear staging dir.
+          SdLock lock;
           fs_.rmdir("/www.new");
           fs_.mkdir("/www.new");
         }
@@ -827,6 +831,7 @@ void WebUI::tick() {
 
 void WebUI::swapAssets_() {
   // Remove /www then rename /www.new → /www (loopTask context).
+  SdLock lock;
   std::function<void(const char*)> rm = [&](const char* path) {
     File dir = fs_.open(path);
     if (!dir) return;
@@ -842,10 +847,13 @@ void WebUI::swapAssets_() {
     fs_.rmdir(path);
   };
   rm("/www");
-  fs_.rename("/www.new", "/www");
+  if (!fs_.rename("/www.new", "/www")) {
+    Serial.println(F("asset swap FAILED — rename /www.new -> /www did not succeed, UI may be unreachable"));
+  }
 }
 
 bool WebUI::writeSection_(const char* path, JsonVariantConst v) {
+  SdLock lock;
   fs_.mkdir("/config");
   File f = fs_.open(path, FILE_WRITE);
   if (!f) return false;

@@ -5,6 +5,7 @@
 #include <Update.h>
 #include <WiFiClientSecure.h>
 
+#include "SdLock.h"
 #include "SdTarSink.h"
 #include "TarExtractor.h"
 #include "version.h"
@@ -212,8 +213,11 @@ void FirmwareUpdater::doInstall(const String& channel) {
   if (tarUrl.length() > 0) {
     state_ = State::Downloading;
     progress_ = 0;
-    removeRecursive(fs_, kAssetsStaging);
-    fs_.mkdir(kAssetsStaging);
+    {
+      SdLock lock;
+      removeRecursive(fs_, kAssetsStaging);
+      fs_.mkdir(kAssetsStaging);
+    }
     SdTarSink sink(fs_, kAssetsStaging);
     TarExtractor ex(sink.openCb(), sink.writeCb(), sink.closeCb());
     bool ok = streamDownload(tarUrl, [&ex](const uint8_t* d, size_t n) {
@@ -224,8 +228,11 @@ void FirmwareUpdater::doInstall(const String& channel) {
       state_ = State::Error;
       return;
     }
-    removeRecursive(fs_, kAssetsLive);
-    fs_.rename(kAssetsStaging, kAssetsLive);
+    {
+      SdLock lock;
+      removeRecursive(fs_, kAssetsLive);
+      fs_.rename(kAssetsStaging, kAssetsLive);
+    }
   }
 
   // 2) Firmware: stream firmware.bin → Update (flash).

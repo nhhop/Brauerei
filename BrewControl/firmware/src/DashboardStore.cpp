@@ -1,10 +1,13 @@
 #include "DashboardStore.h"
 
+#include "SdLock.h"
+
 namespace BrewControl {
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 
 void DashboardStore::loadFromSD(fs::FS& sd) {
+  SdLock sdLock;
   File f = sd.open("/config/dashboards.json");
   if (!f) return;
   JsonDocument doc;
@@ -31,6 +34,7 @@ void DashboardStore::loadFromSD(fs::FS& sd) {
 }
 
 void DashboardStore::saveToSD(fs::FS& sd) const {
+  SdLock sdLock;
   sd.mkdir("/config");
   File f = sd.open("/config/dashboards.json", FILE_WRITE);
   if (!f) return;
