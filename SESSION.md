@@ -1193,3 +1193,54 @@ Jede Aktor-Karte hat jetzt genau einen ⏻-Schalter (vorher nur Continuous), und
 | **Frontend-Deploy auf SD** | `pnpm build:sd` → `tar -C dist -cf ../webui.tar .` (unkomprimiert, `./`-relative Pfade, plain + `.gz`-Geschwister nebeneinander) → `POST /api/update/assets` (Multipart-Feld `f`) → Swap auf `/www.new`→`/www` im nächsten Loop-Tick, kein Reboot nötig. Im Browser gegen das Gerät verifiziert: `kettle`/`dfsdfdf` (Continuous) je ein ⏻ + Slider, `pump` (Binary) nur noch ein ⏻ + ON/OFF-Label, Intervall-Sub-Slider bei `dfsdfdf` weiterhin sichtbar. |
 
 **Nebenbefund:** Während der Verifikation stand `dfsdfdf.target` unerwartet auf `0.16` statt dem zuletzt per Skript gesetzten `0` — vermutlich eine parallele Interaktion mit dem Live-Gerät (Browser/Display) während der Session, nicht untersucht, da unkritisch für die Verifikation und der Aktor ein Test-Objekt ohne reale Funktion ist.
+
+---
+
+## 2026-08-19 — MQTT-Einstellungen (externer + embedded Broker)
+
+**Ausgangslage:** Roadmap-Punkt aus Welle 3 (vorgemerkt 2026-08-12). BrewControl hatte keinerlei MQTT-Verdrahtung — Neuentwicklung, kein Ausbau. Zwei Modi gefordert: externer Broker (Host/Port/Creds/TLS) über die bestehende `SensActCtrl::MqttTransport` und ein embedded Broker direkt auf dem ESP32.
+
+### Architektur-Entscheidungen (Planungssession)
+
+- **`martin-ger/uMQTTBroker`** (ursprünglich in der Roadmap genannt) läuft nachweislich **nicht auf ESP32** (offenes, nie beantwortetes GitHub-Issue) — verworfen zugunsten von **`hsaturn/TinyMqtt`** (Broker+Client in einer Lib, ESP32-fähig), davon aber **nur die Broker-Rolle**; der eigene Publish-Pfad bleibt auf `MqttTransport`/PubSubClient, verbunden auf `127.0.0.1` im embedded-Modus — ein einziger Publish-Code-Pfad für beide Modi.
+- **TinyMqtt-Auth-Lücke:** am echten Quellcode (v1.1.3) verifiziert — `checkUser`/`checkPassword` sind privat/nicht-virtuell, Credentials hartcodiert `"guest"/"guest"`, kein Setter; zusätzlich ein vom Maintainer selbst als FIXME markiertes Loch (Verbindung ganz ohne Credential-Flags wird akzeptiert). Gelöst über ein **Build-Zeit-Patch-Skript** (`tinymqtt_patch.py`, PlatformIO `pre:`-Script analog zu `version_flags.py`) — kein Fork, patcht den lib-Cache bei jedem Build idempotent (Sentinel-Kommentar).
+- **Live-Tracking von Add/Remove statt Boot-Snapshot:** `RemotePublisher` hielt rohe Pointer ohne `detach()` — bei Live-Tracking hätte ein zur Laufzeit gelöschter Sensor/Aktor zu Use-after-free geführt (State-Publish auf totem Pointer; stale Lambda-Closure in `MqttTransport`s Subscription-Liste bei Aktoren/Controllern). Gelöst durch echtes `detach()` in der Library (siehe unten) statt der ursprünglich geplanten Vereinfachung „nur beim Boot verdrahten".
+- **Flash-Budget-Spike** (realer `pio run` auf allen 3 Boards, nicht geschätzt): TinyMqtt-Broker allein +4 KB, zusammen mit `MqttTransport`/PubSubClient +10 KB auf allen Boards — weit unter der ~85 %-Gefahrenzone. Ergebnis: **kein Board-Fallback nötig**, `BREWCTL_HAS_EMBEDDED_MQTT_BROKER=1` gilt für alle 3 Envs (`${common.build_flags}`, nicht mehr pro Env unterschiedlich wie ursprünglich geplant).
+
+### SensActCtrl (Library)
+
+- **`MqttTransport`**: Konstruktor um optionale `username`/`password`-Parameter erweitert (rückwärtskompatibel, Default `""`); `attemptConnect_()` nutzt bei gesetztem Username PubSubClients `connect(id, user, pass)`-Überladung.
+- **`ITransport`**: neue Methode `unsubscribe(topic)` mit nicht-brechendem Default (`{ return false; }`) — gleiches Muster wie seinerzeit `fault()` auf `Sensor`/`Actuator`. `MqttTransport` und `MockTransport` überschreiben sie (Eintrag aus der Subscription-Liste entfernen).
+- **`RemotePublisher`**: neue `detach(const Sensor&)/detach(const Actuator&)/detach(const Controller&)` — entfernen passende Einträge per Pointer-Identität (bei Multi-Channel-Sensoren alle Kanäle), rufen für Aktor/Controller vorher `transport_->unsubscribe()` auf die Set-/Tune-Topics (entfernt die Closure, die sonst nach dem Löschen auf einen toten Pointer zeigen würde).
+- **5 neue native Tests** in `test_remote.cpp` (Sensor-Detach stoppt State-Publish, Multi-Channel-Detach entfernt alle Kanäle, Aktor-Detach entfernt Subscription — direkter Beweis gegen den Use-after-free, Controller-Detach analog, Re-Attach nach Detach republiziert Meta korrekt). **150 → 155 native Tests grün.**
+
+### BrewControl Firmware
+
+- **`SettingsStore`**: vierte Sektion `mqtt` (enabled, mode, host, port, username, password, tls, clientId, topicPrefix) nach dem exakten Muster von `theme`/`firmware`/`time`; `serialize()` ergänzt read-only `embeddedBrokerSupported` (aus dem Compile-Flag).
+- **`WebUI.cpp`**: vierter Validierungsblock in `POST /api/settings` (mode-Enum, Port-Range, `embedded` wird ohne Board-Capability mit 400 abgelehnt).
+- **`DynamicItems`**: sechs optionale Hook-Setter (`setOnSensorAdded/Removing` usw., analog zum bestehenden `resetFn`-Pro-Item-Muster) — feuern in `addSensor/addActuator/addController` nach `begin()` bzw. in `removeSensor/removeActuator/removeController` unmittelbar vor dem jeweiligen `erase()` (Objekt zu dem Zeitpunkt noch gültig).
+- **Neue Klasse `MqttService`** (`#ifdef ARDUINO`-Guard wie `IdsActuator.h`): baut je nach Modus einen embedded `TinyMqtt::MqttBroker` (+ `setAuth()` aus dem Patch) oder direkt den externen `WiFiClient`/`WiFiClientSecure`-Pfad auf (TLS via `setInsecure()`, gleiches Muster wie `FirmwareUpdater`), attacht beim Boot alle vorhandenen Registry-Items, registriert danach die `DynamicItems`-Hooks für Live-Tracking (Attach+erneutes `begin()` bei Add, `detach()` bei Remove — `begin()` ist idempotent, daher kein separater „publish one"-Pfad nötig).
+- **`main.cpp`**: globale `MqttService`-Instanz, `begin()` nach `registry.begin()`/`dynamicItems.markInitialized()` (Hooks müssen stehen, bevor die Web-API Add/Remove bedienen kann), `tick()` in `loop()`.
+- **`tinymqtt_patch.py`** + `platformio.ini`: TinyMqtt (`hsaturn/TinyMqtt.git#1.1.3` — PIO-Registry-Version 0.9.18 ist veraltet) + Patch-Script in `${common}`.
+
+### Frontend
+
+- `types.ts`: `MqttSettings`-Interface, `mqtt?` auf `AppSettings`.
+- Neue Seite `pages/MqttPage.tsx` — **umgebaut nach Praxistest** (s.u.) auf das `NetworkPage.tsx`-mDNS-Muster statt `TimePage.tsx`/`AppearancePage.tsx`: Felder werden nur lokal editiert (kein Auto-Save pro Feld), ein einzelner „Speichern & Neustart"-Button (disabled bis sich etwas geändert hat, Diff via `JSON.stringify`) öffnet ein `ConfirmModal`, danach Vollbild-Reboot-Screen. Grund: die MQTT-Verbindung wird ohnehin nur beim Boot aufgebaut — ein Button, der explizit speichert *und* neu startet, ist ehrlicher als Auto-Save + passiver Hinweis-Banner. `WebUI.cpp`s `POST /api/settings`-Handler löst jetzt `rebootAtMs_` aus, wenn die Anfrage eine `mqtt`-Sektion enthält (analog zu `/api/network`). Modus-Segmented blendet „Eingebaut" aus wenn `embeddedBrokerSupported===false`, Host/Port/Zugangsdaten/TLS je nach Modus, Port springt beim TLS-Toggle zwischen 1883/8883 wenn noch auf Default.
+
+**Praxistest (User, 2026-08-19):** Erfolgreich mit dem embedded TinyMqtt-Broker verbunden — sowohl mit als auch ohne Auth (bestätigt, dass der Build-Zeit-Patch die Zugangsdaten-Prüfung korrekt durchsetzt, wenn `setAuth()` gesetzt ist, und weiterhin offen bleibt, wenn nicht). Daraufhin Wunsch nach dem expliziten Speichern-&-Neustart-Button (s.o.), umgesetzt und gegen den Live-Zustand des Geräts (via Vite-Dev-Proxy) verifiziert: Seite lädt echte Gerätewerte (`enabled:true, mode:"embedded"` aus dem manuellen Test), Button korrekt disabled ohne Änderung, aktiviert sich nach Edit, Modal zeigt korrekten Text, Cancel verwirft ohne Seiteneffekt.
+- Routing (`app.tsx`) + Hub-Eintrag (`SettingsIndex.tsx`, Icon `Radio`) unter `/settings/mqtt`.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 155/155 PASSED (150 alt + 5 neu Detach) |
+| Flash-Spike (real gemessen, alle 3 Boards) | Baseline → +10 KB kombiniert, weit unter 85 % |
+| `pio run` alle 3 Envs, vollständige Implementierung | esp32dev 67,2 %, lolin_s2_mini 64,0 %, LilyGo S3 19,1 % — SUCCESS |
+| TinyMqtt-Patch: Anwendung + Idempotenz | verifiziert (zweiter Build-Lauf patcht nicht erneut, kein Fehler) |
+| `MqttTransport`-Signatur (4-Arg alt + 6-Arg neu) | gegen echten Toolchain-Pin kompiliert (Spike in main.cpp, reverted) |
+| `pnpm typecheck` + `pnpm build` (BrewControl/web) | 0 Fehler |
+| Browser-Verifikation (Dev-Server, kein Live-Gerät) | `/settings/mqtt` lädt, Enable-Toggle klappt Formular auf, Modus/Host/Port/Zugangsdaten/TLS korrekt gerendert, TLS-Toggle springt Port 1883→8883, `/settings`-Hub zeigt neuen Eintrag, keine Konsolenfehler |
+
+**Offen (HW-E2E, nicht Teil dieser Session):** externer Broker mit echtem Mosquitto/Home-Assistant (mit/ohne TLS, mit/ohne Creds), embedded Broker mit `mosquitto_sub` (inkl. Negativtest: Verbindung ohne `-u`/`-P` muss abgelehnt werden — direkter Test des Patch-Fixes), Live-Tracking am echten Gerät (Sensor zur Laufzeit hinzufügen/löschen, kein Crash).

@@ -24,11 +24,13 @@ namespace SensActCtrl {
 class MqttTransport : public ITransport {
  public:
   MqttTransport(Client& netClient, const char* host, uint16_t port,
-                const char* clientId);
+                const char* clientId, const char* username = "",
+                const char* password = "");
   ~MqttTransport() override;
 
   bool publish(const char* topic, const char* payload, bool retained) override;
   bool subscribe(const char* topic, MessageCallback callback) override;
+  bool unsubscribe(const char* topic) override;
   void tick() override;
   bool connected() const override;
 
@@ -43,6 +45,8 @@ class MqttTransport : public ITransport {
   std::string host_;
   uint16_t port_;
   std::string clientId_;
+  std::string username_;
+  std::string password_;
   std::vector<std::pair<std::string, MessageCallback>> subs_;
   uint32_t lastConnectAttemptMs_ = 0;
   uint32_t reconnectBackoffMs_ = 1000;

@@ -18,8 +18,10 @@ void staticDispatch(char* topic, uint8_t* payload, unsigned int length) {
 }  // namespace
 
 MqttTransport::MqttTransport(Client& netClient, const char* host, uint16_t port,
-                             const char* clientId)
-    : host_(host), port_(port), clientId_(clientId ? clientId : "") {
+                             const char* clientId, const char* username,
+                             const char* password)
+    : host_(host), port_(port), clientId_(clientId ? clientId : ""),
+      username_(username ? username : ""), password_(password ? password : "") {
   client_ = new PubSubClient(netClient);
   client_->setServer(host_.c_str(), port_);
   client_->setCallback(staticDispatch);
@@ -44,14 +46,32 @@ bool MqttTransport::subscribe(const char* topic, MessageCallback callback) {
   return true;
 }
 
+bool MqttTransport::unsubscribe(const char* topic) {
+  bool found = false;
+  for (auto it = subs_.begin(); it != subs_.end();) {
+    if (it->first == topic) {
+      it = subs_.erase(it);
+      found = true;
+    } else {
+      ++it;
+    }
+  }
+  if (client_ && client_->connected()) {
+    client_->unsubscribe(topic);
+  }
+  return found;
+}
+
 bool MqttTransport::connected() const {
   return client_ && client_->connected();
 }
 
 bool MqttTransport::attemptConnect_() {
-  bool ok = clientId_.empty()
-              ? client_->connect(String(millis()).c_str())
-              : client_->connect(clientId_.c_str());
+  const std::string id = clientId_.empty() ? std::string(String(millis()).c_str())
+                                            : clientId_;
+  bool ok = username_.empty()
+              ? client_->connect(id.c_str())
+              : client_->connect(id.c_str(), username_.c_str(), password_.c_str());
   if (!ok) return false;
   for (auto& sub : subs_) {
     client_->subscribe(sub.first.c_str());
@@ -93,11 +113,14 @@ void MqttTransport::dispatchIncoming(const char* topic, const uint8_t* payload,
 
 namespace SensActCtrl {
 
-MqttTransport::MqttTransport(Client&, const char*, uint16_t port, const char* clientId)
-    : port_(port), clientId_(clientId ? clientId : "") {}
+MqttTransport::MqttTransport(Client&, const char*, uint16_t port, const char* clientId,
+                             const char* username, const char* password)
+    : port_(port), clientId_(clientId ? clientId : ""),
+      username_(username ? username : ""), password_(password ? password : "") {}
 MqttTransport::~MqttTransport() = default;
 bool MqttTransport::publish(const char*, const char*, bool) { return false; }
 bool MqttTransport::subscribe(const char*, MessageCallback) { return false; }
+bool MqttTransport::unsubscribe(const char*) { return false; }
 void MqttTransport::tick() {}
 bool MqttTransport::connected() const { return false; }
 void MqttTransport::dispatchIncoming(const char*, const uint8_t*, uint32_t) {}

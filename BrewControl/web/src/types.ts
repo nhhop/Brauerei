@@ -244,10 +244,24 @@ export interface TimeSettings {
   dateFormat: 'DD.MM.YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
 }
 
+export interface MqttSettings {
+  enabled: boolean;
+  mode: 'external' | 'embedded';
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  tls: boolean;
+  clientId: string;
+  topicPrefix: string;
+  embeddedBrokerSupported?: boolean;  // read-only, server-computed
+}
+
 export interface AppSettings {
   theme: ThemeSettings;
   firmware?: FirmwareSettings;
   time?: TimeSettings;
+  mqtt?: MqttSettings;
 }
 
 export type UpdateState =

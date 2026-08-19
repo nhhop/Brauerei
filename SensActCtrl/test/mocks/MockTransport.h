@@ -44,6 +44,19 @@ class MockTransport : public ITransport {
     return true;
   }
 
+  bool unsubscribe(const char* topic) override {
+    bool found = false;
+    for (auto it = subs_.begin(); it != subs_.end();) {
+      if (it->first == topic) {
+        it = subs_.erase(it);
+        found = true;
+      } else {
+        ++it;
+      }
+    }
+    return found;
+  }
+
   void tick() override {}
   bool connected() const override { return true; }
 

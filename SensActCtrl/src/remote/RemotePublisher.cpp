@@ -61,6 +61,35 @@ void RemotePublisher::attach(Controller& c) {
   controllers_.push_back(std::move(e));
 }
 
+void RemotePublisher::detach(const Sensor& sensor) {
+  for (auto it = sensors_.begin(); it != sensors_.end();) {
+    if (it->sensor == &sensor) it = sensors_.erase(it);
+    else ++it;
+  }
+}
+
+void RemotePublisher::detach(const Actuator& actuator) {
+  for (auto it = actuators_.begin(); it != actuators_.end();) {
+    if (it->actuator == &actuator) {
+      transport_->unsubscribe(it->setTopic.c_str());
+      it = actuators_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+void RemotePublisher::detach(const Controller& controller) {
+  for (auto it = controllers_.begin(); it != controllers_.end();) {
+    if (it->controller == &controller) {
+      transport_->unsubscribe(it->tuneTopic.c_str());
+      it = controllers_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 void RemotePublisher::publishSensorMeta(SensorEntry& e) {
   char buf[192];
   size_t n = remote::serializeSensorMeta(

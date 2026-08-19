@@ -24,6 +24,17 @@ class SettingsStore {
   const String& timeFormat() const { return timeFormat_; }   // "24h" | "12h"
   const String& dateFormat() const { return dateFormat_; }   // "DD.MM.YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD"
 
+  // MQTT preferences.
+  bool mqttEnabled() const { return mqttEnabled_; }
+  const String& mqttMode() const { return mqttMode_; }         // "external" | "embedded"
+  const String& mqttHost() const { return mqttHost_; }
+  uint16_t mqttPort() const { return mqttPort_; }
+  const String& mqttUsername() const { return mqttUsername_; }
+  const String& mqttPassword() const { return mqttPassword_; }
+  bool mqttTls() const { return mqttTls_; }
+  const String& mqttClientId() const { return mqttClientId_; }
+  const String& mqttTopicPrefix() const { return mqttTopicPrefix_; }
+
  private:
   String mode_       = "system";   // "light" | "dark" | "system"
   String accent_     = "#0078d4";  // hex color (Windows accent blue)
@@ -36,6 +47,16 @@ class SettingsStore {
   int32_t dstOffsetSec_ = 3600;   // CEST
   String  timeFormat_   = "24h";
   String  dateFormat_   = "DD.MM.YYYY";
+
+  bool     mqttEnabled_     = false;
+  String   mqttMode_        = "external";   // "external" | "embedded"
+  String   mqttHost_        = "";
+  uint16_t mqttPort_        = 1883;
+  String   mqttUsername_    = "";
+  String   mqttPassword_    = "";
+  bool     mqttTls_         = false;
+  String   mqttClientId_    = "";           // empty ⇒ MqttService falls back to mDNS hostname
+  String   mqttTopicPrefix_ = "brewcontrol";
 };
 
 }  // namespace BrewControl

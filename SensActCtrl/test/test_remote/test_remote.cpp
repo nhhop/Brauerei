@@ -271,6 +271,108 @@ void test_custom_prefix_roundtrip() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 55.0f, remote.channel(0).reading.value);
 }
 
+void test_detach_sensor_stops_state_publish() {
+  MockTransport tx;
+  MockSensor src("t_det", tempMeta());
+  RemotePublisher pub(tx, "node-r");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.value = 30.0f;
+  src.tick();
+  pub.tick();
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-r/sensor/t_det").empty());
+
+  pub.detach(src);
+  const size_t countBefore = tx.published.size();
+  src.value = 99.0f;  // would be the new value IF still attached
+  src.tick();
+  pub.tick();
+
+  // No new publish for this sensor after detach.
+  TEST_ASSERT_EQUAL(countBefore, tx.published.size());
+}
+
+void test_detach_multichannel_sensor_removes_all_channels() {
+  MockTransport tx;
+  MockMultiSensor src("mc_det");
+  RemotePublisher pub(tx, "node-s");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.tick();
+  pub.tick();
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-s/sensor/mc_det/a").empty());
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-s/sensor/mc_det/b").empty());
+
+  pub.detach(src);  // must remove BOTH channel entries, not just the first
+  const size_t countBefore = tx.published.size();
+  src.tick();
+  pub.tick();
+  TEST_ASSERT_EQUAL(countBefore, tx.published.size());
+}
+
+void test_detach_actuator_removes_subscription() {
+  MockTransport tx;
+  MockActuator local("heater_det", switchMeta());
+  RemotePublisher pub(tx, "node-t");
+  pub.attach(local);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+
+  const char* setTopic = "sensactctrl/node-t/actuator/heater_det/set";
+  tx.publish(setTopic, "{\"v\":1.0}", /*retained=*/false);
+  TEST_ASSERT_EQUAL(1u, local.writes.size());  // still attached — routes through
+
+  pub.detach(local);
+  tx.publish(setTopic, "{\"v\":1.0}", /*retained=*/false);
+
+  // The stale closure must be gone — write() must NOT fire again after detach.
+  TEST_ASSERT_EQUAL(1u, local.writes.size());
+}
+
+void test_detach_controller_removes_subscription() {
+  MockTransport tx;
+  MockSensor s("t2", tempMeta());
+  MockActuator a("o2", switchMeta());
+  TwoPointController ctrl("mash_ctrl2", s, a);
+  ctrl.setSetpoint(60.0f);
+
+  RemotePublisher pub(tx, "node-u");
+  pub.attach(ctrl);
+  pub.begin();
+
+  pub.detach(ctrl);
+  const char* tuneTopic = "sensactctrl/node-u/controller/mash_ctrl2/tune";
+  const char* newParams = "{\"setpoint\":75.0,\"hystLow\":-1.0,"
+                          "\"hystHigh\":1.0,\"inverted\":false}";
+  tx.publish(tuneTopic, newParams, /*retained=*/false);
+
+  // Stale /tune subscription must be gone — setpoint stays unchanged.
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 60.0f, ctrl.setpoint());
+}
+
+void test_reattach_after_detach_republishes_meta() {
+  MockTransport tx;
+  MockSensor src("t_re", tempMeta());
+  RemotePublisher pub(tx, "node-v");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  pub.detach(src);
+
+  // Re-attach the same object (simulates a fresh add after a prior remove).
+  pub.attach(src);
+  pub.begin();
+  src.value = 12.5f;
+  src.tick();
+  pub.tick();
+
+  TEST_ASSERT_FALSE(tx.lastPayload("sensactctrl/node-v/sensor/t_re/meta").empty());
+  const std::string state = tx.lastPayload("sensactctrl/node-v/sensor/t_re");
+  TEST_ASSERT_TRUE(state.find("12.5") != std::string::npos);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -286,5 +388,10 @@ int main(int, char**) {
   RUN_TEST(test_single_channel_flat_topic_unchanged);
   RUN_TEST(test_multichannel_remote_sensor_subscribes_channel);
   RUN_TEST(test_custom_prefix_roundtrip);
+  RUN_TEST(test_detach_sensor_stops_state_publish);
+  RUN_TEST(test_detach_multichannel_sensor_removes_all_channels);
+  RUN_TEST(test_detach_actuator_removes_subscription);
+  RUN_TEST(test_detach_controller_removes_subscription);
+  RUN_TEST(test_reattach_after_detach_republishes_meta);
   return UNITY_END();
 }

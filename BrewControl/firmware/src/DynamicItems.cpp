@@ -119,7 +119,10 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
 DynamicItems::Result DynamicItems::addSensor(const JsonObject& cfg,
                                               Registry& reg) {
   auto r = addSensorNoBegin(cfg, reg);
-  if (r.ok && initialized_) sensors_.back()->ptr->begin();
+  if (r.ok && initialized_) {
+    sensors_.back()->ptr->begin();
+    if (onSensorAdded_) onSensorAdded_(*sensors_.back()->ptr);
+  }
   return r;
 }
 
@@ -214,7 +217,10 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
 DynamicItems::Result DynamicItems::addActuator(const JsonObject& cfg,
                                                 Registry& reg) {
   auto r = addActuatorNoBegin(cfg, reg);
-  if (r.ok && initialized_) actuators_.back()->ptr->begin();
+  if (r.ok && initialized_) {
+    actuators_.back()->ptr->begin();
+    if (onActuatorAdded_) onActuatorAdded_(*actuators_.back()->ptr);
+  }
   return r;
 }
 
@@ -338,7 +344,10 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
 DynamicItems::Result DynamicItems::addController(const JsonObject& cfg,
                                                   Registry& reg) {
   auto r = addControllerNoBegin(cfg, reg);
-  if (r.ok && initialized_) controllers_.back()->ptr->begin();
+  if (r.ok && initialized_) {
+    controllers_.back()->ptr->begin();
+    if (onControllerAdded_) onControllerAdded_(*controllers_.back()->ptr);
+  }
   return r;
 }
 
@@ -353,6 +362,7 @@ DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
       (*it)->ptr->end();
+      if (onSensorRemoving_) onSensorRemoving_(*(*it)->ptr);
       sensors_.erase(it);
       return {true};
     }
@@ -370,6 +380,7 @@ DynamicItems::Result DynamicItems::removeActuator(const char* id,
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
       (*it)->ptr->end();
+      if (onActuatorRemoving_) onActuatorRemoving_(*(*it)->ptr);
       actuators_.erase(it);
       return {true};
     }
@@ -382,6 +393,7 @@ DynamicItems::Result DynamicItems::removeController(const char* id,
   for (auto it = controllers_.begin(); it != controllers_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
+      if (onControllerRemoving_) onControllerRemoving_(*(*it)->ptr);
       controllers_.erase(it);
       return {true};
     }

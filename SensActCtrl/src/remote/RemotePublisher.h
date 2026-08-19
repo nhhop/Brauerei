@@ -34,6 +34,16 @@ class RemotePublisher {
   void attach(Actuator& actuator);
   void attach(Controller& controller);
 
+  // Removes a previously attached item. Must be called BEFORE the underlying
+  // object is destroyed (e.g. before a dynamic registry frees it) — this is
+  // what makes detach-then-delete safe: without it, tick() would dereference
+  // a dangling pointer on the next state-publish, and (for actuators /
+  // controllers) a stale subscription callback capturing the dead pointer
+  // would still fire on an incoming /set or /tune message.
+  void detach(const Sensor& sensor);
+  void detach(const Actuator& actuator);
+  void detach(const Controller& controller);
+
   // Minimum gap between repeated state publishes per item. 0 = publish on
   // every tick(). Default 1000 ms.
   void setStateIntervalMs(uint32_t ms) { stateIntervalMs_ = ms; }

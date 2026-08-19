@@ -59,6 +59,19 @@ class DynamicItems {
   // creating a second conflicting OneWire driver on the same GPIO.
   uint8_t scanOneWireBus(int pin, uint8_t out[][8], uint8_t maxDevices);
 
+  // Optional observers, fired around add*()/remove*() (only for items added
+  // after markInitialized() — loadFromSD() uses the NoBegin path and does not
+  // trigger these). "Added" fires after the item's begin(); "Removing" fires
+  // before the item is freed, so the callback can still safely reference it
+  // (e.g. to detach it from a live subscriber like MqttService before the
+  // unique_ptr destroys it).
+  void setOnSensorAdded(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorAdded_ = cb; }
+  void setOnSensorRemoving(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorRemoving_ = cb; }
+  void setOnActuatorAdded(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorAdded_ = cb; }
+  void setOnActuatorRemoving(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorRemoving_ = cb; }
+  void setOnControllerAdded(std::function<void(SensActCtrl::Controller&)> cb) { onControllerAdded_ = cb; }
+  void setOnControllerRemoving(std::function<void(SensActCtrl::Controller&)> cb) { onControllerRemoving_ = cb; }
+
  private:
   struct SensorEntry {
     std::string id;
@@ -99,6 +112,13 @@ class DynamicItems {
   std::vector<std::unique_ptr<CtrlEntry>> controllers_;
 
   bool initialized_ = false;
+
+  std::function<void(SensActCtrl::Sensor&)> onSensorAdded_;
+  std::function<void(SensActCtrl::Sensor&)> onSensorRemoving_;
+  std::function<void(SensActCtrl::Actuator&)> onActuatorAdded_;
+  std::function<void(SensActCtrl::Actuator&)> onActuatorRemoving_;
+  std::function<void(SensActCtrl::Controller&)> onControllerAdded_;
+  std::function<void(SensActCtrl::Controller&)> onControllerRemoving_;
 
   // Internal variants that do NOT call begin() — used by loadFromSD.
   Result addSensorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);

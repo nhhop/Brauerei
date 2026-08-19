@@ -13,6 +13,7 @@ import { FirmwarePage } from './pages/FirmwarePage';
 import { BackupPage } from './pages/BackupPage';
 import { TimePage } from './pages/TimePage';
 import { NetworkPage } from './pages/NetworkPage';
+import { MqttPage } from './pages/MqttPage';
 import { LogsPage } from './pages/LogsPage';
 import { ArchivePage } from './pages/ArchivePage';
 
@@ -54,6 +55,7 @@ export function App() {
         <BackupPage path="/settings/backup" />
         <TimePage path="/settings/time" />
         <NetworkPage path="/settings/network" />
+        <MqttPage path="/settings/mqtt" />
         <LogsPage path="/settings/logs" snap={snap} />
         <ArchivePage path="/settings/logs/:id/archive" />
       </Router>

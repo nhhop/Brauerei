@@ -664,6 +664,23 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject mqtt = obj["mqtt"].as<JsonObject>();
+        if (!mqtt.isNull()) {
+          if (const char* m = mqtt["mode"]) {
+            if (strcmp(m,"external")!=0 && strcmp(m,"embedded")!=0) {
+              req->send(400, "text/plain", "invalid mqtt mode"); return;
+            }
+#ifndef BREWCTL_HAS_EMBEDDED_MQTT_BROKER
+            if (strcmp(m,"embedded")==0) {
+              req->send(400, "text/plain", "embedded broker not supported on this board"); return;
+            }
+#endif
+          }
+          if (mqtt["port"].is<int>()) {
+            int32_t p = mqtt["port"].as<int32_t>();
+            if (p < 1 || p > 65535) { req->send(400, "text/plain", "invalid mqtt port"); return; }
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
         if (!t.isNull()) {
@@ -671,6 +688,10 @@ void WebUI::begin() {
                      settings_.ntpServer().c_str());
         }
         req->send(204);
+        // MQTT's actual connection (host/port/mode/TLS) is only (re-)established
+        // at boot from SettingsStore — reboot so a saved change takes effect
+        // immediately, same as the WiFi/hostname settings on /api/network.
+        if (!mqtt.isNull()) rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 
   // ── Firmware update ────────────────────────────────────────────────────────

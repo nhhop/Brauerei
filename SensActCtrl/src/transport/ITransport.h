@@ -29,6 +29,11 @@ class ITransport {
 
   virtual bool publish(const char* topic, const char* payload, bool retained) = 0;
   virtual bool subscribe(const char* topic, MessageCallback callback) = 0;
+  // Removes a subscription registered via subscribe(). Default no-op — not
+  // all transports need it; RemotePublisher::detach() calls it to drop stale
+  // callbacks (e.g. one capturing a since-deleted Actuator*) before they can
+  // fire again. Returns false if no matching subscription existed.
+  virtual bool unsubscribe(const char* topic) { (void)topic; return false; }
   virtual void tick() = 0;
   virtual bool connected() const = 0;
 };

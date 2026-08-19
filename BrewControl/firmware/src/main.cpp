@@ -19,6 +19,7 @@
 #include "DynamicItems.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
+#include "MqttService.h"
 #include "ProgramRunner.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
@@ -45,6 +46,7 @@ BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
+BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner);
 
 // Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
@@ -174,6 +176,8 @@ void setup() {
 
   registry.begin();
   dynamicItems.markInitialized();  // future add*() calls will call begin()
+  mqttService.begin(hostname_);    // registers DynamicItems hooks — must run
+                                    // before webUI can serve add/remove requests
 
   webUI.begin();
   firmwareUpdater.begin();
@@ -199,6 +203,7 @@ void loop() {
   registry.tick();
   webUI.tick();
   firmwareUpdater.tick();
+  mqttService.tick();
   maintainWiFi();
   delay(5);
 }
