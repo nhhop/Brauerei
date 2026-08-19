@@ -1258,3 +1258,44 @@ Für die eigentliche Ursachenklärung an einen Subagent delegiert (`spawn_task`,
 **Merge + finale Verifikation:** lokale MQTT-Änderungen gestasht, `origin/main` (mit dem SD-Fix) per Fast-Forward gepullt, Stash zurückgespielt — sauberer Auto-Merge, keine Konflikte trotz Überlappung in `SettingsStore.cpp`/`WebUI.cpp`/`DynamicItems.cpp`. Danach kompletter Durchlauf: 155/155 native Tests, alle 3 Firmware-Envs SUCCESS (esp32dev 67,3 %, lolin_s2_mini 64,1 %, LilyGo S3 19,1 % Flash), `pnpm typecheck`/`build:sd` grün, geflasht auf COM9. **Repro-Test bestanden:** 5 Tar-Uploads hintereinander ohne Reset — alle 5× `HTTP 200`/`ok` (vorher spätestens beim zweiten Versuch zuverlässig fehlgeschlagen). Live-Gerät liefert danach bestätigt die neu gebaute UI aus (`index-DplkaDnS.js`/`index-CfaBl7O3.css`, beide `200`) — die MQTT-Settings-Seite ist damit erstmals tatsächlich auf dem Gerät erreichbar.
 
 Commit: `0f85bb0` „feat: MQTT-Einstellungen (externer + embedded Broker)" (main, gepusht).
+
+---
+
+## 2026-08-20 — Live-Tracking-Test aufgedeckt: embedded Broker konnte nie eigene Daten publizieren
+
+**Ausgangslage:** Geplanter Praxistest für Live-Tracking (Sensor/Aktor zur Laufzeit hinzufügen/löschen, MQTT beobachten). `mosquitto_sub`/`mosquitto_pub` lokal installiert (`choco install mosquitto`, Client-Tools unter `C:\Program Files\mosquitto\`). Erster Check vor dem eigentlichen Test: `mosquitto_sub -t 'brewcontrol/#'` liefert **nichts** — weder retained Meta noch periodische States, obwohl die Registry voller Sensoren/Aktoren/Regler ist (`mlt`, `kettle`, `mash`-Regler etc.).
+
+### Ursache 1: ESP32 kann sich nicht selbst verbinden
+
+Debug-Instrumentierung (`Serial.printf` in `MqttTransport::attemptConnect_`, danach entfernt) zeigt: `MqttService::tick()` läuft dauerhaft mit `connected=0`. `PubSubClient::state()` liefert konstant `-4` (`MQTT_CONNECTION_TIMEOUT`) — **sowohl** für `127.0.0.1` **als auch** für die echte WiFi-IP des Geräts (`WiFi.localIP()`, erster Fixversuch, hat das Problem nicht gelöst). Der eigene `WiFiClient` kann sich also nicht zu seinem eigenen, per `TinyMqtt::MqttBroker` gehosteten Broker verbinden — der Broker selbst funktioniert einwandfrei (externe `mosquitto_sub`/`mosquitto_pub`-Verbindungen liefen die ganze Zeit fehlerfrei). Exakte Ursache (ESP32-lwIP-Loopback grundsätzlich nicht geroutet vs. Fritzbox reflektiert keinen Traffic zurück zum selben Client vs. blockierender `connect()`-Call verhungert den Broker in der Single-Thread-`loop()`) nicht abschließend isoliert — aber irrelevant geworden, siehe Fix.
+
+**Fix (User-Hinweis: "das war auch der Grund, warum ich diese Doppelstruktur mit PubSub abbauen wollte" → Blick ins offizielle TinyMqtt-Beispiel `examples/client-with-wifi/client-with-wifi.ino`):** TinyMqtt hat für genau diesen Fall einen **nativen In-Process-Client** — `MqttClient(&broker)` — der ganz ohne TCP/IP auskommt (Doku im Beispiel: "Reduces internal latency … Reduces wifi traffic … No need to have an external broker"). Neue Klasse `BrewControl/firmware/src/TinyMqttLocalTransport.h`: ein `SensActCtrl::ITransport`-Adapter um `TinyMqtt::MqttClient(&broker, clientId)` (mirrort `MqttTransport`s Single-Callback-Dispatch-Muster, da TinyMqtts `MqttClient::setCallback()` ebenfalls nur einen globalen Funktionspointer statt Pro-Topic-Callbacks kennt). `MqttService` hält `transport_` jetzt polymorph als `std::unique_ptr<SensActCtrl::ITransport>` — embedded Modus nutzt `TinyMqttLocalTransport` (kein `WiFiClient` mehr involviert), externer Modus bleibt unverändert bei `MqttTransport`/PubSubClient. Damit braucht der embedded Modus PubSubClient gar nicht mehr — die vom User schon länger gewünschte Auflösung der Doppelstruktur ergibt sich als Nebeneffekt des Fixes.
+
+**Verifiziert:** `mosquitto_sub -t '#'` zeigt danach sofort alle Sensoren/Aktoren periodisch (`brewcontrol/brewcontrol/sensor/mlt`, `.../actuator/kettle`, …).
+
+### Ursache 2 (Verdacht, dann widerlegt): vermeintliche Topic-Korruption
+
+Beim anschließenden Live-Add-Test tauchte ein neu hinzugefügter Sensor unter `brewcontrol/brewcontrollo/sensor/livetest` auf — ein zusätzliches „lo" im Device-Namen, während zuvor beobachtete Boot-Zeit-Topics sauber `brewcontrol` zeigten. Erste Hypothese: Race Condition zwischen `async_tcp`-Task (Live-Add-Hook) und `loopTask` (`MqttService::tick()`), analog zum SD-Concurrency-Bug vom Vortag — dafür testweise `MqttLock.h` (rekursiver Mutex nach `SdLock`-Vorbild) gebaut, um `MqttService::tick()` und alle `DynamicItems`-Hooks herum, geflasht.
+
+**User-Korrektur:** kein Bug — der mDNS-Hostname war zwischenzeitlich manuell umbenannt worden (`brewcontrol.local` war nicht mehr erreichbar), was einen Reboot auslöst; der Live-Add-Test lief bereits unter dem neuen Hostnamen, während die vorher beobachteten Topics noch vom alten Boot stammten. **`MqttLock.h` auf Nutzerentscheid wieder entfernt** — kein bewiesenes Problem, keine Änderung (Simplicity First). Das architektonische Risiko (TinyMqtt vermutlich ebenso wenig thread-sicher wie SdFat) bleibt als unbewiesene, aber nicht ausgeschlossene Möglichkeit im Hinterkopf, falls künftig ein echtes Symptom auftaucht.
+
+### Live-Tracking-Test (nach dem Fix, sauber durchgeführt)
+
+Alle Schritte über `curl` gegen die echte API (identischer Pfad wie die Web-UI):
+1. **Add:** `POST /api/sensors` (DS18B20, unbenutzter Pin) → erscheint innerhalb von ~1 s auf MQTT, kein Neustart.
+2. **Remove:** `DELETE /api/sensors/:id` → keine weiteren State-Publishes, Gerät bleibt erreichbar.
+3. **Kritischer Test:** Aktor anlegen, Meta/State auf MQTT bestätigt, Aktor löschen, dann `mosquitto_pub` **manuell auf das alte `/set`-Topic** → keine Reaktion, **kein Crash**, Gerät antwortet danach weiter normal auf `/api/snapshot`. Das ist der direkte Beweis, dass `RemotePublisher::detach()` + `ITransport::unsubscribe()` die stale Subscription-Closure wirklich entfernen (der ursprüngliche Use-after-free-Vektor aus der Planungssession).
+4. **Stresstest:** zwei Add/Remove-Zyklen direkt hintereinander (unbenutzte Sensor-IDs) — beide sauber abgeräumt, keine Waisen in der Registry, Gerät stabil.
+
+Alle 4 Schritte bestanden. Damit sind sämtliche in der ursprünglichen Planungssession offen gelassenen HW-E2E-Punkte für Live-Tracking abgehakt.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 155/155 PASSED (unverändert, Fix betrifft nur BrewControl) |
+| `pio run` alle 3 Envs | SUCCESS, Flash unverändert (esp32dev 67,4 %, lolin_s2_mini 64,2 %, LilyGo S3 19,1 %) |
+| Embedded-Broker-Publish (`mosquitto_sub`) | Sensoren/Aktoren/Regler erscheinen live, retained Meta + periodische State-Updates |
+| Live-Tracking (Add/Remove/Set-auf-gelöschtem-Aktor/Stresstest) | alle 4 grün, HW-verifiziert auf LilyGo S3 |
+
+**Offen (HW-E2E):** externer Broker mit echtem Mosquitto/Home-Assistant (mit/ohne TLS) — bislang nur der embedded Modus vollständig durchgetestet.

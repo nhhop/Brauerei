@@ -6,6 +6,10 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
+#ifdef BREWCTL_HAS_EMBEDDED_MQTT_BROKER
+#include "TinyMqttLocalTransport.h"
+#endif
+
 namespace BrewControl {
 
 using SensActCtrl::Actuator;
@@ -25,7 +29,6 @@ void MqttService::begin(const String& fallbackClientId) {
                               ? fallbackClientId
                               : settings_.mqttClientId();
   const bool embedded = settings_.mqttMode() == "embedded";
-  String host = settings_.mqttHost();
   const uint16_t port = settings_.mqttPort();
 
   if (embedded) {
@@ -35,24 +38,26 @@ void MqttService::begin(const String& fallbackClientId) {
       broker_->setAuth(settings_.mqttUsername().c_str(), settings_.mqttPassword().c_str());
     }
     broker_->begin();
-    host = "127.0.0.1";
+    // In-process local client — no socket, no self-connect. See class
+    // comment in MqttService.h for why this replaced dialing our own
+    // MqttTransport/PubSubClient at 127.0.0.1 / WiFi.localIP().
+    transport_ = std::make_unique<TinyMqttLocalTransport>(*broker_, clientId.c_str());
 #else
     Serial.println(F("MqttService: embedded broker not supported on this build — MQTT disabled"));
     return;
 #endif
-  }
-
-  if (!embedded && settings_.mqttTls()) {
-    auto secure = std::make_unique<WiFiClientSecure>();
-    secure->setInsecure();
-    netClient_ = std::move(secure);
   } else {
-    netClient_ = std::make_unique<WiFiClient>();
+    if (settings_.mqttTls()) {
+      auto secure = std::make_unique<WiFiClientSecure>();
+      secure->setInsecure();
+      netClient_ = std::move(secure);
+    } else {
+      netClient_ = std::make_unique<WiFiClient>();
+    }
+    transport_ = std::make_unique<MqttTransport>(
+        *netClient_, settings_.mqttHost().c_str(), port, clientId.c_str(),
+        settings_.mqttUsername().c_str(), settings_.mqttPassword().c_str());
   }
-
-  transport_ = std::make_unique<MqttTransport>(
-      *netClient_, host.c_str(), port, clientId.c_str(),
-      settings_.mqttUsername().c_str(), settings_.mqttPassword().c_str());
 
   publisher_ = std::make_unique<RemotePublisher>(*transport_, clientId.c_str());
   publisher_->setPrefix(settings_.mqttTopicPrefix().c_str());
