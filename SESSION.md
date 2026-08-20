@@ -1327,3 +1327,24 @@ Antwort war bis dahin: nein, gar nicht — `GET /api/settings` lieferte nur die 
 **Nachfrage: "gibt nur 'nicht verbunden', oder auch eine Fehlermeldung?"** — Erweiterung um `ITransport::lastErrorMessage()` (nicht-brechender Default `""`, gleiches Muster wie `unsubscribe()`/`fault()`), `MqttTransport` übersetzt `PubSubClient::state()` in deutsche Klartexte (Zeitüberschreitung, Verbindung fehlgeschlagen, ungültige Zugangsdaten, nicht autorisiert, …). `MqttService::lastErrorMessage()` reicht das durch (embedded Modus liefert immer `""`, da `TinyMqttLocalTransport` den Default erbt). `WebUI.cpp`s `GET /api/settings` spleißt zusätzlich `mqtt.error` rein. Frontend zeigt den Text als Beschreibung der Status-Card, sobald nicht verbunden.
 
 **Verifiziert** (echtes Gerät, zwei unterschiedliche Fehlerursachen): unerreichbarer Host → `"Verbindung fehlgeschlagen (Host/Port prüfen)"` (PubSubClient state -2); falsches Passwort gegen einen Auth-Broker → `"Nicht autorisiert"` (state 5) — beide Texte im Browser korrekt als Card-Beschreibung neben dem roten Badge bestätigt.
+
+---
+
+## 2026-08-20 — Topic-Prefix + Client-ID in der UI editierbar
+
+**Ausgangslage:** Nutzer wollte das MQTT-Topic-Präfix (bisher `brewcontrol/<mdns-name>/<device-id>/…` vermutet) konfigurierbar machen. Exploration ergab: Backend war bereits vollständig fertig — `SettingsStore` hält `mqttTopicPrefix_` (Default `"brewcontrol"`) und `mqttClientId_` (Default `""` ⇒ Fallback auf mDNS-Hostname) seit dem MQTT-Einstellungen-Feature vom Vortag, beide laden/persistieren/serialisieren korrekt und werden von `MqttService` vor jedem `attach()` an `RemotePublisher::setPrefix()` durchgereicht. Klarstellung fürs Nutzer-Mentalmodell: „mdns-name" und „device id" sind kein zwei getrennte Topic-Segmente, sondern ein einziges (`<prefix>/<device>/sensor/<id>/…`, `Topics.h`) — das `device`-Segment ist exakt die Client-ID (oder deren mDNS-Fallback). Einzige fehlende Stelle: `MqttPage.tsx` hatte für keins der beiden Felder ein Eingabefeld — sie konnten nur den gespeicherten Default annehmen.
+
+**Änderungen:**
+- `MqttPage.tsx`: neue `SettingsCard` „Topic & Client-ID" (Icon `Hash`, zwischen „Modus" und „Broker-Adresse", da modusunabhängig) mit zwei Textfeldern (`topicPrefix`, `clientId`); `desc` zeigt live das resultierende Topic-Schema (`<prefix>/<client-id oder "<mdns-hostname>">/sensor/<id>`) vor dem Speichern. Kein neuer State/API-Call — beide Felder existierten bereits in `MqttSettings` (`types.ts`) und laufen durch den bestehenden Save-Pfad.
+- `WebUI.cpp` (`POST /api/settings`, mqtt-Validierungsblock): zwei neue Checks — `topicPrefix` darf nicht leer sein und kein `/` enthalten; `clientId` darf leer sein (gültiger Fallback-Wert), aber falls gesetzt ebenfalls kein `/` enthalten. Grund: `Topics.h::base()` baut Topics per naivem `prefix + "/" + device + "/" + …`-Concat — ein `/` in einem der beiden Felder würde den Topic-Baum strukturell korrumpieren.
+- Nicht angefasst (bereits korrekt): `SettingsStore.{h,cpp}`, `MqttService.{h,cpp}`, `SensActCtrl/src/remote/Topics.h`, `RemotePublisher.h`, `types.ts`.
+
+**Verifikation:**
+
+| Check | Resultat |
+|---|---|
+| `pnpm typecheck` (BrewControl/web) | 0 Fehler |
+| `pio run -e esp32dev` | SUCCESS, 67,5 % Flash (vorher 67,2 %) |
+| Browser (Dev-Server, kein Live-Gerät) | `/settings/mqtt` lädt, neue Card zeigt beide Felder + Default-Schema-Text; Eingabe in Topic-Prefix/Client-ID aktualisiert den Schema-Hinweis live und korrekt; keine Konsolenfehler |
+
+**Offen:** HW-E2E (Präfix/Client-ID am echten Gerät ändern, `mosquitto_sub` bestätigt neue Topic-Struktur; Negativtest `/`-im-Präfix → 400 mit sichtbarer Fehlermeldung im UI) — bisher nur Dev-Server ohne Live-Gerät verifiziert.

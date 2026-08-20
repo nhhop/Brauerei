@@ -689,6 +689,16 @@ void WebUI::begin() {
             int32_t p = mqtt["port"].as<int32_t>();
             if (p < 1 || p > 65535) { req->send(400, "text/plain", "invalid mqtt port"); return; }
           }
+          if (const char* tp = mqtt["topicPrefix"]) {
+            if (strchr(tp, '/')) {
+              req->send(400, "text/plain", "invalid mqtt topicPrefix"); return;
+            }
+          }
+          if (const char* cid = mqtt["clientId"]) {
+            if (strchr(cid, '/')) {
+              req->send(400, "text/plain", "invalid mqtt clientId"); return;
+            }
+          }
         }
         settings_.update(obj);
         settings_.saveToSD(fs_);

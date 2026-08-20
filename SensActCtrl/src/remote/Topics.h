@@ -7,6 +7,8 @@ namespace remote {
 
 // Topic builders for the SensActCtrl wire protocol. The prefix defaults to
 // "sensactctrl" but can be overridden via RemotePublisher::setPrefix().
+// An empty prefix omits the leading segment entirely (topics then start at
+// <device>/...) instead of producing a leading "/".
 // All other parameters are device/kind/id.
 //
 // Flat schema  (single-channel, empty key):
@@ -26,7 +28,8 @@ namespace remote {
 
 inline std::string base(const char* device, const char* kind, const char* id,
                         const char* prefix = "sensactctrl") {
-  return std::string(prefix) + "/" + device + "/" + kind + "/" + id;
+  std::string p = prefix;
+  return (p.empty() ? std::string() : p + "/") + device + "/" + kind + "/" + id;
 }
 
 inline std::string sensorState(const char* d, const char* id,

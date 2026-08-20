@@ -271,6 +271,23 @@ void test_custom_prefix_roundtrip() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 55.0f, remote.channel(0).reading.value);
 }
 
+void test_empty_prefix_omits_leading_segment() {
+  MockTransport tx;
+  MockSensor src("temp", tempMeta());
+  RemotePublisher pub(tx, "node-e");
+  pub.setPrefix("");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+  src.value = 42.0f;
+  src.tick();
+  pub.tick();
+
+  // Topic starts directly at the device segment, no leading "/".
+  TEST_ASSERT_FALSE(tx.lastPayload("node-e/sensor/temp").empty());
+  TEST_ASSERT_TRUE(tx.lastPayload("/node-e/sensor/temp").empty());
+}
+
 void test_detach_sensor_stops_state_publish() {
   MockTransport tx;
   MockSensor src("t_det", tempMeta());
@@ -388,6 +405,7 @@ int main(int, char**) {
   RUN_TEST(test_single_channel_flat_topic_unchanged);
   RUN_TEST(test_multichannel_remote_sensor_subscribes_channel);
   RUN_TEST(test_custom_prefix_roundtrip);
+  RUN_TEST(test_empty_prefix_omits_leading_segment);
   RUN_TEST(test_detach_sensor_stops_state_publish);
   RUN_TEST(test_detach_multichannel_sensor_removes_all_channels);
   RUN_TEST(test_detach_actuator_removes_subscription);

@@ -8,7 +8,7 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary, inp, badgeSuccess, badgeCritical } from '../ui';
-import { Radio, Router, Server, KeyRound, Lock, Info, Plug } from 'lucide-preact';
+import { Radio, Router, Server, KeyRound, Lock, Info, Plug, Hash } from 'lucide-preact';
 
 const DEFAULT: MqttSettings = {
   enabled: false,
@@ -114,6 +114,24 @@ export function MqttPage(_: { path?: string }) {
                 ) as { value: 'external' | 'embedded'; label: string }[]}
                 onChange={(m) => update({ mode: m })} />
             } />
+
+            <SettingsCard title="Topic & Client-ID" icon={Hash}
+              desc={`Schema: ${settings.topicPrefix ? settings.topicPrefix + '/' : ''}${settings.clientId || '<mdns-hostname>'}/sensor/<id>`}>
+              <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-2">
+                <div>
+                  <div class="mb-1 text-xs text-muted">Topic-Prefix</div>
+                  <input type="text" class={inp} value={settings.topicPrefix}
+                    placeholder="brewcontrol, leer = kein Prefix"
+                    onInput={(e) => update({ topicPrefix: (e.target as HTMLInputElement).value })} />
+                </div>
+                <div>
+                  <div class="mb-1 text-xs text-muted">Client-ID</div>
+                  <input type="text" class={inp} value={settings.clientId}
+                    placeholder="Leer = mDNS-Hostname"
+                    onInput={(e) => update({ clientId: (e.target as HTMLInputElement).value })} />
+                </div>
+              </div>
+            </SettingsCard>
 
             {settings.mode === 'external' && (
               <SettingsCard title="Broker-Adresse" icon={Server} desc="Host und Port des externen MQTT-Brokers">
