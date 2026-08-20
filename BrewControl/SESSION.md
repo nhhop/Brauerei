@@ -562,3 +562,37 @@ echtes Gerät auf beiden vorhandenen Dashboards („Maischen": 1 Sensor/1 Regler
 exakt 160px, `getBoundingClientRect` bestätigt identische Bottom-Kante
 (837px) für alle drei Karten der ersten Reihe auf „Maischen". Dark-Mode
 gegengecheckt; Höhe ist themeunabhängig (reine Layout-Eigenschaft).
+
+## SD-Dateiverwaltung 2026-08-21
+
+Neue Settings-Seite zum Browsen/Hoch-/Herunterladen/Löschen/Umbenennen/
+Anlegen von Dateien und Ordnern auf der SD-Karte, mit `/www` und `/www.new`
+(laufende UI-Dateien bzw. OTA-Asset-Staging) als geschützt — sonst könnte
+sich die Seite über sich selbst die eigene Oberfläche wegschießen.
+
+**Firmware** ([WebUI.h](firmware/src/WebUI.h), [WebUI.cpp](firmware/src/WebUI.cpp)):
+`GET /api/files?path=`, `GET /api/files/download`, `POST /api/files/upload`
+(multipart, Feld `f`), `DELETE /api/files`, `POST /api/files/rename`,
+`POST /api/files/mkdir`. Neuer `validFilePath_()`-Guard (Traversal-Check +
+403 auf `/www`/`/www.new` bei mutierenden Ops); `removeRecursive_()` aus der
+bisherigen `swapAssets_`-Lambda extrahiert (jetzt einzige Kopie, von beiden
+genutzt).
+
+**Frontend** ([FilesPage.tsx](web/src/pages/FilesPage.tsx), neu): In-Page-
+Pfad-Navigator, Tabelle mit Ordner/Datei-Icons, Inline-Rename, Inline-„Neuer
+Ordner", `ConfirmModal` für Löschen, Upload mit Progress (bestehendes
+`uploadFile`-XHR-Helper aus `api.ts` wiederverwendet). `/www`-Zeilen bzw.
+das `/www`-Verzeichnis selbst zeigen deaktivierte Rename/Delete/Ordner/
+Upload-Controls mit Tooltip „Geschützt — UI-Dateien" (reines UX — der
+echte Schutz ist der Backend-403, das Gerät hat ohnehin keine Auth).
+
+**Verifikation:** `pio run -e esp32dev` + `pnpm typecheck` grün. Auf
+LilyGo T-Display-S3-AMOLED geflasht (nach zwei alten `pio device monitor`-
+Prozessen, die COM9 blockiert hatten) und per `curl` durchgetestet: List/
+Download/mkdir/rename/delete-Rundlauf inkl. 403 auf `/www` bei allen
+mutierenden Ops, Upload-Roundtrip byte-identisch, `/www` nach abgelehntem
+Upload-Versuch unverändert. Neues Web-UI-Bundle (`pnpm build:sd` + `tar` +
+`/api/update/assets`) live aufgespielt und im Browser gegen das Gerät
+durchgeklickt — „Dateiverwaltung" erscheint in den Einstellungen, `/www`-
+Navigation zeigt die deaktivierten Controls live, während die Seite sich
+selbst aus `/www` bedient (der eigentliche Self-Brick-Testfall).

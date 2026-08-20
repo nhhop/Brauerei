@@ -16,6 +16,7 @@ import { NetworkPage } from './pages/NetworkPage';
 import { MqttPage } from './pages/MqttPage';
 import { LogsPage } from './pages/LogsPage';
 import { ArchivePage } from './pages/ArchivePage';
+import { FilesPage } from './pages/FilesPage';
 
 function useSnapshot() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -58,6 +59,7 @@ export function App() {
         <MqttPage path="/settings/mqtt" />
         <LogsPage path="/settings/logs" snap={snap} />
         <ArchivePage path="/settings/logs/:id/archive" />
+        <FilesPage path="/settings/files" />
       </Router>
     </NavShell>
   );

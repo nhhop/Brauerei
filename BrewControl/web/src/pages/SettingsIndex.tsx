@@ -4,7 +4,7 @@ import { getUpdateStatus } from '../api';
 import { SettingsCard } from '../components/SettingsCard';
 import { badgeCaution } from '../ui';
 import {
-  Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Radio,
+  Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Radio, FolderOpen,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -20,6 +20,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/devices', icon: Cpu, title: 'Geräte', desc: 'Sensoren, Regler, Aktoren verwalten' },
   { href: '/settings/firmware', icon: CloudDownload, title: 'Firmware-Update', desc: 'Version, Kanal, Upload' },
   { href: '/settings/backup', icon: DatabaseBackup, title: 'Backup & Restore', desc: 'Konfiguration exportieren / wiederherstellen' },
+  { href: '/settings/files', icon: FolderOpen, title: 'Dateiverwaltung', desc: 'SD-Karte durchsuchen, hoch-/herunterladen, löschen' },
   { href: '/settings/time', icon: Clock, title: 'Zeit & Formate', desc: 'Zeitzone, NTP-Server, Uhrzeit- und Datumsformat' },
   { href: '/settings/network', icon: Wifi, title: 'Netzwerk', desc: 'WLAN-Status, Netzwerk wechseln, Hostname' },
   { href: '/settings/mqtt', icon: Radio, title: 'MQTT', desc: 'Externen oder eingebauten Broker konfigurieren' },

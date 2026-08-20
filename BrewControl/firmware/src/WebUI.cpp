@@ -838,6 +838,145 @@ void WebUI::begin() {
         rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 
+  // ── SD file manager ─────────────────────────────────────────────────────────
+  // GET /api/files (list) and GET /api/files/download share the "/api/files"
+  // prefix, so one GetPrefixHandler dispatches both by url() — same reasoning
+  // as /api/network above.
+  server_.addHandler(new GetPrefixHandler("/api/files",
+      [this](AsyncWebServerRequest* req) {
+        if (!req->hasParam("path")) { req->send(400, "text/plain", "missing path"); return; }
+        String path = req->getParam("path")->value();
+        bool download = req->url() == "/api/files/download";
+        if (!validFilePath_(path, /*forMutation=*/false, req)) return;
+
+        if (download) {
+          bool exists = false, isDir = false;
+          {
+            SdLock lock;
+            File f = fs_.open(path);
+            exists = (bool)f;
+            isDir = exists && f.isDirectory();
+            if (f) f.close();
+          }
+          if (!exists || isDir) { req->send(404, "text/plain", "not found"); return; }
+          req->send(fs_, path, "application/octet-stream", /*download=*/true);
+          return;
+        }
+
+        JsonDocument doc;
+        doc["path"] = path;
+        JsonArray arr = doc["entries"].to<JsonArray>();
+        bool ok = false;
+        {
+          SdLock lock;
+          File dir = fs_.open(path);
+          if (dir && dir.isDirectory()) {
+            ok = true;
+            File e = dir.openNextFile();
+            while (e) {
+              JsonObject o = arr.add<JsonObject>();
+              o["name"] = e.name();
+              o["dir"] = e.isDirectory();
+              o["size"] = (uint32_t)e.size();
+              e.close();
+              e = dir.openNextFile();
+            }
+          }
+          if (dir) dir.close();
+        }
+        if (!ok) { req->send(404, "text/plain", "not a directory"); return; }
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+      }));
+
+  // DELETE /api/files?path=<path> — file, or directory removed recursively.
+  server_.on("/api/files", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+    if (!req->hasParam("path")) { req->send(400, "text/plain", "missing path"); return; }
+    String path = req->getParam("path")->value();
+    if (!validFilePath_(path, /*forMutation=*/true, req)) return;
+    if (path == "/") { req->send(400, "text/plain", "cannot delete root"); return; }
+    bool exists = false;
+    { SdLock lock; exists = fs_.exists(path); }
+    if (!exists) { req->send(404, "text/plain", "not found"); return; }
+    removeRecursive_(path.c_str());
+    req->send(204);
+  });
+
+  // POST /api/files/mkdir {"path":"/foo/bar"} — creates one new level; parent
+  // must already exist (mirrors DynamicItems::saveToSD's mkdir("/config")).
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/files/mkdir",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json["path"].is<const char*>()) { req->send(400, "text/plain", "missing path"); return; }
+        String path = json["path"].as<const char*>();
+        if (!validFilePath_(path, /*forMutation=*/true, req)) return;
+        bool ok;
+        { SdLock lock; ok = fs_.mkdir(path); }
+        if (!ok) { req->send(500, "text/plain", "mkdir failed"); return; }
+        req->send(204);
+      }));
+
+  // POST /api/files/rename {"from":"...","to":"..."} — file or directory.
+  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/files/rename",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json["from"].is<const char*>() || !json["to"].is<const char*>()) {
+          req->send(400, "text/plain", "missing from/to");
+          return;
+        }
+        String from = json["from"].as<const char*>();
+        String to = json["to"].as<const char*>();
+        if (!validFilePath_(from, /*forMutation=*/true, req)) return;
+        if (!validFilePath_(to, /*forMutation=*/true, req)) return;
+        bool fromExists = false, toExists = false;
+        { SdLock lock; fromExists = fs_.exists(from); toExists = fs_.exists(to); }
+        if (!fromExists) { req->send(404, "text/plain", "not found"); return; }
+        if (toExists) { req->send(409, "text/plain", "destination exists"); return; }
+        bool ok;
+        { SdLock lock; ok = fs_.rename(from, to); }
+        if (!ok) { req->send(500, "text/plain", "rename failed"); return; }
+        req->send(204);
+      }));
+
+  // Multipart upload → /api/files/upload?path=<dir>, field name "f" (same
+  // response-from-onUpload pattern as /api/update/firmware and
+  // /api/update/assets above).
+  server_.on("/api/files/upload", HTTP_POST,
+      [](AsyncWebServerRequest* req) { /* response sent in upload cb */ },
+      [this](AsyncWebServerRequest* req, const String& filename, size_t index,
+             uint8_t* data, size_t len, bool final) {
+        if (index == 0) {
+          fileUploadRejected_ = false;
+          String dir = req->hasParam("path") ? req->getParam("path")->value() : "";
+          if (!validFilePath_(dir, /*forMutation=*/true, req)) { fileUploadRejected_ = true; return; }
+          bool nameOk = !filename.isEmpty() && filename.indexOf('/') < 0 && filename != "..";
+          bool dirExists = false;
+          {
+            SdLock lock;
+            File d = fs_.open(dir);
+            dirExists = d && d.isDirectory();
+            if (d) d.close();
+          }
+          if (!nameOk || !dirExists) {
+            req->send(400, "text/plain", "invalid filename or directory");
+            fileUploadRejected_ = true;
+            return;
+          }
+          SdLock lock;
+          fileUpload_ = fs_.open(dir + "/" + filename, FILE_WRITE);
+          if (!fileUpload_) {
+            req->send(500, "text/plain", "open failed");
+            fileUploadRejected_ = true;
+            return;
+          }
+        }
+        if (fileUploadRejected_) return;
+        if (len) { SdLock lock; fileUpload_.write(data, len); }
+        if (final) {
+          { SdLock lock; fileUpload_.close(); }
+          req->send(200, "text/plain", "ok");
+        }
+      });
+
   server_.serveStatic("/", fs_, "/www")
       .setDefaultFile("index.html")
       .setCacheControl("max-age=600");
@@ -871,25 +1010,30 @@ void WebUI::tick() {
 
 void WebUI::swapAssets_() {
   // Remove /www then rename /www.new → /www (loopTask context).
+  removeRecursive_("/www");
   SdLock lock;
-  std::function<void(const char*)> rm = [&](const char* path) {
-    File dir = fs_.open(path);
+  if (!fs_.rename("/www.new", "/www")) {
+    Serial.println(F("asset swap FAILED — rename /www.new -> /www did not succeed, UI may be unreachable"));
+  }
+}
+
+void WebUI::removeRecursive_(const char* path) {
+  SdLock lock;
+  std::function<void(const char*)> rm = [&](const char* p) {
+    File dir = fs_.open(p);
     if (!dir) return;
-    if (!dir.isDirectory()) { dir.close(); fs_.remove(path); return; }
+    if (!dir.isDirectory()) { dir.close(); fs_.remove(p); return; }
     File e = dir.openNextFile();
     while (e) {
-      String child = String(path) + "/" + e.name();
+      String child = String(p) + "/" + e.name();
       bool d = e.isDirectory(); e.close();
       if (d) rm(child.c_str()); else fs_.remove(child);
       e = dir.openNextFile();
     }
     dir.close();
-    fs_.rmdir(path);
+    fs_.rmdir(p);
   };
-  rm("/www");
-  if (!fs_.rename("/www.new", "/www")) {
-    Serial.println(F("asset swap FAILED — rename /www.new -> /www did not succeed, UI may be unreachable"));
-  }
+  rm(path);
 }
 
 bool WebUI::writeSection_(const char* path, JsonVariantConst v) {
@@ -900,6 +1044,32 @@ bool WebUI::writeSection_(const char* path, JsonVariantConst v) {
   size_t written = serializeJson(v, f);
   f.close();
   return written > 0;
+}
+
+bool WebUI::validFilePath_(String& path, bool forMutation, AsyncWebServerRequest* req) {
+  if (path.isEmpty() || path[0] != '/') {
+    req->send(400, "text/plain", "path must be absolute");
+    return false;
+  }
+  int start = 0;
+  while (start < (int)path.length()) {
+    int slash = path.indexOf('/', start + 1);
+    int end = slash < 0 ? path.length() : slash;
+    String seg = path.substring(start + 1, end);
+    if (seg == "..") {
+      req->send(400, "text/plain", "path traversal");
+      return false;
+    }
+    start = end;
+  }
+  if (path.length() > 1 && path.endsWith("/")) path.remove(path.length() - 1);
+  if (forMutation &&
+      (path == "/www" || path.startsWith("/www/") ||
+       path == "/www.new" || path.startsWith("/www.new/"))) {
+    req->send(403, "text/plain", "protected path (UI files)");
+    return false;
+  }
+  return true;
 }
 
 void WebUI::pushSnapshot_() {
