@@ -57,6 +57,14 @@ namespace BrewControl {
 //   DELETE /api/programs/<id>              — remove setpoint program
 //   POST /api/programs/<id>/control        — {"action":start|pause|resume|stop|next|prev}
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
+//   GET  /api/files?path=<dir>             — list directory entries (JSON)
+//   GET  /api/files/download?path=<file>   — download one file (attachment)
+//   POST /api/files/upload?path=<dir>      — multipart upload into <dir> (field "f")
+//   DELETE /api/files?path=<path>          — delete a file, or a directory recursively
+//   POST /api/files/rename                 — {"from","to"} rename/move a file or directory
+//   POST /api/files/mkdir                  — {"path"} create one new directory level
+//   All mutating file ops reject paths under /www or /www.new (403) — the
+//   running UI's own files and the OTA-asset staging dir are read-only.
 //   GET  /*                                — SD static (default index.html)
 //
 // Concurrency: serializeRegistry runs from the AsyncTCP task while
@@ -80,6 +88,13 @@ class WebUI {
   void swapAssets_();
   // Writes one backup section (a JSON object/array) verbatim to `path`.
   bool writeSection_(const char* path, ArduinoJson::JsonVariantConst v);
+  // Rejects relative paths and ".." traversal; when forMutation is true also
+  // rejects anything under /www or /www.new (the running UI's own files and
+  // the OTA-asset staging dir). Strips a trailing slash from `path` on
+  // success. Sends the error response itself and returns false on rejection.
+  bool validFilePath_(String& path, bool forMutation, AsyncWebServerRequest* req);
+  // Recursively deletes a file or directory. Also used by swapAssets_.
+  void removeRecursive_(const char* path);
 
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
@@ -98,6 +113,9 @@ class WebUI {
   std::unique_ptr<SdTarSink> assetSink_;
   std::unique_ptr<TarExtractor> assetTar_;
   bool assetSwapPending_ = false;
+
+  File fileUpload_;
+  bool fileUploadRejected_ = false;
 };
 
 }  // namespace BrewControl

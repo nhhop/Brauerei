@@ -280,3 +280,16 @@ export interface UpdateStatus {
   error: string;
   available: { version: string; notes: string } | null;
 }
+
+// ── SD file manager ─────────────────────────────────────────────────────────
+// Wire format of GET /api/files.
+export interface FileEntry {
+  name: string;
+  dir: boolean;
+  size: number;
+}
+
+export interface FileListing {
+  path: string;
+  entries: FileEntry[];
+}

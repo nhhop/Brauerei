@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, FileListing } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -404,4 +404,33 @@ export async function restoreBackup(text: string): Promise<void> {
     body: text,
   });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+// ── SD file manager ─────────────────────────────────────────────────────────
+
+export async function listFiles(path: string): Promise<FileListing> {
+  const r = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()) as FileListing;
+}
+
+export function fileDownloadUrl(path: string): string {
+  return `/api/files/download?path=${encodeURIComponent(path)}`;
+}
+
+export async function deleteFile(path: string): Promise<void> {
+  const r = await fetch(`/api/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+export function renameFile(from: string, to: string): Promise<void> {
+  return postJson('/api/files/rename', { from, to });
+}
+
+export function mkdirFile(path: string): Promise<void> {
+  return postJson('/api/files/mkdir', { path });
+}
+
+export function uploadFileTo(dir: string, file: File, onProgress: (pct: number) => void): Promise<void> {
+  return uploadFile(`/api/files/upload?path=${encodeURIComponent(dir)}`, file, onProgress);
 }

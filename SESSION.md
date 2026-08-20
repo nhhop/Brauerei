@@ -1437,3 +1437,54 @@ Direkt gegen die Geräte-API getestet (`curl` + `mosquitto_pub`, gleicher Pfad w
 4. UI-Bundle neu gebaut (`pnpm build:sd`) und über `/api/update/assets` aufgespielt, Auslieferung des neuen JS-Bundles am Gerät bestätigt.
 
 **Beobachtung (nicht abschließend geklärt):** der zuvor auf dem Gerät vorhandene Sensor `sdfswdf` (Test-Item aus einer früheren Session) fehlt seit diesem Durchlauf im Snapshot. Keine der hier durchgeführten Aktionen hat diesen Sensor absichtlich angefasst oder gelöscht — bleibt als offene Beobachtung, falls es beim nächsten Kontakt mit dem Gerät wieder auffällt.
+
+---
+
+## 2026-08-21 — Kabellose SensActCtrl-Knoten: Recherche + Plan für die nächste Session
+
+**Ausgangslage:** Nach den beiden generischen MQTT-Typen (Sensor + Aktor, für Fremdgeräte) kam die ursprüngliche, größere Idee wieder auf: echte kabellose SensActCtrl-Knoten anbinden — ein zweiter ESP32 mit eigenen Sensoren/Aktoren, den man im BrewControl-Web-UI wie ein lokales Item bedient. Das ist etwas anderes als die generischen MQTT-Typen (beliebiger Topic/Payload für Fremdgeräte) — hier geht es um echtes SensActCtrl-Node-zu-Node-Protokoll. User-Entscheidung: alle drei vorhandenen Transporte (MQTT, Webhook, ESP-NOW mit Fix), aber **der Reihe nach**, nicht in einem Rutsch (Kontextfenster-Grund + generell sauberer). Dieser Eintrag ist der Fahrplan für morgen — **Schritt 1 (MQTT) ist startbereit**, Schritt 2/3 sind grob skizziert.
+
+### Kernbefund aus der Recherche (per Explore-Agent + eigener Verifikation)
+
+**`RemoteSensor`/`RemoteActuator`/`RemotePublisher` sind bereits vollständig fertig in SensActCtrl** (`src/remote/`) und komplett transport-agnostisch — sie nehmen nur `ITransport&`. Für alle drei Transporte werden **keine neuen SensActCtrl-Klassen** gebraucht, nur BrewControl-seitiges Wiring + UI. Das hält jeden der drei Schritte deutlich kleiner als die MQTT-Sensor/Aktor-Arbeit.
+
+**Topic-Schema** (`SensActCtrl/src/remote/Topics.h`, gilt für MQTT **und** ESP-NOW **und** Webhook — alle drei teilen sich dasselbe Wire-Format über `MetaJson.h`):
+```
+<prefix>/<device>/sensor/<id>              state (retained)
+<prefix>/<device>/sensor/<id>/meta         meta  (retained)
+<prefix>/<device>/sensor/<id>/<key>        Multi-Channel-Kanal-State
+<prefix>/<device>/actuator/<id>            state (retained)
+<prefix>/<device>/actuator/<id>/meta       meta  (retained)
+<prefix>/<device>/actuator/<id>/set        Command
+```
+`device` ist ein frei gewählter String (Hostname/Client-ID des Leaf-Knotens) — kein Auto-Discovery, muss im UI als Feld eingegeben werden (welcher Leaf-Knoten unter welchem Namen).
+
+**Drei fertige Zwei-Geräte-Beispiel-Sketches** als Referenz: `SensActCtrl/examples/08_remote_mqtt/`, `09_remote_espnow/`, `10_remote_webhook/` (je `publisher/` + `consumer/` + `README.md`) — zeigen exakt das erwartete Verwendungsmuster.
+
+**`RemoteSensor`/`RemoteActuator` sind bisher nirgends in BrewControl referenziert** (grep bestätigt) — nur `RemotePublisher` wird schon genutzt (`MqttService`, um BrewControls **eigene** Items nach außen zu spiegeln). Das Consumer-seitige Wiring ist komplett unbeackertes Terrain.
+
+**Wichtiger Fund — ESP-NOW verträgt sich aktuell NICHT mit BrewControls eigenem WLAN:** `EspNowTransport::initEspNow_()` (`SensActCtrl/src/transport/EspNowTransport.cpp:43-44`) ruft beim Konstruieren unconditional `WiFi.disconnect(false, true)` + erzwingt einen Kanal — das würde BrewControls STA-Verbindung (Web-UI, mDNS, externer MQTT) kappen. Kein grundsätzliches ESP-NOW-Problem (ESP-NOW kann laut ESP-IDF-Doku parallel zu einer aktiven STA-Verbindung laufen, wenn man den Kanal von der bestehenden Verbindung übernimmt statt ihn zu erzwingen — `esp_now_peer_info_t.channel = 0` bedeutet "aktuellen Kanal verwenden", wenn STA schon verbunden ist), aber die Beispiel-Sketches sind reine Leaf-Knoten ohne eigenes WLAN-Bedürfnis, denen das nie auffiel. **Muss vor Schritt 3 gefixt werden** (Skizze unten).
+
+**`WebhookTransport`** ist bidirektional (nicht nur push), aber **1 Instanz = 1 Peer + 1 lokaler Listen-Port** (`WebhookTransport(listenPort, peerBaseUrl)`, eigener synchroner `WebServer`, nicht der bestehende Async-Server). Für mehrere Remote-Webhook-Geräte braucht BrewControl mehrere Instanzen — mehr Wiring-Aufwand als MQTT/ESP-NOW (die beide „ein geteilter Bus, viele Geräte" sind).
+
+### Schritt 1 — MQTT-Remote (startbereit für morgen)
+
+- **`DynamicItems::addSensorNoBegin`/`addActuatorNoBegin`**: neuer Typ `"Remote"`. Cfg-Felder: `device` (Geräte-ID des Leaf-Knotens, Pflicht), `remote_id` (Sensor-/Aktor-ID auf dem Leaf, Pflicht), optional `prefix` (Default `"sensactctrl"`, muss zum Leaf passen), optional `channel_key` (Multi-Channel-Sensoren am Leaf). Baut `SensActCtrl::RemoteSensor`/`RemoteActuator` direkt auf dem schon vorhandenen `mqttTransport_` (derselbe Setter, den die beiden generischen MQTT-Typen schon nutzen) — gleiche Ablehnung `{false, "mqtt not available"}` ohne Transport. **Kein neuer Tick-Pump nötig** — läuft über `mqttService.tick()` mit (bereits durch die Recherche bestätigt: `Registry::tick()` ruft `RemoteSensor`/`RemoteActuator::tick()` auf, die sind No-Ops, den Transport pumpt `mqttService.tick()`).
+- **`AddItemModal.tsx`**: neuer Typ „Remote (SensActCtrl-Knoten)" in Sensor- **und** Aktor-Dropdown (eigene Optgroup „Remote"), Felder Geräte-ID / Remote-ID / optional Topic-Prefix. `SensorCard`/`ActuatorCard`: keine Änderung erwartet (dispatchen generisch).
+- **Verifikation:** native Tests brauchen vermutlich keine neuen — `RemoteSensor`/`RemoteActuator` sind schon in `test_remote.cpp` getestet, hier geht's nur um die `DynamicItems`-Verdrahtung (Firmware-seitig, kein neuer Library-Code). HW-E2E idealerweise mit einem zweiten geflashten Testgerät als Leaf (z.B. `08_remote_mqtt/publisher.ino` auf ein zweites Board, falls vorhanden) — sonst nur „legt korrekt an, zeigt sauber `stale`/kein Signal ohne Leaf" verifizieren.
+
+### Schritt 2 — Webhook-Remote (danach)
+
+Neue Klasse `BrewControl/firmware/src/WebhookService.h/.cpp` (Muster: `MqttService`, aber schlanker) — hält `vector<unique_ptr<SensActCtrl::WebhookTransport>>`, dedupliziert nach `(listenPort, peerBaseUrl)`, `getOrCreate(port, peerUrl) → ITransport&`. Eigener `tick()`-Aufruf in `main.cpp`s `loop()` nötig (kein Free-Ride wie bei MQTT). `DynamicItems` bekommt einen neuen Setter (Pointer auf `WebhookService`), `addSensorNoBegin`/`addActuatorNoBegin` ruft `getOrCreate()` für `transport:"webhook"`-Items. UI-Felder zusätzlich zu Geräte-ID/Remote-ID: `listen_port`, `peer_url`.
+
+### Schritt 3 — ESP-NOW-Remote mit Fix (zuletzt)
+
+**Library-Fix zuerst** (`SensActCtrl/src/transport/EspNowTransport.cpp`, `initEspNow_()`): nur noch `WiFi.disconnect()` + Kanal-Erzwingen, wenn **nicht** schon STA-verbunden (`WiFi.isConnected()`); wenn schon verbunden, WLAN unangetastet lassen und `peer.channel = 0` setzen (ESP-IDF: „aktuellen Kanal verwenden"). Rückwärtskompatibel zum Standalone-Fall (Beispiel-Sketches unverändert). Sollte vor der eigentlichen Konstruktion in `main.cpp` passieren — `EspNowTransport` erst **nach** erfolgreicher WLAN-Verbindung konstruieren (analog `mqttService.begin()`-Timing), nicht als früher globaler Objekt.
+
+BrewControl: neues globales `std::unique_ptr<SensActCtrl::EspNowTransport>`, konstruiert in `setup()` nach WLAN-Connect (immer aktiv, kein Settings-Toggle nötig — Broadcast-Empfang ist passiv, keine nennenswerten Kosten). `DynamicItems`-Setter analog zu `mqttTransport_`. UI-Feld optional `channel` (leer = aktueller WLAN-Kanal).
+
+**Verifikations-Einschränkung:** Kanal-Koexistenz mit aktiver STA-Verbindung ist reales RF-Verhalten, nativ nicht testbar — braucht echte Hardware, idealerweise zwei Geräte (BrewControl-Gerät + Leaf mit `09_remote_espnow/publisher.ino`), um zu bestätigen, dass ESP-NOW-Pakete ankommen **während** BrewControls eigenes Web-UI über WLAN weiter erreichbar bleibt (genau der Konflikt, den der Fix auflösen soll).
+
+### Nächster Schritt morgen
+
+Direkt mit **Schritt 1 (MQTT-Remote)** starten wie oben beschrieben — kleinster, sauberster Einstieg, keine offenen Fragen mehr.
