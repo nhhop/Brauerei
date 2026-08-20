@@ -58,7 +58,13 @@ class MockTransport : public ITransport {
   }
 
   void tick() override {}
-  bool connected() const override { return true; }
+  bool connected() const override { return connected_; }
+  const char* lastErrorMessage() const override { return errorMessage_.c_str(); }
+
+  // Test-only knobs — default to the "always connected" behavior every
+  // existing test relies on.
+  void setConnected(bool c) { connected_ = c; }
+  void setLastErrorMessage(const char* msg) { errorMessage_ = msg; }
 
   void clear() { published.clear(); }
 
@@ -75,6 +81,8 @@ class MockTransport : public ITransport {
  private:
   std::vector<std::pair<std::string, MessageCallback>> subs_;
   std::map<std::string, std::string> retained_;
+  bool connected_ = true;
+  std::string errorMessage_;
 };
 
 }  // namespace test

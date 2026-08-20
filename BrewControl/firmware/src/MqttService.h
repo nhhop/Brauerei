@@ -46,9 +46,25 @@ class MqttService {
               SettingsStore& settings);
 
   // No-op if !settings.mqttEnabled(). fallbackClientId is used when
-  // settings.mqttClientId() is empty (normally the mDNS hostname).
+  // settings.mqttClientId() is empty (normally the mDNS hostname). Only
+  // creates the transport + publisher — call attachExisting() once the
+  // registry is populated to mirror what's in it and start live tracking.
   void begin(const String& fallbackClientId);
+
+  // Boot-snapshot: attaches whatever the registry holds right now to the
+  // internal publisher, then registers DynamicItems hooks for live
+  // add/remove tracking. No-op if begin() didn't create a transport (MQTT
+  // disabled/unsupported). Must run after the registry is populated (and,
+  // for hook registration, before WebUI can serve add/remove requests).
+  void attachExisting();
+
   void tick();
+
+  // The live transport, or nullptr before begin() runs / when MQTT is
+  // disabled or unsupported. Lets other components (e.g. DynamicItems, for
+  // actuators that publish over MQTT themselves) reuse this connection
+  // instead of opening their own.
+  SensActCtrl::ITransport* transport() const { return transport_.get(); }
 
   // Live transport connection state (false when disabled/not yet connected/
   // reconnecting). Surfaced read-only via GET /api/settings so the UI can

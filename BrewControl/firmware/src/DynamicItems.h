@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <transport/ITransport.h>
 #include <vector>
 
 namespace BrewControl {
@@ -72,6 +73,13 @@ class DynamicItems {
   void setOnControllerAdded(std::function<void(SensActCtrl::Controller&)> cb) { onControllerAdded_ = cb; }
   void setOnControllerRemoving(std::function<void(SensActCtrl::Controller&)> cb) { onControllerRemoving_ = cb; }
 
+  // Transport actuators that publish over MQTT themselves (e.g. "MqttGeneric")
+  // use to reach the broker MqttService already manages. nullptr if MQTT is
+  // disabled/unsupported — items of that type are then rejected at load/add
+  // time. Must be set before loadFromSD()/addActuator() are called for such
+  // items.
+  void setMqttTransport(SensActCtrl::ITransport* t) { mqttTransport_ = t; }
+
  private:
   struct SensorEntry {
     std::string id;
@@ -119,6 +127,8 @@ class DynamicItems {
   std::function<void(SensActCtrl::Actuator&)> onActuatorRemoving_;
   std::function<void(SensActCtrl::Controller&)> onControllerAdded_;
   std::function<void(SensActCtrl::Controller&)> onControllerRemoving_;
+
+  SensActCtrl::ITransport* mqttTransport_ = nullptr;
 
   // Internal variants that do NOT call begin() — used by loadFromSD.
   Result addSensorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);

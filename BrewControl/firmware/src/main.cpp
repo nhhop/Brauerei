@@ -164,9 +164,18 @@ void setup() {
   startMDNS();
 
   if (sdOk) {
+    settingsStore.loadFromSD(SD);  // ahead of dynamicItems: mqttService.begin()
+                                    // below needs it before actuators load
+  }
+
+  mqttService.begin(hostname_);  // creates the transport (if enabled) before
+                                  // dynamicItems.loadFromSD() constructs any
+                                  // actuator that publishes over MQTT itself
+  dynamicItems.setMqttTransport(mqttService.transport());  // nullable
+
+  if (sdOk) {
     dynamicItems.loadFromSD(SD, registry);
     dashboardStore.loadFromSD(SD);
-    settingsStore.loadFromSD(SD);
     logStore.loadFromSD(SD);
     programRunner.loadFromSD(SD);
   }
@@ -176,8 +185,9 @@ void setup() {
 
   registry.begin();
   dynamicItems.markInitialized();  // future add*() calls will call begin()
-  mqttService.begin(hostname_);    // registers DynamicItems hooks — must run
-                                    // before webUI can serve add/remove requests
+  mqttService.attachExisting();    // mirrors the registry + registers
+                                    // DynamicItems hooks — must run before
+                                    // webUI can serve add/remove requests
 
   webUI.begin();
   firmwareUpdater.begin();

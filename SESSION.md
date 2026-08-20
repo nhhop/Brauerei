@@ -1348,3 +1348,54 @@ Antwort war bis dahin: nein, gar nicht — `GET /api/settings` lieferte nur die 
 | Browser (Dev-Server, kein Live-Gerät) | `/settings/mqtt` lädt, neue Card zeigt beide Felder + Default-Schema-Text; Eingabe in Topic-Prefix/Client-ID aktualisiert den Schema-Hinweis live und korrekt; keine Konsolenfehler |
 
 **Offen:** HW-E2E (Präfix/Client-ID am echten Gerät ändern, `mosquitto_sub` bestätigt neue Topic-Struktur; Negativtest `/`-im-Präfix → 400 mit sichtbarer Fehlermeldung im UI) — bisher nur Dev-Server ohne Live-Gerät verifiziert.
+
+---
+
+## 2026-08-21 — Generischer MQTT-Aktor
+
+**Ausgangslage:** Letzter offener Roadmap-Punkt aus der MQTT-Planungssession (Welle 2): Topic statt device/id, Message-Body als Template mit Platzhalter für on/off/value, Ziel Sonoff/Tasmota-artige Fremdgeräte. Voraussetzung (MQTT-Verbindung konfigurierbar) war seit dem Vortag erfüllt.
+
+### Architektur-Entscheidung (revidiert nach Nachfrage)
+
+Erster Entwurf sah ein neues BrewControl-eigenes `IMqttPublisher`-Interface vor, um das Timing-Problem zu umgehen, dass `DynamicItems::loadFromSD()` vor `MqttService::begin()` lief (Aktoren aus der SD-Config wurden konstruiert, bevor überhaupt ein MQTT-Transport existierte). Auf Nachfrage ("können wir nicht dafür sorgen, dass die dynamic items erst nach dem mqttService::begin() geladen werden?") wurde die Boot-Reihenfolge stattdessen direkt umgebaut — mit einer Einschränkung, die den Ansatz sogar vereinfacht hat: `MqttService::begin()` erledigte bisher zwei Dinge in einem Aufruf (Transport erzeugen **und** alle bereits vorhandenen Registry-Items an den internen `RemotePublisher` anhängen). Ein reines Vorziehen von `loadFromSD()` hätte den zweiten Teil kaputt gemacht (Registry wäre zum Attach-Zeitpunkt noch leer gewesen). Gelöst durch Split in `begin()` (nur Transport+Publisher, läuft jetzt vor `loadFromSD()`) und `attachExisting()` (Boot-Snapshot-Attach + Hook-Registrierung, läuft unverändert an der alten Stelle nach `registry.begin()`/`markInitialized()`). Damit entfiel die Notwendigkeit für ein neues Interface komplett — der Aktor nimmt `SensActCtrl::ITransport&` direkt entgegen, exakt wie das bestehende `RemoteActuator`, und lebt entsprechend in der Library statt in der Firmware (keine spekulative Abstraktion, sondern Wiederverwendung des vorhandenen Interfaces).
+
+**Fehlerverhalten (Nutzer-Entscheidung):** `fault()` delegiert reine an `ITransport::connected()`/`lastErrorMessage()` — kein eigenes Publish-Tracking, sondern derselbe Status, der auch auf `/settings/mqtt` angezeigt wird.
+
+### SensActCtrl
+
+- Neue Klasse `MqttGenericActuator` (`src/actuators/`, kein `#ifdef ARDUINO`-Guard): zwei Konstruktoren — Binary (literale `on_payload`/`off_payload`, startet armed-but-disabled wie `DigitalOutputActuator`s Binary-Modus) und Continuous (`payload_template` mit `{value}`-Platzhalter, Range/Unit wie `AnalogOutputActuator::setRange`). Einziger Choke-Point `publishCurrent()` (Muster: `applyPin()`/`applyOutput()`) — gated `enabled_` vor jedem Publish, sowohl von `write()` als auch von `applyEnabled()` aus.
+- Freie Helper-Funktion `buildMqttPayload()` (Platzhalter-Ersetzung, `%g`-Formatierung) co-lokiert in derselben Datei — kein eigenes File, da nur dieser eine Aktor sie braucht.
+- `MockTransport` (Test-Mock) um settable `connected`/`lastErrorMessage`-Zustand erweitert (vorher immer `connected()==true`, kein Weg `fault()` zu testen) — Default bleibt "immer verbunden", bestehende Tests unberührt.
+- 17 neue native Tests (`test_mqtt_generic_actuator`): Payload-Template-Substitution (inkl. Puffer-zu-klein, mehrere Platzhalter, kein Platzhalter), Binary On/Off/Disable-aktiv-Off, Continuous-Clamping, `retained`-Durchreichung, `fault()` (verbunden/Fehlermeldung/Fallback-Text). **173/173 native Tests grün** (17 neu; die Gesamtzahl lag schon vor dieser Session über den zuletzt in PLAN.md vermerkten 155 — Differenz nicht weiter untersucht, keine der vorhandenen Tests betroffen von dieser Session).
+- `SensActCtrl.h`-Umbrella um den neuen Include ergänzt.
+
+### BrewControl Firmware
+
+- **`MqttService::begin()` gesplittet** in `begin()` (Transport+Publisher, unverändert bis auf das Ende) und neue `attachExisting()` (Boot-Snapshot-Attach + Hook-Registrierung, 1:1 aus dem alten `begin()`-Ende übernommen); neuer Getter `transport()` (`SensActCtrl::ITransport*`, nullable).
+- **`DynamicItems`**: neuer Setter `setMqttTransport(ITransport*)` + Member `mqttTransport_`; neuer Branch `"MqttGeneric"` in `addActuatorNoBegin()` (nach `AnalogOutput`), lehnt mit `{false, "mqtt not available"}` ab wenn kein Transport gesetzt ist (MQTT deaktiviert/nicht unterstützt) — `loadFromSD()` verwirft das `Result` still, kein Boot-Abbruch. Landet automatisch im bestehenden `IntervalActuator`-Wrap (Duty-Cycle ohne Sonderfall).
+- **`main.cpp`**: `settingsStore.loadFromSD()` aus dem gemeinsamen `if(sdOk)`-Block vorgezogen (wird jetzt vor `mqttService.begin()` gebraucht); `mqttService.begin(hostname_)` + `dynamicItems.setMqttTransport(mqttService.transport())` laufen jetzt vor `dynamicItems.loadFromSD()`; `mqttService.attachExisting()` ersetzt den alten `begin()`-Aufruf an der ursprünglichen Stelle (nach `registry.begin()`/`markInitialized()`, vor `webUI.begin()`) — Timing dort unverändert.
+
+### Frontend
+
+- `AddItemModal.tsx`: `ActuatorType` um `'MqttGeneric'` erweitert, neue Dropdown-Option, vollständiges Formular (Topic, Retained, Art-Umschalter An/Aus vs. Wert, je nach Art unterschiedliche Felder), Edit-Populate- und Reset-Zweige, Submit-Validierung (Topic Pflicht, Payload-Template muss `{value}` enthalten, Wertebereich Min < Max). In den Intervall-Feld-Gate aufgenommen (Duty-Cycle-Betrieb ist backend-seitig generisch). `ActuatorCard.tsx`/`types.ts`/`api.ts`: **keine Änderungen** — Card dispatcht rein nach `meta.kind`, rendert Toggle/Slider automatisch korrekt inkl. Fault-Badge.
+
+### Verifikation
+
+| Check | Resultat |
+|---|---|
+| `pio test -e native` (SensActCtrl) | 173/173 PASSED (17 neu) |
+| `pio run` alle 3 BrewControl-Boards | SUCCESS (esp32dev 67,6 %, minimal + gegenüber Vortag) |
+| `pio test -e native` (BrewControl) | bestehende `test_log_compressor`/`test_tar_extractor` weiterhin grün (16 Tests, keine Regression) |
+| `pnpm typecheck` + `pnpm build` (BrewControl/web) | 0 Fehler |
+| Browser (Dev-Server gegen Live-Gerät, vor dem Flash) | Formular für Binary + Continuous korrekt gerendert; Submit gegen die **alte** Firmware liefert sauber `400 unknown actuator type` (kein Crash) — bestätigt Frontend-Wire-Format und Fehlerbehandlung schon vor dem Flash |
+
+**HW-E2E (User: „kannst du ruhig flaschen, das ist nur eine Testumgebung"):** LilyGo S3 (COM9) neu geflasht. Nach Reboot: bestehende Config (Sensoren/Aktoren/Regler, pausiertes `mash`-Programm) unverändert vorhanden — **Regressionscheck bestanden**, internes MQTT-Mirroring zeigt sofort wieder alle Boot-Items (`mosquitto_sub -t '#'` gegen den eingebauten Broker). Direkt gegen die Geräte-API getestet (`curl`, gleicher Pfad wie die Web-UI):
+
+1. **Binary:** Aktor angelegt (`brewcontrol/test/plug1`), Enable → publiziert aktiv `ON` (Value war schon auf „an" vorbelegt); `write(1)` → `ON`; `write(0)` → `OFF`.
+2. **Master-Schalter:** `write(1)` → `ON`, dann `enabled:false` → publiziert aktiv `OFF` (nicht nur Stille) — Kontrakt „talking over a protocol muss aktiv aus kommandieren" bestätigt.
+3. **Snapshot:** kein `fault`-Feld (eingebauter Broker immer verbunden), `enabled:false`, `target:1` (unverändert von `enabled()`), `state.v:0` — exakt wie spezifiziert.
+4. **Internes Mirroring:** neuer Aktor erscheint automatisch unter `brewcontrol/brewcontrol/actuator/mqtt_test_plug` (Live-Add-Hook greift wie bei jedem anderen Aktor-Typ).
+5. **Continuous:** Aktor angelegt (`brewcontrol/test/dimmer1`, Template `{value}`, Range 0–100); `write(42)` → `42`; `write(150)` → `100` (Clamping auf Max bestätigt).
+6. Beide Test-Aktoren wieder gelöscht, Gerät danach auf den ursprünglichen Item-Satz zurückgeprüft (`mlt`, `durchfluss.rate/volume`, `sdfswdf`, `kettle`, `pump`, `dfsdfdf`, `mash`) — keine Waisen.
+
+Alle 6 Schritte grün. Einzig eine echte Sonoff/Tasmota-Steckdose war nicht am Testgerät angeschlossen — der Payload-Inhalt (`"ON"`/`"OFF"`/formatierter Zahlenwert) entspricht aber exakt dem, was Tasmota-Firmware auf `cmnd/<device>/POWER` erwartet.

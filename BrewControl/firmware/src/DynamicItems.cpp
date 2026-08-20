@@ -194,6 +194,24 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
                   cfg["value_max"] | 1.0f,
                   cfg["resolution"] | 0.01f);
     e->ptr.reset(a);
+  } else if (strcmp(type, "MqttGeneric") == 0) {
+    if (!mqttTransport_) return {false, "mqtt not available"};
+    const char* topic = cfg["topic"] | "";
+    if (!topic[0]) return {false, "missing topic"};
+    bool retained = cfg["retained"] | false;
+    const char* kindStr = cfg["kind"] | "Binary";
+    if (strcmp(kindStr, "Continuous") == 0) {
+      const char* tmpl = cfg["payload_template"] | "";
+      if (!tmpl[0]) return {false, "missing payload_template"};
+      e->ptr = std::make_unique<MqttGenericActuator>(
+          e->id.c_str(), *mqttTransport_, topic, tmpl,
+          cfg["value_min"] | 0.0f, cfg["value_max"] | 1.0f,
+          cfg["resolution"] | 0.01f, cfg["unit"] | "", retained);
+    } else {
+      e->ptr = std::make_unique<MqttGenericActuator>(
+          e->id.c_str(), *mqttTransport_, topic,
+          cfg["on_payload"] | "ON", cfg["off_payload"] | "OFF", retained);
+    }
   } else {
     return {false, "unknown actuator type"};
   }

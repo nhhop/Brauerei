@@ -17,7 +17,8 @@ type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
-type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2';
+type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric';
+type MqttKind = 'Binary' | 'Continuous';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -93,6 +94,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [analogMax, setAnalogMax] = useState('1');
   const [analogUnit, setAnalogUnit] = useState('');
   const [invertOut, setInvertOut] = useState(false);
+  // MqttGeneric
+  const [mqttTopic, setMqttTopic] = useState('');
+  const [mqttRetained, setMqttRetained] = useState(false);
+  const [mqttKind, setMqttKind] = useState<MqttKind>('Binary');
+  const [mqttOnPayload, setMqttOnPayload] = useState('ON');
+  const [mqttOffPayload, setMqttOffPayload] = useState('OFF');
+  const [mqttTemplate, setMqttTemplate] = useState('{value}');
+  const [mqttMin, setMqttMin] = useState('0');
+  const [mqttMax, setMqttMax] = useState('100');
+  const [mqttResolution, setMqttResolution] = useState('1');
+  const [mqttUnit, setMqttUnit] = useState('');
   // Interval / duty-cycle scheduling (DigitalOutput + AnalogOutput, decorator-
   // based) — empty period = disabled (no wrap). Wire format is always seconds.
   const [intervalShow, setIntervalShow] = useState(false);
@@ -202,8 +214,20 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setPinWhite(String(editConfig.pin_white ?? '14'));
           setPinYellow(String(editConfig.pin_yellow ?? '12'));
           setPinInterrupt(String(editConfig.pin_interrupt ?? '13'));
+        } else if (t === 'MqttGeneric') {
+          setMqttTopic(String(editConfig.topic ?? ''));
+          setMqttRetained(Boolean(editConfig.retained ?? false));
+          const k = (editConfig.kind ?? 'Binary') as MqttKind;
+          setMqttKind(k);
+          setMqttOnPayload(String(editConfig.on_payload ?? 'ON'));
+          setMqttOffPayload(String(editConfig.off_payload ?? 'OFF'));
+          setMqttTemplate(String(editConfig.payload_template ?? '{value}'));
+          setMqttMin(String(editConfig.value_min ?? '0'));
+          setMqttMax(String(editConfig.value_max ?? '100'));
+          setMqttResolution(String(editConfig.resolution ?? '1'));
+          setMqttUnit(String(editConfig.unit ?? ''));
         }
-        if (t === 'DigitalOutput' || t === 'AnalogOutput') {
+        if (t === 'DigitalOutput' || t === 'AnalogOutput' || t === 'MqttGeneric') {
           const periodSec = Number(editConfig.interval_period_sec ?? 0);
           const hasInterval = periodSec > 0;
           setIntervalShow(hasInterval);
@@ -275,6 +299,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setPinWhite('14'); setPinYellow('12'); setPinInterrupt('13');
       setAnalogPin(''); setAnalogMode('pwm'); setAnalogShowRange(false);
       setAnalogMin('0'); setAnalogMax('1'); setAnalogUnit('');
+      setMqttTopic(''); setMqttRetained(false); setMqttKind('Binary');
+      setMqttOnPayload('ON'); setMqttOffPayload('OFF'); setMqttTemplate('{value}');
+      setMqttMin('0'); setMqttMax('100'); setMqttResolution('1'); setMqttUnit('');
       setIntervalShow(false); setIntervalPeriod(''); setIntervalUnit('min'); setIntervalOn('0');
       setCtrlType('PID');
       setSensorId(snap?.sensors[0]?.id ?? '');
@@ -403,12 +430,33 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             cfg.value_min = vmin; cfg.value_max = vmax;
             if (analogUnit.trim()) cfg.unit = analogUnit.trim();
           }
+        } else if (actuatorType === 'MqttGeneric') {
+          const topic = mqttTopic.trim();
+          if (!topic) throw new Error('Topic erforderlich');
+          cfg = { type: 'MqttGeneric', id: trimId, topic, retained: mqttRetained, kind: mqttKind };
+          if (mqttKind === 'Binary') {
+            if (!mqttOnPayload.trim() || !mqttOffPayload.trim())
+              throw new Error('An/Aus-Payload erforderlich');
+            cfg.on_payload = mqttOnPayload;
+            cfg.off_payload = mqttOffPayload;
+          } else {
+            if (!mqttTemplate.includes('{value}'))
+              throw new Error('Payload-Template muss {value} enthalten');
+            const vmin = parseFloat(mqttMin);
+            const vmax = parseFloat(mqttMax);
+            if (isNaN(vmin) || isNaN(vmax) || vmin >= vmax) throw new Error('Ungültiger Wertebereich (Min muss < Max sein)');
+            cfg.payload_template = mqttTemplate;
+            cfg.value_min = vmin; cfg.value_max = vmax;
+            const res = parseFloat(mqttResolution);
+            if (!isNaN(res) && res > 0) cfg.resolution = res;
+            if (mqttUnit.trim()) cfg.unit = mqttUnit.trim();
+          }
         } else {
           const p = parseInt(pin, 10);
           if (isNaN(p)) throw new Error('invalid pin');
           cfg = { type: 'DigitalOutput', id: trimId, pin: p, mode, invert: invertOut };
         }
-        if ((actuatorType === 'DigitalOutput' || actuatorType === 'AnalogOutput') && intervalShow) {
+        if ((actuatorType === 'DigitalOutput' || actuatorType === 'AnalogOutput' || actuatorType === 'MqttGeneric') && intervalShow) {
           const period = parseFloat(intervalPeriod);
           const onAmt = parseFloat(intervalOn);
           if (isNaN(period) || period <= 0) throw new Error('Zykluslänge ungültig');
@@ -488,7 +536,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       active ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
 
-  // Shared by DigitalOutput + AnalogOutput — decorator-based, any actuator kind.
+  // Shared by DigitalOutput + AnalogOutput + MqttGeneric — decorator-based, any actuator kind.
   function intervalFields() {
     const period = parseFloat(intervalPeriod);
     const maxOn = !isNaN(period) && period > 0 ? period : 0;
@@ -603,6 +651,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <option value="AnalogOutput">AnalogOutput (PWM / DAC)</option>
                 <option value="IDS1">IDS1 – Induktion (10 Stufen)</option>
                 <option value="IDS2">IDS2 – Induktion (5 Stufen)</option>
+                <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
               </select>
             </div>
           )}
@@ -959,6 +1008,80 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                     placeholder="GPIO" class={inp} required />
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* MqttGeneric fields */}
+          {role === 'actuator' && actuatorType === 'MqttGeneric' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>MQTT Topic</label>
+                <input type="text" value={mqttTopic}
+                  onInput={(e) => setMqttTopic((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. cmnd/sonoff1/POWER" class={inp} required />
+              </div>
+              <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <input type="checkbox" checked={mqttRetained} class="accent-accent"
+                  onChange={(e) => setMqttRetained((e.target as HTMLInputElement).checked)} />
+                Retained
+              </label>
+              <div>
+                <label class={lbl}>Art</label>
+                <div class="flex gap-2">
+                  {(['Binary', 'Continuous'] as MqttKind[]).map((k) => (
+                    <button key={k} type="button" onClick={() => setMqttKind(k)}
+                      class={segBtn(mqttKind === k)}>
+                      {k === 'Binary' ? 'An/Aus' : 'Wert'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {mqttKind === 'Binary' ? (
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class={lbl}>Payload „An"</label>
+                    <input type="text" value={mqttOnPayload}
+                      onInput={(e) => setMqttOnPayload((e.target as HTMLInputElement).value)}
+                      placeholder="ON" class={inp} required />
+                  </div>
+                  <div>
+                    <label class={lbl}>Payload „Aus"</label>
+                    <input type="text" value={mqttOffPayload}
+                      onInput={(e) => setMqttOffPayload((e.target as HTMLInputElement).value)}
+                      placeholder="OFF" class={inp} required />
+                  </div>
+                </div>
+              ) : (
+                <div class="space-y-3">
+                  <div>
+                    <label class={lbl}>Payload-Template (muss {'{value}'} enthalten)</label>
+                    <input type="text" value={mqttTemplate}
+                      onInput={(e) => setMqttTemplate((e.target as HTMLInputElement).value)}
+                      placeholder="{value}" class={`${inp} font-mono`} required />
+                  </div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <div><label class={lbl}>Min</label>
+                      <input type="number" step="any" value={mqttMin}
+                        onInput={(e) => setMqttMin((e.target as HTMLInputElement).value)}
+                        class={inp} /></div>
+                    <div><label class={lbl}>Max</label>
+                      <input type="number" step="any" value={mqttMax}
+                        onInput={(e) => setMqttMax((e.target as HTMLInputElement).value)}
+                        class={inp} /></div>
+                    <div><label class={lbl}>Schritt</label>
+                      <input type="number" step="any" value={mqttResolution}
+                        onInput={(e) => setMqttResolution((e.target as HTMLInputElement).value)}
+                        class={inp} /></div>
+                  </div>
+                  <div>
+                    <label class={lbl}>Einheit (optional)</label>
+                    <input type="text" value={mqttUnit}
+                      onInput={(e) => setMqttUnit((e.target as HTMLInputElement).value)}
+                      placeholder="z.B. %" class={inp} />
+                  </div>
+                </div>
+              )}
+              {intervalFields()}
             </div>
           )}
 

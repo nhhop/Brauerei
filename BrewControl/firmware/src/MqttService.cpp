@@ -61,6 +61,10 @@ void MqttService::begin(const String& fallbackClientId) {
 
   publisher_ = std::make_unique<RemotePublisher>(*transport_, clientId.c_str());
   publisher_->setPrefix(settings_.mqttTopicPrefix().c_str());
+}
+
+void MqttService::attachExisting() {
+  if (!publisher_) return;
 
   // Boot snapshot: attach whatever the registry holds right now.
   for (auto* s : registry_.sensors())     publisher_->attach(*s);
