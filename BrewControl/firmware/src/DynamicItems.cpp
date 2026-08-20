@@ -107,6 +107,14 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     uint32_t debounce = cfg["debounce_ms"] | 0u;
     e->ptr = std::make_unique<DigitalInputSensor>(
         e->id.c_str(), pin, pullup, invert, debounce);
+  } else if (strcmp(type, "MqttGeneric") == 0) {
+    if (!mqttTransport_) return {false, "mqtt not available"};
+    const char* topic = cfg["topic"] | "";
+    if (!topic[0]) return {false, "missing topic"};
+    e->ptr = std::make_unique<MqttGenericSensor>(
+        e->id.c_str(), *mqttTransport_, topic, Quantity::Custom,
+        cfg["unit"] | "", cfg["value_min"] | 0.0f, cfg["value_max"] | 100.0f,
+        cfg["resolution"] | 0.1f, cfg["json_field"] | "");
   } else {
     return {false, "unknown sensor type"};
   }

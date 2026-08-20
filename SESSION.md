@@ -1399,3 +1399,41 @@ Erster Entwurf sah ein neues BrewControl-eigenes `IMqttPublisher`-Interface vor,
 6. Beide Test-Aktoren wieder gelöscht, Gerät danach auf den ursprünglichen Item-Satz zurückgeprüft (`mlt`, `durchfluss.rate/volume`, `sdfswdf`, `kettle`, `pump`, `dfsdfdf`, `mash`) — keine Waisen.
 
 Alle 6 Schritte grün. Einzig eine echte Sonoff/Tasmota-Steckdose war nicht am Testgerät angeschlossen — der Payload-Inhalt (`"ON"`/`"OFF"`/formatierter Zahlenwert) entspricht aber exakt dem, was Tasmota-Firmware auf `cmnd/<device>/POWER` erwartet.
+
+---
+
+## 2026-08-21 — Generischer MQTT-Sensor
+
+**Ausgangslage:** Direkte Anschlussfrage an den MQTT-Aktor: „bauen wir auch einen MQTT-Sensor?" — plus die größere, ursprünglich schon im Raum stehende Idee, kabellose Sensoren/Aktoren anzubinden (MQTT **und** ESP-NOW). Zwei getrennte Dinge identifiziert: (1) ein generischer MQTT-Sensor als Pendant zum Aktor (beliebiger Topic + Parse-Template, für Fremdgeräte), (2) echte SensActCtrl-Node-zu-Node-Anbindung über die bereits vorhandenen `RemoteSensor`/`RemoteActuator`/`RemotePublisher` + `ITransport`-Implementierungen (MQTT/ESP-NOW/Webhook), die bisher nirgends an `DynamicItems`/`AddItemModal` angebunden sind. User-Entscheidung: erst (1), danach (2) — (2) als eigener Roadmap-Punkt in PLAN.md vorgemerkt (Pairing/Discovery-UX für ESP-NOW ist eigener, größerer Scope).
+
+### SensActCtrl
+
+- Neue Klasse `MqttGenericSensor` (`src/sensors/`, kein `#ifdef ARDUINO`-Guard) — Pendant zu `MqttGenericActuator`: nimmt `ITransport&` direkt entgegen (wie `RemoteSensor`), abonniert einen frei konfigurierbaren Topic statt des festen device/id-Schemas. Payload-Parsing: leerer `jsonField` → Payload ist die rohe Zahl (`strtof`); gesetzter `jsonField` → Payload als JSON-Objekt geparst, benanntes Top-Level-Feld extrahiert (ArduinoJson, bereits bestehende SensActCtrl-Abhängigkeit, nativ nutzbar — kein neuer Dep). Fehlerhafte/nicht parsbare Nachrichten werden still ignoriert (vorheriger Wert bleibt stehen), exakt wie `RemoteSensor::onState` es bei ungültigem JSON schon handhabt (Precedent bewusst übernommen, kein neues Verhalten erfunden). `fault()` delegiert an `ITransport::connected()`/`lastErrorMessage()`, identisch zum Aktor.
+- Freie Helper-Funktion `parseMqttSensorPayload()` co-lokiert in derselben Datei.
+- `MockTransport::publish()` simuliert bereits eine eingehende Broker-Nachricht an alle passenden lokalen Subscriber (unverändert von der letzten Session) — direkt nutzbar für die neuen Tests, kein weiterer Mock-Ausbau nötig.
+- 15 neue native Tests (`test_mqtt_generic_sensor`): Payload-Parsing (roh, JSON-Feld, fehlendes Feld, malformed JSON — beide Zweige), Reading-Update bei erster/fehlerhafter Nachricht (bleibt `valid` mit altem Wert stehen), Meta-Felder, `channelCount()==1`, `fault()` (verbunden/Fehlermeldung/Fallback). **189/189 native Tests grün** (15 neu; Gesamtzahl lag schon vor dieser Session — und vor der MQTT-Aktor-Session — über den zuletzt in PLAN.md vermerkten Ständen; Differenz nicht weiter verfolgt, keine bestehenden Tests betroffen).
+- `SensActCtrl.h`-Umbrella ergänzt.
+
+### BrewControl Firmware
+
+- `DynamicItems::addSensorNoBegin` neuer Branch `"MqttGeneric"` (nach `DigitalInput`), nutzt denselben `mqttTransport_`, der schon für den Aktor gesetzt wird — keine weitere Wiring-Änderung nötig, die Boot-Reihenfolge-Arbeit aus der Aktor-Session trägt hier direkt mit. Lehnt ohne Transport mit `{false, "mqtt not available"}` ab, `loadFromSD()` verwirft das still (bestehendes Verhalten).
+- Alle 3 Boards kompilieren, BrewControl-native Tests (`test_log_compressor`/`test_tar_extractor`) weiterhin grün.
+
+### Frontend
+
+- `AddItemModal.tsx`: `SensorType` um `'MqttGeneric'` erweitert, neue Optgroup „MQTT" im Sensor-Type-Dropdown. Formular teilt sich `mqttTopic`/`mqttUnit`/`mqttMin`/`mqttMax`/`mqttResolution` mit dem Aktor-Formular (gleiche Bedeutung, wird bei jedem Öffnen ohnehin zurückgesetzt) — nur `mqttJsonField` ist sensor-spezifisch neu. `SensorCard.tsx`: **keine Änderungen** — dispatcht bereits rein über `meta`/`state`/`fault`, unabhängig vom Sensortyp.
+
+### Debugging-Umweg: vermeintlicher Boot-Crash nach dem zweiten Reflash
+
+Nach dem Flash der Sensor-Firmware (LilyGo S3, COM9) war das Gerät weder per `brewcontrol.local` noch per seriellem Monitor erreichbar — auch nach mehreren Minuten Wartezeit und einem manuellen Reset-Versuch per `pyserial`-DTR/RTS-Toggle (der vermutlich selbst kontraproduktiv war: native USB-JTAG-Serial-Geräte reagieren auf rohe DTR/RTS-Pulse anders als auf esptool's korrekt sequenzierten Reset, im schlimmsten Fall Download-Mode statt Neustart). Ein zweiter sauberer Reflash (nur `pio run -t upload`, kein manuelles Port-Fummeln danach) zeigte weiterhin keine Serial-Ausgabe und keine mDNS-Antwort — bis der User bestätigte: **das Gerät war die ganze Zeit über die IP direkt erreichbar** (`192.168.178.87`). Ursache war ausschließlich mDNS/`*.local`-Auflösung, die von der Bash/curl-Umgebung dieser Session aus nicht funktionierte (auch `ping brewcontrol.local` von Windows aus schlug fehl) — kein Firmware-Problem. **Lehre für künftige Sessions:** bei Nichterreichbarkeit über `brewcontrol.local` zuerst die IP direkt probieren, bevor Zeit in Boot-Diagnose fließt; `pio device monitor` nach einem Reflash zeigt ohnehin nur Ausgaben, die *nach* dem Verbindungsaufbau anfallen — ein bereits sauber durchgebooteter, im `loop()` laufender ESP32 druckt dort erwartungsgemäß nichts mehr (kein periodisches Logging im Normalbetrieb), das ist für sich genommen kein Fehlersignal.
+
+### HW-E2E (LilyGo S3, `192.168.178.87`)
+
+Direkt gegen die Geräte-API getestet (`curl` + `mosquitto_pub`, gleicher Pfad wie die Web-UI):
+
+1. **Roher Zahlwert:** Sensor angelegt (`brewcontrol/test/aussentemp`, Unit `°C`), `mosquitto_pub -m "18.75"` → Snapshot zeigt `state.v:18.75, ok:true`.
+2. **JSON-Feld-Extraktion:** Sensor angelegt (`brewcontrol/test/klimasensor`, `json_field:"humidity"`), `mosquitto_pub -m '{"temperature":21.3,"humidity":55.8}'` → Snapshot zeigt `state.v:55.8` (korrektes Feld extrahiert, `temperature` ignoriert).
+3. Beide Test-Sensoren wieder gelöscht, Gerät auf `mlt`, `durchfluss.rate/volume`, `kettle`, `pump`, `dfsdfdf`, `mash` zurückgeprüft — keine Waisen.
+4. UI-Bundle neu gebaut (`pnpm build:sd`) und über `/api/update/assets` aufgespielt, Auslieferung des neuen JS-Bundles am Gerät bestätigt.
+
+**Beobachtung (nicht abschließend geklärt):** der zuvor auf dem Gerät vorhandene Sensor `sdfswdf` (Test-Item aus einer früheren Session) fehlt seit diesem Durchlauf im Snapshot. Keine der hier durchgeführten Aktionen hat diesen Sensor absichtlich angefasst oder gelöscht — bleibt als offene Beobachtung, falls es beim nächsten Kontakt mit dem Gerät wieder auffällt.

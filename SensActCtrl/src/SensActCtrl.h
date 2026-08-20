@@ -37,6 +37,7 @@
 #include "sensors/YF_S201Sensor.h"
 #include "sensors/HCSR04Sensor.h"
 #include "sensors/HX711LoadCellSensor.h"
+#include "sensors/MqttGenericSensor.h"
 
 #include "transport/ITransport.h"
 #include "transport/MqttTransport.h"

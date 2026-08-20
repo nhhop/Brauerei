@@ -13,7 +13,7 @@ const AUTOTUNE_METHODS = [
 ] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'MqttGeneric';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
@@ -69,6 +69,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [diInvert, setDiInvert] = useState(false);
   const [diPullup, setDiPullup] = useState(false);
   const [diDebounce, setDiDebounce] = useState('0');
+
+  // MqttGeneric (sensor) — shares mqttTopic/mqttUnit/mqttMin/mqttMax/mqttResolution
+  // with the actuator's Continuous fields below (same meaning); only the
+  // JSON-field extractor is sensor-specific.
+  const [mqttJsonField, setMqttJsonField] = useState('');
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -194,6 +199,13 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setDiInvert(Boolean(editConfig.invert ?? false));
           setDiPullup(Boolean(editConfig.pullup ?? false));
           setDiDebounce(String(editConfig.debounce_ms ?? '0'));
+        } else if (t === 'MqttGeneric') {
+          setMqttTopic(String(editConfig.topic ?? ''));
+          setMqttJsonField(String(editConfig.json_field ?? ''));
+          setMqttUnit(String(editConfig.unit ?? ''));
+          setMqttMin(String(editConfig.value_min ?? '0'));
+          setMqttMax(String(editConfig.value_max ?? '100'));
+          setMqttResolution(String(editConfig.resolution ?? '0.1'));
         }
       } else if (editRole === 'actuator') {
         const t = String(editConfig.type ?? 'DigitalOutput') as ActuatorType;
@@ -293,6 +305,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
       setHx711Dout(''); setHx711Sck(''); setHx711Scale('');
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
+      setMqttJsonField('');
       setActuatorType('DigitalOutput');
       setMode('TimeProportional');
       setInvertOut(false);
@@ -395,6 +408,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             invert: diInvert, pullup: diPullup,
             debounce_ms: parseInt(diDebounce, 10) || 0,
           };
+        } else if (sensorType === 'MqttGeneric') {
+          const topic = mqttTopic.trim();
+          if (!topic) throw new Error('Topic erforderlich');
+          const vmin = parseFloat(mqttMin);
+          const vmax = parseFloat(mqttMax);
+          if (isNaN(vmin) || isNaN(vmax) || vmin >= vmax) throw new Error('Ungültiger Wertebereich (Min muss < Max sein)');
+          cfg = { type: 'MqttGeneric', id: trimId, topic, value_min: vmin, value_max: vmax };
+          const res = parseFloat(mqttResolution);
+          if (!isNaN(res) && res > 0) cfg.resolution = res;
+          if (mqttUnit.trim()) cfg.unit = mqttUnit.trim();
+          if (mqttJsonField.trim()) cfg.json_field = mqttJsonField.trim();
         } else { // HCSR04
           const trig = parseInt(trigPin, 10);
           const echo = parseInt(echoPin, 10);
@@ -636,6 +660,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <optgroup label="Digital / Schalter">
                   <option value="DigitalInput">Digitaler Eingang (GPIO)</option>
                 </optgroup>
+                <optgroup label="MQTT">
+                  <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
+                </optgroup>
               </select>
             </div>
           )}
@@ -852,6 +879,47 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <input type="number" value={diDebounce} min="0"
                   onInput={(e) => setDiDebounce((e.target as HTMLInputElement).value)}
                   placeholder="0 = aus" class={inp} />
+              </div>
+            </div>
+          )}
+
+          {/* MqttGeneric (sensor) fields */}
+          {role === 'sensor' && sensorType === 'MqttGeneric' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>MQTT Topic</label>
+                <input type="text" value={mqttTopic}
+                  onInput={(e) => setMqttTopic((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. zigbee2mqtt/aussensensor" class={inp} required />
+              </div>
+              <div>
+                <label class={lbl}>JSON-Feld (optional)</label>
+                <input type="text" value={mqttJsonField}
+                  onInput={(e) => setMqttJsonField((e.target as HTMLInputElement).value)}
+                  placeholder="leer = Payload ist die Zahl direkt" class={`${inp} font-mono`} />
+                <p class="mt-1 text-xs text-faint">
+                  Bei JSON-Payload (z.B. {'{"temperature":23.5}'}) hier den Feldnamen angeben.
+                </p>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <div><label class={lbl}>Min</label>
+                  <input type="number" step="any" value={mqttMin}
+                    onInput={(e) => setMqttMin((e.target as HTMLInputElement).value)}
+                    class={inp} /></div>
+                <div><label class={lbl}>Max</label>
+                  <input type="number" step="any" value={mqttMax}
+                    onInput={(e) => setMqttMax((e.target as HTMLInputElement).value)}
+                    class={inp} /></div>
+                <div><label class={lbl}>Schritt</label>
+                  <input type="number" step="any" value={mqttResolution}
+                    onInput={(e) => setMqttResolution((e.target as HTMLInputElement).value)}
+                    class={inp} /></div>
+              </div>
+              <div>
+                <label class={lbl}>Einheit (optional)</label>
+                <input type="text" value={mqttUnit}
+                  onInput={(e) => setMqttUnit((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. °C" class={inp} />
               </div>
             </div>
           )}
