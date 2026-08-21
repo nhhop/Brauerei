@@ -19,7 +19,7 @@ type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
 type MqttKind = 'Binary' | 'Continuous';
-type RemoteTransport = 'mqtt' | 'webhook';
+type RemoteTransport = 'mqtt' | 'webhook' | 'espnow';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -1016,10 +1016,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               <div>
                 <label class={lbl}>Transport</label>
                 <div class="flex gap-2">
-                  {(['mqtt', 'webhook'] as RemoteTransport[]).map((t) => (
+                  {(['mqtt', 'webhook', 'espnow'] as RemoteTransport[]).map((t) => (
                     <button key={t} type="button" onClick={() => setRemoteTransport(t)}
                       class={segBtn(remoteTransport === t)}>
-                      {t === 'mqtt' ? 'MQTT' : 'Webhook'}
+                      {t === 'mqtt' ? 'MQTT' : t === 'webhook' ? 'Webhook' : 'ESP-NOW'}
                     </button>
                   ))}
                 </div>
@@ -1296,10 +1296,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               <div>
                 <label class={lbl}>Transport</label>
                 <div class="flex gap-2">
-                  {(['mqtt', 'webhook'] as RemoteTransport[]).map((t) => (
+                  {(['mqtt', 'webhook', 'espnow'] as RemoteTransport[]).map((t) => (
                     <button key={t} type="button" onClick={() => setRemoteTransport(t)}
                       class={segBtn(remoteTransport === t)}>
-                      {t === 'mqtt' ? 'MQTT' : 'Webhook'}
+                      {t === 'mqtt' ? 'MQTT' : t === 'webhook' ? 'Webhook' : 'ESP-NOW'}
                     </button>
                   ))}
                 </div>

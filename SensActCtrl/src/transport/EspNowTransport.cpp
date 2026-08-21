@@ -40,16 +40,26 @@ EspNowTransport::~EspNowTransport() {
 }
 
 bool EspNowTransport::initEspNow_() {
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect(false, true);
-  esp_wifi_set_channel(channel_, WIFI_SECOND_CHAN_NONE);
+  // If a station link is already up (e.g. a host app using its own WiFi),
+  // leave it alone and ride its channel — forcing WIFI_STA + a channel here
+  // would tear down that connection. ESP-Now can coexist with an active STA
+  // link as long as the peer uses the channel already in use (peer.channel
+  // = 0 means "use current channel" per the ESP-IDF docs). Only when no STA
+  // link exists do we own WiFi mode/channel outright, matching every
+  // standalone example sketch that never touches WiFi.mode() itself.
+  const bool staConnected = WiFi.isConnected();
+  if (!staConnected) {
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(false, true);
+    esp_wifi_set_channel(channel_, WIFI_SECOND_CHAN_NONE);
+  }
 
   if (esp_now_init() != ESP_OK) return false;
   esp_now_register_recv_cb(onRecv);
 
   esp_now_peer_info_t peer = {};
   std::memcpy(peer.peer_addr, kBroadcastMac, 6);
-  peer.channel = channel_;
+  peer.channel = staConnected ? 0 : channel_;
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK) {
     esp_now_deinit();

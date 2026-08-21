@@ -14,6 +14,7 @@
 #include <SPI.h>
 #include <SensActCtrl.h>
 #include <WiFi.h>
+#include <memory>
 
 #include "DashboardStore.h"
 #include "DynamicItems.h"
@@ -50,6 +51,12 @@ BrewControl::ProgramRunner programRunner;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
 WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService);
+
+// Constructed in setup() only after a successful STA connect (see initEspNow_()
+// in the library: it rides the already-established WiFi channel instead of
+// forcing one, so it must never be built before WiFi is up). No enable
+// toggle — receiving broadcast packets is passive, negligible cost.
+std::unique_ptr<EspNowTransport> espNowTransport;
 
 // Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
 // the WiFi event handler can re-announce mDNS after a reconnect.
@@ -159,6 +166,10 @@ void setup() {
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
 
+  // STA is up — safe to bring up ESP-Now now (initEspNow_() rides the
+  // current WiFi channel instead of forcing one, so it must come after this).
+  espNowTransport = std::make_unique<EspNowTransport>();
+
   // Re-announce mDNS on every STA_GOT_IP (it doesn't survive reconnects). The
   // initial GOT_IP already fired during connectStation, so also start it once now.
   WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t) { startMDNS(); },
@@ -175,6 +186,7 @@ void setup() {
                                   // actuator that publishes over MQTT itself
   dynamicItems.setMqttTransport(mqttService.transport());  // nullable
   dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
+  dynamicItems.setEspNowTransport(espNowTransport.get());  // always available, no toggle
 
   if (sdOk) {
     dynamicItems.loadFromSD(SD, registry);

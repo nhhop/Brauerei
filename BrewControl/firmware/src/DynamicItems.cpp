@@ -26,6 +26,11 @@ DynamicItems::Result DynamicItems::resolveRemoteTransport(const JsonObject& cfg,
     *out = mqttTransport_;
     return {true};
   }
+  if (strcmp(transportType, "espnow") == 0) {
+    if (!espNowTransport_) return {false, "espnow not available"};
+    *out = espNowTransport_;
+    return {true};
+  }
   return {false, "unknown remote transport"};
 }
 

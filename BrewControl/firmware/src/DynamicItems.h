@@ -89,6 +89,12 @@ class DynamicItems {
   // called for such items.
   void setWebhookService(WebhookService* svc) { webhookService_ = svc; }
 
+  // Remote items with transport:"espnow" use this shared broadcast
+  // transport. Nullable like mqttTransport_ (constructed only after WiFi
+  // connects — see main.cpp) — must be set before loadFromSD()/add*() are
+  // called for such items.
+  void setEspNowTransport(SensActCtrl::ITransport* t) { espNowTransport_ = t; }
+
  private:
   struct SensorEntry {
     std::string id;
@@ -139,6 +145,7 @@ class DynamicItems {
 
   SensActCtrl::ITransport* mqttTransport_ = nullptr;
   WebhookService* webhookService_ = nullptr;
+  SensActCtrl::ITransport* espNowTransport_ = nullptr;
 
   // Internal variants that do NOT call begin() — used by loadFromSD.
   Result addSensorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);

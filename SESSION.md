@@ -1521,3 +1521,19 @@ Wie geplant umgesetzt, keine Überraschungen:
 **Nicht verifiziert (wie bei MQTT):** echter State-Empfang von einem tatsächlichen Leaf-Knoten — kein zweites Testgerät verfügbar, macht der User später selbst.
 
 **Nächster Schritt:** **Schritt 3 (ESP-NOW-Remote mit Fix)** wie oben skizziert.
+
+## 2026-08-21 — Schritt 3 (ESP-NOW-Remote mit Fix) fertig, HW-verifiziert
+
+Wie geplant umgesetzt:
+
+- **Library-Fix** (`SensActCtrl/src/transport/EspNowTransport.cpp`, `initEspNow_()`): `WiFi.mode(WIFI_STA)` + `WiFi.disconnect()` + Kanal-Erzwingen laufen nur noch, wenn **nicht** schon eine STA-Verbindung besteht (`WiFi.isConnected()`). Wenn schon verbunden: WLAN unangetastet, `peer.channel = 0` (ESP-IDF: „aktuellen Kanal verwenden"). Rückwärtskompatibel — alle Standalone-Beispiel-Sketches (die nie selbst verbunden sind) laufen unverändert über den alten Zweig. Kein natives Testen möglich (RF-Verhalten, ARDUINO-only Code), wie im Plan vermerkt.
+- **`main.cpp`**: `std::unique_ptr<EspNowTransport> espNowTransport` als globales Objekt, **erst nach erfolgreichem WLAN-Connect** konstruiert (direkt nach der „WiFi connected"-Zeile) — genau der Timing-Punkt, den der Fix voraussetzt. Kein Settings-Toggle (immer aktiv, passiver Broadcast-Empfang). Kein `tick()`-Aufruf nötig (`EspNowTransport::tick()` ist ohnehin ein No-Op, verbindungslos).
+- **Bewusst abgewichen vom ursprünglichen Plan-Entwurf:** kein UI-Feld „channel" ergänzt. Grund: da `espNowTransport` in `main.cpp` erst nach WLAN-Connect gebaut wird, ist `staConnected` in `initEspNow_()` in diesem Kontext **immer** `true` — der Channel-Parameter des Konstruktors wird dann nie verwendet (`peer.channel` ist immer `0`, „aktueller Kanal"). Ein UI-Override hätte also nie einen Effekt gehabt; das Plan-Notiz war vor dem eigentlichen Fix-Design geschrieben.
+- **`DynamicItems`**: `"Remote"`-Typ akzeptiert jetzt zusätzlich `transport:"espnow"` (dritte Option neben `mqtt`/`webhook`), keine weiteren Cfg-Felder nötig (wie MQTT). Neuer `setEspNowTransport()`-Setter, nullable wie `setMqttTransport()`.
+- **`AddItemModal.tsx`**: dritte Transport-Option „ESP-NOW" im Remote-Block (Sensor + Aktor), keine zusätzlichen Felder.
+
+**Verifikation:** Firmware compile-smoke grün, 192/192 native Tests grün (unverändert, da ESP-NOW-Fix nicht nativ testbar ist), `pnpm typecheck` grün. Live auf dem LilyGo-S3-Testgerät: Boot-Log zeigt sauberen WLAN-Connect **nach** `EspNowTransport`-Konstruktion (kein Disconnect — genau das, was der Fix garantieren soll). Remote-Sensor **und** -Aktor mit `transport:"espnow"` angelegt (204), Web-UI/API bleiben währenddessen durchgehend erreichbar (200), beide Items erscheinen korrekt unter lokaler ID im Snapshot. UI im Browser bestätigt (dritte Transport-Option sichtbar). Test-Items wieder gelöscht.
+
+**Nicht verifizierbar ohne zweites Testgerät (wie geplant):** echte Kanal-Koexistenz mit tatsächlichem RF-Traffic von einem zweiten ESP-NOW-Peer — die Grundvoraussetzung (WLAN bleibt während ESP-NOW-Betrieb stabil) ist bestätigt, der volle Zwei-Geräte-Beweis fehlt noch.
+
+**Damit sind alle drei geplanten Schritte (MQTT, Webhook, ESP-NOW) für kabellose SensActCtrl-Knoten abgeschlossen.** Offener Punkt für später: Zweitgeräte-Test für alle drei Transporte (echter State-Empfang von einem Leaf-Knoten).
