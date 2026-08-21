@@ -13,11 +13,11 @@ const AUTOTUNE_METHODS = [
 ] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'MqttGeneric';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'MqttGeneric' | 'Remote';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
-type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric';
+type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
 type MqttKind = 'Binary' | 'Continuous';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
@@ -74,6 +74,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   // with the actuator's Continuous fields below (same meaning); only the
   // JSON-field extractor is sensor-specific.
   const [mqttJsonField, setMqttJsonField] = useState('');
+
+  // Remote (SensActCtrl-Knoten) — shared by sensor + actuator role.
+  const [remoteDevice, setRemoteDevice] = useState('');
+  const [remoteId, setRemoteId] = useState('');
+  const [remotePrefix, setRemotePrefix] = useState('');
+  const [remoteChannelKey, setRemoteChannelKey] = useState('');
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -206,6 +212,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setMqttMin(String(editConfig.value_min ?? '0'));
           setMqttMax(String(editConfig.value_max ?? '100'));
           setMqttResolution(String(editConfig.resolution ?? '0.1'));
+        } else if (t === 'Remote') {
+          setRemoteDevice(String(editConfig.device ?? ''));
+          setRemoteId(String(editConfig.remote_id ?? ''));
+          setRemotePrefix(String(editConfig.prefix ?? ''));
+          setRemoteChannelKey(String(editConfig.channel_key ?? ''));
         }
       } else if (editRole === 'actuator') {
         const t = String(editConfig.type ?? 'DigitalOutput') as ActuatorType;
@@ -238,6 +249,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setMqttMax(String(editConfig.value_max ?? '100'));
           setMqttResolution(String(editConfig.resolution ?? '1'));
           setMqttUnit(String(editConfig.unit ?? ''));
+        } else if (t === 'Remote') {
+          setRemoteDevice(String(editConfig.device ?? ''));
+          setRemoteId(String(editConfig.remote_id ?? ''));
+          setRemotePrefix(String(editConfig.prefix ?? ''));
         }
         if (t === 'DigitalOutput' || t === 'AnalogOutput' || t === 'MqttGeneric') {
           const periodSec = Number(editConfig.interval_period_sec ?? 0);
@@ -306,6 +321,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setHx711Dout(''); setHx711Sck(''); setHx711Scale('');
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
       setMqttJsonField('');
+      setRemoteDevice(''); setRemoteId(''); setRemotePrefix(''); setRemoteChannelKey('');
       setActuatorType('DigitalOutput');
       setMode('TimeProportional');
       setInvertOut(false);
@@ -419,6 +435,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           if (!isNaN(res) && res > 0) cfg.resolution = res;
           if (mqttUnit.trim()) cfg.unit = mqttUnit.trim();
           if (mqttJsonField.trim()) cfg.json_field = mqttJsonField.trim();
+        } else if (sensorType === 'Remote') {
+          const device = remoteDevice.trim();
+          const rid = remoteId.trim();
+          if (!device) throw new Error('Geräte-ID erforderlich');
+          if (!rid) throw new Error('Remote-ID erforderlich');
+          cfg = { type: 'Remote', id: trimId, device, remote_id: rid };
+          if (remoteChannelKey.trim()) cfg.channel_key = remoteChannelKey.trim();
+          if (remotePrefix.trim()) cfg.prefix = remotePrefix.trim();
         } else { // HCSR04
           const trig = parseInt(trigPin, 10);
           const echo = parseInt(echoPin, 10);
@@ -475,6 +499,13 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             if (!isNaN(res) && res > 0) cfg.resolution = res;
             if (mqttUnit.trim()) cfg.unit = mqttUnit.trim();
           }
+        } else if (actuatorType === 'Remote') {
+          const device = remoteDevice.trim();
+          const rid = remoteId.trim();
+          if (!device) throw new Error('Geräte-ID erforderlich');
+          if (!rid) throw new Error('Remote-ID erforderlich');
+          cfg = { type: 'Remote', id: trimId, device, remote_id: rid };
+          if (remotePrefix.trim()) cfg.prefix = remotePrefix.trim();
         } else {
           const p = parseInt(pin, 10);
           if (isNaN(p)) throw new Error('invalid pin');
@@ -663,6 +694,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <optgroup label="MQTT">
                   <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
                 </optgroup>
+                <optgroup label="Remote">
+                  <option value="Remote">Remote (SensActCtrl-Knoten)</option>
+                </optgroup>
               </select>
             </div>
           )}
@@ -679,6 +713,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <option value="IDS1">IDS1 – Induktion (10 Stufen)</option>
                 <option value="IDS2">IDS2 – Induktion (5 Stufen)</option>
                 <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
+                <option value="Remote">Remote (SensActCtrl-Knoten)</option>
               </select>
             </div>
           )}
@@ -924,6 +959,36 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             </div>
           )}
 
+          {/* Remote (sensor) fields */}
+          {role === 'sensor' && sensorType === 'Remote' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>Geräte-ID (Leaf-Knoten)</label>
+                <input type="text" value={remoteDevice}
+                  onInput={(e) => setRemoteDevice((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. node-a" class={inp} required />
+              </div>
+              <div>
+                <label class={lbl}>Remote-ID (Sensor auf dem Leaf)</label>
+                <input type="text" value={remoteId}
+                  onInput={(e) => setRemoteId((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. mash_temp" class={inp} required />
+              </div>
+              <div>
+                <label class={lbl}>Kanal-Key (optional, Multi-Channel-Sensoren)</label>
+                <input type="text" value={remoteChannelKey}
+                  onInput={(e) => setRemoteChannelKey((e.target as HTMLInputElement).value)}
+                  placeholder="leer = flacher Sensor" class={inp} />
+              </div>
+              <div>
+                <label class={lbl}>Topic-Prefix (optional)</label>
+                <input type="text" value={remotePrefix}
+                  onInput={(e) => setRemotePrefix((e.target as HTMLInputElement).value)}
+                  placeholder="sensactctrl" class={inp} />
+              </div>
+            </div>
+          )}
+
           {/* HCSR04 fields */}
           {role === 'sensor' && sensorType === 'HCSR04' && (
             <div class="space-y-3">
@@ -1150,6 +1215,30 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 </div>
               )}
               {intervalFields()}
+            </div>
+          )}
+
+          {/* Remote (actuator) fields */}
+          {role === 'actuator' && actuatorType === 'Remote' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>Geräte-ID (Leaf-Knoten)</label>
+                <input type="text" value={remoteDevice}
+                  onInput={(e) => setRemoteDevice((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. node-b" class={inp} required />
+              </div>
+              <div>
+                <label class={lbl}>Remote-ID (Aktor auf dem Leaf)</label>
+                <input type="text" value={remoteId}
+                  onInput={(e) => setRemoteId((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. heater" class={inp} required />
+              </div>
+              <div>
+                <label class={lbl}>Topic-Prefix (optional)</label>
+                <input type="text" value={remotePrefix}
+                  onInput={(e) => setRemotePrefix((e.target as HTMLInputElement).value)}
+                  placeholder="sensactctrl" class={inp} />
+              </div>
             </div>
           )}
 

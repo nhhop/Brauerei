@@ -10,6 +10,7 @@ RemoteSensor::RemoteSensor(ITransport& transport, const char* deviceId,
     : transport_(&transport),
       deviceId_(deviceId),
       sensorId_(sensorId),
+      localId_(sensorId),
       channelKey_(channelKey) {}
 
 void RemoteSensor::begin() {

@@ -271,6 +271,62 @@ void test_custom_prefix_roundtrip() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 55.0f, remote.channel(0).reading.value);
 }
 
+void test_sensor_local_id_overrides_registry_id() {
+  MockTransport tx;
+  MockSensor src("mash_temp", tempMeta());
+  RemotePublisher pub(tx, "node-x");
+  pub.attach(src);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+
+  RemoteSensor remote(tx, "node-x", "mash_temp");
+  remote.setLocalId("my_local_name");
+  remote.begin();
+
+  // id() must report the local override, not the remote's own sensorId —
+  // that's what a Registry keys lookups/dedup on.
+  TEST_ASSERT_EQUAL_STRING("my_local_name", remote.id());
+}
+
+void test_actuator_local_id_overrides_registry_id() {
+  MockTransport tx;
+  MockActuator local("heater", switchMeta());
+  RemotePublisher pub(tx, "node-y");
+  pub.attach(local);
+  pub.begin();
+
+  RemoteActuator remote(tx, "node-y", "heater");
+  remote.setLocalId("my_local_actuator");
+  remote.begin();
+
+  TEST_ASSERT_EQUAL_STRING("my_local_actuator", remote.id());
+}
+
+void test_actuator_custom_prefix_roundtrip() {
+  MockTransport tx;
+  MockActuator local("heater", switchMeta());
+  RemotePublisher pub(tx, "node-w");
+  pub.setPrefix("myapp");
+  pub.attach(local);
+  pub.setStateIntervalMs(0);
+  pub.begin();
+
+  RemoteActuator remote(tx, "node-w", "heater");
+  remote.setPrefix("myapp");
+  remote.begin();
+
+  remote.write(1.0f);  // should route via myapp/node-w/actuator/heater/set
+  TEST_ASSERT_EQUAL(1u, local.writes.size());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, local.writes.back());
+
+  local.write(1.0f);
+  pub.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, remote.state());
+
+  // Default prefix must NOT have been used.
+  TEST_ASSERT_TRUE(tx.lastPayload("sensactctrl/node-w/actuator/heater").empty());
+}
+
 void test_empty_prefix_omits_leading_segment() {
   MockTransport tx;
   MockSensor src("temp", tempMeta());
@@ -404,7 +460,10 @@ int main(int, char**) {
   RUN_TEST(test_multichannel_channel_values_correct);
   RUN_TEST(test_single_channel_flat_topic_unchanged);
   RUN_TEST(test_multichannel_remote_sensor_subscribes_channel);
+  RUN_TEST(test_sensor_local_id_overrides_registry_id);
+  RUN_TEST(test_actuator_local_id_overrides_registry_id);
   RUN_TEST(test_custom_prefix_roundtrip);
+  RUN_TEST(test_actuator_custom_prefix_roundtrip);
   RUN_TEST(test_empty_prefix_omits_leading_segment);
   RUN_TEST(test_detach_sensor_stops_state_publish);
   RUN_TEST(test_detach_multichannel_sensor_removes_all_channels);

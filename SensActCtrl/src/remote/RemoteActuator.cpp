@@ -10,11 +10,16 @@ RemoteActuator::RemoteActuator(ITransport& transport, const char* deviceId,
     : transport_(&transport),
       deviceId_(deviceId),
       actuatorId_(actuatorId),
-      stateTopic_(remote::actuatorState(deviceId, actuatorId)),
-      metaTopic_(remote::actuatorMeta(deviceId, actuatorId)),
-      setTopic_(remote::actuatorSet(deviceId, actuatorId)) {}
+      localId_(actuatorId) {}
 
 void RemoteActuator::begin() {
+  const char* pfx = prefix_.c_str();
+  const char* d   = deviceId_.c_str();
+  const char* id  = actuatorId_.c_str();
+  stateTopic_ = remote::actuatorState(d, id, pfx);
+  metaTopic_  = remote::actuatorMeta(d, id, pfx);
+  setTopic_   = remote::actuatorSet(d, id, pfx);
+
   transport_->subscribe(metaTopic_.c_str(),
                         [this](const char*, const char* p, size_t n) { onMeta(p, n); });
   transport_->subscribe(stateTopic_.c_str(),

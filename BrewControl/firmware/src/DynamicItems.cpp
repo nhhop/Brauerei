@@ -115,6 +115,17 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
         e->id.c_str(), *mqttTransport_, topic, Quantity::Custom,
         cfg["unit"] | "", cfg["value_min"] | 0.0f, cfg["value_max"] | 100.0f,
         cfg["resolution"] | 0.1f, cfg["json_field"] | "");
+  } else if (strcmp(type, "Remote") == 0) {
+    if (!mqttTransport_) return {false, "mqtt not available"};
+    const char* device = cfg["device"] | "";
+    const char* remoteId = cfg["remote_id"] | "";
+    if (!device[0]) return {false, "missing device"};
+    if (!remoteId[0]) return {false, "missing remote_id"};
+    auto sensor = std::make_unique<RemoteSensor>(
+        *mqttTransport_, device, remoteId, cfg["channel_key"] | "");
+    sensor->setLocalId(e->id.c_str());
+    sensor->setPrefix(cfg["prefix"] | "sensactctrl");
+    e->ptr = std::move(sensor);
   } else {
     return {false, "unknown sensor type"};
   }
@@ -220,6 +231,16 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
           e->id.c_str(), *mqttTransport_, topic,
           cfg["on_payload"] | "ON", cfg["off_payload"] | "OFF", retained);
     }
+  } else if (strcmp(type, "Remote") == 0) {
+    if (!mqttTransport_) return {false, "mqtt not available"};
+    const char* device = cfg["device"] | "";
+    const char* remoteId = cfg["remote_id"] | "";
+    if (!device[0]) return {false, "missing device"};
+    if (!remoteId[0]) return {false, "missing remote_id"};
+    auto actuator = std::make_unique<RemoteActuator>(*mqttTransport_, device, remoteId);
+    actuator->setLocalId(e->id.c_str());
+    actuator->setPrefix(cfg["prefix"] | "sensactctrl");
+    e->ptr = std::move(actuator);
   } else {
     return {false, "unknown actuator type"};
   }

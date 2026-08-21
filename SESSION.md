@@ -1488,3 +1488,21 @@ BrewControl: neues globales `std::unique_ptr<SensActCtrl::EspNowTransport>`, kon
 ### Nächster Schritt morgen
 
 Direkt mit **Schritt 1 (MQTT-Remote)** starten wie oben beschrieben — kleinster, sauberster Einstieg, keine offenen Fragen mehr.
+
+## 2026-08-21 — Schritt 1 (MQTT-Remote) fertig, teilweise HW-verifiziert
+
+**Library-Fix vorab nötig:** `RemoteActuator` hatte — anders als `RemoteSensor` — kein `setPrefix()`; Topics wurden fest im Konstruktor mit Default-Prefix gebaut. Der Plan sah für beide einen optionalen Prefix vor, also in SensActCtrl nachgezogen (`RemoteActuator.h/cpp`): Topics jetzt wie bei `RemoteSensor` erst in `begin()` gebaut, `setPrefix()` ergänzt. Neuer Test `test_actuator_custom_prefix_roundtrip` in `test_remote.cpp`. 190/190 native Tests grün.
+
+**DynamicItems (`BrewControl/firmware/src/DynamicItems.cpp`):** neuer Typ `"Remote"` in `addSensorNoBegin`/`addActuatorNoBegin`, exakt wie geplant — `device`/`remote_id` Pflicht, `prefix`/`channel_key` (nur Sensor) optional, Ablehnung `{false, "mqtt not available"}` ohne `mqttTransport_`. Kein neuer Tick-Pump nötig (bestätigt).
+
+**AddItemModal.tsx:** „Remote (SensActCtrl-Knoten)" in Sensor- und Aktor-Dropdown (eigene Optgroup), Felder Geräte-ID / Remote-ID / Kanal-Key (nur Sensor) / Topic-Prefix (alle optional außer Geräte-/Remote-ID). `pnpm typecheck` grün.
+
+**Zweiter Library-Bug, live gefunden:** `RemoteSensor::id()`/`RemoteActuator::id()` gaben die **Remote-ID** zurück (`sensorId_`/`actuatorId_`), nicht die lokale `id`, unter der `DynamicItems` das Item in der `Registry` eindeutig führt. Die `Registry` (und damit Snapshot, Dashboard, Controller-Referenzen) keyed aber ausschließlich über `id()`. Symptom im Live-Test: Sensor als `test_remote_sensor` angelegt, im Snapshot erschien er als `mash_temp` (die Remote-ID). Fix in SensActCtrl: `setLocalId()` auf beiden Klassen ergänzt (Default bleibt die Remote-ID, rückwärtskompatibel zu Standalone-Sketches), `DynamicItems.cpp` ruft `setLocalId(e->id.c_str())` nach dem Konstruieren. Zwei neue Tests (`test_sensor_local_id_overrides_registry_id`, `test_actuator_local_id_overrides_registry_id`). 192/192 native Tests grün.
+
+**Verifikation (final, nach dem id()-Fix):**
+- Firmware compile-smoke (`esp32dev` + `lilygo_t_display_s3_amoled`) grün.
+- SD-Karte des Testgeräts mountet zuverlässig (`"SD mounted"` im Boot-Log über zwei Neustarts hinweg bestätigt) — die anfängliche „SD nicht gemountet"-Vermutung war ein Irrtum, ausgelöst durch einen zu früh abgefragten Zustand kurz nach dem ersten Flash, kein echtes Problem.
+- Eingebauten MQTT-Broker aktiviert, Remote-Sensor **und** Remote-Aktor live über die echte Firmware-API angelegt (`POST /api/sensors` / `/api/actuators`, `type:"Remote"`) — beide erscheinen im Snapshot korrekt unter der selbst vergebenen lokalen `id` (nicht der Remote-ID), Sensor zeigt sauber `"ok":false` (kein Signal ohne Leaf), Aktor `"ok":true` mit Default-Zustand. Test-Items nach Verifikation wieder gelöscht.
+- **Weiterhin nicht verifiziert:** echter State-Empfang von einem tatsächlichen Leaf-Knoten (kein zweites Testgerät verfügbar). Bräuchte entweder ein zweites geflashtes Board (`08_remote_mqtt/publisher.ino`) oder manuelles Publizieren auf die erwarteten Topics zum Simulieren eines Leaf.
+
+**Nächster Schritt:** **Schritt 2 (Webhook-Remote)** wie oben skizziert. Bei Gelegenheit: echten Leaf-State-Empfang mit zweitem Board nachverifizieren.

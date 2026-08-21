@@ -21,7 +21,11 @@ class RemoteSensor : public Sensor {
   RemoteSensor(ITransport& transport, const char* deviceId, const char* sensorId,
                const char* channelKey = "");
 
-  const char* id() const override { return sensorId_.c_str(); }
+  // Defaults to sensorId (the remote's own id) so standalone/example usage —
+  // where the local proxy is naturally named after the remote sensor — needs
+  // no extra call. Consumers that assign their own local id distinct from
+  // the remote's (e.g. BrewControl's DynamicItems) override it via setLocalId().
+  const char* id() const override { return localId_.c_str(); }
   size_t  channelCount()      const override { return 1; }
   Channel channel(size_t)     const override { return {"", meta_, last_}; }
 
@@ -31,6 +35,10 @@ class RemoteSensor : public Sensor {
   // Must be called before begin(). Overrides the default "sensactctrl" root.
   void setPrefix(const char* p) { prefix_ = p; }
 
+  // Must be called before registering with a Registry — id() is read at
+  // add()/find() time. Overrides the default (sensorId).
+  void setLocalId(const char* id) { localId_ = id; }
+
  private:
   void onState(const char* payload, size_t length);
   void onMeta(const char* payload, size_t length);
@@ -38,6 +46,7 @@ class RemoteSensor : public Sensor {
   ITransport* transport_;
   std::string deviceId_;
   std::string sensorId_;
+  std::string localId_;
   std::string stateTopic_;
   std::string metaTopic_;
   std::string unitStorage_;
