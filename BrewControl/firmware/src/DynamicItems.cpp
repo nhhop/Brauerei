@@ -1,10 +1,33 @@
 #include "DynamicItems.h"
 
 #include "SdLock.h"
+#include "WebhookService.h"
 
 using namespace SensActCtrl;
 
 namespace BrewControl {
+
+// ── Remote transport resolution ──────────────────────────────────────────
+
+DynamicItems::Result DynamicItems::resolveRemoteTransport(const JsonObject& cfg,
+                                                           ITransport** out) {
+  const char* transportType = cfg["transport"] | "mqtt";
+  if (strcmp(transportType, "webhook") == 0) {
+    if (!webhookService_) return {false, "webhook not available"};
+    int listenPort = cfg["listen_port"] | -1;
+    if (listenPort < 1 || listenPort > 65535) return {false, "missing/invalid listen_port"};
+    const char* peerUrl = cfg["peer_url"] | "";
+    if (!peerUrl[0]) return {false, "missing peer_url"};
+    *out = &webhookService_->getOrCreate(static_cast<uint16_t>(listenPort), peerUrl);
+    return {true};
+  }
+  if (strcmp(transportType, "mqtt") == 0) {
+    if (!mqttTransport_) return {false, "mqtt not available"};
+    *out = mqttTransport_;
+    return {true};
+  }
+  return {false, "unknown remote transport"};
+}
 
 // ── Sensor ────────────────────────────────────────────────────────────────
 
@@ -116,13 +139,15 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
         cfg["unit"] | "", cfg["value_min"] | 0.0f, cfg["value_max"] | 100.0f,
         cfg["resolution"] | 0.1f, cfg["json_field"] | "");
   } else if (strcmp(type, "Remote") == 0) {
-    if (!mqttTransport_) return {false, "mqtt not available"};
     const char* device = cfg["device"] | "";
     const char* remoteId = cfg["remote_id"] | "";
     if (!device[0]) return {false, "missing device"};
     if (!remoteId[0]) return {false, "missing remote_id"};
+    ITransport* transport = nullptr;
+    Result tr = resolveRemoteTransport(cfg, &transport);
+    if (!tr.ok) return tr;
     auto sensor = std::make_unique<RemoteSensor>(
-        *mqttTransport_, device, remoteId, cfg["channel_key"] | "");
+        *transport, device, remoteId, cfg["channel_key"] | "");
     sensor->setLocalId(e->id.c_str());
     sensor->setPrefix(cfg["prefix"] | "sensactctrl");
     e->ptr = std::move(sensor);
@@ -232,12 +257,14 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
           cfg["on_payload"] | "ON", cfg["off_payload"] | "OFF", retained);
     }
   } else if (strcmp(type, "Remote") == 0) {
-    if (!mqttTransport_) return {false, "mqtt not available"};
     const char* device = cfg["device"] | "";
     const char* remoteId = cfg["remote_id"] | "";
     if (!device[0]) return {false, "missing device"};
     if (!remoteId[0]) return {false, "missing remote_id"};
-    auto actuator = std::make_unique<RemoteActuator>(*mqttTransport_, device, remoteId);
+    ITransport* transport = nullptr;
+    Result tr = resolveRemoteTransport(cfg, &transport);
+    if (!tr.ok) return tr;
+    auto actuator = std::make_unique<RemoteActuator>(*transport, device, remoteId);
     actuator->setLocalId(e->id.c_str());
     actuator->setPrefix(cfg["prefix"] | "sensactctrl");
     e->ptr = std::move(actuator);

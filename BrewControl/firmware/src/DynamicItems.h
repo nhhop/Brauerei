@@ -15,6 +15,8 @@
 
 namespace BrewControl {
 
+class WebhookService;
+
 // Owns heap-allocated sensors/actuators/controllers created via the web API.
 // All string IDs are stored in stable heap memory (inside unique_ptr<Entry>)
 // so that id() pointers remain valid even if the entry vectors reallocate.
@@ -80,6 +82,13 @@ class DynamicItems {
   // items.
   void setMqttTransport(SensActCtrl::ITransport* t) { mqttTransport_ = t; }
 
+  // Remote items with transport:"webhook" use this to get (or create) a
+  // shared WebhookTransport for their (listen_port, peer_url) pair. Unlike
+  // MQTT, always available — no settings toggle, no nullability to guard
+  // against. Must be set before loadFromSD()/addSensor()/addActuator() are
+  // called for such items.
+  void setWebhookService(WebhookService* svc) { webhookService_ = svc; }
+
  private:
   struct SensorEntry {
     std::string id;
@@ -129,6 +138,7 @@ class DynamicItems {
   std::function<void(SensActCtrl::Controller&)> onControllerRemoving_;
 
   SensActCtrl::ITransport* mqttTransport_ = nullptr;
+  WebhookService* webhookService_ = nullptr;
 
   // Internal variants that do NOT call begin() — used by loadFromSD.
   Result addSensorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);
@@ -137,6 +147,13 @@ class DynamicItems {
 
   OneWire& getOrCreateBus(int pin);
   static bool parseHexAddress(const char* hex, uint8_t out[8]);
+
+  // Resolves the ITransport for a "Remote" sensor/actuator from
+  // cfg["transport"] ("mqtt", default, or "webhook") — shared by both
+  // addSensorNoBegin and addActuatorNoBegin. On success sets *out and
+  // returns {true}; on failure *out is untouched and the Result carries
+  // the reason (missing transport / invalid config).
+  Result resolveRemoteTransport(const JsonObject& cfg, SensActCtrl::ITransport** out);
 };
 
 }  // namespace BrewControl

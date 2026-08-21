@@ -23,6 +23,7 @@
 #include "ProgramRunner.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
+#include "WebhookService.h"
 #include "WiFiSetupPortal.h"
 
 using namespace SensActCtrl;
@@ -47,6 +48,7 @@ BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
+BrewControl::WebhookService webhookService;
 WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService);
 
 // Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
@@ -172,6 +174,7 @@ void setup() {
                                   // dynamicItems.loadFromSD() constructs any
                                   // actuator that publishes over MQTT itself
   dynamicItems.setMqttTransport(mqttService.transport());  // nullable
+  dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
 
   if (sdOk) {
     dynamicItems.loadFromSD(SD, registry);
@@ -214,6 +217,7 @@ void loop() {
   webUI.tick();
   firmwareUpdater.tick();
   mqttService.tick();
+  webhookService.tick();
   maintainWiFi();
   delay(5);
 }

@@ -19,6 +19,7 @@ type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
 type MqttKind = 'Binary' | 'Continuous';
+type RemoteTransport = 'mqtt' | 'webhook';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -80,6 +81,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [remoteId, setRemoteId] = useState('');
   const [remotePrefix, setRemotePrefix] = useState('');
   const [remoteChannelKey, setRemoteChannelKey] = useState('');
+  const [remoteTransport, setRemoteTransport] = useState<RemoteTransport>('mqtt');
+  const [remoteListenPort, setRemoteListenPort] = useState('8080');
+  const [remotePeerUrl, setRemotePeerUrl] = useState('');
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -217,6 +221,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setRemoteId(String(editConfig.remote_id ?? ''));
           setRemotePrefix(String(editConfig.prefix ?? ''));
           setRemoteChannelKey(String(editConfig.channel_key ?? ''));
+          setRemoteTransport((editConfig.transport ?? 'mqtt') as RemoteTransport);
+          setRemoteListenPort(String(editConfig.listen_port ?? '8080'));
+          setRemotePeerUrl(String(editConfig.peer_url ?? ''));
         }
       } else if (editRole === 'actuator') {
         const t = String(editConfig.type ?? 'DigitalOutput') as ActuatorType;
@@ -253,6 +260,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setRemoteDevice(String(editConfig.device ?? ''));
           setRemoteId(String(editConfig.remote_id ?? ''));
           setRemotePrefix(String(editConfig.prefix ?? ''));
+          setRemoteTransport((editConfig.transport ?? 'mqtt') as RemoteTransport);
+          setRemoteListenPort(String(editConfig.listen_port ?? '8080'));
+          setRemotePeerUrl(String(editConfig.peer_url ?? ''));
         }
         if (t === 'DigitalOutput' || t === 'AnalogOutput' || t === 'MqttGeneric') {
           const periodSec = Number(editConfig.interval_period_sec ?? 0);
@@ -322,6 +332,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
       setMqttJsonField('');
       setRemoteDevice(''); setRemoteId(''); setRemotePrefix(''); setRemoteChannelKey('');
+      setRemoteTransport('mqtt'); setRemoteListenPort('8080'); setRemotePeerUrl('');
       setActuatorType('DigitalOutput');
       setMode('TimeProportional');
       setInvertOut(false);
@@ -440,9 +451,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           const rid = remoteId.trim();
           if (!device) throw new Error('Geräte-ID erforderlich');
           if (!rid) throw new Error('Remote-ID erforderlich');
-          cfg = { type: 'Remote', id: trimId, device, remote_id: rid };
+          cfg = { type: 'Remote', id: trimId, device, remote_id: rid, transport: remoteTransport };
           if (remoteChannelKey.trim()) cfg.channel_key = remoteChannelKey.trim();
           if (remotePrefix.trim()) cfg.prefix = remotePrefix.trim();
+          if (remoteTransport === 'webhook') {
+            const port = parseInt(remoteListenPort, 10);
+            if (isNaN(port) || port < 1 || port > 65535) throw new Error('Ungültiger Port');
+            const peerUrl = remotePeerUrl.trim();
+            if (!peerUrl) throw new Error('Peer-URL erforderlich');
+            cfg.listen_port = port;
+            cfg.peer_url = peerUrl;
+          }
         } else { // HCSR04
           const trig = parseInt(trigPin, 10);
           const echo = parseInt(echoPin, 10);
@@ -504,8 +523,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           const rid = remoteId.trim();
           if (!device) throw new Error('Geräte-ID erforderlich');
           if (!rid) throw new Error('Remote-ID erforderlich');
-          cfg = { type: 'Remote', id: trimId, device, remote_id: rid };
+          cfg = { type: 'Remote', id: trimId, device, remote_id: rid, transport: remoteTransport };
           if (remotePrefix.trim()) cfg.prefix = remotePrefix.trim();
+          if (remoteTransport === 'webhook') {
+            const port = parseInt(remoteListenPort, 10);
+            if (isNaN(port) || port < 1 || port > 65535) throw new Error('Ungültiger Port');
+            const peerUrl = remotePeerUrl.trim();
+            if (!peerUrl) throw new Error('Peer-URL erforderlich');
+            cfg.listen_port = port;
+            cfg.peer_url = peerUrl;
+          }
         } else {
           const p = parseInt(pin, 10);
           if (isNaN(p)) throw new Error('invalid pin');
@@ -986,6 +1013,33 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   onInput={(e) => setRemotePrefix((e.target as HTMLInputElement).value)}
                   placeholder="sensactctrl" class={inp} />
               </div>
+              <div>
+                <label class={lbl}>Transport</label>
+                <div class="flex gap-2">
+                  {(['mqtt', 'webhook'] as RemoteTransport[]).map((t) => (
+                    <button key={t} type="button" onClick={() => setRemoteTransport(t)}
+                      class={segBtn(remoteTransport === t)}>
+                      {t === 'mqtt' ? 'MQTT' : 'Webhook'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {remoteTransport === 'webhook' && (
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class={lbl}>Lokaler Port</label>
+                    <input type="number" value={remoteListenPort}
+                      onInput={(e) => setRemoteListenPort((e.target as HTMLInputElement).value)}
+                      placeholder="8080" class={inp} required />
+                  </div>
+                  <div>
+                    <label class={lbl}>Peer-URL (Leaf-Knoten)</label>
+                    <input type="text" value={remotePeerUrl}
+                      onInput={(e) => setRemotePeerUrl((e.target as HTMLInputElement).value)}
+                      placeholder="http://192.168.1.50:8080" class={inp} required />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1239,6 +1293,33 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   onInput={(e) => setRemotePrefix((e.target as HTMLInputElement).value)}
                   placeholder="sensactctrl" class={inp} />
               </div>
+              <div>
+                <label class={lbl}>Transport</label>
+                <div class="flex gap-2">
+                  {(['mqtt', 'webhook'] as RemoteTransport[]).map((t) => (
+                    <button key={t} type="button" onClick={() => setRemoteTransport(t)}
+                      class={segBtn(remoteTransport === t)}>
+                      {t === 'mqtt' ? 'MQTT' : 'Webhook'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {remoteTransport === 'webhook' && (
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class={lbl}>Lokaler Port</label>
+                    <input type="number" value={remoteListenPort}
+                      onInput={(e) => setRemoteListenPort((e.target as HTMLInputElement).value)}
+                      placeholder="8080" class={inp} required />
+                  </div>
+                  <div>
+                    <label class={lbl}>Peer-URL (Leaf-Knoten)</label>
+                    <input type="text" value={remotePeerUrl}
+                      onInput={(e) => setRemotePeerUrl((e.target as HTMLInputElement).value)}
+                      placeholder="http://192.168.1.50:8080" class={inp} required />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

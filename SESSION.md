@@ -1506,3 +1506,18 @@ Direkt mit **Schritt 1 (MQTT-Remote)** starten wie oben beschrieben — kleinste
 - **Weiterhin nicht verifiziert:** echter State-Empfang von einem tatsächlichen Leaf-Knoten (kein zweites Testgerät verfügbar). Bräuchte entweder ein zweites geflashtes Board (`08_remote_mqtt/publisher.ino`) oder manuelles Publizieren auf die erwarteten Topics zum Simulieren eines Leaf.
 
 **Nächster Schritt:** **Schritt 2 (Webhook-Remote)** wie oben skizziert. Bei Gelegenheit: echten Leaf-State-Empfang mit zweitem Board nachverifizieren.
+
+## 2026-08-21 — Schritt 2 (Webhook-Remote) fertig, HW-verifiziert
+
+Wie geplant umgesetzt, keine Überraschungen:
+
+- **`WebhookService.h/.cpp`** neu (`BrewControl/firmware/src/`) — schlanker als `MqttService`, kein Settings-Bezug: `getOrCreate(port, peerUrl) → ITransport&` dedupliziert nach `(listenPort, peerBaseUrl)`, `tick()` pumpt alle gehaltenen `WebhookTransport`-Instanzen (nötig, da `WebhookTransport` einen synchronen `WebServer` nutzt, kein Free-Ride wie bei MQTT/ESPAsyncWebServer).
+- **`DynamicItems`**: `"Remote"`-Typ akzeptiert jetzt `transport: "mqtt"|"webhook"` (Default `mqtt`, bestehende Schritt-1-Items ohne das Feld funktionieren unverändert weiter). Neue private Hilfsmethode `resolveRemoteTransport()` löst pro Sensor/Aktor auf, teilt sich Sensor- und Aktor-Zweig. Webhook-Felder: `listen_port` (1–65535, Pflicht), `peer_url` (Pflicht).
+- **`main.cpp`**: `WebhookService` konstruiert, `dynamicItems.setWebhookService(&webhookService)` (immer, kein Enable-Toggle — passiver HTTP-Server, keine nennenswerten Kosten), `webhookService.tick()` in `loop()`.
+- **`AddItemModal.tsx`**: Transport-Umschalter (MQTT/Webhook) im Remote-Block für Sensor **und** Aktor, bei Webhook zusätzlich Lokaler-Port/Peer-URL-Felder.
+
+**Verifikation:** Firmware compile-smoke grün, `pnpm typecheck` grün. Live auf dem LilyGo-S3-Testgerät: Remote-Sensor **und** -Aktor mit `transport:"webhook"` angelegt (204), lokaler HTTP-Server auf dem gewählten Port bestätigt erreichbar (`GET` liefert 404 „no retained" statt Timeout — Server läuft), beide erscheinen im Snapshot korrekt unter der lokalen ID. Dedup bestätigt (Sensor + Aktor teilen sich denselben `(8080, peer_url)`-Transport, keine Bind-Kollision). Validierungsfehler geprüft: fehlender `listen_port` → 400, unbekannter `transport`-Wert → 400. UI im Browser bestätigt (Feldwechsel MQTT↔Webhook). Test-Items wieder gelöscht.
+
+**Nicht verifiziert (wie bei MQTT):** echter State-Empfang von einem tatsächlichen Leaf-Knoten — kein zweites Testgerät verfügbar, macht der User später selbst.
+
+**Nächster Schritt:** **Schritt 3 (ESP-NOW-Remote mit Fix)** wie oben skizziert.
