@@ -664,5 +664,23 @@ Neustart weiterhin vorhanden (frischer Timestamp bestätigt echten Reboot).
 Test-Sensor wieder gelöscht. LilyGo S3 (`brewcontrol.local`, SD-Pfad
 unverändert) parallel als Regressions-Check bestätigt — weiterhin erreichbar.
 
-**Noch offen:** dieselbe Hardware-Verifikation für `esp32dev` (kein Board bei
-dieser Session zur Hand).
+**Hardware-Verifikation esp32dev (2026-08-28, gleiche Session):** Dieser
+Dev-Kit-Klon geht nicht automatisch in den Download-Modus (`esptool`:
+„Wrong boot mode detected (0x13)") — braucht für **jeden** Flash-Vorgang
+manuell BOOT gedrückt halten + EN/RST antippen, dann BOOT weiter halten bis
+`esptool` verbindet (klassischer Klon ohne zuverlässige Auto-Reset-Schaltung).
+Danach `uploadfs` + `upload` erfolgreich. Board hatte keine gespeicherten
+WLAN-Zugangsdaten (erster echter Boot) — Setup-Portal-AP „BrewControl-Setup"
+kam hoch, User hat manuell verbunden, danach unter `brewcontrol-esp32dev.local`
+erreichbar. Boot-Log **direkt** (nicht nur funktional erschlossen) bestätigt:
+„LittleFS mounted". Gleicher Verifikations-Rundlauf wie beim LOLIN S2 Mini:
+`GET /` mit `Content-Encoding: gzip`, `/api/files?path=/` zeigt `www` auf
+LittleFS, dynamischer Sensor übersteht Reboot (via `/api/network`-Hostname-
+Resubmit ausgelöst). Test-Sensor gelöscht. LOLIN S2 Mini + LilyGo S3 parallel
+als Regression bestätigt — beide weiterhin erreichbar.
+
+**Damit sind alle drei Boards (esp32dev, LOLIN S2 Mini via LittleFS; LilyGo S3
+via SD) hardware-verifiziert.** Harmloser Nebenbefund im esp32dev-Boot-Log:
+eine Core-Dump-Checksum-Warnung von einer alten Core-Dump-Partition (Offset
+hat sich mit der neuen Partitionstabelle verschoben) — nicht fatal, ESP-IDF
+ignoriert einen ungültigen Core-Dump einfach.
