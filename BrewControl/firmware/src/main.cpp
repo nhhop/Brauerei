@@ -10,7 +10,11 @@
 #include <Arduino.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
+#ifdef BREWCTL_USE_LITTLEFS
+#include <LittleFS.h>
+#else
 #include <SD.h>
+#endif
 #include <SPI.h>
 #include <SensActCtrl.h>
 #include <WiFi.h>
@@ -41,16 +45,25 @@ constexpr uint32_t kResetHoldMs = 5000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 30000;
 constexpr char kHostname[] = "brewcontrol";
 
+// FS-agnostic reference used everywhere below — WebUI and every *Store class
+// already take generic fs::FS&, so only this alias (and the mount call in
+// setup()) differ between boards with an SD reader and boards without one.
+#ifdef BREWCTL_USE_LITTLEFS
+fs::FS& deviceFs = LittleFS;
+#else
+fs::FS& deviceFs = SD;
+#endif
+
 Registry registry;
 BrewControl::DynamicItems dynamicItems;
 BrewControl::DashboardStore dashboardStore;
 BrewControl::SettingsStore settingsStore;
-BrewControl::FirmwareUpdater firmwareUpdater(SD, settingsStore);
+BrewControl::FirmwareUpdater firmwareUpdater(deviceFs, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
-WebUI webUI(registry, SD, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService);
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -117,6 +130,24 @@ void setup() {
     prefs.end();
   }
 
+#ifdef BREWCTL_USE_LITTLEFS
+  // Internal-flash boards (no SD slot): mount the LittleFS data partition —
+  // holds /www (UI assets, written once via `pio run -t uploadfs`) and all
+  // persisted config/logs. formatOnFail=true is a safety net for a
+  // corrupt/never-formatted partition; a normal boot just mounts the image
+  // uploadfs already wrote.
+  const bool fsOk = LittleFS.begin(true);
+  if (!fsOk) {
+    Serial.println(F("LittleFS mount FAILED — UI assets unavailable, API still works"));
+  } else {
+    Serial.println(F("LittleFS mounted"));
+    // Recovery path only works for images that fit the 256 KB data
+    // partition — effectively unusable for real firmware.bin sizes on
+    // these boards; network OTA (the normal path) is unaffected, it
+    // doesn't touch the filesystem.
+    firmwareUpdater.flashFromSdImage();
+  }
+#else
   // Mount SD early — before WiFi — so a firmware image placed on the card can be
   // flashed as a recovery path even without a network. On boards where the SD
   // slot uses non-default SPI pins (e.g. T-Display-S3 AMOLED on GPIO 36/35/37),
@@ -124,16 +155,17 @@ void setup() {
 #ifdef BREWCTL_SD_SCK
   static SPIClass sdSpi(HSPI);
   sdSpi.begin(BREWCTL_SD_SCK, BREWCTL_SD_MISO, BREWCTL_SD_MOSI, kSdCsPin);
-  const bool sdOk = SD.begin(kSdCsPin, sdSpi);
+  const bool fsOk = SD.begin(kSdCsPin, sdSpi);
 #else
-  const bool sdOk = SD.begin(kSdCsPin);
+  const bool fsOk = SD.begin(kSdCsPin);
 #endif
-  if (!sdOk) {
+  if (!fsOk) {
     Serial.println(F("SD mount FAILED — UI assets unavailable, API still works"));
   } else {
     Serial.println(F("SD mounted"));
     firmwareUpdater.flashFromSdImage();  // flashes /firmware.bin then reboots; returns if none
   }
+#endif
 
   Preferences prefs;
   prefs.begin("brewctrl", true);
@@ -176,9 +208,9 @@ void setup() {
                ARDUINO_EVENT_WIFI_STA_GOT_IP);
   startMDNS();
 
-  if (sdOk) {
-    settingsStore.loadFromSD(SD);  // ahead of dynamicItems: mqttService.begin()
-                                    // below needs it before actuators load
+  if (fsOk) {
+    settingsStore.loadFromSD(deviceFs);  // ahead of dynamicItems: mqttService.begin()
+                                          // below needs it before actuators load
   }
 
   mqttService.begin(hostname_);  // creates the transport (if enabled) before
@@ -188,11 +220,11 @@ void setup() {
   dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
   dynamicItems.setEspNowTransport(espNowTransport.get());  // always available, no toggle
 
-  if (sdOk) {
-    dynamicItems.loadFromSD(SD, registry);
-    dashboardStore.loadFromSD(SD);
-    logStore.loadFromSD(SD);
-    programRunner.loadFromSD(SD);
+  if (fsOk) {
+    dynamicItems.loadFromSD(deviceFs, registry);
+    dashboardStore.loadFromSD(deviceFs);
+    logStore.loadFromSD(deviceFs);
+    programRunner.loadFromSD(deviceFs);
   }
 
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),

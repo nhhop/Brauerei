@@ -596,3 +596,73 @@ Upload-Versuch unverändert. Neues Web-UI-Bundle (`pnpm build:sd` + `tar` +
 durchgeklickt — „Dateiverwaltung" erscheint in den Einstellungen, `/www`-
 Navigation zeigt die deaktivierten Controls live, während die Seite sich
 selbst aus `/www` bedient (der eigentliche Self-Brick-Testfall).
+
+## LittleFS-Unterstützung für esp32dev/lolin_s2_mini 2026-08-28
+
+User hat zwei zusätzliche Testboards (esp32dev, lolin_s2_mini) ohne SD-
+Kartenleser. Ziel: UI + Persistenz komplett auf internem Flash (LittleFS)
+statt SD, ohne den SD-Pfad für den LilyGo S3 (hat onboard-SD-Slot) anzufassen.
+Vorab per Explore-Agenten verifiziert: `WebUI` und alle Store-Klassen
+(`DynamicItems`, `SettingsStore`, `LogStore`, `DashboardStore`,
+`ProgramRunner`, `FirmwareUpdater`) nehmen schon generisches `fs::FS&` — nur
+`main.cpp`s Mount-Aufruf ist SD-spezifisch. `ESPAsyncWebServer`s
+`serveStatic()`/`send(FS&, path)` selbst im Quellcode gegengelesen
+(`.pio/libdeps/.../WebHandlers.cpp:143-171`, `AsyncWebServerRequest.cpp:24-58`):
+beide fallen transparent auf `<pfad>.gz` zurück, wenn die unkomprimierte Datei
+fehlt — nur die gzippten Assets müssen aufs Board, nicht `dist/` komplett
+(~77 KB statt ~320 KB, empirisch bestätigt: `buildfs` mit nur-gzip baut sauber
+auf die exakte 256-KB-Partitionsgröße, volle `dist/` würde sie sprengen).
+
+**Neue Partitionstabelle** ([partitions_4mb_littlefs.csv](firmware/partitions_4mb_littlefs.csv)):
+abgeleitet von `min_spiffs.csv`, je 64 KB von beiden OTA-App-Slots (1,875 MB →
+1,8125 MB) in die Datenpartition verschoben (128 KB → 256 KB). Bei aktueller
+Flash-Nutzung (1.382.373 B nach den MQTT/Webhook/ESP-NOW-Änderungen dieser
+Session) ergibt das ~72,7 % App-Slot-Belegung, ~27 % Puffer.
+
+**Firmware** ([platformio.ini](firmware/platformio.ini), [main.cpp](firmware/src/main.cpp)):
+`esp32dev`/`lolin_s2_mini` bekommen `-DBREWCTL_USE_LITTLEFS=1` +
+`board_build.filesystem = littlefs` + die neue Partitionstabelle;
+`lilygo_t_display_s3_amoled` unverändert. `main.cpp`: `#ifdef
+BREWCTL_USE_LITTLEFS`-Zweig mountet `LittleFS.begin(true)` statt `SD.begin(...)`,
+neuer `fs::FS& deviceFs`-Alias ersetzt alle direkten `SD`-Referenzen (reiner
+Parameter-Swap, da alle Ziel-Signaturen schon `fs::FS&` waren), `sdOk` →
+`fsOk` umbenannt (gilt jetzt für beide Dateisysteme). `SdLock` bewusst
+unverändert um alle FS-Zugriffe behalten (generischer Mutex, kein SD-Detail).
+
+**Deploy** ([firmware/data/www/](firmware/data/www/), gitignored Build-Artefakt
+wie `.pio`): `pnpm build:sd` → nur `*.gz`-Dateien nach `firmware/data/www`
+kopieren (Struktur erhalten) → `pio run -t uploadfs` pro Board flasht das
+LittleFS-Image per USB. Ersetzt den SD-Card-Copy-Schritt für diese zwei Boards;
+`webui.tar`-Netzwerk-Upload-Pfad bleibt unverändert nutzbar (schon FS-agnostisch).
+
+**Bekannte Einschränkung, bewusst nicht gelöst:** `FirmwareUpdater::flashFromSdImage()`
+(Offline-Boot-Flash-Recovery via `firmware.bin`) passt nicht mehr auf 256 KB —
+Netzwerk-OTA (Normalfall) ist davon unberührt. `LogStore` hat keine Retention/
+Rotation — auf 256 KB sollte auf diesen beiden Boards nicht unbegrenzt geloggt
+werden.
+
+**Verifikation:** `pio run -e esp32dev` (72,8 % Flash, passt exakt zur Planung),
+`pio run -e lolin_s2_mini` (69,5 %), `pio run -e lilygo_t_display_s3_amoled`
+(20,0 %, Regressions-Guard — unverändert) alle grün. `pio run -e esp32dev
+-t buildfs` baut das LittleFS-Image (262.144 B = exakt Partitionsgröße) aus
+`data/www` (76.439 B, nur gzip) erfolgreich; volle `dist/` (328.485 B, roh+gzip)
+hätte nicht gepasst (rechnerisch bestätigt, nicht extra gebaut).
+
+**Hardware-Verifikation LOLIN S2 Mini (2026-08-28, Folge-Session):** `uploadfs` +
+`upload` per USB (COM-Port wechselt bei ESP32-S2 nativem USB zwischen Firmware-
+und Download-Modus — `esptool` meldet nach dem Schreiben einen kosmetischen
+Fehler „can not exit download mode over USB", Daten waren aber jeweils
+„Hash of data verified"; nach manuellem Reset lief die Firmware normal).
+Board unter `brewcontrol-lolin.local` erreichbar (bereits aus früherer Session
+mit WLAN-Zugangsdaten versorgt). Verifiziert: `GET /` liefert die UI mit
+`Content-Encoding: gzip` (bestätigt den `.gz`-only-Serve-Pfad live, nicht nur
+aus dem Quellcode), `GET /api/files?path=/` zeigt `www`+`config` auf der
+gemounteten LittleFS-Partition. Persistenz-Rundlauf: dynamischen Sensor
+angelegt, Reboot über `POST /api/network` (gleicher Hostname erneut gesetzt —
+löst Reboot aus ohne WLAN-Zugangsdaten zu ändern) ausgelöst, Sensor nach
+Neustart weiterhin vorhanden (frischer Timestamp bestätigt echten Reboot).
+Test-Sensor wieder gelöscht. LilyGo S3 (`brewcontrol.local`, SD-Pfad
+unverändert) parallel als Regressions-Check bestätigt — weiterhin erreichbar.
+
+**Noch offen:** dieselbe Hardware-Verifikation für `esp32dev` (kein Board bei
+dieser Session zur Hand).

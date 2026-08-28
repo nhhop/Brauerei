@@ -42,7 +42,9 @@ Browser einen vollständigen Snapshot.
 
 **Hardware:**
 - ESP32 Dev-Board
-- SD-Karten-Slot (SPI) — Default CS auf GPIO 5
+- SD-Karten-Slot (SPI) — nur für `lilygo_t_display_s3_amoled` (onboard-Slot). `esp32dev`
+  und `lolin_s2_mini` brauchen **keine** SD-Karte mehr — UI und Config liegen bei denen
+  auf einer internen LittleFS-Partition, siehe „Web-UI bauen + auf LittleFS deployen" unten.
 - Optional: DS18B20 (1-Wire-Temp), SSR auf GPIO 16 für das Demo-Setup
 - BOOT-Button auf GPIO 0 (auf allen Standard-Dev-Boards vorhanden)
 
@@ -76,20 +78,17 @@ gesetzt; `main.cpp` hat `#ifndef`-Defaults für `esp32dev`.
 |---------|-------------------------|---------------------|
 | GPIO 0  | BOOT/Reset-Trigger      | `kBootButtonPin`    |
 | GPIO 4  | DS18B20 (1-Wire)        | `kOneWirePin`       |
-| GPIO 5  | SD-Karte CS  ⚠           | `kSdCsPin`          |
 | GPIO 16 | SSR (TPO-Modus)         | `kSsrPin`           |
 
-⚠ **GPIO 5 ist Strapping-Pin (MTDI):** Wenn das SD-Modul CS/MISO beim
-Boot low zieht, bootet der ESP32 in den falschen Modus. Lösung:
-10 kΩ-Pull-up auf CS, oder `kSdCsPin = 15` (bzw. 13) in `main.cpp`
-ändern.
+Kein SD-Pin mehr im Standard-Build (`BREWCTL_USE_LITTLEFS=1`, s.u.) — `kSdCsPin`
+(GPIO 5, ⚠ Strapping-Pin/MTDI) existiert im Code weiter, wird aber nur noch im
+SD-Zweig verwendet, falls jemand `platformio.ini` lokal auf SD zurückstellt.
 
 **LOLIN S2 Mini (`lolin_s2_mini`)**
 
-Kein onboard-SD-Slot — externer SPI-Breakout. Gleiche Pin-Defaults wie
-`esp32dev` sofern nicht über Build-Flags überschrieben. Flash über DFU:
-ersten Flash BOOT + RST halten, danach enumeriert die Firmware als neuer
-COM-Port (TinyUSB-CDC).
+Kein onboard-SD-Slot — läuft standardmäßig auf LittleFS (internes Flash), kein externer
+SPI-Breakout nötig. Flash über DFU: ersten Flash BOOT + RST halten, danach enumeriert
+die Firmware als neuer COM-Port (TinyUSB-CDC).
 
 **LilyGo T-Display-S3-AMOLED-1.43 (`lilygo_t_display_s3_amoled`)**
 
@@ -109,12 +108,12 @@ Bereich meiden — sonst hängt `SD.begin()` und der Task-Watchdog feuert.
 1.75, 1.91, Plus, Touch) — vor einer neuen Variante Silkscreen am Board
 ablesen, nicht Web-Snippets vertrauen.
 
-## Web-UI bauen + auf SD deployen
+## Web-UI bauen + auf SD deployen (`lilygo_t_display_s3_amoled`)
 
 ```powershell
 cd web
 pnpm install                      # einmalig
-pnpm build                        # → web/dist/  (Vite produziert ~11 KB gzip total)
+pnpm build                        # → web/dist/  (Vite produziert ~77 KB gzip total)
 
 # Pre-gzip (optional) — AsyncWebServer serviert .gz transparent bei
 # Accept-Encoding: gzip; spart spürbar SPI-SD-Reads
@@ -127,6 +126,37 @@ Copy-Item -Recurse -Force .\dist\* D:\
 
 SD-Karte rausziehen, in den ESP32-Slot stecken — der Static-Serve-Handler
 liefert ab sofort `index.html` + Assets unter `/`.
+
+## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
+
+Diese beiden Boards haben keinen SD-Slot — die UI landet stattdessen per USB auf einer
+internen LittleFS-Partition (`pio run -t uploadfs`, s. „Partition-Layout" unten). Nur die
+**gzippten** Assets werden geshippt (`ESPAsyncWebServer` serviert `.gz` transparent, auch
+ohne die unkomprimierten Originale) — die volle `dist/` (roh+gzip, ~320 KB) passt nicht in
+die 256-KB-Partition, nur-gzip (~77 KB) passt komfortabel:
+
+```powershell
+cd web
+pnpm install                      # einmalig
+pnpm build:sd                     # vite build + gzip (scripts/gzip-dist.js)
+
+# Nur die .gz-Dateien nach firmware/data/www kopieren (Struktur erhalten)
+Remove-Item -Recurse -Force ..\firmware\data\www -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -File .\dist -Filter *.gz | ForEach-Object {
+    $rel = $_.FullName.Substring((Resolve-Path .\dist).Path.Length + 1)
+    $dest = Join-Path (Resolve-Path ..\firmware).Path "data\www\$rel"
+    New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
+    Copy-Item $_.FullName $dest
+}
+
+cd ..\firmware
+pio run -e esp32dev -t buildfs        # optional: Größen-Check ohne Hardware
+pio run -e esp32dev -t uploadfs       # LittleFS-Image per USB flashen
+pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
+```
+
+`data/` ist projektweit geteilt zwischen allen Envs — **nicht** gegen
+`lilygo_t_display_s3_amoled` ausführen (kein `littlefs`-Filesystem dort).
 
 ## Erstboot — WiFi-Setup-Portal
 
@@ -243,7 +273,9 @@ Vier Wege:
   **SD-Root** kopieren → beim nächsten Boot wird sie geflasht, danach gelöscht und
   das Gerät rebootet. Funktioniert vor der WiFi-Verbindung, also auch ohne Netz /
   bei fehlenden WiFi-Creds. Keine Versions-/Varianten-Prüfung — passende `.bin` für
-  das Board selbst wählen.
+  das Board selbst wählen. **Nur `lilygo_t_display_s3_amoled` (SD):** auf `esp32dev`/
+  `lolin_s2_mini` passt eine reguläre `firmware.bin` (>1,3 MB) nicht auf die 256-KB-
+  LittleFS-Partition — dort bleibt nur Netzwerk-OTA oder USB als Recovery-Weg.
 - **USB (Brick-Rettung):** Bootet das Gerät nach einem fehlerhaften Flash nicht mehr,
   ist die WebUI weg → per Kabel `pio run -e <env> -t upload` neu flashen.
 
@@ -287,13 +319,21 @@ mit dem `min_spiffs`-Layout per USB laufen (s. Partition-Layout unten).
 Varianten und hängt `firmware-<env>.bin` + `webui.tar` ans Release. Stable = normales
 Release, Preview = als „Pre-release" markieren.
 
-### Partition-Layout (min_spiffs)
+### Partition-Layout (partitions_4mb_littlefs)
 OTA braucht zwei App-Slots. Der TLS-Pull-Pfad füllt den Default-OTA-App-Slot der
 4-MB-Boards (esp32dev, lolin_s2_mini) auf >90 %; deshalb verwenden diese Envs
-`board_build.partitions = min_spiffs.csv` (~1,9 MB App-Slots; SPIFFS ungenutzt, da
-Assets auf SD liegen). **Wichtig:** Der Wechsel auf dieses Layout muss **einmalig per
-USB** geflasht werden — OTA kann die Partitionstabelle nicht ändern. Danach laufen
-OTA-Updates normal. Der LilyGo-S3 (16 MB) behält die Default-Tabelle (genug Platz).
+`board_build.partitions = partitions_4mb_littlefs.csv` (~1,81 MB App-Slots, ~72,7 % belegt;
+256-KB-Datenpartition, gemountet als LittleFS unter `BREWCTL_USE_LITTLEFS` — trägt UI +
+Settings/Registry/Dashboards/Programme/Logs-Index). Herleitung von `min_spiffs.csv`
+(dessen 128-KB-Datenpartition unbenutzt blieb, weil Assets damals auf SD lagen): je
+64 KB von beiden App-Slots abgezwackt, komplett in die Datenpartition gesteckt.
+**Wichtig:** Der Wechsel auf dieses Layout muss **einmalig per USB** geflasht werden —
+OTA kann die Partitionstabelle nicht ändern. Danach laufen OTA-Updates normal (der
+UI-Teil weiterhin nur über `uploadfs`/USB, s. oben — `webui.tar`-Netzwerk-Uploads
+landen zwar auch im Dateisystem, aber der allererste Bootstrap eines leeren Boards
+braucht `uploadfs`). Der LilyGo-S3 (16 MB) behält die Default-Tabelle + SD (genug Platz).
+`LogStore` hat keine eingebaute Log-Rotation — auf diesen beiden Boards mit der
+256-KB-Partition nicht unbegrenzt loggen.
 
 ## Weiteres
 

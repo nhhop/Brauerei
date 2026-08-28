@@ -68,6 +68,12 @@ SD-Karte, Live-Updates per SSE. **WiFi-Provisioning** beim ersten Boot
   ändert sich oft beim UI-Iterieren — SD ist hot-swappable, kein
   Firmware-Reflash. `SD`-Library (SPI) ist universell auf allen ESP32-
   Boards verfügbar.
+  **Revidiert 2026-08-28 für Boards ohne SD-Reader** (esp32dev, lolin_s2_mini):
+  dort läuft die UI stattdessen von einer internen LittleFS-Partition
+  (`BREWCTL_USE_LITTLEFS`, `partitions_4mb_littlefs.csv`), da diese beiden
+  Testboards keinen SD-Slot/-Breakout haben. Hot-Swap-Vorteil entfällt dort
+  entsprechend (Deploy per `pio run -t uploadfs`, USB); der LilyGo-S3 (mit
+  SD-Slot) bleibt bei der ursprünglichen SD-Entscheidung.
 
 ## Projekt-Layout
 
