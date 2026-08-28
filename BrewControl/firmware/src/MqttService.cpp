@@ -33,7 +33,12 @@ void MqttService::begin(const String& fallbackClientId) {
 
   if (embedded) {
 #ifdef BREWCTL_HAS_EMBEDDED_MQTT_BROKER
-    broker_ = std::make_unique<MqttBroker>(port);
+    // retain_size=0 (the MqttBroker default) disables retained messages
+    // entirely — RemotePublisher relies on them for meta (published once,
+    // never repeated), so a new subscriber would never learn a sensor's
+    // kind/unit/min/max. 64 topics covers registry growth well beyond
+    // today's item count (2 topics per sensor/actuator, 1 per controller).
+    broker_ = std::make_unique<MqttBroker>(port, /*retain_size=*/64);
     if (!settings_.mqttUsername().isEmpty()) {
       broker_->setAuth(settings_.mqttUsername().c_str(), settings_.mqttPassword().c_str());
     }

@@ -684,3 +684,62 @@ via SD) hardware-verifiziert.** Harmloser Nebenbefund im esp32dev-Boot-Log:
 eine Core-Dump-Checksum-Warnung von einer alten Core-Dump-Partition (Offset
 hat sich mit der neuen Partitionstabelle verschoben) — nicht fatal, ESP-IDF
 ignoriert einen ungültigen Core-Dump einfach.
+
+## 2026-08-29 — Bug gefunden + gefixt: eingebauter MQTT-Broker verwarf alle Retained-Messages
+
+**Ausgangslage:** Alle drei Boards jetzt parallel online, damit erstmals der
+in der Remote-Node-Session (2026-08-21) offen gelassene Punkt nachholbar:
+echter State-Empfang von einem tatsächlichen zweiten Board (bisher nur „legt
+korrekt an, zeigt sauber stale ohne Leaf" verifiziert). Kein extra Leaf-Sketch
+nötig — `MqttService` verdrahtet bereits automatisch einen `RemotePublisher`,
+der die komplette eigene Registry spiegelt, sobald MQTT aktiviert ist
+([MqttService.cpp:62-96](firmware/src/MqttService.cpp)). LilyGo S3 lief bereits
+mit aktiviertem eingebautem Broker (aus einer früheren Session). LOLIN S2 Mini
+testweise als externer MQTT-Client auf LilyGos Broker konfiguriert
+(`POST /api/settings`, `mode:"external"`, `host:<LilyGo-IP>`), dann per
+`POST /api/sensors` ein `Remote`-Sensor (`transport:"mqtt"`, `device:"brewcontrol"`,
+`remote_id:"mlt"`, `prefix:"brewcontrol"`) angelegt — zeigt auf LilyGos echten
+`mlt`-Temperatursensor.
+
+**Bug:** State kam korrekt an (`v` folgte live dem echten Sensorwert), aber
+`meta` (kind/quantity/unit/min/max/res) blieb dauerhaft auf den Default-Werten
+(`Binary`/`None`/`0`/`0`/`0`) — auch nach vollständigem Reboot von LOLIN (kein
+Timing-Zufall). Root Cause im TinyMqtt-Quellcode nachgelesen: `RemotePublisher`
+publiziert Meta nur einmal (bei `begin()`/Reconnect) mit `retained=true`, State
+dagegen periodisch — ein neuer Subscriber lernt Meta also nur über eine
+Retained-Message-Zustellung beim Subscribe. `MqttService.cpp:36` konstruierte
+den eingebauten Broker aber als `MqttBroker(port)` ohne `retain_size` —
+Default ist `0`, und TinyMqtts eigenes README sagt explizit „Supports retained
+messages (not activated by default)". Bei `retain_size==0` tut
+`MqttBroker::retain()` schlicht nichts — der eingebaute Broker hielt **keine**
+einzige Retained-Message vor, unabhängig vom `retain`-Flag der Publisher.
+Betrifft nur den eingebauten Broker-Modus; externe Broker (Mosquitto etc.)
+sind vermutlich nicht betroffen (Retain dort standardmäßig aktiv), aber
+ungetestet.
+
+**Fix:** `MqttBroker(port, /*retain_size=*/64)` in
+[MqttService.cpp:36](firmware/src/MqttService.cpp:36) — 64 Topic-Slots
+(Sensor/Aktor je 2 Topics, Controller 1; aktuell 13 auf LilyGo, deutlicher
+Puffer für Laufzeit-Wachstum via `DynamicItems`). `retain_size` ist eine
+Obergrenze für die Anzahl **verschiedener** Topics mit Retained-Message
+(LRU-Eviction des ältesten Topics bei Überlauf, kein Payload-Größen-Limit) —
+im TinyMqtt-Quellcode verifiziert (`TinyMqtt.cpp:961-991`), nicht geraten.
+
+**Verifikation:** `pio run` alle drei Envs grün (Flash-Werte unverändert
+gegenüber der letzten Messung). LilyGo S3 geflasht (COM9, sauberer Reset via
+RTS, keine manuellen Buttons nötig), komplette Registry (Sensoren, Aktoren,
+laufendes `mash`-Programm) nach Reflash unverändert vorhanden — Regressions-
+Check bestanden. Derselbe Zwei-Board-Test wiederholt: Meta kommt jetzt korrekt
+an (`kind:"Continuous"`, `quantity:"Temperature"`, `unit:"°C"`, `min:-55`,
+`max:125`, `res:0.0625` — identisch zu LilyGos echtem `mlt`-Sensor). Damit ist
+der MQTT-Remote-Pfad jetzt vollständig E2E bestätigt (State **und** Meta, mit
+echtem Leaf über zwei physische Boards). Test-Sensor gelöscht, LOLINs
+MQTT-Settings zurückgesetzt (disabled, wie vor dem Test).
+
+**Weiterhin offen:** Webhook- und ESP-NOW-Leaf-Test — dafür kann BrewControl
+aktuell nicht als Sender auftreten (`RemotePublisher` ist nur an `MqttService`
+verdrahtet, nicht an `WebhookService`/`EspNowTransport`); bräuchte entweder
+einen Board mit dem Beispiel-Sketch ([10_remote_webhook](../SensActCtrl/examples/10_remote_webhook),
+[09_remote_espnow](../SensActCtrl/examples/09_remote_espnow)) als Leaf, oder
+ein neues Firmware-Feature („BrewControl sendet eigene Items auch über
+Webhook/ESP-NOW") — noch nicht entschieden.
