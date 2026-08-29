@@ -259,11 +259,31 @@ export interface MqttSettings {
   error?: string;                     // read-only, reason when !connected (external mode only)
 }
 
+export interface WebhookSettings {
+  enabled: boolean;
+  listenPort: number;
+  peerUrl: string;
+  clientId: string;
+  topicPrefix: string;
+  connected?: boolean;  // read-only, live transport state (reflects WiFi only)
+  error?: string;        // read-only, always "" — WebhookTransport has nothing specific to say
+}
+
+export interface EspNowSettings {
+  enabled: boolean;
+  clientId: string;
+  topicPrefix: string;
+  connected?: boolean;  // read-only, live transport state
+  error?: string;        // read-only, always "" — EspNowTransport has nothing specific to say
+}
+
 export interface AppSettings {
   theme: ThemeSettings;
   firmware?: FirmwareSettings;
   time?: TimeSettings;
   mqtt?: MqttSettings;
+  webhook?: WebhookSettings;
+  espnow?: EspNowSettings;
 }
 
 export type UpdateState =

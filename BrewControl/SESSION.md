@@ -743,3 +743,123 @@ einen Board mit dem Beispiel-Sketch ([10_remote_webhook](../SensActCtrl/examples
 [09_remote_espnow](../SensActCtrl/examples/09_remote_espnow)) als Leaf, oder
 ein neues Firmware-Feature („BrewControl sendet eigene Items auch über
 Webhook/ESP-NOW") — noch nicht entschieden.
+
+## 2026-08-29 — Feature: Publish-Pfad für Webhook + ESP-NOW (symmetrisch zu MqttService)
+
+**Ausgangslage:** Direkte Folge des obigen MQTT-Zweitgeräte-Tests — Webhook und
+ESP-NOW waren in der Firmware bisher nur Consumer-seitig verdrahtet
+(`DynamicItems::resolveRemoteTransport()` reicht `type:"Remote"`-Items einen
+Transport durch), es gab aber keinen Pfad, der die eigene Registry über diese
+beiden Transporte nach außen anbietet — anders als MQTT, wo `MqttService`
+das bereits automatisch tut. Auf Library-Ebene (SensActCtrl) war alles
+Nötige schon vorhanden (`EspNowTransport`/`WebhookTransport` implementieren
+beide `ITransport` wie `MqttTransport`, `RemotePublisher` ist transport-
+agnostisch) — die Lücke war rein BrewControl-firmware- und Frontend-seitig.
+
+**Umsetzung** (Details im Plan-Dokument dieser Session, hier nur die Kernpunkte):
+
+- **`DynamicItems`**: die sechs Live-Add/Remove-Hooks (`setOnSensorAdded` etc.)
+  waren `std::function`-Einzel-Member, die bei jedem `set...()`-Aufruf
+  überschrieben wurden — `MqttService` belegte sie bereits, ein zweiter/dritter
+  Aufrufer (Webhook/ESP-NOW-Publish) hätte MQTTs Live-Tracking klammheimlich
+  kaputt gemacht. Auf `std::vector<std::function<...>>` umgebaut (mehrere
+  Beobachter, in Registrierungsreihenfolge aufgerufen) — API-kompatibel zu
+  bestehenden Aufrufern.
+- **`SettingsStore`**: neue Felder `webhookEnabled/webhookListenPort/
+  webhookPeerUrl/webhookClientId/webhookTopicPrefix` und
+  `espnowEnabled/espnowClientId/espnowTopicPrefix`, dreifach gespiegelt
+  (`loadFromSD`/`serialize`/`update`) nach dem bestehenden `mqtt*`-Muster.
+  Kein Channel-Setting für ESP-NOW — reitet den bestehenden globalen
+  `EspNowTransport` (fixer Channel 1).
+- **`WebhookService`** um Publish-Fähigkeit erweitert (`beginPublish()`,
+  `attachExistingPublish()`, `publishConnected()`/`publishLastErrorMessage()`)
+  statt einer neuen Klasse — sie ist bereits Transport-Owner/Cache für diesen
+  Transporttyp; ein Publish-Ziel reuse't `getOrCreate()` genau wie ein
+  Consumer-Item.
+- Neue Klasse **`EspNowPublishService`** (kein Analogon zum Erweitern
+  vorhanden) — nimmt den bestehenden globalen `EspNowTransport` per Pointer
+  entgegen (Konstruktor-Reihenfolge: der globale Service existiert vor
+  `setup()`, der Transport erst danach).
+- **`WebUI`**: Konstruktor um `WebhookService&`/`EspNowPublishService&`
+  erweitert, `/api/settings` GET/POST um `webhook`/`espnow`-Sektionen ergänzt
+  (Validierung + gemeinsamer Reboot-Trigger wie bei `mqtt`).
+- **`main.cpp`**: neue Verdrahtung reihenfolgekritisch — `espNowPublishService.begin()`
+  erst nach `espNowTransport`-Konstruktion UND `settingsStore.loadFromSD()`
+  möglich, beide an der `mqttService.begin()`-Stelle bereits erfüllt.
+- **Web-Frontend**: `WebhookSettings`/`EspNowSettings` in `types.ts`, neue
+  Seiten `WebhookPage.tsx`/`EspNowPage.tsx` (Klon von `MqttPage.tsx`), zwei
+  neue `SettingsIndex`-Einträge + Routen.
+
+**Verifikation:** `pio run` alle drei Envs grün (esp32dev 73,2 % Flash,
+lolin_s2_mini 69,9 %, lilygo_t_display_s3_amoled 20,1 % — je +0,5–0,8pp
+gegenüber vorher). `pnpm typecheck` grün. Neue Settings-Seiten im Vite-Dev-
+Server gegen echtes Board geprüft (Rendering, Icons, keine Konsolenfehler).
+Beide Boards (LilyGo COM9, LOLIN COM5) per USB neu geflasht, UI-Bundle-Upload
+auf LOLIN schlägt fehl (`Connection was reset` bei `/api/update/assets`,
+unverändeter Asset-Upload-Pfad — siehe „Beiläufig gefunden" unten; nicht
+blockierend, da alle Tests direkt über die API liefen).
+
+Hardware-Test beider Boards live:
+- **Webhook:** LOLIN (`enabled, listenPort:8080, peerUrl:""`) + LilyGo
+  (`enabled, peerUrl:"http://192.168.178.82:8080"`) → LilyGos eigener
+  Retained-Cache (`GET :8080/brewcontrol/lilygo/sensor/mlt/meta`) zeigt
+  korrektes Meta+State direkt nach Boot — Publish-Pfad selbst bestätigt.
+  `Remote`-Consumer-Sensor auf LOLIN (anderer lokaler Port 8081, da LOLINs
+  eigener Publish-Transport bereits Port 8080 mit einem anderen Peer belegt —
+  `WebhookService::getOrCreate()` cached strikt nach `(port,peerUrl)`-Paar,
+  zwei verschiedene Peers auf demselben Port öffnen zwei `WebServer`-Instanzen
+  auf demselben physischen Port; vorbestehendes Cache-Design, hier nicht
+  angefasst) empfing nach einem sauberen Reboot Meta **und** State korrekt.
+  Direkt nach dem Anlegen blieb Meta einmal aus (vermutlich transienter
+  Zustand nach mehreren dynamischen Sensor-Add/Remove-Zyklen im selben
+  Boot) — nach Reboot reproduzierbar korrekt.
+  **Negativtest bestätigt das dokumentierte Blocking-Risiko:** Peer auf eine
+  nicht erreichbare IP gesetzt → **alle** HTTP-Requests an das Board
+  (auch `/api/snapshot`, unabhängig vom Webhook-Pfad) hingen ~2,5 s pro
+  Versuch bzw. schlugen zeitweise ganz fehl, bis der Reboot mit
+  deaktiviertem Webhook griff — `WebhookTransport::publish()` blockiert
+  `loop()` mit `HTTPClient::POST`, wie in der Architektur-Bewertung erwartet.
+- **ESP-NOW:** beide Boards `enabled:true` → `connected:true`.
+  `Remote`-Consumer-Sensor auf LOLIN: **State kam sofort und zuverlässig an**
+  (Live-Broadcast, mehrfach mit steigendem Timestamp bestätigt), **Meta blieb
+  dauerhaft auf Default-Werten** — auch nach zwei sauberen Reboots beider
+  Boards reproduzierbar, also kein Timing-Zufall. `EspNowTransport`s
+  Retained-Request/Reply-Mechanismus (`subscribe()` broadcastet eine
+  1-Byte-Anfrage, der Leaf soll seinen `retained_`-Cache daraufhin
+  zurücksenden — im Quellcode korrekt aussehend, siehe `EspNowTransport.cpp`)
+  liefert auf dieser Hardware in der Praxis kein Meta an spät hinzugefügte
+  Subscriber. Reine SensActCtrl-Library-Charakteristik (Code hier nicht
+  angefasst), nicht Teil dieses Scopes zu fixen — als offener Befund
+  festgehalten (siehe unten).
+
+Nach jedem Testblock: Test-Sensoren gelöscht, `webhook`/`espnow`-Settings auf
+beiden Boards zurückgesetzt (disabled). Abschließender Regressions-Check:
+LilyGos volle Registry (Sensoren/Aktoren/`mash`-Controller) und MQTT-Status
+(embedded, connected) unverändert; LOLIN wieder leere Registry wie vor dem
+Test.
+
+**Bekannte, akzeptierte Einschränkungen** (dokumentiert, nicht Teil dieses Fixes):
+- Webhook-Publish blockiert `loop()` bei unerreichbarem Peer (live bestätigt,
+  s.o.) — `HTTPClient::POST` ist blockierend, Cadence passt für ~1 Hz State,
+  nicht für einen dauerhaft unerreichbaren Peer.
+- ESP-NOW verwirft Pakete >250 Byte silently (`EspNowTransport::sendDataPacket_`)
+  — Controller mit vielen Params sind Kandidaten für permanent fehlendes Meta.
+- **Neu gefunden:** ESP-NOW liefert Meta an spät hinzugefügte Subscriber über
+  den Retained-Request-Mechanismus auf dieser Hardware nicht zuverlässig
+  (State funktioniert einwandfrei) — reproduzierbar über zwei saubere Reboots,
+  Ursache nicht weiter eingegrenzt (SensActCtrl-Library, außerhalb des Scopes
+  dieser Änderung). Für ESP-NOW-Leafs bedeutet das: ein `Remote`-Sensor, der
+  erst nach dem Leaf-Boot angelegt wird, bekommt aktuell nur State, kein Meta
+  (kind/unit/min/max/res bleiben auf Default) — für BrewControls Dashboard
+  praktisch relevant (Anzeige-Einheit/Skala fehlt), sollte bei Bedarf als
+  eigener SensActCtrl-Bug untersucht werden.
+- `lastErrorMessage()` liefert für Webhook/ESP-NOW strukturell immer `""`
+  (nur `MqttTransport` überschreibt es) — kein Bug, nur beim Blick auf die
+  Status-Anzeige in der UI zu beachten.
+
+**Beiläufig gefunden (nicht behoben, nicht Teil dieses Scopes):** `POST
+/api/update/assets` (UI-Tar-Upload) schlägt auf LOLIN S2 Mini reproduzierbar
+mit `Connection was reset` nach ~65 KB fehl (Board bleibt danach stabil
+erreichbar, kein Crash) — vorbestehender, unveränderter Code-Pfad
+(`SdTarSink`/`TarExtractor`), nicht durch diese Änderung berührt. LilyGo S3
+war vom selben Upload nicht betroffen (`HTTP 200`). Nicht weiter untersucht.

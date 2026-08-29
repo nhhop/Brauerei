@@ -35,6 +35,22 @@ class SettingsStore {
   const String& mqttClientId() const { return mqttClientId_; }
   const String& mqttTopicPrefix() const { return mqttTopicPrefix_; }
 
+  // Webhook publish preferences (this device as a leaf, mirroring its own
+  // registry to a peer over HTTP — separate from the per-item "Remote"
+  // consumer config in DynamicItems).
+  bool webhookEnabled() const { return webhookEnabled_; }
+  uint16_t webhookListenPort() const { return webhookListenPort_; }
+  const String& webhookPeerUrl() const { return webhookPeerUrl_; }
+  const String& webhookClientId() const { return webhookClientId_; }
+  const String& webhookTopicPrefix() const { return webhookTopicPrefix_; }
+
+  // ESP-NOW publish preferences (this device as a leaf, broadcasting its
+  // own registry — no host/port/channel: rides the existing shared
+  // broadcast transport).
+  bool espnowEnabled() const { return espnowEnabled_; }
+  const String& espnowClientId() const { return espnowClientId_; }
+  const String& espnowTopicPrefix() const { return espnowTopicPrefix_; }
+
  private:
   String mode_       = "system";   // "light" | "dark" | "system"
   String accent_     = "#0078d4";  // hex color (Windows accent blue)
@@ -57,6 +73,16 @@ class SettingsStore {
   bool     mqttTls_         = false;
   String   mqttClientId_    = "";           // empty ⇒ MqttService falls back to mDNS hostname
   String   mqttTopicPrefix_ = "brewcontrol";
+
+  bool     webhookEnabled_     = false;
+  uint16_t webhookListenPort_  = 8080;
+  String   webhookPeerUrl_     = "";
+  String   webhookClientId_    = "";           // empty ⇒ falls back to mDNS hostname
+  String   webhookTopicPrefix_ = "brewcontrol";
+
+  bool     espnowEnabled_     = false;
+  String   espnowClientId_    = "";           // empty ⇒ falls back to mDNS hostname
+  String   espnowTopicPrefix_ = "brewcontrol";
 };
 
 }  // namespace BrewControl

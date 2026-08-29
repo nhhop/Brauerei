@@ -118,9 +118,11 @@ class DeletePrefixHandler : public AsyncWebHandler {
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
-             MqttService& mqtt, uint16_t port)
+             MqttService& mqtt, WebhookService& webhook, EspNowPublishService& espnow,
+             uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
       updater_(updater), logs_(logs), programs_(programs), mqtt_(mqtt),
+      webhook_(webhook), espnow_(espnow),
       server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
@@ -617,6 +619,10 @@ void WebUI::begin() {
     deserializeJson(doc, settings_.serialize());
     doc["mqtt"]["connected"] = mqtt_.connected();
     doc["mqtt"]["error"] = mqtt_.lastErrorMessage();
+    doc["webhook"]["connected"] = webhook_.publishConnected();
+    doc["webhook"]["error"] = webhook_.publishLastErrorMessage();
+    doc["espnow"]["connected"] = espnow_.connected();
+    doc["espnow"]["error"] = espnow_.lastErrorMessage();
     String out;
     serializeJson(doc, out);
     req->send(200, "application/json", out);
@@ -700,6 +706,36 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject webhook = obj["webhook"].as<JsonObject>();
+        if (!webhook.isNull()) {
+          if (webhook["listenPort"].is<int>()) {
+            int32_t p = webhook["listenPort"].as<int32_t>();
+            if (p < 1 || p > 65535) { req->send(400, "text/plain", "invalid webhook listenPort"); return; }
+          }
+          if (const char* tp = webhook["topicPrefix"]) {
+            if (strchr(tp, '/')) {
+              req->send(400, "text/plain", "invalid webhook topicPrefix"); return;
+            }
+          }
+          if (const char* cid = webhook["clientId"]) {
+            if (strchr(cid, '/')) {
+              req->send(400, "text/plain", "invalid webhook clientId"); return;
+            }
+          }
+        }
+        JsonObject espnow = obj["espnow"].as<JsonObject>();
+        if (!espnow.isNull()) {
+          if (const char* tp = espnow["topicPrefix"]) {
+            if (strchr(tp, '/')) {
+              req->send(400, "text/plain", "invalid espnow topicPrefix"); return;
+            }
+          }
+          if (const char* cid = espnow["clientId"]) {
+            if (strchr(cid, '/')) {
+              req->send(400, "text/plain", "invalid espnow clientId"); return;
+            }
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
         if (!t.isNull()) {
@@ -707,10 +743,12 @@ void WebUI::begin() {
                      settings_.ntpServer().c_str());
         }
         req->send(204);
-        // MQTT's actual connection (host/port/mode/TLS) is only (re-)established
-        // at boot from SettingsStore — reboot so a saved change takes effect
-        // immediately, same as the WiFi/hostname settings on /api/network.
-        if (!mqtt.isNull()) rebootAtMs_ = millis() + kRebootDelayMs;
+        // MQTT/webhook/ESP-NOW's actual publish connection is only
+        // (re-)established at boot from SettingsStore — reboot so a saved
+        // change takes effect immediately, same as the WiFi/hostname
+        // settings on /api/network.
+        if (!mqtt.isNull() || !webhook.isNull() || !espnow.isNull())
+          rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 
   // ── Firmware update ────────────────────────────────────────────────────────

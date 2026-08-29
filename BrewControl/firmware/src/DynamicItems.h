@@ -67,13 +67,16 @@ class DynamicItems {
   // trigger these). "Added" fires after the item's begin(); "Removing" fires
   // before the item is freed, so the callback can still safely reference it
   // (e.g. to detach it from a live subscriber like MqttService before the
-  // unique_ptr destroys it).
-  void setOnSensorAdded(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorAdded_ = cb; }
-  void setOnSensorRemoving(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorRemoving_ = cb; }
-  void setOnActuatorAdded(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorAdded_ = cb; }
-  void setOnActuatorRemoving(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorRemoving_ = cb; }
-  void setOnControllerAdded(std::function<void(SensActCtrl::Controller&)> cb) { onControllerAdded_ = cb; }
-  void setOnControllerRemoving(std::function<void(SensActCtrl::Controller&)> cb) { onControllerRemoving_ = cb; }
+  // unique_ptr destroys it). Multiple observers may register (each set*
+  // call adds another one, in registration order) — MqttService,
+  // WebhookService, and EspNowPublishService all track live add/remove
+  // independently.
+  void setOnSensorAdded(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorAdded_.push_back(std::move(cb)); }
+  void setOnSensorRemoving(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorRemoving_.push_back(std::move(cb)); }
+  void setOnActuatorAdded(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorAdded_.push_back(std::move(cb)); }
+  void setOnActuatorRemoving(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorRemoving_.push_back(std::move(cb)); }
+  void setOnControllerAdded(std::function<void(SensActCtrl::Controller&)> cb) { onControllerAdded_.push_back(std::move(cb)); }
+  void setOnControllerRemoving(std::function<void(SensActCtrl::Controller&)> cb) { onControllerRemoving_.push_back(std::move(cb)); }
 
   // Transport actuators that publish over MQTT themselves (e.g. "MqttGeneric")
   // use to reach the broker MqttService already manages. nullptr if MQTT is
@@ -136,12 +139,12 @@ class DynamicItems {
 
   bool initialized_ = false;
 
-  std::function<void(SensActCtrl::Sensor&)> onSensorAdded_;
-  std::function<void(SensActCtrl::Sensor&)> onSensorRemoving_;
-  std::function<void(SensActCtrl::Actuator&)> onActuatorAdded_;
-  std::function<void(SensActCtrl::Actuator&)> onActuatorRemoving_;
-  std::function<void(SensActCtrl::Controller&)> onControllerAdded_;
-  std::function<void(SensActCtrl::Controller&)> onControllerRemoving_;
+  std::vector<std::function<void(SensActCtrl::Sensor&)>> onSensorAdded_;
+  std::vector<std::function<void(SensActCtrl::Sensor&)>> onSensorRemoving_;
+  std::vector<std::function<void(SensActCtrl::Actuator&)>> onActuatorAdded_;
+  std::vector<std::function<void(SensActCtrl::Actuator&)>> onActuatorRemoving_;
+  std::vector<std::function<void(SensActCtrl::Controller&)>> onControllerAdded_;
+  std::vector<std::function<void(SensActCtrl::Controller&)>> onControllerRemoving_;
 
   SensActCtrl::ITransport* mqttTransport_ = nullptr;
   WebhookService* webhookService_ = nullptr;

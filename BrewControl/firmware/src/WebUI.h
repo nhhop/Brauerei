@@ -9,6 +9,7 @@
 
 #include "DashboardStore.h"
 #include "DynamicItems.h"
+#include "EspNowPublishService.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
 #include "MqttService.h"
@@ -16,6 +17,7 @@
 #include "SdTarSink.h"
 #include "SettingsStore.h"
 #include "TarExtractor.h"
+#include "WebhookService.h"
 
 namespace BrewControl {
 
@@ -74,7 +76,8 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        LogStore& logs, ProgramRunner& programs, MqttService& mqtt, uint16_t port = 80);
+        LogStore& logs, ProgramRunner& programs, MqttService& mqtt,
+        WebhookService& webhook, EspNowPublishService& espnow, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -105,6 +108,8 @@ class WebUI {
   LogStore& logs_;
   ProgramRunner& programs_;
   MqttService& mqtt_;
+  WebhookService& webhook_;
+  EspNowPublishService& espnow_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;

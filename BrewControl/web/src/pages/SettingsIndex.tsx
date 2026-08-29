@@ -5,6 +5,7 @@ import { SettingsCard } from '../components/SettingsCard';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Radio, FolderOpen,
+  Webhook, Antenna,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -24,6 +25,8 @@ const ENTRIES: Entry[] = [
   { href: '/settings/time', icon: Clock, title: 'Zeit & Formate', desc: 'Zeitzone, NTP-Server, Uhrzeit- und Datumsformat' },
   { href: '/settings/network', icon: Wifi, title: 'Netzwerk', desc: 'WLAN-Status, Netzwerk wechseln, Hostname' },
   { href: '/settings/mqtt', icon: Radio, title: 'MQTT', desc: 'Externen oder eingebauten Broker konfigurieren' },
+  { href: '/settings/webhook', icon: Webhook, title: 'Webhook', desc: 'Registry per HTTP an ein Peer-Gerät senden' },
+  { href: '/settings/espnow', icon: Antenna, title: 'ESP-NOW', desc: 'Registry per ESP-NOW-Broadcast senden' },
   { href: '/settings/logs', icon: ChartLine, title: 'Logs & Charts', desc: 'Datenaufzeichnung konfigurieren und Verläufe anzeigen' },
 ];
 

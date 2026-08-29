@@ -22,6 +22,7 @@
 
 #include "DashboardStore.h"
 #include "DynamicItems.h"
+#include "EspNowPublishService.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
 #include "MqttService.h"
@@ -63,7 +64,8 @@ BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService);
+BrewControl::EspNowPublishService espNowPublishService;
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService, webhookService, espNowPublishService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -216,6 +218,8 @@ void setup() {
   mqttService.begin(hostname_);  // creates the transport (if enabled) before
                                   // dynamicItems.loadFromSD() constructs any
                                   // actuator that publishes over MQTT itself
+  webhookService.beginPublish(settingsStore, hostname_);  // no-op if disabled
+  espNowPublishService.begin(*espNowTransport, settingsStore, hostname_);  // no-op if disabled
   dynamicItems.setMqttTransport(mqttService.transport());  // nullable
   dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
   dynamicItems.setEspNowTransport(espNowTransport.get());  // always available, no toggle
@@ -235,6 +239,8 @@ void setup() {
   mqttService.attachExisting();    // mirrors the registry + registers
                                     // DynamicItems hooks — must run before
                                     // webUI can serve add/remove requests
+  webhookService.attachExistingPublish(registry, dynamicItems);
+  espNowPublishService.attachExisting(registry, dynamicItems);
 
   webUI.begin();
   firmwareUpdater.begin();
@@ -262,6 +268,7 @@ void loop() {
   firmwareUpdater.tick();
   mqttService.tick();
   webhookService.tick();
+  espNowPublishService.tick();
   maintainWiFi();
   delay(5);
 }

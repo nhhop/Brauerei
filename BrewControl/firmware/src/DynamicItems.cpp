@@ -170,7 +170,7 @@ DynamicItems::Result DynamicItems::addSensor(const JsonObject& cfg,
   auto r = addSensorNoBegin(cfg, reg);
   if (r.ok && initialized_) {
     sensors_.back()->ptr->begin();
-    if (onSensorAdded_) onSensorAdded_(*sensors_.back()->ptr);
+    for (auto& cb : onSensorAdded_) if (cb) cb(*sensors_.back()->ptr);
   }
   return r;
 }
@@ -298,7 +298,7 @@ DynamicItems::Result DynamicItems::addActuator(const JsonObject& cfg,
   auto r = addActuatorNoBegin(cfg, reg);
   if (r.ok && initialized_) {
     actuators_.back()->ptr->begin();
-    if (onActuatorAdded_) onActuatorAdded_(*actuators_.back()->ptr);
+    for (auto& cb : onActuatorAdded_) if (cb) cb(*actuators_.back()->ptr);
   }
   return r;
 }
@@ -425,7 +425,7 @@ DynamicItems::Result DynamicItems::addController(const JsonObject& cfg,
   auto r = addControllerNoBegin(cfg, reg);
   if (r.ok && initialized_) {
     controllers_.back()->ptr->begin();
-    if (onControllerAdded_) onControllerAdded_(*controllers_.back()->ptr);
+    for (auto& cb : onControllerAdded_) if (cb) cb(*controllers_.back()->ptr);
   }
   return r;
 }
@@ -441,7 +441,7 @@ DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
       (*it)->ptr->end();
-      if (onSensorRemoving_) onSensorRemoving_(*(*it)->ptr);
+      for (auto& cb : onSensorRemoving_) if (cb) cb(*(*it)->ptr);
       sensors_.erase(it);
       return {true};
     }
@@ -459,7 +459,7 @@ DynamicItems::Result DynamicItems::removeActuator(const char* id,
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
       (*it)->ptr->end();
-      if (onActuatorRemoving_) onActuatorRemoving_(*(*it)->ptr);
+      for (auto& cb : onActuatorRemoving_) if (cb) cb(*(*it)->ptr);
       actuators_.erase(it);
       return {true};
     }
@@ -472,7 +472,7 @@ DynamicItems::Result DynamicItems::removeController(const char* id,
   for (auto it = controllers_.begin(); it != controllers_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
-      if (onControllerRemoving_) onControllerRemoving_(*(*it)->ptr);
+      for (auto& cb : onControllerRemoving_) if (cb) cb(*(*it)->ptr);
       controllers_.erase(it);
       return {true};
     }

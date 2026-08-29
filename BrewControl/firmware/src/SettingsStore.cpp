@@ -43,6 +43,20 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* c = mqtt["clientId"])  mqttClientId_    = c;
     if (const char* p = mqtt["topicPrefix"]) mqttTopicPrefix_ = p;
   }
+  JsonObject webhook = doc["webhook"].as<JsonObject>();
+  if (!webhook.isNull()) {
+    if (webhook["enabled"].is<bool>())          webhookEnabled_     = webhook["enabled"].as<bool>();
+    if (webhook["listenPort"].is<int>())        webhookListenPort_  = webhook["listenPort"].as<uint16_t>();
+    if (const char* u = webhook["peerUrl"])     webhookPeerUrl_     = u;
+    if (const char* c = webhook["clientId"])    webhookClientId_    = c;
+    if (const char* p = webhook["topicPrefix"]) webhookTopicPrefix_ = p;
+  }
+  JsonObject espnow = doc["espnow"].as<JsonObject>();
+  if (!espnow.isNull()) {
+    if (espnow["enabled"].is<bool>())          espnowEnabled_     = espnow["enabled"].as<bool>();
+    if (const char* c = espnow["clientId"])    espnowClientId_    = c;
+    if (const char* p = espnow["topicPrefix"]) espnowTopicPrefix_ = p;
+  }
 }
 
 void SettingsStore::saveToSD(fs::FS& sd) const {
@@ -84,6 +98,16 @@ String SettingsStore::serialize() const {
 #else
   mqtt["embeddedBrokerSupported"] = false;
 #endif
+  JsonObject webhook = doc["webhook"].to<JsonObject>();
+  webhook["enabled"]     = webhookEnabled_;
+  webhook["listenPort"]  = webhookListenPort_;
+  webhook["peerUrl"]     = webhookPeerUrl_.c_str();
+  webhook["clientId"]    = webhookClientId_.c_str();
+  webhook["topicPrefix"] = webhookTopicPrefix_.c_str();
+  JsonObject espnow = doc["espnow"].to<JsonObject>();
+  espnow["enabled"]     = espnowEnabled_;
+  espnow["clientId"]    = espnowClientId_.c_str();
+  espnow["topicPrefix"] = espnowTopicPrefix_.c_str();
   String out;
   serializeJson(doc, out);
   return out;
@@ -121,6 +145,22 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* c = mqtt["clientId"])  mqttClientId_    = c;
     if (const char* p = mqtt["topicPrefix"]) mqttTopicPrefix_ = p;
     // "embeddedBrokerSupported" is read-only (server-computed) — never read from a patch.
+  }
+  JsonObject webhook = patch["webhook"].as<JsonObject>();
+  if (!webhook.isNull()) {
+    if (webhook["enabled"].is<bool>())          webhookEnabled_     = webhook["enabled"].as<bool>();
+    if (webhook["listenPort"].is<int>())        webhookListenPort_  = webhook["listenPort"].as<uint16_t>();
+    if (const char* u = webhook["peerUrl"])     webhookPeerUrl_     = u;
+    if (const char* c = webhook["clientId"])    webhookClientId_    = c;
+    if (const char* p = webhook["topicPrefix"]) webhookTopicPrefix_ = p;
+    // "connected"/"error" are read-only (live transport state) — never read from a patch.
+  }
+  JsonObject espnow = patch["espnow"].as<JsonObject>();
+  if (!espnow.isNull()) {
+    if (espnow["enabled"].is<bool>())          espnowEnabled_     = espnow["enabled"].as<bool>();
+    if (const char* c = espnow["clientId"])    espnowClientId_    = c;
+    if (const char* p = espnow["topicPrefix"]) espnowTopicPrefix_ = p;
+    // "connected"/"error" are read-only (live transport state) — never read from a patch.
   }
 }
 
