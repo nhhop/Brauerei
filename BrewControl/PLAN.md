@@ -606,6 +606,45 @@ einbauen, der parallel zum WiFi-Pfad genutzt werden kann.
   SensActCtrl-Setup funktioniert. Brau-Logik kann in einem späteren
   Schritt obendrauf als zusätzliche Routen + UI-Tab kommen.
 
+## Bekannte Probleme (Backlog)
+
+Beim Arbeiten gefundene Bugs/Einschränkungen, die bewusst nicht sofort
+gefixt wurden (Out-of-Scope für die jeweilige Änderung, oder Library-seitig
+statt BrewControl-seitig). Zentral hier sammeln statt nur im SESSION.md-
+Eintrag der Fund-Session zu vergraben.
+
+- **Webhook-Publish blockiert `loop()` bei unerreichbarem Peer.**
+  `WebhookTransport::publish()` (SensActCtrl) macht einen blockierenden
+  `HTTPClient::POST`. Live bestätigt (2026-08-29): bei nicht erreichbarem
+  Peer hingen *alle* HTTP-Requests ans Board (auch `/api/snapshot`) für
+  ~2,5s pro Versuch. Fix müsste in SensActCtrl ansetzen (async Client oder
+  Timeout/Backoff). Details: [SESSION.md](SESSION.md) 2026-08-29.
+- **ESP-NOW verwirft Pakete >250 Byte silently.**
+  `EspNowTransport::sendDataPacket_()` gibt bei Überschreitung `false`
+  zurück, kein Log, kein Retry. Betrifft v.a. Controller mit vielen Params
+  (DualStage/SplitRangePID) — deren Meta-Publish kann dauerhaft scheitern.
+  Nicht gezielt nachgetestet, nur aus dem Quellcode abgeleitet.
+- **ESP-NOW liefert Meta an spät hinzugefügte Consumer nicht zuverlässig.**
+  State kommt zuverlässig per Live-Broadcast an, Meta (kind/unit/min/max/res)
+  bleibt bei einem erst nach dem Leaf-Boot angelegten `Remote`-Sensor auf
+  Default — reproduzierbar über zwei saubere Reboots (2026-08-29). Der
+  Retained-Request/Reply-Mechanismus in `EspNowTransport` sieht im
+  Quellcode korrekt aus, funktioniert in der Praxis nicht. SensActCtrl-
+  Library-Bug, nicht weiter eingegrenzt.
+- **`WebhookService::getOrCreate()` cached strikt nach `(port, peerUrl)`.**
+  Zwei verschiedene Peers, die sich denselben lokalen Port teilen wollen,
+  erzeugen zwei separate `WebServer`-Instanzen auf demselben physischen
+  Port → Bind-Konflikt. Im Test 2026-08-29 umgangen (anderer Port für den
+  zweiten Consumer), Cache-Design selbst nicht gefixt.
+- **`ITransport::lastErrorMessage()` liefert für Webhook/ESP-NOW immer `""`.**
+  Nur `MqttTransport` überschreibt diese Methode — kein Bug, aber die
+  Status-Anzeige in der UI kann bei diesen beiden Transporten nie einen
+  konkreten Fehlertext zeigen.
+- **`POST /api/update/assets` (UI-Tar-Upload) bricht auf LOLIN S2 Mini ab**
+  (`Connection was reset` nach ~65 KB, Board bleibt stabil, kein Crash).
+  Vorbestehender Code-Pfad (`SdTarSink`/`TarExtractor`), auf LilyGo S3 nicht
+  reproduziert. Nicht weiter untersucht (2026-08-29).
+
 ## Future Work (Backlog — eigene PRs nach MVP)
 
 - ~~**OTA-Update**~~ — **erledigt 2026-06-03** (Spec:

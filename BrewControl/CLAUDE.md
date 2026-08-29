@@ -63,3 +63,4 @@ pnpm typecheck
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
   ESPAsyncWebServer serviert .gz transparent); Deploy über `pio run -t uploadfs`, nicht Netzwerk-Upload.
 - Plan / Status / Entscheidungen leben in `PLAN.md` und `SESSION.md` (ältere, abgeschlossene Einträge in `SESSION-archive.md`).
+- Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum SESSION.md-Eintrag in `PLAN.md` → „Bekannte Probleme" eintragen, statt nur im Session-Log zu vergraben.
