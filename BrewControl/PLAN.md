@@ -626,9 +626,12 @@ Eintrag der Fund-Session zu vergraben.
   nicht gerechtfertigt). Details: [SESSION.md](SESSION.md) 2026-08-29.
 - **ESP-NOW verwirft Pakete >250 Byte silently.**
   `EspNowTransport::sendDataPacket_()` gibt bei Überschreitung `false`
-  zurück, kein Log, kein Retry. Betrifft v.a. Controller mit vielen Params
-  (DualStage/SplitRangePID) — deren Meta-Publish kann dauerhaft scheitern.
-  Nicht gezielt nachgetestet, nur aus dem Quellcode abgeleitet.
+  zurück, kein Retry — der Drop selbst ist weiterhin da. Betrifft v.a.
+  Controller mit vielen Params (DualStage/SplitRangePID) — deren
+  Meta-Publish kann dauerhaft scheitern. **2026-08-29:** immerhin nicht mehr
+  komplett still — `lastErrorMessage()` zeigt jetzt "Paket zu groß (…)" an
+  (siehe Fix unten), aber nichts liest das aktiv aus/loggt es. Nicht gezielt
+  nachgetestet, nur aus dem Quellcode abgeleitet.
 - **ESP-NOW liefert Meta an spät hinzugefügte Consumer nicht zuverlässig.**
   State kommt zuverlässig per Live-Broadcast an, Meta (kind/unit/min/max/res)
   bleibt bei einem erst nach dem Leaf-Boot angelegten `Remote`-Sensor auf
@@ -641,10 +644,17 @@ Eintrag der Fund-Session zu vergraben.
   erzeugen zwei separate `WebServer`-Instanzen auf demselben physischen
   Port → Bind-Konflikt. Im Test 2026-08-29 umgangen (anderer Port für den
   zweiten Consumer), Cache-Design selbst nicht gefixt.
-- **`ITransport::lastErrorMessage()` liefert für Webhook/ESP-NOW immer `""`.**
-  Nur `MqttTransport` überschreibt diese Methode — kein Bug, aber die
-  Status-Anzeige in der UI kann bei diesen beiden Transporten nie einen
-  konkreten Fehlertext zeigen.
+- ~~**`ITransport::lastErrorMessage()` liefert für Webhook/ESP-NOW immer
+  `""`.**~~ — **gefixt 2026-08-29.** `WebhookTransport` überschreibt jetzt
+  `lastErrorMessage()` (letzter POST/GET-Fehlergrund, z.B. "Verbindung zum
+  Peer abgelehnt" — live auf LilyGo verifiziert); Besonderheit: anders als
+  bei `MqttTransport` wird der Text auch gezeigt, wenn `connected()==true`
+  ist (das reflektiert bei Webhook nur WLAN, nicht Peer-Erreichbarkeit).
+  `EspNowTransport` überschreibt es ebenfalls (Init-Fehler + der zuvor
+  komplett stille „Paket >250 Byte verworfen"-Fall aus dem Eintrag direkt
+  darüber) — nur per Compile-Smoke geprüft, nicht auf Hardware nachgestellt
+  (kein Controller mit ausreichend vielen Params zur Hand). Details:
+  [SESSION.md](SESSION.md) 2026-08-29.
 - **`POST /api/update/assets` (UI-Tar-Upload) bricht auf LOLIN S2 Mini ab**
   (`Connection was reset` nach ~65 KB, Board bleibt stabil, kein Crash).
   Vorbestehender Code-Pfad (`SdTarSink`/`TarExtractor`), auf LilyGo S3 nicht

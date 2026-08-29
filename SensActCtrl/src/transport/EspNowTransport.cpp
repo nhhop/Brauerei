@@ -54,7 +54,10 @@ bool EspNowTransport::initEspNow_() {
     esp_wifi_set_channel(channel_, WIFI_SECOND_CHAN_NONE);
   }
 
-  if (esp_now_init() != ESP_OK) return false;
+  if (esp_now_init() != ESP_OK) {
+    lastErrorMsg_ = "esp_now_init() fehlgeschlagen";
+    return false;
+  }
   esp_now_register_recv_cb(onRecv);
 
   esp_now_peer_info_t peer = {};
@@ -63,21 +66,36 @@ bool EspNowTransport::initEspNow_() {
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK) {
     esp_now_deinit();
+    lastErrorMsg_ = "ESP-NOW-Broadcast-Peer konnte nicht hinzugefügt werden";
     return false;
   }
+  lastErrorMsg_.clear();
   return true;
 }
 
 bool EspNowTransport::sendRaw_(const uint8_t* data, size_t len) {
   if (!initialized_ || len > kMaxPacket) return false;
-  return esp_now_send(kBroadcastMac, data, len) == ESP_OK;
+  const bool ok = esp_now_send(kBroadcastMac, data, len) == ESP_OK;
+  if (ok) {
+    lastErrorMsg_.clear();
+  } else {
+    lastErrorMsg_ = "esp_now_send() fehlgeschlagen";
+  }
+  return ok;
 }
 
 bool EspNowTransport::sendDataPacket_(const char* topic, const char* payload) {
   const size_t tlen = std::strlen(topic);
   const size_t plen = std::strlen(payload);
-  if (tlen == 0 || tlen > 255) return false;
-  if (2 + tlen + plen > kMaxPacket) return false;
+  if (tlen == 0 || tlen > 255) {
+    lastErrorMsg_ = "Ungültiges Topic";
+    return false;
+  }
+  if (2 + tlen + plen > kMaxPacket) {
+    lastErrorMsg_ = "Paket zu groß (" + std::to_string(2 + tlen + plen) +
+                     " Byte, max " + std::to_string(kMaxPacket) + ") — verworfen";
+    return false;
+  }
 
   uint8_t buf[kMaxPacket];
   buf[0] = kPacketData;
@@ -142,6 +160,10 @@ void EspNowTransport::dispatchIncoming(const uint8_t* data, int length) {
   }
 }
 
+const char* EspNowTransport::lastErrorMessage() const {
+  return lastErrorMsg_.c_str();
+}
+
 }  // namespace SensActCtrl
 
 #else  // !ARDUINO — native stub.
@@ -153,6 +175,7 @@ EspNowTransport::~EspNowTransport() = default;
 bool EspNowTransport::publish(const char*, const char*, bool) { return false; }
 bool EspNowTransport::subscribe(const char*, MessageCallback) { return false; }
 void EspNowTransport::tick() {}
+const char* EspNowTransport::lastErrorMessage() const { return ""; }
 void EspNowTransport::dispatchIncoming(const uint8_t*, int) {}
 bool EspNowTransport::initEspNow_() { return false; }
 bool EspNowTransport::sendRaw_(const uint8_t*, size_t) { return false; }

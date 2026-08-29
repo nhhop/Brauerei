@@ -38,6 +38,11 @@ class EspNowTransport : public ITransport {
   bool subscribe(const char* topic, MessageCallback callback) override;
   void tick() override;
   bool connected() const override { return initialized_; }
+  // Covers both init failure (connected() == false) and the last send-level
+  // failure while initialized (e.g. a packet silently dropped for exceeding
+  // the 250-byte ESP-NOW limit) — the latter doesn't affect connected(), but
+  // is otherwise invisible to callers. Empty once a send succeeds again.
+  const char* lastErrorMessage() const override;
 
   // Called from the static ESP-Now receive callback. Public so the static
   // bridge can reach it; not part of the user-facing API.
@@ -55,6 +60,7 @@ class EspNowTransport : public ITransport {
   uint32_t lastRetainedRequestMs_ = 0;
   std::vector<std::pair<std::string, MessageCallback>> subs_;
   std::map<std::string, std::string> retained_;
+  std::string lastErrorMsg_;
 };
 
 }  // namespace SensActCtrl

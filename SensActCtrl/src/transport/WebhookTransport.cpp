@@ -16,6 +16,21 @@ const char* stripLeadingSlash(const char* s) {
   return (s && s[0] == '/') ? s + 1 : s;
 }
 
+// Human-readable reason for an HTTPClient POST/GET failure. `code` is the
+// HTTPClient return value: negative HTTPC_ERROR_* on a client-side/transport
+// failure, otherwise the HTTP status code the peer responded with.
+std::string describeHttpFailure(int code) {
+  switch (code) {
+    case HTTPC_ERROR_CONNECTION_REFUSED: return "Verbindung zum Peer abgelehnt";
+    case HTTPC_ERROR_NOT_CONNECTED:
+    case HTTPC_ERROR_CONNECTION_LOST:    return "Verbindung zum Peer verloren";
+    case HTTPC_ERROR_READ_TIMEOUT:       return "Zeitüberschreitung (Peer antwortet nicht)";
+    case HTTPC_ERROR_NO_HTTP_SERVER:     return "Kein HTTP-Server auf dem Peer-Port";
+  }
+  if (code < 0) return "Netzwerkfehler beim Senden an den Peer";
+  return "Peer antwortete mit HTTP " + std::to_string(code);
+}
+
 }  // namespace
 
 WebhookTransport::WebhookTransport(uint16_t listenPort, const char* peerBaseUrl)
@@ -74,13 +89,16 @@ bool WebhookTransport::publish(const char* topic, const char* payload, bool reta
 
   HTTPClient http;
   http.setTimeout(kHttpTimeoutMs);
-  if (!http.begin(url)) return false;
+  if (!http.begin(url)) {
+    onOutboundFailure_("Ungültige Peer-URL");
+    return false;
+  }
   http.addHeader("Content-Type", "application/json");
   if (retained) http.addHeader("X-Retained", "1");
   const int code = http.POST(String(payload ? payload : ""));
   http.end();
   const bool ok = code >= 200 && code < 300;
-  ok ? onOutboundSuccess_() : onOutboundFailure_();
+  if (ok) onOutboundSuccess_(); else onOutboundFailure_(describeHttpFailure(code));
   return ok;
 }
 
@@ -102,14 +120,17 @@ void WebhookTransport::pullRetained_(const std::string& topic) {
 
   HTTPClient http;
   http.setTimeout(kHttpTimeoutMs);
-  if (!http.begin(url)) return;
+  if (!http.begin(url)) {
+    onOutboundFailure_("Ungültige Peer-URL");
+    return;
+  }
   const int code = http.GET();
   if (code >= 200 && code < 300) {
     const String body = http.getString();
     handleIncomingPost(topic.c_str(), body.c_str(), body.length());
     onOutboundSuccess_();
   } else {
-    onOutboundFailure_();
+    onOutboundFailure_(describeHttpFailure(code));
   }
   http.end();
 }
@@ -120,13 +141,19 @@ bool WebhookTransport::inBackoff_() const {
   return hasFailure_ && (millis() - lastFailureMs_) < kBackoffMs;
 }
 
-void WebhookTransport::onOutboundFailure_() {
+void WebhookTransport::onOutboundFailure_(const std::string& reason) {
   hasFailure_ = true;
   lastFailureMs_ = millis();
+  lastErrorMsg_ = reason;
 }
 
 void WebhookTransport::onOutboundSuccess_() {
   hasFailure_ = false;
+  lastErrorMsg_.clear();
+}
+
+const char* WebhookTransport::lastErrorMessage() const {
+  return lastErrorMsg_.c_str();
 }
 
 void WebhookTransport::tick() {
@@ -175,12 +202,13 @@ bool WebhookTransport::publish(const char*, const char*, bool) { return false; }
 bool WebhookTransport::subscribe(const char*, MessageCallback) { return false; }
 void WebhookTransport::tick() {}
 bool WebhookTransport::connected() const { return false; }
+const char* WebhookTransport::lastErrorMessage() const { return ""; }
 void WebhookTransport::handleIncomingPost(const char*, const char*, size_t) {}
 bool WebhookTransport::retainedFor(const char*, std::string&) const { return false; }
 bool WebhookTransport::ensureServerStarted_() { return false; }
 void WebhookTransport::pullRetained_(const std::string&) {}
 bool WebhookTransport::inBackoff_() const { return false; }
-void WebhookTransport::onOutboundFailure_() {}
+void WebhookTransport::onOutboundFailure_(const std::string&) {}
 void WebhookTransport::onOutboundSuccess_() {}
 
 }  // namespace SensActCtrl

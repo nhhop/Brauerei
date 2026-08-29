@@ -914,3 +914,54 @@ neuer Versuch fällig wird.
 
 **Geänderte Dateien:** `SensActCtrl/src/transport/WebhookTransport.h`,
 `SensActCtrl/src/transport/WebhookTransport.cpp`.
+
+## 2026-08-29 — Fix: `lastErrorMessage()` für Webhook + ESP-NOW
+
+**Ausgangslage:** Aus dem "Bekannte Probleme"-Backlog — nur `MqttTransport`
+überschrieb `ITransport::lastErrorMessage()`; Webhook/ESP-NOW lieferten
+strukturell immer `""`, egal was schiefging. Damit war die Fehler-Anzeige
+in der Settings-UI für diese beiden Transporte tot.
+
+**Umsetzung:**
+- **`WebhookTransport`**: `lastErrorMessage()` überschrieben. Anders als
+  bei MQTT (nur `!connected()`) wird der Text auch gezeigt, wenn
+  `connected()==true` — `connected()` reflektiert bei Webhook nur WLAN, sagt
+  aber nichts über Peer-Erreichbarkeit, und genau *das* ist der praktisch
+  relevante Fehlerfall (siehe Timeout/Backoff-Fix von vorhin). Neuer Helper
+  `describeHttpFailure(int code)` übersetzt `HTTPClient`-Fehlercodes
+  (`HTTPC_ERROR_*`) und HTTP-Statuscodes in deutsche Kurztexte (z.B.
+  "Verbindung zum Peer abgelehnt", "Peer antwortete mit HTTP 404"). Wird bei
+  jedem fehlgeschlagenen `publish()`/`pullRetained_()` gesetzt, bei Erfolg
+  geleert. `http.begin()`-Fehlschlag (ungültige URL) meldet jetzt ebenfalls
+  einen Fehler statt nur `false` zurückzugeben.
+- **`EspNowTransport`**: `lastErrorMessage()` überschrieben, deckt zwei
+  Fälle ab: (a) Init-Fehler (`esp_now_init()`/`esp_now_add_peer()`
+  fehlgeschlagen — vorher schon über `connected()==false` sichtbar, aber
+  ohne Text) und (b) der aus dem Backlog bekannte, bisher komplett stille
+  "Paket >250 Byte wird verworfen"-Fall (`sendDataPacket_()`) — jetzt z.B.
+  "Paket zu groß (312 Byte, max 250) — verworfen". Der Drop selbst bleibt
+  bestehen (kein Scope dieser Änderung), nur die Sichtbarkeit ist neu.
+- Native Stubs (`!ARDUINO`) für beide Transporte um `lastErrorMessage() { return ""; }`
+  ergänzt, sonst Linker-Fehler im nativen Build.
+- Keine BrewControl-seitigen Änderungen nötig — `WebhookService`/
+  `EspNowPublishService`/`WebUI.cpp` reichen `ITransport::lastErrorMessage()`
+  bereits transparent bis in `/api/settings` durch (`webhook.error`/
+  `espnow.error`).
+
+**Verifikation:**
+1. `pio test -e native` (SensActCtrl): 192/192 grün.
+2. Compile-Smoke alle drei BrewControl-Envs: SUCCESS.
+3. Hardware auf LilyGo: Webhook mit unerreichbarer `peerUrl` aktiviert →
+   `GET /api/settings` zeigt `"webhook":{"error":"Verbindung zum Peer
+   abgelehnt", ...}` statt `""`, Antwortzeit weiterhin ~100ms (Backoff aus
+   dem vorherigen Fix bleibt intakt). Danach Webhook deaktiviert, `error`
+   wieder `""` — Baseline wiederhergestellt.
+4. ESP-NOW-Seite (Init-Fehler-Text, Paket-zu-groß-Text) **nicht** auf
+   Hardware nachgestellt — kein Controller mit genug Params zur Hand, um
+   die 250-Byte-Grenze gezielt zu reißen, und ein Init-Fehler ist auf
+   funktionierender Hardware nicht provozierbar. Nur Compile-Smoke +
+   Code-Review, gleicher Verifikationsstand wie der ursprüngliche
+   250-Byte-Fund selbst.
+
+**Geänderte Dateien:** `SensActCtrl/src/transport/WebhookTransport.h`/`.cpp`,
+`SensActCtrl/src/transport/EspNowTransport.h`/`.cpp`.

@@ -50,6 +50,12 @@ class WebhookTransport : public ITransport {
   bool subscribe(const char* topic, MessageCallback callback) override;
   void tick() override;
   bool connected() const override;
+  // Unlike MqttTransport (only non-empty when !connected()), this reports
+  // the last outbound POST/GET failure even while connected() == true —
+  // connected() here just reflects WiFi association, which says nothing
+  // about whether the peer itself is reachable. Empty once an outbound
+  // call succeeds again.
+  const char* lastErrorMessage() const override;
 
   // Called from the WebServer route handlers. Public so the static bridge
   // can reach them; not part of the user-facing API.
@@ -60,7 +66,7 @@ class WebhookTransport : public ITransport {
   bool ensureServerStarted_();
   void pullRetained_(const std::string& topic);
   bool inBackoff_() const;
-  void onOutboundFailure_();
+  void onOutboundFailure_(const std::string& reason);
   void onOutboundSuccess_();
 
   // HTTPClient timeout for outbound POST/GET (ms). Bounds a single blocked
@@ -79,6 +85,7 @@ class WebhookTransport : public ITransport {
   std::vector<std::string> pendingRetainedPulls_;
   bool hasFailure_ = false;
   unsigned long lastFailureMs_ = 0;
+  std::string lastErrorMsg_;
 };
 
 }  // namespace SensActCtrl
