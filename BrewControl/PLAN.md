@@ -613,12 +613,17 @@ gefixt wurden (Out-of-Scope für die jeweilige Änderung, oder Library-seitig
 statt BrewControl-seitig). Zentral hier sammeln statt nur im SESSION.md-
 Eintrag der Fund-Session zu vergraben.
 
-- **Webhook-Publish blockiert `loop()` bei unerreichbarem Peer.**
-  `WebhookTransport::publish()` (SensActCtrl) macht einen blockierenden
-  `HTTPClient::POST`. Live bestätigt (2026-08-29): bei nicht erreichbarem
-  Peer hingen *alle* HTTP-Requests ans Board (auch `/api/snapshot`) für
-  ~2,5s pro Versuch. Fix müsste in SensActCtrl ansetzen (async Client oder
-  Timeout/Backoff). Details: [SESSION.md](SESSION.md) 2026-08-29.
+- ~~**Webhook-Publish blockiert `loop()` bei unerreichbarem Peer.**~~ —
+  **entschärft 2026-08-29** (Timeout + Backoff, SensActCtrl
+  `WebhookTransport`). `publish()`/`pullRetained_()` bleiben synchron
+  (`HTTPClient` weiterhin blockierend), aber: kurzer Timeout (800ms statt
+  Default) + nach einem Fehlschlag 5s Backoff, in dem gar kein
+  Netzwerk-Call mehr versucht wird. Live verifiziert: `/api/snapshot`-
+  Latenz bei unerreichbarem Peer sank von ~2,5s auf durchgehend <200ms.
+  Kein echtes Async (bräuchte FreeRTOS-Task + Mutex um `retained_`/`subs_`
+  + Thread-Safety-Review für `RemoteSensor`/`RemoteActuator` — als Option B
+  bewusst zurückgestellt, Aufwand/Risiko vs. Nutzen für dieses Hobby-Projekt
+  nicht gerechtfertigt). Details: [SESSION.md](SESSION.md) 2026-08-29.
 - **ESP-NOW verwirft Pakete >250 Byte silently.**
   `EspNowTransport::sendDataPacket_()` gibt bei Überschreitung `false`
   zurück, kein Log, kein Retry. Betrifft v.a. Controller mit vielen Params

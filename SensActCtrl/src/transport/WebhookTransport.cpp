@@ -66,18 +66,22 @@ bool WebhookTransport::ensureServerStarted_() {
 bool WebhookTransport::publish(const char* topic, const char* payload, bool retained) {
   if (retained) retained_[topic] = payload ? payload : "";
   if (peerBaseUrl_.empty() || !WiFi.isConnected()) return false;
+  if (inBackoff_()) return false;
 
   String url = peerBaseUrl_.c_str();
   if (!url.endsWith("/")) url += "/";
   url += topic;
 
   HTTPClient http;
+  http.setTimeout(kHttpTimeoutMs);
   if (!http.begin(url)) return false;
   http.addHeader("Content-Type", "application/json");
   if (retained) http.addHeader("X-Retained", "1");
   const int code = http.POST(String(payload ? payload : ""));
   http.end();
-  return code >= 200 && code < 300;
+  const bool ok = code >= 200 && code < 300;
+  ok ? onOutboundSuccess_() : onOutboundFailure_();
+  return ok;
 }
 
 bool WebhookTransport::subscribe(const char* topic, MessageCallback callback) {
@@ -90,19 +94,39 @@ bool WebhookTransport::subscribe(const char* topic, MessageCallback callback) {
 
 void WebhookTransport::pullRetained_(const std::string& topic) {
   if (peerBaseUrl_.empty() || !WiFi.isConnected()) return;
+  if (inBackoff_()) return;
 
   String url = peerBaseUrl_.c_str();
   if (!url.endsWith("/")) url += "/";
   url += topic.c_str();
 
   HTTPClient http;
+  http.setTimeout(kHttpTimeoutMs);
   if (!http.begin(url)) return;
   const int code = http.GET();
   if (code >= 200 && code < 300) {
     const String body = http.getString();
     handleIncomingPost(topic.c_str(), body.c_str(), body.length());
+    onOutboundSuccess_();
+  } else {
+    onOutboundFailure_();
   }
   http.end();
+}
+
+bool WebhookTransport::inBackoff_() const {
+  // Wraparound-safe (works across the millis() overflow boundary too), same
+  // idiom as RemotePublisher's state-publish cadence check.
+  return hasFailure_ && (millis() - lastFailureMs_) < kBackoffMs;
+}
+
+void WebhookTransport::onOutboundFailure_() {
+  hasFailure_ = true;
+  lastFailureMs_ = millis();
+}
+
+void WebhookTransport::onOutboundSuccess_() {
+  hasFailure_ = false;
 }
 
 void WebhookTransport::tick() {
@@ -155,6 +179,9 @@ void WebhookTransport::handleIncomingPost(const char*, const char*, size_t) {}
 bool WebhookTransport::retainedFor(const char*, std::string&) const { return false; }
 bool WebhookTransport::ensureServerStarted_() { return false; }
 void WebhookTransport::pullRetained_(const std::string&) {}
+bool WebhookTransport::inBackoff_() const { return false; }
+void WebhookTransport::onOutboundFailure_() {}
+void WebhookTransport::onOutboundSuccess_() {}
 
 }  // namespace SensActCtrl
 

@@ -32,6 +32,12 @@ namespace SensActCtrl {
 //
 // connected() reflects WiFi association. Publish/GET silently fail when
 // disconnected; no internal reconnect loop (caller manages WiFi).
+//
+// Outbound calls (publish POST, retained-pull GET) use a short HTTPClient
+// timeout, and a failure puts the peer in a backoff window during which
+// further outbound attempts are skipped without hitting the network at all.
+// This bounds how much an unreachable peer can block the caller's loop()
+// (was: one full HTTPClient default timeout per item, every tick).
 class WebhookTransport : public ITransport {
  public:
   // listenPort: local HTTP server port (e.g. 8080).
@@ -53,6 +59,16 @@ class WebhookTransport : public ITransport {
  private:
   bool ensureServerStarted_();
   void pullRetained_(const std::string& topic);
+  bool inBackoff_() const;
+  void onOutboundFailure_();
+  void onOutboundSuccess_();
+
+  // HTTPClient timeout for outbound POST/GET (ms). Bounds a single blocked
+  // call instead of the library default (~5s).
+  static constexpr uint32_t kHttpTimeoutMs = 800;
+  // After an outbound failure, skip further outbound attempts to this peer
+  // for this long — avoids re-blocking on every publish() while it's down.
+  static constexpr uint32_t kBackoffMs = 5000;
 
   uint16_t listenPort_;
   std::string peerBaseUrl_;
@@ -61,6 +77,8 @@ class WebhookTransport : public ITransport {
   std::vector<std::pair<std::string, MessageCallback>> subs_;
   std::map<std::string, std::string> retained_;
   std::vector<std::string> pendingRetainedPulls_;
+  bool hasFailure_ = false;
+  unsigned long lastFailureMs_ = 0;
 };
 
 }  // namespace SensActCtrl

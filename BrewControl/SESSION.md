@@ -863,3 +863,54 @@ mit `Connection was reset` nach ~65 KB fehl (Board bleibt danach stabil
 erreichbar, kein Crash) — vorbestehender, unveränderter Code-Pfad
 (`SdTarSink`/`TarExtractor`), nicht durch diese Änderung berührt. LilyGo S3
 war vom selben Upload nicht betroffen (`HTTP 200`). Nicht weiter untersucht.
+
+## 2026-08-29 — Fix: Webhook-Publish blockiert `loop()` nicht mehr unbegrenzt
+
+**Ausgangslage:** Aus dem "Bekannte Probleme"-Backlog (siehe PLAN.md) —
+`WebhookTransport::publish()`/`pullRetained_()` (SensActCtrl) machen einen
+blockierenden `HTTPClient`-Call ohne Timeout. Bei unerreichbarem Peer hing
+das Board für ~2,5s *pro Versuch*, und `RemotePublisher::tick()` versucht
+das bei jedem Loop-Durchlauf erneut — spürbar auch für unbeteiligte Requests
+wie `/api/snapshot`.
+
+**Entscheidung:** Nutzer wollte prüfen, ob echtes Async (Option B: FreeRTOS-
+Task + Queue, `HTTPClient`-Call komplett aus `loop()` raus) machbar ist.
+Bewertet und verworfen — würde Multi-Threading in einen bisher komplett
+single-threaded Layer einführen (Mutex um `retained_`/`subs_` nötig,
+Thread-Safety-Review für `RemoteSensor`/`RemoteActuator`-Callbacks, kein
+nativer Test für den `ARDUINO`-Pfad). Aufwand/Risiko für ein Hobby-Projekt
+nicht gerechtfertigt, wenn der pragmatischere Fix denselben praktischen
+Nutzen bringt. Stattdessen **Option A**: Timeout + Backoff, synchron.
+
+**Umsetzung** (`SensActCtrl/src/transport/WebhookTransport.h`/`.cpp`):
+- `http.setTimeout(800)` vor jedem `POST`/`GET` (statt `HTTPClient`-Default
+  von mehreren Sekunden).
+- Nach einem fehlgeschlagenen Outbound-Call (POST oder GET) 5s Backoff für
+  den gesamten Transport (ein Peer pro Instanz) — in dem Fenster wird
+  `publish()`/`pullRetained_()` sofort `false`/no-op zurückgegeben, **ohne**
+  überhaupt einen Netzwerk-Call zu versuchen. Ein Erfolg setzt den Backoff
+  zurück.
+- Wraparound-sicherer `millis()`-Vergleich (`now - lastFailureMs_ <
+  kBackoffMs`), gleiches Idiom wie in `RemotePublisher`.
+- Native Stubs (`!ARDUINO`-Zweig) für die drei neuen privaten Helper
+  ergänzt (No-ops), damit der native Build weiter linkt.
+
+**Verifikation:**
+1. `pio test -e native` (SensActCtrl): 192/192 Tests grün.
+2. Compile-Smoke alle drei BrewControl-Envs (`esp32dev`, `lolin_s2_mini`,
+   `lilygo_t_display_s3_amoled`): alle SUCCESS, Flash-Nutzung unverändert.
+3. Hardware-Negativtest auf LilyGo (`192.168.178.87`): Webhook mit
+   unerreichbarer `peerUrl` (`192.168.178.250:8080`) aktiviert, danach 14×
+   `/api/snapshot` im ~0,7s-Abstand über ~10s gemessen. Vorher (2026-08-29,
+   siehe oben): ~2,5s pro Request. Jetzt: durchgehend 72–173ms, kein
+   einziger Ausreißer. Danach Webhook wieder deaktiviert, Board auf
+   Baseline zurückgesetzt.
+
+**Bewusst nicht gemacht:** echtes Async (Option B) — bleibt als möglicher
+Folge-Schritt, falls die synchrone Backoff-Lösung sich in der Praxis als
+nicht ausreichend erweist. `publish()`/`pullRetained_()` können weiterhin
+kurz (bis 800ms) blockieren, wenn der Backoff gerade abgelaufen ist und ein
+neuer Versuch fällig wird.
+
+**Geänderte Dateien:** `SensActCtrl/src/transport/WebhookTransport.h`,
+`SensActCtrl/src/transport/WebhookTransport.cpp`.
