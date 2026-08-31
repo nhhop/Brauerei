@@ -5,10 +5,12 @@ Web-UI für ESP32-basierte Brausteuerungen, die auf der
 registrierten Sensoren im Browser, Aktoren-Schalten und PID-/Setpoint-
 Tuning zur Laufzeit über eine HTTP+SSE-API.
 
-> **Status:** MVP vollständig + Laufzeit-Item-Add/Remove + Bus-Discovery.
-> E2E auf LOLIN S2 Mini und LilyGo T-Display-S3-AMOLED-1.43 verifiziert.
-> Verbleibende offene Punkte sind peripherie-gebunden (DS18B20 live reads,
-> SSR, SD mid-flight) — siehe [`SESSION.md`](SESSION.md).
+> **Status:** MVP + Laufzeit-Item-Add/Remove + Bus-Discovery + Datenlogging +
+> Sollwert-Programme + MQTT/Webhook/ESP-NOW (lokal + Remote-Node) +
+> WinUI-3-Fluent-Redesign, alle drei Boards (esp32dev, LOLIN S2 Mini,
+> LilyGo T-Display-S3-AMOLED-1.43) hardware-verifiziert. Aktueller
+> Gesamtstand/Roadmap: [`../PLAN.md`](../PLAN.md); Session-Historie:
+> [`../SESSION.md`](../SESSION.md).
 
 ## Architektur
 
@@ -37,6 +39,29 @@ Die Web-Assets liegen auf einer SD-Karte (hot-swappable, kein
 Firmware-Reflash bei UI-Iteration). Live-Updates kommen per
 Server-Sent-Events — jede 1 s und nach jedem Schreib-Request bekommt der
 Browser einen vollständigen Snapshot.
+
+### Architektur-Entscheidungen
+
+- **`ESPAsyncWebServer`** statt sync `WebServer`: SSE braucht persistente
+  Verbindungen — `AsyncEventSource` macht das in wenigen Zeilen, AsyncTCP
+  läuft in einem eigenen Task und blockiert `Registry::tick()` nicht.
+- **Vite + Preact** statt React: Preact (~3 KB gzipped) passt zum
+  Library-Stil ("Simplicity First"), gleiche API, kleineres Bundle.
+- **Tailwind CSS 4**: utility-first, kein `tailwind.config.ts`/
+  `postcss.config.js`/`autoprefixer` mehr nötig (Lightning CSS eingebaut).
+- **SD-Karte** (LilyGo S3) statt LittleFS: das UI-Bundle ändert sich oft
+  beim Iterieren — SD ist hot-swappable, kein Reflash nötig.
+  **esp32dev/lolin_s2_mini** haben keinen SD-Slot und laufen stattdessen
+  auf einer internen LittleFS-Partition (`BREWCTL_USE_LITTLEFS`,
+  `partitions_4mb_littlefs.csv`) — Hot-Swap-Vorteil entfällt dort, Deploy
+  per `uploadfs` über USB (s. unten).
+- **Concurrency:** `serializeRegistry()` läuft im AsyncTCP-Task,
+  `Registry::tick()` im loopTask — `Reading`-Werte (float+timestamp+ok)
+  sind auf ESP32 nicht atomar gegen torn reads, für den Dashboard-Use
+  tolerierbar (sporadisches optisches Flackern, kein Datenverlust). SD/
+  LittleFS-Zugriffe selbst sind über einen globalen rekursiven Mutex
+  (`SdLock.h`) synchronisiert — Grund war ein realer Concurrency-Bug
+  zwischen `loopTask` und `async_tcp` (siehe `SESSION.md` 2026-08-19/20).
 
 ## Voraussetzungen
 
@@ -258,9 +283,10 @@ anderen Pin probieren.
 Serial-Log liefert den Reading-Status pro `tick()`.
 
 **SSE-Stream bricht nach WiFi-Reconnect ab**
-Browser-EventSource reconnected nativ; UI sollte in ≤60 s resumen.
-Falls nicht: `server.begin()` muss in einen `WiFi.onEvent(STA_GOT_IP)`-
-Hook (nicht im MVP — siehe `PLAN.md` Verifikation Schritt 10).
+Browser-EventSource reconnected nativ; UI sollte in ≤60 s resumen. Der
+eingebaute WLAN-Watchdog (`maintainWiFi()` in `main.cpp`) reconnected bei
+Verbindungsverlust selbständig; mDNS wird bei jedem `STA_GOT_IP`-Event neu
+angemeldet (`startMDNS()`).
 
 ## Firmware-Update
 
@@ -337,8 +363,6 @@ braucht `uploadfs`). Der LilyGo-S3 (16 MB) behält die Default-Tabelle + SD (gen
 
 ## Weiteres
 
-- [`PLAN.md`](PLAN.md) — Architektur-Vertrag, Build-Reihenfolge,
-  Verifikations-Protokoll, Future Work
-- [`SESSION.md`](SESSION.md) — Session-Log mit Status pro Build-Schritt
-  und Pass-Reviews
+- [`../PLAN.md`](../PLAN.md) — Gesamtstatus + Roadmap (beide Teilprojekte)
+- [`../SESSION.md`](../SESSION.md) / [`../SESSION-archive.md`](../SESSION-archive.md) — Session-Log
 - [`SensActCtrl/`](../SensActCtrl/) — die zugrundeliegende Library

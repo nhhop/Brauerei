@@ -6,7 +6,7 @@
 
 BrewControl ist der Web-UI Consumer der SensActCtrl-Library (`../SensActCtrl/`). Es fügt HTTP + SSE Transport sowie eine Preact-SPA hinzu — keine neue Domain-Logik. Die Library ist frontend-agnostisch; `serializeRegistry()` liefert bereits das vollständige JSON-State.
 
-**Status:** MVP (11 Build-Steps) abgeschlossen, E2E verifiziert auf LOLIN S2 Mini und LilyGo T-Display-S3-AMOLED-1.43. Details in `PLAN.md` und `SESSION.md`.
+**Status:** MVP + Laufzeit-Item-Add/Remove + Datenlogging + Sollwert-Programme + MQTT/Webhook/ESP-NOW + WinUI-3-Redesign, alle drei Boards hardware-verifiziert. Details in [`../PLAN.md`](../PLAN.md) (Root) und [`../SESSION.md`](../SESSION.md); Architektur-/API-Referenz in [`README.md`](README.md).
 
 ## Architektur
 
@@ -26,7 +26,7 @@ BrewControl ist der Web-UI Consumer der SensActCtrl-Library (`../SensActCtrl/`).
 
 ## API-Vertrag
 
-Fixiert in `PLAN.md`. Snapshot-Shape kommt aus `RegistrySnapshot.h` — `web/src/types.ts` spiegelt diese Form, kein paralleles Schema erfinden.
+Fixiert in [`README.md`](README.md). Snapshot-Shape kommt aus `RegistrySnapshot.h` — `web/src/types.ts` spiegelt diese Form, kein paralleles Schema erfinden.
 
 | Endpoint | Methode |
 |----------|---------|
@@ -62,6 +62,6 @@ pnpm typecheck
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
   ESPAsyncWebServer serviert .gz transparent); Deploy über `pio run -t uploadfs`, nicht Netzwerk-Upload.
-- Plan / Status / Entscheidungen leben in `PLAN.md` und `SESSION.md` (ältere, abgeschlossene Einträge in `SESSION-archive.md`).
-- Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum SESSION.md-Eintrag in `PLAN.md` → „Bekannte Probleme" eintragen, statt nur im Session-Log zu vergraben.
-- Wird ein solcher Eintrag später gefixt: **nicht** mit vollem Absatz in `PLAN.md` stehen lassen — das dupliziert den SESSION.md-Eintrag und lässt `PLAN.md` (Status-Dokument, keine Historie) unbegrenzt wachsen. Stattdessen auf eine Zeile kürzen (`~~Titel~~ — gefixt <Datum>, Details: SESSION.md`) und nach ein paar Sessions ganz entfernen. Die volle Erklärung (Root Cause, Umsetzung, Verifikation) lebt ausschließlich in `SESSION.md`.
+- Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md`/`SESSION-archive.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).
+- Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum Root-SESSION.md-Eintrag im Root-`PLAN.md` → „Bekannte Einschränkungen / Offene Punkte" eintragen, statt nur im Session-Log zu vergraben.
+- Wird ein solcher Eintrag später gefixt: **nicht** mit vollem Absatz im Root-`PLAN.md` stehen lassen — das dupliziert den SESSION.md-Eintrag und lässt `PLAN.md` (Status-Dokument, keine Historie) unbegrenzt wachsen. Stattdessen auf eine Zeile kürzen (`~~Titel~~ — gefixt <Datum>, Details: SESSION.md`) und nach ein paar Sessions ganz entfernen. Die volle Erklärung (Root Cause, Umsetzung, Verifikation) lebt ausschließlich im Root-`SESSION.md`/`SESSION-archive.md`.

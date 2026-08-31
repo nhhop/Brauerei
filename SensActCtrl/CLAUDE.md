@@ -6,7 +6,7 @@
 
 SensActCtrl ist eine wiederverwendbare ESP32-Library (PlatformIO, Arduino, C++17) für Sensoren, Aktoren und Regler. Sie stellt die Domain-Abstraktionen bereit, auf die BrewControl (Schwester-Projekt im Monorepo) aufbaut.
 
-**Status:** Phase 1–3 komplett, 31/31 native Tests grün, 13 Beispiel-Sketches. Details in `PLAN.md` und `session.md`.
+**Status:** Phase 1–3 komplett, 189+ native Tests grün. Details in [`../PLAN.md`](../PLAN.md) (Root) und [`../SESSION.md`](../SESSION.md); Architektur-/API-Referenz in [`README.md`](README.md).
 
 ## Architektur
 
@@ -34,5 +34,5 @@ pio run -e esp32dev         # Compile-Check gegen esp32dev-Target
 
 - Änderungen an der Library **immer** mit `pio test -e native` verifizieren.
 - `RegistrySnapshot`-JSON-Shape ist Wire-Format für BrewControl — Breaking Changes koordinieren.
-- `library.json` / `library.properties` für Standalone-Publishing erhalten.
-- Plan / Status / Entscheidungen leben in `PLAN.md` und `session.md`.
+- `library.json` / `library.properties` für Standalone-Publishing erhalten; `README.md` bewusst eigenständig verständlich halten (reist mit dem Paket, wenn die Library standalone gezogen wird — Rest des Monorepos ist dann nicht sichtbar).
+- Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).

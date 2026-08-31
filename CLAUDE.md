@@ -39,14 +39,19 @@ pnpm typecheck
 
 ## Dokumentation
 
-- **`PLAN.md`** (Root): Systemarchitektur-Überblick und Status beider Projekte
-- **`SESSION.md`** (Root): Cross-projekt Session-Log für Arbeiten, die beide Projekte betreffen
-- **`SensActCtrl/CLAUDE.md`**: Library-spezifischer Kontext
-- **`SensActCtrl/PLAN.md`** / **`SensActCtrl/session.md`**: Detaillierte Library-History
-- **`BrewControl/CLAUDE.md`**: BrewControl-spezifischer Kontext
-- **`BrewControl/PLAN.md`** / **`BrewControl/SESSION.md`**: Detaillierte BrewControl-History
+SensActCtrl und BrewControl werden nicht mehr unabhängig geplant — Status,
+Roadmap und Session-Log leben ausschließlich auf Root-Ebene, unabhängig
+davon, welches Teilprojekt eine Änderung betrifft:
 
-Vor substanziellen Änderungen: sub-projekt PLAN.md lesen. SESSION.md danach aktualisieren.
+- **`PLAN.md`** (Root): Status + Roadmap + Bekannte Probleme, beide Projekte. Bounded — gefixte Punkte bekommen nur eine kurze Pointer-Zeile, keine volle Erklärung (die lebt in SESSION.md).
+- **`SESSION.md`** (Root): chronologisches Log, ein kurzer Absatz pro Thema/Session mit Verweis auf die volle Historie.
+- **`SESSION-archive.md`** (Root): volle Detail-Historie älterer, abgeschlossener Themen (Root-Cause, Umsetzung, Verifikation) — unverändert übernommen, nicht gekürzt.
+- **`SensActCtrl/CLAUDE.md`**: Library-spezifischer Kontext.
+- **`SensActCtrl/README.md`**: Architektur-/API-Referenz — bleibt bewusst eigenständig verständlich, da die Library separat als PlatformIO-/Arduino-Paket veröffentlichbar ist (Standalone-Publish-Anspruch).
+- **`BrewControl/CLAUDE.md`**: BrewControl-spezifischer Kontext.
+- **`BrewControl/README.md`**: Architektur-/API-Referenz, Setup/Build/Deploy, Troubleshooting.
+
+Vor substanziellen Änderungen: `PLAN.md` lesen. `SESSION.md` danach aktualisieren (neuer Eintrag, ggf. ältere abgeschlossene Themen nach `SESSION-archive.md` verschieben und im `SESSION.md`-Eintrag auf eine Kurzform kürzen).
 
 ---
 
