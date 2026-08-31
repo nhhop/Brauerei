@@ -6,7 +6,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
   return {
     plugins: [preact(), tailwindcss()],
-    base: './',
+    // Absolute, not './' — relative asset URLs break on nested client-side
+    // routes (e.g. /settings/network resolves "assets/x.js" against
+    // /settings/, not /). The server maps URL "/" to the SD/LittleFS "/www"
+    // folder regardless of the on-disk path, so "/" is the correct root here.
+    base: '/',
     build: { outDir: 'dist', target: 'es2020' },
     server: {
       proxy: {

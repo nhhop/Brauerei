@@ -1120,3 +1120,51 @@ Hinweis/Redirect auf der Erfolgsseite nach dem Reboot.
 **Geänderte Dateien:** `BrewControl/firmware/src/WiFiSetupPortal.h`/`.cpp`,
 `BrewControl/firmware/src/WebUI.cpp`,
 `BrewControl/firmware/src/Hostname.h` (neu).
+
+## 2026-08-31 — Fix: Direkte URLs zu Unterseiten liefern weiße Seite + Feature: ESP-NOW-Icon
+
+**Ausgangslage:** `http://brewcontrol-esp32dev.local/settings/network` per direkter
+URL-Eingabe oder Reload → weiße Seite. `http://.../settings` (eine Ebene) funktionierte.
+
+**Root Cause:** `web/vite.config.ts` hatte `base: './'` (Kommentar: „SD-Karten-Root ist
+nicht '/'" — falsche Annahme). Das erzeugt relative Asset-URLs im gebauten
+`index.html` (`./assets/index-*.js`). Der Browser löst relative URLs gegen den
+*URL-Pfad* auf, nicht gegen den physischen SD/LittleFS-Pfad: unter `/settings`
+(ein Segment) landet die Auflösung zufällig richtig bei `/assets/...`, unter
+`/settings/network` (zwei Segmente) dagegen bei `/settings/assets/...` — 404, JS lädt
+nicht, weiße Seite. Serverseitig war das SPA-Fallback (`WebUI.cpp` `onNotFound` →
+`index.html`) die ganze Zeit korrekt und lieferte auf beiden Pfaden identisches HTML
+(per `curl` verifiziert) — der Bug lag rein im Client-Bundling, nicht im Firmware-Code.
+
+**Fix:** `base: '/'` — absolute Asset-Pfade. Der Server mapped die Web-Root-URL `/`
+immer auf den SD/LittleFS-Ordner `/www`, unabhängig vom physischen Pfad, `/` ist also
+die korrekte Basis.
+
+**Zusätzlich (User-Wunsch):** ESP-NOW-Icon auf `/settings` und `/settings/espnow` von
+lucide-preact `Antenna` auf `<SiEspressif />` (react-icons) umgestellt.
+`react-icons` + `@types/react` (nur als Typ-Dependency — react-icons' `.d.ts` braucht
+`React.SVGAttributes` für `className`) als neue Dependencies. Laufzeit-Aliasing von
+`react`/`react-dom` auf `preact/compat` übernimmt bereits `@preact/preset-vite`
+(kein zusätzliches Alias-Setup nötig). Da react-icons' `className`-Prop nicht zum
+bestehenden `class`-Prop-Vertrag der `LucideIcon`/`SettingsCard`-Typen passt, neuer
+kleiner Adapter `web/src/components/EspressifIcon.tsx` (typisiert als `LucideIcon`,
+übersetzt `class` → `className`) statt die bestehenden Icon-Typen aufzuweichen.
+
+**Verifikation:**
+1. `pnpm typecheck` + `pnpm build` (web/): grün, `dist/index.html` zeigt jetzt
+   `/assets/...` statt `./assets/...`.
+2. `pnpm dev`-Preview: direkter Aufruf `/settings/espnow` und `/settings/network` ohne
+   Reload-Probleme, Icon korrekt gerendert, keine Konsolenfehler.
+3. Hardware: `pnpm build:sd` + Assets nach `firmware/data/www` kopiert (dokumentierter
+   Ablauf aus `README.md`) + `pio run -e lolin_s2_mini -t uploadfs` (USB, COM5) auf das
+   LOLIN-Testboard. Danach per Browser direkt `http://192.168.178.82/settings/network`
+   aufgerufen (nicht über Client-Navigation) — lädt korrekt, kein weißer Screen, keine
+   Konsolenfehler. Icon auf `/settings` und `/settings/espnow` verifiziert.
+   `pio run -e esp32dev -t buildfs` als Größen-Check (Bundle jetzt ~84 KB gzip durch
+   react-icons/preact-compat, passt weiterhin komfortabel in die 256-KB-Partition).
+
+**Geänderte Dateien:** `BrewControl/web/vite.config.ts`,
+`BrewControl/web/src/pages/SettingsIndex.tsx`,
+`BrewControl/web/src/pages/EspNowPage.tsx`,
+`BrewControl/web/src/components/EspressifIcon.tsx` (neu),
+`BrewControl/web/package.json`/`pnpm-lock.yaml`.

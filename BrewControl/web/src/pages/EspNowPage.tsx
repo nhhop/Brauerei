@@ -6,8 +6,9 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { ToggleSwitch } from '../components/ToggleSwitch';
+import { EspressifIcon } from '../components/EspressifIcon';
 import { btnPrimary, inp, badgeSuccess, badgeCritical } from '../ui';
-import { Antenna, Hash, Info, Plug } from 'lucide-preact';
+import { Hash, Info, Plug } from 'lucide-preact';
 
 const DEFAULT: EspNowSettings = {
   enabled: false,
@@ -70,7 +71,7 @@ export function EspNowPage(_: { path?: string }) {
       </header>
 
       <SettingsGroup>
-        <SettingsCard title="ESP-NOW-Publish aktivieren" icon={Antenna}
+        <SettingsCard title="ESP-NOW-Publish aktivieren" icon={EspressifIcon}
           desc="Sensoren, Aktoren und Regler per ESP-NOW-Broadcast senden (gleicher WLAN-Kanal, kein Pairing nötig)"
           control={<ToggleSwitch checked={settings.enabled} onChange={(v) => update({ enabled: v })}
             title="ESP-NOW-Publish aktivieren" />} />
