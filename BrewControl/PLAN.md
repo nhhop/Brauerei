@@ -614,16 +614,7 @@ statt BrewControl-seitig). Zentral hier sammeln statt nur im SESSION.md-
 Eintrag der Fund-Session zu vergraben.
 
 - ~~**Webhook-Publish blockiert `loop()` bei unerreichbarem Peer.**~~ —
-  **entschärft 2026-08-29** (Timeout + Backoff, SensActCtrl
-  `WebhookTransport`). `publish()`/`pullRetained_()` bleiben synchron
-  (`HTTPClient` weiterhin blockierend), aber: kurzer Timeout (800ms statt
-  Default) + nach einem Fehlschlag 5s Backoff, in dem gar kein
-  Netzwerk-Call mehr versucht wird. Live verifiziert: `/api/snapshot`-
-  Latenz bei unerreichbarem Peer sank von ~2,5s auf durchgehend <200ms.
-  Kein echtes Async (bräuchte FreeRTOS-Task + Mutex um `retained_`/`subs_`
-  + Thread-Safety-Review für `RemoteSensor`/`RemoteActuator` — als Option B
-  bewusst zurückgestellt, Aufwand/Risiko vs. Nutzen für dieses Hobby-Projekt
-  nicht gerechtfertigt). Details: [SESSION.md](SESSION.md) 2026-08-29.
+  **entschärft 2026-08-29** (Timeout + Backoff). Details: [SESSION.md](SESSION.md) 2026-08-29.
 - **ESP-NOW verwirft Pakete >250 Byte silently.**
   `EspNowTransport::sendDataPacket_()` gibt bei Überschreitung `false`
   zurück, kein Retry — der Drop selbst ist weiterhin da. Betrifft v.a.
@@ -633,36 +624,14 @@ Eintrag der Fund-Session zu vergraben.
   (siehe Fix unten), aber nichts liest das aktiv aus/loggt es. Nicht gezielt
   nachgetestet, nur aus dem Quellcode abgeleitet.
 - ~~**ESP-NOW liefert Meta an spät hinzugefügte Consumer nicht zuverlässig.**~~
-  — **gefixt 2026-08-31.** State kam zuverlässig per Live-Broadcast an,
-  Meta (kind/unit/min/max/res) blieb bei einem erst nach dem Leaf-Boot
-  angelegten `Remote`-Sensor auf Default. Root Cause:
-  `EspNowTransport::subscribe()` verwarf einen Retained-Request-Broadcast
-  endgültig statt ihn nachzuholen, wenn er in ein 1s-Throttle-Fenster fiel
-  — bei vielen `subscribe()`-Aufrufen kurz hintereinander beim Boot betraf
-  das alle außer dem ersten; zusätzlich wurde `EspNowTransport::tick()` für
-  reine Consumer-Boards (lokales Publish deaktiviert) nie aufgerufen, sodass
-  ein tick()-basierter Retry sie gar nicht erreicht hätte. Beides gefixt.
-  Live auf LilyGo (reiner Consumer, `espnow.enabled:false`) + LOLIN
-  (Publisher) verifiziert: `Remote`-Sensor nach Boot spät hinzugefügt, Meta
-  kam sofort korrekt an (`°C`/-55/125/0.0625 statt Default) — über zwei
-  saubere Reboots reproduziert, beide Male korrekt. Details:
-  [SESSION.md](SESSION.md) 2026-08-31.
+  — **gefixt 2026-08-31.** Details: [SESSION.md](SESSION.md) 2026-08-31.
 - **`WebhookService::getOrCreate()` cached strikt nach `(port, peerUrl)`.**
   Zwei verschiedene Peers, die sich denselben lokalen Port teilen wollen,
   erzeugen zwei separate `WebServer`-Instanzen auf demselben physischen
   Port → Bind-Konflikt. Im Test 2026-08-29 umgangen (anderer Port für den
   zweiten Consumer), Cache-Design selbst nicht gefixt.
 - ~~**`ITransport::lastErrorMessage()` liefert für Webhook/ESP-NOW immer
-  `""`.**~~ — **gefixt 2026-08-29.** `WebhookTransport` überschreibt jetzt
-  `lastErrorMessage()` (letzter POST/GET-Fehlergrund, z.B. "Verbindung zum
-  Peer abgelehnt" — live auf LilyGo verifiziert); Besonderheit: anders als
-  bei `MqttTransport` wird der Text auch gezeigt, wenn `connected()==true`
-  ist (das reflektiert bei Webhook nur WLAN, nicht Peer-Erreichbarkeit).
-  `EspNowTransport` überschreibt es ebenfalls (Init-Fehler + der zuvor
-  komplett stille „Paket >250 Byte verworfen"-Fall aus dem Eintrag direkt
-  darüber) — nur per Compile-Smoke geprüft, nicht auf Hardware nachgestellt
-  (kein Controller mit ausreichend vielen Params zur Hand). Details:
-  [SESSION.md](SESSION.md) 2026-08-29.
+  `""`.**~~ — **gefixt 2026-08-29.** Details: [SESSION.md](SESSION.md) 2026-08-29.
 - **`POST /api/update/assets` (UI-Tar-Upload) bricht auf LOLIN S2 Mini ab**
   (`Connection was reset` nach ~65 KB, Board bleibt stabil, kein Crash).
   Vorbestehender Code-Pfad (`SdTarSink`/`TarExtractor`), auf LilyGo S3 nicht

@@ -64,3 +64,4 @@ pnpm typecheck
   ESPAsyncWebServer serviert .gz transparent); Deploy über `pio run -t uploadfs`, nicht Netzwerk-Upload.
 - Plan / Status / Entscheidungen leben in `PLAN.md` und `SESSION.md` (ältere, abgeschlossene Einträge in `SESSION-archive.md`).
 - Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum SESSION.md-Eintrag in `PLAN.md` → „Bekannte Probleme" eintragen, statt nur im Session-Log zu vergraben.
+- Wird ein solcher Eintrag später gefixt: **nicht** mit vollem Absatz in `PLAN.md` stehen lassen — das dupliziert den SESSION.md-Eintrag und lässt `PLAN.md` (Status-Dokument, keine Historie) unbegrenzt wachsen. Stattdessen auf eine Zeile kürzen (`~~Titel~~ — gefixt <Datum>, Details: SESSION.md`) und nach ein paar Sessions ganz entfernen. Die volle Erklärung (Root Cause, Umsetzung, Verifikation) lebt ausschließlich in `SESSION.md`.
