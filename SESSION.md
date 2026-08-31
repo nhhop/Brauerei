@@ -308,3 +308,41 @@ komplett umgesetzt), plus vier bis dahin nirgends nachgetragene
 Bekannte-Probleme-Einträge ergänzt (verschwundener Test-Sensor `sdfswdf`,
 Bus-Scan-UX-Feedback, LittleFS-Boards ohne SD-Boot-Flash/Log-Retention,
 GPIO/LEDC-Leak-Fix-Nachtest).
+
+## 2026-09-01 — Aufräumen: gemergte Branches/Worktree entfernt + Doku-Punkt geschlossen
+
+Nach `git fetch --prune`: `docs/consolidate-plan-session` (PR #18),
+`feat/sd-file-manager`, `claude/distracted-rubin-a1e377` waren gemergt und
+remote gelöscht — lokale Branches + der Worktree
+`.claude/worktrees/distracted-rubin-a1e377` entfernt. Offen bleibt nur
+`feat/winui-design` (1 obsoleter Commit voraus / 37 hinter).
+Bekannte-Probleme-Eintrag „Test-Sensor `sdfswdf` spurlos verschwunden"
+gestrichen — nie reproduziert, Sensor manuell gelöscht.
+
+## 2026-09-01 — HW-E2E: SD-Boot-Flash-Recovery (`FirmwareUpdater::flashFromSdImage()`)
+
+Der seit 2026-06-05 nur build-verifizierte Recovery-Pfad (SD-Root
+`/firmware.bin` wird beim Boot vor WiFi geflasht, dann gelöscht) am Gerät
+verifiziert — komplett host-getrieben gegen die LilyGo T-Display-S3-AMOLED
+(`192.168.178.87`), kein SD-Kartenausbau:
+
+1. `firmware.bin` mit `BREWCTL_VERSION_OVERRIDE=sdflash-e2e` gebaut
+   (1.319.744 B), per `POST /api/files/upload?path=/` auf den SD-Root.
+2. Reboot via `POST /api/network {"hostname":"brewcontrol"}` (kein
+   WLAN-Eingriff).
+3. Nach ~15 s zurück: `GET /api/update/status` → `currentVersion` von
+   `d6ccb81-dirty` auf `sdflash-e2e` gewechselt (= SD-Image ist die
+   laufende Firmware), `firmware.bin` vom SD-Root verschwunden
+   (Selbstlöschung nach erfolgreichem `Update.end`), Snapshot/WiFi/Config
+   unverändert.
+4. Restore: sauberes `firmware.bin` (ohne Override, `70faca4-dirty`)
+   über denselben SD-Weg zurückgeflasht — zweiter erfolgreicher Durchlauf.
+
+**Nebenbefund (→ PLAN.md Bekannte Einschränkungen):** Der erste
+Restore-Upload landete truncated auf der SD (618.496 statt 1.319.744 B),
+Handler meldete trotzdem `200 ok` — `POST /api/files/upload` ignoriert die
+`File::write()`-Rückgabe. `flashFromSdImage()` verhielt sich dabei korrekt:
+`Update.end(true)` wies das unvollständige Image ab, das Board bootete die
+vorhandene Firmware weiter, die kaputte Datei blieb liegen (kein
+Reflash-Loop). Nach Löschen + Re-Upload (mit Größencheck + Retry-Schleife)
+lief der Restore sauber durch.
