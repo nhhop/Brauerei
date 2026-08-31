@@ -39,12 +39,12 @@ pnpm typecheck
 
 ## Dokumentation
 
-SensActCtrl und BrewControl werden nicht mehr unabhängig geplant — Status,
-Roadmap und Session-Log leben ausschließlich auf Root-Ebene, unabhängig
+SensActCtrl und BrewControl werden nicht mehr unabhängig geplant — Backlog,
+offene Punkte und Session-Log leben ausschließlich auf Root-Ebene, unabhängig
 davon, welches Teilprojekt eine Änderung betrifft:
 
-- **`PLAN.md`** (Root): Status + Roadmap + Bekannte Probleme, beide Projekte. Bounded — gefixte Punkte bekommen nur eine kurze Pointer-Zeile, keine volle Erklärung (die lebt in SESSION.md).
-- **`SESSION.md`** (Root): chronologisches Log, ein kurzer Absatz pro Thema/Session mit Verweis auf die volle Historie.
+- **`PLAN.md`** (Root): **nur Offenes** — Bugs, bekannte Einschränkungen, Backlog, Feature-Gedanken, beide Projekte. Sobald ein Punkt umgesetzt ist, wird er ersatzlos entfernt (kein durchgestrichener „erledigt"-Eintrag, keine Pointer-Zeile) — die Historie lebt in SESSION.md.
+- **`SESSION.md`** (Root): chronologisches Log, ein kurzer Absatz pro Thema/Session mit Verweis auf die volle Historie. Erledigtes aus PLAN.md landet hier.
 - **`SESSION-archive.md`** (Root): volle Detail-Historie älterer, abgeschlossener Themen (Root-Cause, Umsetzung, Verifikation) — unverändert übernommen, nicht gekürzt.
 - **`SensActCtrl/CLAUDE.md`**: Library-spezifischer Kontext.
 - **`SensActCtrl/README.md`**: Architektur-/API-Referenz — bleibt bewusst eigenständig verständlich, da die Library separat als PlatformIO-/Arduino-Paket veröffentlichbar ist (Standalone-Publish-Anspruch).

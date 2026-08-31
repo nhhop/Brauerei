@@ -1,7 +1,7 @@
 # Brauerei Session-Log
 
 Chronologisches Log für SensActCtrl + BrewControl — seit 2026-08-31 konsolidiert
-(vorher getrennte Logs pro Teilprojekt). Aktueller Status/Roadmap:
+(vorher getrennte Logs pro Teilprojekt). Offene Punkte / Backlog:
 [PLAN.md](PLAN.md). Volle Detail-Historie zu jedem Eintrag hier:
 [SESSION-archive.md](SESSION-archive.md).
 
@@ -64,7 +64,7 @@ wählbares Topic-Prefix. Details: [SESSION-archive.md](SESSION-archive.md).
 
 Neuer PWM/DAC-Aktor und Wägezellen-Sensor; Roadmap-Einträge Peripherie-
 Abstraktion/Pin-Manager/LVGL-Display aufgenommen (jetzt in
-[PLAN.md](PLAN.md) → Architektur-Track). Details:
+[PLAN.md](PLAN.md) → Größere Brocken). Details:
 [SESSION-archive.md](SESSION-archive.md).
 
 ## 2026-05-30 — DS18B20-Praxistest + Scan-Konflikt-Fix + DAC-Guard
@@ -346,3 +346,29 @@ Handler meldete trotzdem `200 ok` — `POST /api/files/upload` ignoriert die
 vorhandene Firmware weiter, die kaputte Datei blieb liegen (kein
 Reflash-Loop). Nach Löschen + Re-Upload (mit Größencheck + Retry-Schleife)
 lief der Restore sauber durch.
+
+## 2026-09-01 — PLAN.md umstrukturiert: nur noch Offenes
+
+Der User fand PLAN.md unübersichtlich (erledigter Status, durchgestrichene
+Roadmap-Punkte und offene Einschränkungen gemischt). PLAN.md enthält jetzt
+ausschließlich Offenes:
+
+- **Entfernt:** „Aktueller Status"-Block (alle erledigten SensActCtrl-/
+  BrewControl-Arbeiten — Historie steht chronologisch hier + in
+  SESSION-archive.md), Architektur-Diagramm, Technologie-Stack, Boards-
+  Tabelle (Referenz lebt in den READMEs), alle `~~…~~ ✓ erledigt`-Einträge
+  aus der Roadmap und alle `✓`-Zeilen aus „Bekannte Einschränkungen".
+- **Behalten/neu gegliedert:** kurzes Intro → „Bugs & bekannte
+  Einschränkungen" → „Hardware-Verifikation offen" → „Backlog" (flache,
+  grob priorisierte Liste, Abhängigkeiten inline; die bisherigen
+  *Später:*-Vormerkungen als eigenständige Einträge) → „Größere Brocken
+  (eigene Spec vor Umsetzung)" (Peripherie-Abstraktion, Pin-Manager,
+  LVGL-Display, HTTPS-Support) → „Buckets".
+- **Verworfen:** die alte Zweiteilung Architektur-Track / Feature-Track
+  (+ Wellen 1/2/3) — die Achse trug nicht (LVGL-Display ist ein Feature,
+  kein Rückgrat; von jeder Welle war das meiste erledigt). Ersetzt durch
+  eine flache Backlog-Liste + separate „Größere Brocken".
+- **Regel geändert:** Ein umgesetzter PLAN.md-Punkt wird künftig ersatzlos
+  entfernt (kein `~~erledigt~~`, keine Pointer-Zeile) — Historie nur in
+  SESSION.md. Nachgezogen in Root-`CLAUDE.md` → Dokumentation und
+  `BrewControl/CLAUDE.md` → Arbeitsregeln.
