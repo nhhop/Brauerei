@@ -666,6 +666,8 @@ Eintrag der Fund-Session zu vergraben.
   `POST /api/admin/wifi-reset` + UI-Button + ConfirmModal implementiert,
   E2E auf T-Display-S3-AMOLED verifiziert. Kein Token (Hobby-LAN-Annahme,
   matched Rest der API).
+- ~~**mDNS-Hostname bereits im Setup-Portal vergeben**~~ — **erledigt 2026-08-31**.
+  Details: [SESSION.md](SESSION.md) 2026-08-31.
 
 - **`pio device monitor` auf TinyUSB-CDC unter Windows stabilisieren**
   (sowohl ESP32-S2 als auch ESP32-S3 betroffen): pio-Monitor verliert

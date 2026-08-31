@@ -9,6 +9,8 @@
 #include <Preferences.h>
 #include <WiFi.h>
 
+#include "Hostname.h"
+
 #ifndef BREWCTRL_SETUP_PWD
 #define BREWCTRL_SETUP_PWD "brew-setup"
 #endif
@@ -42,6 +44,8 @@ constexpr char kSetupHtml[] = R"HTML(<!doctype html>
 <div class="row"><select id="ssid"></select><button type="button" id="scan">Rescan</button></div>
 <label>Password</label>
 <input type="password" id="pwd" autocomplete="off">
+<label>Hostname (optional, default "brewcontrol")</label>
+<input type="text" id="host" autocomplete="off" placeholder="brewcontrol">
 <button id="go">Connect</button>
 <div id="msg"></div>
 <script>
@@ -66,13 +70,38 @@ async function scan(){
  }
  $('msg').textContent='Scan timed out';
 }
+function afterSaved(ssid,host){
+ const url=`http://${host||'brewcontrol'}.local/`;
+ const retrySecs=5;
+ $('msg').innerHTML=`Saved. Board reboots and joins "${ssid}". Once this device is back on `+
+  `that network, open <a href="${url}">${url}</a>.<div id="retry"></div>`;
+ // Best-effort: if the OS switches this device back to the target network on
+ // its own, redirect automatically once the board answers. The link above
+ // is the guaranteed fallback if it doesn't.
+ let attempt=0, countdown=retrySecs;
+ const showCountdown=()=>{$('retry').textContent=`Next attempt in ${countdown}s (attempt ${attempt})`;};
+ showCountdown();
+ const countdownTimer=setInterval(()=>{countdown--;showCountdown();},1000);
+ const timer=setInterval(async()=>{
+  attempt++;
+  countdown=retrySecs;
+  showCountdown();
+  try{
+   await fetch(url,{mode:'no-cors'});
+   clearInterval(timer);
+   clearInterval(countdownTimer);
+   location.href=url;
+  }catch(e){/* not reachable yet */}
+ },retrySecs*1000);
+}
 $('scan').onclick=scan;
 $('go').onclick=async()=>{
  $('go').disabled=true;
  $('msg').textContent='Saving...';
+ const ssid=$('ssid').value, host=$('host').value;
  const r=await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({ssid:$('ssid').value,password:$('pwd').value})});
- if(r.ok){$('msg').textContent='Saved. Rebooting...';}
+  body:JSON.stringify({ssid,password:$('pwd').value,hostname:host})});
+ if(r.ok){afterSaved(ssid,host);}
  else{$('msg').textContent='Error: '+await r.text();$('go').disabled=false;}
 };
 scan();
@@ -137,10 +166,17 @@ void WiFiSetupPortal::runUntilConfigured() {
           req->send(400, "text/plain", "missing ssid");
           return;
         }
+        String hostname = json["hostname"] | "";
+        hostname.toLowerCase();
+        if (!hostname.isEmpty() && !validHostname(hostname)) {
+          req->send(400, "text/plain", "invalid hostname");
+          return;
+        }
         Preferences prefs;
         prefs.begin("brewctrl", false);
         prefs.putString("ssid", ssid);
         prefs.putString("password", password);
+        if (!hostname.isEmpty()) prefs.putString("hostname", hostname);
         prefs.end();
         req->send(200, "text/plain", "ok");
         done = true;

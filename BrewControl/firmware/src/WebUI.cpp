@@ -10,6 +10,7 @@
 #include <memory>
 #include <time.h>
 
+#include "Hostname.h"
 #include "SdLock.h"
 #include "version.h"
 
@@ -18,18 +19,6 @@ namespace {
 
 constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
-
-// mDNS / DHCP hostname rules: 1–32 chars, lowercase alnum and hyphen, no
-// leading/trailing hyphen. Caller lowercases before validating.
-bool validHostname(const String& h) {
-  if (h.isEmpty() || h.length() > 32) return false;
-  if (h[0] == '-' || h[h.length() - 1] == '-') return false;
-  for (size_t i = 0; i < h.length(); ++i) {
-    const char c = h[i];
-    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
-  }
-  return true;
-}
 
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);

@@ -1061,3 +1061,62 @@ unzuverlässig ankommt.
 **Geänderte Dateien:** `SensActCtrl/src/transport/EspNowTransport.h`/`.cpp`,
 `BrewControl/firmware/src/main.cpp`,
 `BrewControl/firmware/src/EspNowPublishService.h`/`.cpp`.
+
+## 2026-08-31 — Feature: mDNS-Hostname bereits im Setup-Portal vergeben
+
+**Ausgangslage:** Beim Einrichten der drei Testboards fiel auf, dass der
+mDNS-Hostname bisher erst *nach* dem ersten Boot über `POST /api/network`
+in der normalen Web-UI änderbar war. Bis dahin läuft jedes frisch
+geflashte Board unter dem Default `"brewcontrol"` (`main.cpp:47`) — bei
+mehreren parallel eingerichteten Boards im selben Netz ein
+Namenskonflikt. Wunsch: Hostname schon im AP-Mode-Setup-Portal mit
+abfragen, damit jedes Board von Anfang an eindeutig heißt, plus ein
+Hinweis/Redirect auf der Erfolgsseite nach dem Reboot.
+
+**Entscheidungen (mit User abgestimmt):**
+- Kein Live-mDNS-Konflikt-Check vor dem Speichern (kein testweises
+  Verbinden ins Zielnetz während des Setups) — nur Format-Validierung wie
+  bei `/api/network`. Löst das eigentliche Problem (alle Boards defaulten
+  auf `"brewcontrol"`) strukturell, ohne die Komplexität/Fehleranfälligkeit
+  eines Verbindungsaufbaus im Setup-Flow.
+- Post-Reboot-UX kombiniert: statischer, klickbarer Link auf
+  `http://<hostname>.local/` als garantiert funktionierender Fallback,
+  zusätzlich Best-Effort-Auto-Redirect per JS-Polling (nur wirksam, wenn
+  das Client-Gerät selbst wieder ins Zielnetz wechselt — auf Mobil-OS teils
+  automatisch der Fall).
+
+**Umsetzung:**
+- `WiFiSetupPortal.cpp`: drittes Formularfeld `#host` (Placeholder
+  `"brewcontrol"`, optional — leer = Default bleibt). `/api/connect`-Handler
+  liest `hostname` zusätzlich aus dem JSON-Body, lowercased + validiert,
+  bei Erfolg `prefs.putString("hostname", …)` (derselbe Preferences-Key,
+  den auch `main.cpp` beim Boot liest und `/api/network` schreibt — kein
+  neuer Persistenz-Pfad).
+- `validHostname()` aus `WebUI.cpp` in eine neue gemeinsame Header-Datei
+  `Hostname.h` gezogen (statt dupliziert) — von `WebUI.cpp` und
+  `WiFiSetupPortal.cpp` eingebunden.
+- Erfolgsseite (`afterSaved()` in `kSetupHtml`): Text + `<a>`-Link auf
+  `http://<hostname>.local/`, darunter ein Live-Countdown „Next attempt in
+  Ns (attempt N)" bis zum nächsten Erreichbarkeits-Check (`fetch(url,
+  {mode:'no-cors'})` alle 5s — Intervall nach User-Feedback von
+  ursprünglich 3s auf 5s angepasst). Bei Erfolg `location.href` auf den
+  Link, sonst läuft der Countdown weiter.
+
+**Verifikation:**
+1. Compile-Smoke alle drei Envs (`esp32dev`, `lolin_s2_mini`,
+   `lilygo_t_display_s3_amoled`): SUCCESS (dreimal — initiale Umsetzung,
+   Countdown-Anzeige, 3s→5s-Anpassung).
+2. Hardware-Test auf LOLIN S2 Mini (COM5, unproblematischer Flash diesmal —
+   kein Bootloader-Problem wie beim vorherigen Fix): Board per
+   BOOT-Button-Hold in den AP-Mode versetzt, mit `BrewControl-Setup`
+   verbunden, im Portal Ziel-SSID + Hostname `brewcontrol-test` gesetzt.
+   Nach Submit: Link + Countdown korrekt angezeigt, Board danach unter
+   `brewcontrol-test.local` erreichbar (per `curl` bestätigt). Nach der
+   Countdown-UX-Ergänzung erneut per Portal getestet — Countdown zählt
+   sichtbar runter, Attempt-Zähler hochgezählt; vom User bestätigt
+   („klappt"). Baseline (`brewcontrol-lolin`) wurde vom User im selben
+   Testdurchlauf wiederhergestellt.
+
+**Geänderte Dateien:** `BrewControl/firmware/src/WiFiSetupPortal.h`/`.cpp`,
+`BrewControl/firmware/src/WebUI.cpp`,
+`BrewControl/firmware/src/Hostname.h` (neu).
