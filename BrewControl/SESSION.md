@@ -965,3 +965,99 @@ in der Settings-UI für diese beiden Transporte tot.
 
 **Geänderte Dateien:** `SensActCtrl/src/transport/WebhookTransport.h`/`.cpp`,
 `SensActCtrl/src/transport/EspNowTransport.h`/`.cpp`.
+
+## 2026-08-31 — Fix: ESP-NOW Meta an spät hinzugefügte Consumer
+
+**Ausgangslage:** Aus dem "Bekannte Probleme"-Backlog — ein erst nach dem
+Leaf-Boot angelegter `Remote`-Sensor über ESP-NOW bekommt zuverlässig
+State, aber Meta (kind/unit/min/max/res) bleibt auf Default, reproduzierbar
+über zwei saubere Reboots. Ein Explore-Agent hat den Retained-Request/Reply-
+Mechanismus in `EspNowTransport` durchgetraced und zwei zusammenhängende
+Ursachen gefunden.
+
+**Root Cause:**
+- **Bug A:** `EspNowTransport::subscribe()` (`EspNowTransport.cpp:124-132`
+  vor dem Fix) sendet einen Retained-Request-Broadcast nur, wenn seit dem
+  letzten Request >1s vergangen ist — sonst passiert gar nichts, der
+  Request wird nicht nachgeholt. `lastRetainedRequestMs_` ist ein einziger,
+  transport-weiter Zeitstempel, nicht pro Topic. Beim Boot rufen viele
+  Stellen kurz hintereinander `subscribe()` auf derselben Transport-Instanz
+  auf: `Registry::begin()` iteriert alle Sensoren synchron, jeder
+  `RemoteSensor`/`RemoteActuator` subscribed 2× (Meta + State), danach
+  hängt `EspNowPublishService::attachExisting()` noch mehr `subscribe()`-
+  Aufrufe für lokale Actuator-/Controller-Topics an. Nur der erste Aufruf
+  in diesem Burst broadcastet tatsächlich — alle anderen (deterministisch
+  abhängig von der Item-Reihenfolge in `registry.json`) verlieren ihre
+  Chance auf Meta permanent. State ist davon nicht betroffen, weil
+  `RemotePublisher` State periodisch neu published; Meta wird nur einmal in
+  `begin()` published und hat sonst keine zweite Chance außer eben diesem
+  Retained-Request.
+- **Bug B (Voraussetzung für den Fix):** `EspNowTransport::tick()` war ein
+  reines No-Op und wurde für Boards, die ESP-NOW nur konsumieren (lokales
+  Publish deaktiviert), nie aufgerufen — `EspNowPublishService::tick()`
+  tickte den Transport nur `if (settings.espnowEnabled())`, obwohl der
+  Transport laut `main.cpp`-Kommentar "always available, no toggle" für
+  Consumer ist. Ein Fix, der sich auf `tick()` verlässt, hätte für genau
+  das im Bug beschriebene Szenario (reiner Consumer) stumm nicht gegriffen.
+
+**Umsetzung:**
+- `EspNowTransport`: Throttle bleibt (max. 1 Broadcast/s), aber ein
+  unterdrückter Request wird jetzt gemerkt (`retainedRequestPending_`) und
+  in `tick()` nachgeholt, sobald das Zeitfenster um ist — kein Subscribe
+  geht mehr endgültig leer aus. Neuer privater Helper `requestRetained_()`
+  kapselt die Throttle-Entscheidung. `kRetainedRequestThrottleMs`-Konstante
+  statt Magic Number, wraparound-sicherer `millis()`-Vergleich (gleiches
+  Idiom wie `WebhookTransport::inBackoff_()`). Native Stub-Branch um leere
+  `requestRetained_()`-Definition ergänzt.
+- `main.cpp`: `espNowTransport->tick()` jetzt direkt in `loop()`
+  aufgerufen, unabhängig von `espNowPublishService` (die Instanz gehört
+  ohnehin `main.cpp`).
+- `EspNowPublishService::tick()`: `transport_->tick()` entfernt (nur noch
+  `publisher_->tick()`), um Doppel-Tick zu vermeiden, wenn Publish aktiv
+  ist. Doc-Kommentar entsprechend angepasst.
+- Kein Umbau von `EspNowPublishService::connected()`/`lastErrorMessage()`
+  (bleiben publish-gated) — separate, vorbestehende Einschränkung, nicht
+  Teil dieses Bugs (s. Bekannte Probleme).
+
+**Verifikation:**
+1. `pio test -e native` (SensActCtrl): 192/192 grün.
+2. Compile-Smoke alle drei BrewControl-Envs (`esp32dev`, `lolin_s2_mini`,
+   `lilygo_t_display_s3_amoled`): SUCCESS.
+3. **Hardware-Test.** LilyGo (COM9) direkt geflasht. LOLIN S2 Mini (COM5)
+   ließ sich zunächst trotz 5 Versuchen nicht in den Bootloader-Modus
+   versetzen (`Could not open COM5, the port doesn't exist` — der
+   1200bps-Touch-Reset über die native USB-CDC-Schnittstelle griff nicht);
+   nach manuellem Eingriff (Board von Hand in den Flash-Modus versetzt)
+   erschien es als COM7 (`303A:0002`, ROM-Download-Modus) und ließ sich
+   darüber flashen. `esptool` konnte den Download-Modus danach nicht
+   automatisch verlassen (`chip was placed into download mode using
+   GPIO0` — erwartet bei manuellem GPIO0-Trigger), ein manueller
+   Reset/Repower brachte es zurück in die neue Firmware.
+   Testaufbau: LOLIN als Publisher (`espnow.enabled:true`, Sensor
+   `test_temp` Typ `DS18B20`, Meta `°C`/-55/125/0.0625). LilyGo als reiner
+   Consumer (`espnow.enabled:false` — genau der Bug-B-Fall), `Remote`-Sensor
+   `remote_test_temp` (`transport:"espnow"`, `device:"brewcontrol-lolin"`,
+   `remote_id:"test_temp"`) **nach** LilyGos Boot hinzugefügt. Ergebnis: Meta
+   kam sofort korrekt an (`unit:"°C", min:-55, max:125, res:0.0625` statt
+   RemoteSensor-Default). Danach LilyGo zweimal sauber rebootet (Item ist
+   jetzt persistiert) — beide Male kam Meta unmittelbar nach Boot korrekt
+   an, kein einziger Fall von Default-Meta. Bug damit sowohl im Late-Add-
+   als auch im Boot-Repro-Fall behoben.
+4. Cleanup: Test-Sensoren auf beiden Boards gelöscht, ESP-NOW-Publish auf
+   LOLIN wieder deaktiviert, Baseline auf beiden Boards per `/api/settings`
+   bzw. `/api/snapshot` bestätigt.
+
+**Bewusst nicht gemacht:** eine unbestätigte Zusatzbeobachtung des Explore-
+Agents — `handleRetainedRequest_()` dumped beim Empfang eines Requests die
+komplette `retained_`-Map ungebremst (kein Pacing zwischen den
+`esp_now_send()`-Aufrufen); da Meta-Topics lexikographisch immer direkt
+hinter ihrem State-Topic sortieren, könnten gerade die späteren (Meta-)
+Pakete in diesem Burst eher verloren gehen. Nicht verifizierbar ohne
+Sendestatistiken, daher nicht gefixt. Im Hardware-Test (ein Sensor mit
+Meta) nicht aufgetreten — bei Boards mit deutlich mehr retained Topics
+bleibt das ein möglicher Verdächtiger, falls Meta dort weiterhin
+unzuverlässig ankommt.
+
+**Geänderte Dateien:** `SensActCtrl/src/transport/EspNowTransport.h`/`.cpp`,
+`BrewControl/firmware/src/main.cpp`,
+`BrewControl/firmware/src/EspNowPublishService.h`/`.cpp`.

@@ -268,6 +268,7 @@ void loop() {
   firmwareUpdater.tick();
   mqttService.tick();
   webhookService.tick();
+  if (espNowTransport) espNowTransport->tick();
   espNowPublishService.tick();
   maintainWiFi();
   delay(5);

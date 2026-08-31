@@ -632,13 +632,21 @@ Eintrag der Fund-Session zu vergraben.
   komplett still — `lastErrorMessage()` zeigt jetzt "Paket zu groß (…)" an
   (siehe Fix unten), aber nichts liest das aktiv aus/loggt es. Nicht gezielt
   nachgetestet, nur aus dem Quellcode abgeleitet.
-- **ESP-NOW liefert Meta an spät hinzugefügte Consumer nicht zuverlässig.**
-  State kommt zuverlässig per Live-Broadcast an, Meta (kind/unit/min/max/res)
-  bleibt bei einem erst nach dem Leaf-Boot angelegten `Remote`-Sensor auf
-  Default — reproduzierbar über zwei saubere Reboots (2026-08-29). Der
-  Retained-Request/Reply-Mechanismus in `EspNowTransport` sieht im
-  Quellcode korrekt aus, funktioniert in der Praxis nicht. SensActCtrl-
-  Library-Bug, nicht weiter eingegrenzt.
+- ~~**ESP-NOW liefert Meta an spät hinzugefügte Consumer nicht zuverlässig.**~~
+  — **gefixt 2026-08-31.** State kam zuverlässig per Live-Broadcast an,
+  Meta (kind/unit/min/max/res) blieb bei einem erst nach dem Leaf-Boot
+  angelegten `Remote`-Sensor auf Default. Root Cause:
+  `EspNowTransport::subscribe()` verwarf einen Retained-Request-Broadcast
+  endgültig statt ihn nachzuholen, wenn er in ein 1s-Throttle-Fenster fiel
+  — bei vielen `subscribe()`-Aufrufen kurz hintereinander beim Boot betraf
+  das alle außer dem ersten; zusätzlich wurde `EspNowTransport::tick()` für
+  reine Consumer-Boards (lokales Publish deaktiviert) nie aufgerufen, sodass
+  ein tick()-basierter Retry sie gar nicht erreicht hätte. Beides gefixt.
+  Live auf LilyGo (reiner Consumer, `espnow.enabled:false`) + LOLIN
+  (Publisher) verifiziert: `Remote`-Sensor nach Boot spät hinzugefügt, Meta
+  kam sofort korrekt an (`°C`/-55/125/0.0625 statt Default) — über zwei
+  saubere Reboots reproduziert, beide Male korrekt. Details:
+  [SESSION.md](SESSION.md) 2026-08-31.
 - **`WebhookService::getOrCreate()` cached strikt nach `(port, peerUrl)`.**
   Zwei verschiedene Peers, die sich denselben lokalen Port teilen wollen,
   erzeugen zwei separate `WebServer`-Instanzen auf demselben physischen

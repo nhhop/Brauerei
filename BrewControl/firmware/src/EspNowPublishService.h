@@ -39,9 +39,10 @@ class EspNowPublishService {
   // requests).
   void attachExisting(SensActCtrl::Registry& registry, DynamicItems& items);
 
-  // EspNowTransport::tick() is currently a no-op (connectionless) but is
-  // still called here, matching the library's own example sketches, in
-  // case that changes. No-op if begin() didn't create a publisher.
+  // Ticks the publisher only. The shared EspNowTransport is ticked
+  // separately by main.cpp (it's "always available, no toggle" for
+  // consumers regardless of whether this service's publish is enabled).
+  // No-op if begin() didn't create a publisher.
   void tick();
 
   // Live connection state, surfaced read-only via GET /api/settings. false

@@ -123,16 +123,31 @@ bool EspNowTransport::publish(const char* topic, const char* payload, bool retai
 
 bool EspNowTransport::subscribe(const char* topic, MessageCallback callback) {
   subs_.emplace_back(std::string(topic), std::move(callback));
-  const uint32_t now = millis();
-  if (initialized_ && (now - lastRetainedRequestMs_ > 1000 || lastRetainedRequestMs_ == 0)) {
-    lastRetainedRequestMs_ = now;
-    sendRetainedRequest_();
-  }
+  requestRetained_();
   return true;
 }
 
+void EspNowTransport::requestRetained_() {
+  if (!initialized_) return;
+  const uint32_t now = millis();
+  if (lastRetainedRequestMs_ == 0 || (now - lastRetainedRequestMs_) >= kRetainedRequestThrottleMs) {
+    lastRetainedRequestMs_ = now;
+    retainedRequestPending_ = false;
+    sendRetainedRequest_();
+  } else {
+    retainedRequestPending_ = true;
+  }
+}
+
 void EspNowTransport::tick() {
-  // Connection-less; nothing to drive periodically.
+  // A subscribe() inside the throttle window above defers here instead of
+  // being dropped — catch up once the window has elapsed.
+  if (retainedRequestPending_ && initialized_ &&
+      (millis() - lastRetainedRequestMs_) >= kRetainedRequestThrottleMs) {
+    lastRetainedRequestMs_ = millis();
+    retainedRequestPending_ = false;
+    sendRetainedRequest_();
+  }
 }
 
 void EspNowTransport::dispatchIncoming(const uint8_t* data, int length) {
@@ -182,6 +197,7 @@ bool EspNowTransport::sendRaw_(const uint8_t*, size_t) { return false; }
 bool EspNowTransport::sendDataPacket_(const char*, const char*) { return false; }
 void EspNowTransport::sendRetainedRequest_() {}
 void EspNowTransport::handleRetainedRequest_() {}
+void EspNowTransport::requestRetained_() {}
 
 }  // namespace SensActCtrl
 

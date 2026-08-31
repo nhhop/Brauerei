@@ -24,7 +24,10 @@ namespace SensActCtrl {
 // subscriptions) the transport broadcasts a Retained-Request, prompting
 // other nodes to re-broadcast their cached retained payloads. This gives
 // late subscribers a quick path to the current meta + state without
-// waiting for the next periodic publish.
+// waiting for the next periodic publish. A subscribe() that lands inside
+// the throttle window is not dropped — it's deferred and sent from tick()
+// once the window elapses, so a burst of subscribe() calls (e.g. at boot)
+// never permanently loses a subscriber's chance at retained data.
 //
 // Peer model: broadcast-only (FF:FF:FF:FF:FF:FF). All nodes on the same
 // WiFi channel see every packet.
@@ -54,10 +57,16 @@ class EspNowTransport : public ITransport {
   bool sendDataPacket_(const char* topic, const char* payload);
   void sendRetainedRequest_();
   void handleRetainedRequest_();
+  // Broadcasts a Retained-Request if the throttle window has elapsed,
+  // otherwise marks one as pending so tick() sends it once it has.
+  void requestRetained_();
+
+  static constexpr uint32_t kRetainedRequestThrottleMs = 1000;
 
   uint8_t channel_;
   bool initialized_ = false;
   uint32_t lastRetainedRequestMs_ = 0;
+  bool retainedRequestPending_ = false;
   std::vector<std::pair<std::string, MessageCallback>> subs_;
   std::map<std::string, std::string> retained_;
   std::string lastErrorMsg_;

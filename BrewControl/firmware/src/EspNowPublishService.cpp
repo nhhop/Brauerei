@@ -52,7 +52,6 @@ void EspNowPublishService::attachExisting(SensActCtrl::Registry& registry, Dynam
 }
 
 void EspNowPublishService::tick() {
-  if (transport_) transport_->tick();
   if (publisher_) publisher_->tick();
 }
 
