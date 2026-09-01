@@ -8,7 +8,7 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary, inp, badgeSuccess, badgeCritical } from '../ui';
-import { Radio, Router, Server, KeyRound, Lock, Info, Plug, Hash } from 'lucide-preact';
+import { Radio, Router, Server, KeyRound, Lock, Info, Plug, Hash, X } from 'lucide-preact';
 
 const DEFAULT: MqttSettings = {
   enabled: false,
@@ -32,6 +32,9 @@ export function MqttPage(_: { path?: string }) {
   const [pending, setPending] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
   const [rebooting, setRebooting] = useState(false);
+  // User asked to clear the stored password (write-only field — an empty input
+  // means "keep", so clearing needs an explicit intent).
+  const [pwCleared, setPwCleared] = useState(false);
 
   useEffect(() => {
     getSettings()
@@ -54,7 +57,10 @@ export function MqttPage(_: { path?: string }) {
     setPending(true);
     setActErr(null);
     try {
-      await updateSettings({ mqtt: settings });
+      // password: null tells the firmware to clear the stored secret (an empty
+      // string would mean "keep") — outside the MqttSettings type, hence the cast.
+      const mqtt = { ...settings, password: pwCleared ? null : settings.password };
+      await updateSettings({ mqtt } as Parameters<typeof updateSettings>[0]);
       setRebooting(true);
     } catch (e) {
       setActErr(String(e));
@@ -62,7 +68,7 @@ export function MqttPage(_: { path?: string }) {
     }
   }
 
-  const changed = JSON.stringify(settings) !== JSON.stringify(saved);
+  const changed = pwCleared || JSON.stringify(settings) !== JSON.stringify(saved);
 
   if (rebooting) return (
     <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
@@ -178,9 +184,26 @@ export function MqttPage(_: { path?: string }) {
                 </div>
                 <div>
                   <div class="mb-1 text-xs text-muted">Passwort</div>
-                  <input type="password" class={inp} value={settings.password} autocomplete="off"
-                    placeholder={settings.passwordSet ? '•••••••• (gespeichert — leer lassen zum Behalten)' : ''}
-                    onInput={(e) => update({ password: (e.target as HTMLInputElement).value })} />
+                  <div class="relative">
+                    <input type="password" class={`${inp} ${settings.passwordSet && !settings.password ? 'pr-8' : ''}`}
+                      value={settings.password} autocomplete="off"
+                      placeholder={pwCleared ? 'wird beim Speichern gelöscht'
+                        : settings.passwordSet ? '•••••••• (gespeichert — leer lassen zum Behalten)' : ''}
+                      onInput={(e) => { setPwCleared(false); update({ password: (e.target as HTMLInputElement).value }); }} />
+                    {settings.passwordSet && !settings.password && !pwCleared && (
+                      <button type="button" title="Gespeichertes Passwort löschen"
+                        class="absolute inset-y-0 right-2 flex items-center text-muted hover:text-fg"
+                        onClick={() => setPwCleared(true)}>
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {pwCleared && (
+                    <button type="button" class="mt-1 text-xs text-accent hover:underline"
+                      onClick={() => setPwCleared(false)}>
+                      Löschen rückgängig machen
+                    </button>
+                  )}
                 </div>
               </div>
             </SettingsCard>

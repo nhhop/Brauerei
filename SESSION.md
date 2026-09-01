@@ -524,9 +524,9 @@ Screenshots, evtl. Logs).
   `passwordSet` neu), Endpoint-Beschreibungen `GET`/`POST /api/settings`,
   Backup-Bundle-Hinweis, Top-Level-„No authentication"-Absatz.
 
-**Bekannte Einschränkung:** Das UI hat keinen „Passwort löschen"-Button — Klaren
-geht nur per `POST` mit `mqtt.password: null` direkt. Für den Alltag (setzen/
-ändern) reicht das Feld.
+**Löschen im UI:** Nachgereicht — bei gespeichertem Passwort zeigt das leere
+Feld ein „x"; Klick markiert „wird beim Speichern gelöscht" (rückgängig
+machbar), `doSave` schickt dann `mqtt.password: null`.
 
 **Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün, `pnpm typecheck`
 grün, `redocly lint` valide. HW-E2E am LilyGo S3 (`192.168.178.87`, per USB/COM9):
