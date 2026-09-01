@@ -49,6 +49,12 @@ Grob nach Bereitschaft / Aufwand; Abhängigkeiten stehen inline. Jeder Punkt bek
 - **Sensorgetriggerte Schritte** (vorgemerkt 2026-08-12) — ein Schritt endet heute nur über `holdSec` (Zeit) oder `confirm` (manuelle Freigabe). Dritte Bedingung: Schrittende an einen Sensorwert koppeln, z.B. „Gravity < 1.010" beim Gären. Braucht eine generische Schwellwert-Bedingung (`{sensorId, op, value}`) im Schritt-Schema — teilt sich vermutlich Logik mit „Alarme & Schwellwerte".
 - **AP-Modus** als wählbare Alternative (Standalone ohne Router) — verschoben, weil ohne Internet kein NTP (bricht Datalog-Timestamps); sinnvoll zusammen mit Hardware-RTC. Ebenso statische IP / DHCP-Konfiguration.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
+- **Settings-UI-Überarbeitung** (vorgemerkt 2026-09-01) — reine Frontend-Politur, keine API-Änderung:
+  1. `/settings` umstrukturieren — MQTT, ESP-NOW und Webhook von der Top-Ebene auf eine gemeinsame Unterseite (z.B. „Anbindung"/„Konnektivität") verschieben, damit die Index-Seite kürzer wird.
+  2. `/settings/devices` überarbeiten — Layout/Interaktion der Geräte-/Item-Übersicht aufräumen (konkrete Mängel beim Angehen sammeln).
+  3. Kartenbreite begrenzen — `SettingsCard`/`SettingsGroup` bekommen ein `max-width` statt über die volle Spaltenbreite zu laufen (Lesbarkeit auf breiten Screens).
+  4. Ladezustand mit Animation statt reinem „Laden…"-Text — einheitlicher Spinner/Skeleton-Baustein, überall wo Seiten auf `getSettings()`/Snapshot warten.
+  5. Filemanager (`/settings/files`) — beim Ordnerwechsel eine Ladeanimation zeigen, solange die neue Verzeichnis-Liste lädt.
 
 ## Größere Brocken (eigene Spec vor Umsetzung)
 
