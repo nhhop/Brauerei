@@ -1,0 +1,12 @@
+# Lint config for openapi.yaml — `npx @redocly/cli lint BrewControl/docs/openapi.yaml`
+extends:
+  - recommended
+
+rules:
+  # The firmware has no authentication at all (see info.description); the
+  # device is expected to run on a trusted LAN. There is no security scheme to
+  # declare, so this rule can never be satisfied.
+  security-defined: off
+  # Several endpoints genuinely have no client-error path: they take no input
+  # (GET /api/snapshot, GET /api/config, …) or answer 500 only.
+  operation-4xx-response: off

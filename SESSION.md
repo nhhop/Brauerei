@@ -372,3 +372,65 @@ ausschließlich Offenes:
   entfernt (kein `~~erledigt~~`, keine Pointer-Zeile) — Historie nur in
   SESSION.md. Nachgezogen in Root-`CLAUDE.md` → Dokumentation und
   `BrewControl/CLAUDE.md` → Arbeitsregeln.
+
+## 2026-09-01 — API-Vertrag nach `BrewControl/docs/openapi.yaml` überführt
+
+**Anlass:** Der „API-Vertrag"-Abschnitt in `BrewControl/README.md` dokumentierte
+14 Endpoints, die Firmware registriert 41. Komplett undokumentiert waren
+Data-Logs, Sollwert-Programme, Settings, Dashboards, SD-Dateimanager,
+Backup/Restore, Firmware-Update-Status/Check/Install und Netzwerk. Dazu waren
+Details falsch: die Delete-Routen der Dynamic Items antworten `405` (nicht `404`
+wie behauptet), Erfolg ist durchgängig `204` statt `200`, Fehler-Bodies sind
+`text/plain` statt JSON. `BrewControl/CLAUDE.md` führte eine zweite, noch
+kürzere und ebenfalls veraltete Tabelle.
+
+**Umsetzung:**
+
+- **Neu: `BrewControl/docs/openapi.yaml`** (OpenAPI 3.1) — alle 41 Routen mit
+  Query-/Path-Parametern, Request-Bodies, Status-Codes, den wörtlichen
+  `text/plain`-Fehlermeldungen aus dem Code und vollständigen Schemas.
+  Inhalt ausschließlich aus dem Code abgeleitet (`WebUI.cpp`,
+  `RegistrySnapshot.cpp`, `DynamicItems.cpp`, `LogStore.cpp`,
+  `ProgramRunner.cpp`, `SettingsStore.cpp`, `DashboardStore.cpp`,
+  `FirmwareUpdater.cpp`), nicht aus der alten Doku. Beschreibungen auf
+  Englisch (codenahes, maschinenlesbares Artefakt); README/PLAN/SESSION bleiben
+  Deutsch. Explizit festgehalten: die vier Endpoints mit Reboot ~500 ms nach der
+  Antwort, das SSE-Event `snapshot`, die snake_case-Anlege-Configs vs. die
+  camelCase-Runtime-Params der Regler, und dass es keine Authentifizierung gibt.
+  Bewusst *nicht* in der Spec: WiFi-Setup-Portal (eigener Server) sowie
+  Static-Serving/SPA-Fallback.
+- **Neu: `BrewControl/docs/redocly.yaml`** — Lint-Config; schaltet
+  `security-defined` (es gibt keine Auth) und `operation-4xx-response` (mehrere
+  Endpoints haben keinen Client-Fehlerpfad) ab.
+- **`README.md`:** „API-Vertrag" auf eine Übersichtstabelle reduziert (eine
+  Zeile pro Route: Endpoint / Methode / Zweck) plus Verweis auf die YAML —
+  keine Bodies und Status-Codes mehr, die driften sonst wieder. Erhaltene
+  Prosa: DS18B20-Multi-Sensor-Hinweis, Snapshot-Shape-Verweis, Persistenz.
+  Dabei zwei Ungenauigkeiten korrigiert: `/config/registry.json` liegt auf SD
+  *oder* LittleFS (nicht „auf der SD-Karte"), und der Multipart-Feldname `f` in
+  den `curl`-Beispielen ist beliebig — die Firmware wertet ihn nicht aus.
+- **`BrewControl/CLAUDE.md`:** stale Mini-Tabelle raus, Verweis auf die YAML
+  rein (inkl. Korrektur `RegistrySnapshot.h` → `.cpp`); neue Arbeitsregel:
+  Routen-Änderungen in `WebUI.cpp` im selben Commit in `openapi.yaml`
+  nachziehen. Root-`CLAUDE.md` → Dokumentation um die Datei ergänzt.
+
+**Verifikation:** `npx @redocly/cli lint --config BrewControl/docs/redocly.yaml
+BrewControl/docs/openapi.yaml` → valide (1 Warning: kein `license`-Feld).
+Routen-Abdeckung per Skript geprüft: alle 41 `server_.on`/`addHandler`-
+Registrierungen aus `WebUI.cpp` haben ein Gegenstück in `paths:`, keine
+verwaisten Pfade. Stichproben gegen den LilyGo S3 (192.168.178.87):
+`/api/settings` liefert alle sechs Sektionen inkl. der live gespliceten
+`connected`/`error`-Felder, `/api/update/status` matcht das Schema inkl.
+`available: null`, `/api/network/scan` antwortet `202`. Die
+`/api/files`-Stichproben liefen ins Leere, weil auf dem Board gerade keine
+SD-Karte gemountet ist (`GET /` → 501, jeder Pfad „not a directory") — kein
+Spec-Befund.
+
+**Nebenbefunde** (dokumentiert, nicht gefixt — jetzt in PLAN.md → „Bugs &
+bekannte Einschränkungen"): `types.ts` weicht an drei Stellen von der Wire-Form
+ab (`ProgramConfig.stepStartedEpoch`/`elapsedAtPauseSec` fehlen,
+`DashboardConfig.charts`/`.programs` und die fünf optionalen `AppSettings`-
+Sektionen sind zu lose deklariert); die Create-Endpoints akzeptieren
+bibliotheksbedingt auch GET/PUT/PATCH; `GET /api/settings` gibt
+`mqtt.password` im Klartext zurück; `GET /api/snapshot` antwortet bei
+Puffer-Überlauf mit einem leeren `200` statt einem Fehler.

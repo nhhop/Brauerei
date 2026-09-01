@@ -26,17 +26,7 @@ BrewControl ist der Web-UI Consumer der SensActCtrl-Library (`../SensActCtrl/`).
 
 ## API-Vertrag
 
-Fixiert in [`README.md`](README.md). Snapshot-Shape kommt aus `RegistrySnapshot.h` — `web/src/types.ts` spiegelt diese Form, kein paralleles Schema erfinden.
-
-| Endpoint | Methode |
-|----------|---------|
-| `/api/snapshot` | GET |
-| `/api/events` | GET (SSE) |
-| `/api/actuators/:id` | POST `{"v":<float>}` |
-| `/api/controllers/:id/setpoint` | POST `{"v":<float>}` |
-| `/api/controllers/:id/params` | POST `{...}` |
-| `/api/sensors` | POST / DELETE `:id` |
-| `/api/admin/wifi-reset` | POST |
+Fixiert in [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1, Single Source of Truth) — [`README.md`](README.md) führt nur die Routen-Übersichtstabelle. Snapshot-Shape kommt aus `RegistrySnapshot.cpp` — `web/src/types.ts` spiegelt diese Form, kein paralleles Schema erfinden.
 
 ## Commands
 
@@ -56,6 +46,12 @@ pnpm typecheck
 ## Arbeitsregeln
 
 - ESPAsyncWebServer-Dep ist auf `esp32async/`-Org gepinnt (post-Migration von `me-no-dev/`): `esp32async/ESPAsyncWebServer@^3.1.0` + `esp32async/AsyncTCP@^3.2.0`.
+- Jede Änderung an einer HTTP-Route in `firmware/src/WebUI.cpp` — neuer Endpoint, neuer Body-Key,
+  geänderter Status-Code oder Fehlertext, geänderte Response-Shape — **im selben Commit** in
+  [`docs/openapi.yaml`](docs/openapi.yaml) nachziehen; kommt eine Route dazu oder fällt eine weg,
+  zusätzlich die Übersichtstabelle in `README.md`. Ändert sich eine Response-Shape, auch
+  `web/src/types.ts` prüfen. Verifikation:
+  `npx @redocly/cli lint --config BrewControl/docs/redocly.yaml BrewControl/docs/openapi.yaml`.
 - `types.ts` immer mit `RegistrySnapshot.h` synchron halten — bei Library-Änderungen prüfen.
 - SD-Pins für LilyGo T-Display-S3-AMOLED-1.43: CS=38, SCK=41, MOSI=39, MISO=40 (GPIO 33–37 durch OPI-PSRAM belegt).
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,

@@ -1,0 +1,1958 @@
+openapi: 3.1.0
+
+info:
+  title: BrewControl API
+  version: "1"
+  summary: REST + SSE API of the BrewControl firmware.
+  description: |
+    HTTP API served by the BrewControl firmware (ESPAsyncWebServer) on port 80.
+    Single source of truth for this contract — `README.md` only carries an
+    endpoint overview table.
+
+    **No authentication.** Every endpoint is open; the device is expected to run
+    on a trusted LAN. `GET /api/settings` returns the configured MQTT password
+    in cleartext.
+
+    **Conventions**
+    - Successful mutations answer `204 No Content` with an empty body.
+      Exceptions: the three create endpoints (`/api/dashboards`, `/api/logs`,
+      `/api/programs`) answer `201` with `{"id": …}`; multipart uploads and
+      `POST /api/backup` answer `200 text/plain` with the body `ok`;
+      `/api/update/check` and `/api/update/install` answer `202`.
+    - **Errors are `text/plain`, not JSON** — the body is the bare message.
+      Some 404s carry no body at all.
+    - Request bodies are `application/json` unless stated otherwise. The
+      endpoints implemented via `AsyncCallbackJsonWebHandler` (marked in their
+      description) *require* a `Content-Type: application/json` header.
+    - Path parameters are extracted as raw URL substrings and are **not**
+      percent-decoded — an id containing `%2F` will not round-trip.
+
+    The captive WiFi setup portal (`WiFiSetupPortal.cpp`) runs its own server
+    with a separate, unrelated route set and is intentionally out of scope here.
+
+    Source of truth for the implementation: `firmware/src/WebUI.cpp`
+    (routes) and `SensActCtrl/src/core/RegistrySnapshot.cpp` (snapshot shape).
+
+servers:
+  - url: http://{host}
+    description: BrewControl device on the local network
+    variables:
+      host:
+        default: brewcontrol.local
+        description: mDNS hostname (configurable) or IP address
+
+tags:
+  - name: Live State
+    description: Current registry state as a full snapshot, on demand or pushed.
+  - name: Dynamic Items
+    description: |
+      Runtime creation, configuration and removal of sensors, actuators and
+      controllers. Changes are persisted to `/config/registry.json` on the
+      device filesystem (SD or LittteFS, board-dependent) and restored on boot.
+  - name: Bus Discovery
+    description: Scan a hardware bus for attached devices.
+  - name: Config
+    description: The stored creation config of all dynamic items.
+  - name: Dashboards
+    description: User-defined dashboard layouts.
+  - name: Data Logs
+    description: Time-series logging of sensor/actuator values to CSV sessions.
+  - name: Setpoint Programs
+    description: Multi-step setpoint schedules driving a controller.
+  - name: Settings
+    description: Theme, time, firmware channel and remote-transport settings.
+  - name: Network
+    description: WiFi status, scanning, credentials and hostname.
+  - name: Firmware Update
+    description: Server-pull updates, and direct upload of firmware/UI packages.
+  - name: Backup
+    description: Export and import the full device configuration.
+  - name: Files
+    description: File manager for the device filesystem (SD or LittleFS).
+  - name: Admin
+    description: Device-level administrative actions.
+
+paths:
+  # ── Live State ─────────────────────────────────────────────────────────────
+  /api/snapshot:
+    get:
+      tags: [Live State]
+      operationId: getSnapshot
+      summary: Get the current registry snapshot
+      description: |
+        Serialized into a fixed 4160-byte buffer (`kSnapshotCap`). If the
+        registry no longer fits, the response is a `200` with an **empty body**
+        rather than an error — see PLAN.md.
+      responses:
+        "200":
+          description: Current snapshot.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Snapshot" }
+        "503":
+          description: Snapshot buffer allocation failed (body `OOM`).
+          content:
+            text/plain:
+              schema: { type: string, const: OOM }
+
+  /api/events:
+    get:
+      tags: [Live State]
+      operationId: streamEvents
+      summary: Subscribe to snapshot pushes (SSE)
+      description: |
+        Server-Sent-Events stream. The only event name is **`snapshot`**; its
+        `data:` payload is identical to `GET /api/snapshot`. The `id:` field is
+        the device uptime in milliseconds (`millis()`, wraps after ~49 days).
+
+        A snapshot is pushed on connect, then every 1000 ms, and additionally
+        after every write that changes registry state (actuator write, setpoint
+        change, params change, item create/delete, sensor reset, program
+        control).
+      responses:
+        "200":
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |
+                id: 128394
+                event: snapshot
+                data: {"sensors":[],"actuators":[],"controllers":[]}
+
+  # ── Dynamic Items ──────────────────────────────────────────────────────────
+  /api/sensors:
+    post:
+      tags: [Dynamic Items]
+      operationId: createSensor
+      summary: Create a sensor
+      description: |
+        Requires `Content-Type: application/json`.
+        Persists to `/config/registry.json` and pushes a snapshot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SensorCreate" }
+            examples:
+              ds18b20:
+                summary: DS18B20 on a single-device bus
+                value: { type: DS18B20, id: kettle, pin: 4 }
+              ds18b20Addressed:
+                summary: DS18B20 addressed on a shared bus
+                value: { type: DS18B20, id: kettle, pin: 4, address: 28ff64c8815604ef }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Validation failed. Body is the bare reason, e.g. `missing id`,
+            `id already in use`, `missing pin`, `invalid address`,
+            `unknown sensor type`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/sensors/{id}:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    delete:
+      tags: [Dynamic Items]
+      operationId: deleteSensor
+      summary: Remove a dynamic sensor
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "405":
+          description: |
+            Removal refused. Body is `not a dynamic item` (statically compiled
+            sensors cannot be removed) or `sensor is referenced by a controller`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/sensors/{id}/reset:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: resetSensor
+      summary: Reset a sensor's accumulated state
+      description: |
+        For cumulative sensors such as the YF-S201 flow meter (resets the
+        totalized volume). The request body is ignored, but **a non-empty body
+        must be sent** — the handler is body-driven and never fires otherwise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+            example: {}
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `sensor does not support reset` or `sensor not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/actuators:
+    post:
+      tags: [Dynamic Items]
+      operationId: createActuator
+      summary: Create an actuator
+      description: "Requires `Content-Type: application/json`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActuatorCreate" }
+            example: { type: DigitalOutput, id: pump, pin: 16, mode: Binary }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Validation failed, e.g. `missing id`, `id already in use`,
+            `unknown actuator type`, `invalid interval`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/actuators/{id}:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: writeActuator
+      summary: Write an actuator value, enable flag and/or duty interval
+      description: |
+        At least one of `v`, `enabled` or `interval` must be present.
+        They are applied in the order `enabled` → `interval` → `v`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActuatorWrite" }
+            examples:
+              write: { summary: Set output value, value: { v: 1 } }
+              disable: { summary: Disable the actuator, value: { enabled: false } }
+              duty:
+                summary: Run 30 s on in a 300 s cycle
+                value: { interval: { onSec: 30, periodSec: 300 } }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid JSON`, `missing v` (none of the three keys present)
+            or `invalid interval` (`periodSec` is 0, or `onSec > periodSec`).
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Dynamic Items]
+      operationId: deleteActuator
+      summary: Remove a dynamic actuator
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "405":
+          description: Body is `not a dynamic item` or `actuator is referenced by a controller`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/controllers:
+    post:
+      tags: [Dynamic Items]
+      operationId: createController
+      summary: Create a controller
+      description: "Requires `Content-Type: application/json`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ControllerCreate" }
+            example:
+              type: PID
+              id: mash
+              sensor: kettle
+              actuator: heater
+              Kp: 12
+              Ki: 0.05
+              Kd: 0
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Validation failed, e.g. `missing sensor`, `missing actuator`,
+            `sensor not found`, `actuator not found`, `unknown controller type`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/controllers/{id}:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    delete:
+      tags: [Dynamic Items]
+      operationId: deleteController
+      summary: Remove a dynamic controller
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "405":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/controllers/{id}/setpoint:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: setControllerSetpoint
+      summary: Set a controller's setpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [v]
+              properties:
+                v: { type: number, description: New setpoint. }
+            example: { v: 67.5 }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON` or `missing v` (absent or not a number).
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/controllers/{id}/params:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: setControllerParams
+      summary: Update a controller's runtime parameters
+      description: |
+        The whole body is passed verbatim to `Controller::setParamsJson()`.
+        Accepted keys are controller-type specific and use **camelCase** — the
+        same names the snapshot reports under `controllers[].params`. Note this
+        differs from the **snake_case** keys of `POST /api/controllers`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ControllerParams" }
+            example: { Kp: 14, Ki: 0.08, enabled: true }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON` or `params rejected`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  # ── Bus Discovery ──────────────────────────────────────────────────────────
+  /api/bus/scan:
+    get:
+      tags: [Bus Discovery]
+      operationId: scanBus
+      summary: Scan a 1-Wire bus for devices
+      description: |
+        For several DS18B20 on one pin: scan first, then create one sensor per
+        returned `address`. The firmware manages the shared bus instance
+        internally. At most 8 devices are reported.
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [onewire] }
+        - name: pin
+          in: query
+          required: true
+          schema: { type: integer }
+          description: GPIO number the bus is attached to.
+      responses:
+        "200":
+          description: Scan result (an empty `devices` array if nothing responded).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusScanResult" }
+        "400":
+          description: Body is `missing type or pin` or `unsupported bus type`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  # ── Config ─────────────────────────────────────────────────────────────────
+  /api/config:
+    get:
+      tags: [Config]
+      operationId: getConfig
+      summary: Get the stored creation config of all dynamic items
+      description: |
+        Returns each item's original creation body verbatim (the same shape that
+        was POSTed to `/api/sensors`, `/api/actuators`, `/api/controllers`).
+        Used by the edit UI to prefill forms. Statically compiled items are not
+        included.
+      responses:
+        "200":
+          description: Stored config.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfigSnapshot" }
+
+  # ── Dashboards ─────────────────────────────────────────────────────────────
+  /api/dashboards:
+    get:
+      tags: [Dashboards]
+      operationId: listDashboards
+      summary: List all dashboards
+      responses:
+        "200":
+          description: All dashboards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Dashboard" }
+    post:
+      tags: [Dashboards]
+      operationId: createDashboard
+      summary: Create a dashboard
+      description: |
+        Requires `Content-Type: application/json`. The body is not validated —
+        missing keys fall back to defaults (`name` becomes `Dashboard`, the id
+        lists become empty).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DashboardInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Created" }
+
+  /api/dashboards/{id}:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Dashboards]
+      operationId: updateDashboard
+      summary: Replace a dashboard's definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DashboardInput" }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Dashboards]
+      operationId: deleteDashboard
+      summary: Delete a dashboard
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ── Data Logs ──────────────────────────────────────────────────────────────
+  /api/logs:
+    get:
+      tags: [Data Logs]
+      operationId: listLogs
+      summary: List all log configurations
+      responses:
+        "200":
+          description: All log configs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LogConfig" }
+    post:
+      tags: [Data Logs]
+      operationId: createLog
+      summary: Create a log configuration
+      description: "Requires `Content-Type: application/json`. The body is not validated."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LogInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Created" }
+
+  /api/logs/{id}:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Data Logs]
+      operationId: updateLog
+      summary: Replace a log configuration
+      description: Resets the current logging session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LogInput" }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Data Logs]
+      operationId: deleteLog
+      summary: Delete a log configuration
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/logs/{id}/enable:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Data Logs]
+      operationId: setLogEnabled
+      summary: Enable or disable a log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: true
+                  description: Defaults to `true` when the key is absent.
+            example: { enabled: false }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/logs/{id}/clear:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Data Logs]
+      operationId: clearLog
+      summary: Close the current session and start a fresh one
+      description: The body is ignored, but a non-empty body must be sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+            example: {}
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/logs/{id}/sessions:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    get:
+      tags: [Data Logs]
+      operationId: listLogSessions
+      summary: List the recorded sessions of a log
+      description: An unknown id yields an empty array, not a 404.
+      responses:
+        "200":
+          description: Recorded sessions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LogSession" }
+
+  /api/logs/{id}/sessions/{start}:
+    parameters:
+      - { $ref: "#/components/parameters/HexId" }
+      - name: start
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+        description: Session start as Unix epoch seconds, from `GET /api/logs/{id}/sessions`.
+    delete:
+      tags: [Data Logs]
+      operationId: deleteLogSession
+      summary: Delete one recorded session
+      description: The currently active session cannot be deleted.
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404":
+          description: Body is `not found or active`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/logs/{id}/data:
+    parameters:
+      - { $ref: "#/components/parameters/HexId" }
+      - { $ref: "#/components/parameters/SessionQuery" }
+    get:
+      tags: [Data Logs]
+      operationId: getLogData
+      summary: Get a session's samples as CSV
+      responses:
+        "200":
+          description: Session CSV.
+          content:
+            text/csv: { schema: { type: string } }
+        "404":
+          description: Body is `no data` — unknown log id, or no such session.
+          content:
+            text/plain: { schema: { type: string, const: no data } }
+
+  /api/logs/{id}/download:
+    parameters:
+      - { $ref: "#/components/parameters/HexId" }
+      - { $ref: "#/components/parameters/SessionQuery" }
+    get:
+      tags: [Data Logs]
+      operationId: downloadLogData
+      summary: Download a session's samples as CSV
+      description: "Identical to `/data`, but sent with `Content-Disposition: attachment`."
+      responses:
+        "200":
+          description: Session CSV as a file download.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              example: attachment
+          content:
+            text/csv: { schema: { type: string } }
+        "404":
+          description: Body is `no data`.
+          content:
+            text/plain: { schema: { type: string, const: no data } }
+
+  # ── Setpoint Programs ──────────────────────────────────────────────────────
+  /api/programs:
+    get:
+      tags: [Setpoint Programs]
+      operationId: listPrograms
+      summary: List all programs with their live run state
+      responses:
+        "200":
+          description: All programs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Program" }
+    post:
+      tags: [Setpoint Programs]
+      operationId: createProgram
+      summary: Create a program
+      description: |
+        Requires `Content-Type: application/json`. Needs a non-empty
+        `controller` and at least one step with a finite `setpoint`; steps
+        without a valid `setpoint` are silently skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProgramInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Created" }
+        "400":
+          description: Body is `invalid program`.
+          content:
+            text/plain: { schema: { type: string, const: invalid program } }
+
+  /api/programs/{id}:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Setpoint Programs]
+      operationId: updateProgram
+      summary: Replace a program's definition
+      description: Resets the program to `idle`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProgramInput" }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404":
+          description: Body is `not found or invalid`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Setpoint Programs]
+      operationId: deleteProgram
+      summary: Delete a program
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/programs/{id}/control:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Setpoint Programs]
+      operationId: controlProgram
+      summary: Drive a program's run state
+      description: |
+        `next`/`prev` step through the program manually; `start` from `idle`,
+        `resume` from `paused`. A successful action pushes a snapshot, since the
+        controller setpoint changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { $ref: "#/components/schemas/ProgramAction" }
+            example: { action: start }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON`, `unknown action` or `invalid action for state`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  # ── Settings ───────────────────────────────────────────────────────────────
+  /api/settings:
+    get:
+      tags: [Settings]
+      operationId: getSettings
+      summary: Get all settings plus live transport status
+      description: |
+        The stored settings, with the live `connected`/`error` state of the
+        MQTT, webhook and ESP-NOW transports spliced in.
+
+        **`mqtt.password` is returned in cleartext.**
+      responses:
+        "200":
+          description: Current settings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppSettings" }
+    post:
+      tags: [Settings]
+      operationId: updateSettings
+      summary: Patch settings
+      description: |
+        Requires `Content-Type: application/json`. A partial patch — only the
+        sections and keys present are applied. Enum and range validation happens
+        before anything is stored, so a rejected patch changes nothing.
+
+        Sending a `time` section re-applies the NTP configuration immediately.
+        **Sending an `mqtt`, `webhook` or `espnow` section reboots the device
+        ~500 ms after the response** — those transports are only established at
+        boot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppSettingsPatch" }
+            example: { theme: { mode: dark }, time: { utcOffsetSec: 3600 } }
+      responses:
+        "204":
+          description: |
+            Settings stored. A reboot follows if `mqtt`, `webhook` or `espnow`
+            was part of the patch.
+        "400":
+          description: |
+            Validation failed. Body is one of `invalid JSON`, `invalid mode`,
+            `invalid background`, `invalid accent`, `invalid channel`,
+            `invalid utcOffsetSec`, `invalid dstOffsetSec`, `invalid timeFormat`,
+            `invalid dateFormat`, `invalid mqtt mode`,
+            `embedded broker not supported on this board`, `invalid mqtt port`,
+            `invalid mqtt topicPrefix`, `invalid mqtt clientId`,
+            `invalid webhook listenPort`, `invalid webhook topicPrefix`,
+            `invalid webhook clientId`, `invalid espnow topicPrefix`,
+            `invalid espnow clientId`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  # ── Network ────────────────────────────────────────────────────────────────
+  /api/network:
+    get:
+      tags: [Network]
+      operationId: getNetworkStatus
+      summary: Get the current WiFi status and configured hostname
+      responses:
+        "200":
+          description: Station status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkStatus" }
+    post:
+      tags: [Network]
+      operationId: setNetwork
+      summary: Change WiFi credentials and/or hostname
+      description: |
+        Requires `Content-Type: application/json`. At least one of `ssid` or
+        `hostname` must be present. Both are read from NVS at boot only, so
+        **the device reboots ~500 ms after the response**.
+
+        Posting the *current* hostname unchanged is the canonical way to trigger
+        a reboot without touching the WiFi configuration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkInput" }
+            examples:
+              wifi:
+                summary: Switch network
+                value: { ssid: MyNetwork, password: hunter2 }
+              rename:
+                summary: Rename the device (mDNS)
+                value: { hostname: brewcontrol }
+      responses:
+        "204":
+          description: Stored; the device reboots ~500 ms later.
+        "400":
+          description: |
+            Body is `invalid JSON`, `nothing to change` (neither `ssid` nor
+            `hostname` given), `missing ssid` (empty string) or
+            `invalid hostname`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/network/scan:
+    get:
+      tags: [Network]
+      operationId: scanNetworks
+      summary: Scan for WiFi networks
+      description: |
+        Asynchronous. The first call kicks off a scan and answers `202` with an
+        empty array; poll until a `200` arrives. Results are consumed on read —
+        the next call starts a new scan.
+
+        The scan briefly takes the radio off-channel; the WiFi watchdog in
+        `main.cpp` reconnects the station link if it drops.
+      responses:
+        "200":
+          description: Scan finished.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ScanNetwork" }
+        "202":
+          description: Scan in progress — poll again. Body is always `[]`.
+          content:
+            application/json:
+              schema: { type: array, items: {}, maxItems: 0 }
+
+  # ── Firmware Update ────────────────────────────────────────────────────────
+  /api/update/status:
+    get:
+      tags: [Firmware Update]
+      operationId: getUpdateStatus
+      summary: Get the firmware updater state
+      responses:
+        "200":
+          description: Updater state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UpdateStatus" }
+
+  /api/update/check:
+    post:
+      tags: [Firmware Update]
+      operationId: checkForUpdate
+      summary: Check the release server for a newer firmware
+      description: |
+        Queues the check and returns immediately — poll `GET /api/update/status`
+        for the result. A non-empty body must be sent; `channel` overrides the
+        configured channel for this check only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChannelInput" }
+            example: {}
+      responses:
+        "202": { description: Check queued. }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/update/install:
+    post:
+      tags: [Firmware Update]
+      operationId: installUpdate
+      summary: Download and flash the available firmware
+      description: |
+        Queues the install and returns immediately — poll `GET /api/update/status`
+        for progress. Pulls `firmware-<variant>.bin` plus `webui.tar` from the
+        matching release and reboots when done. A non-empty body must be sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChannelInput" }
+            example: {}
+      responses:
+        "202": { description: Install queued. }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/update/firmware:
+    post:
+      tags: [Firmware Update]
+      operationId: uploadFirmware
+      summary: Upload and flash a firmware image
+      description: |
+        Streams the uploaded `.bin` straight into the OTA partition. The image
+        is validated on completion; a truncated or invalid image is rejected.
+        **On success the device reboots ~500 ms after the response.**
+
+        The multipart field name is irrelevant — the handler ignores it and
+        consumes the first file part. There is no size limit.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                f: { type: string, format: binary, description: The firmware `.bin`. }
+      responses:
+        "200":
+          description: Flashed; the device reboots ~500 ms later. Body is `ok`.
+          content:
+            text/plain: { schema: { type: string, const: ok } }
+        "500":
+          description: Body is the `Update` library's error string, e.g. `Bad Size`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/update/assets:
+    post:
+      tags: [Firmware Update]
+      operationId: uploadAssets
+      summary: Upload a UI package
+      description: |
+        Streams the uploaded `webui.tar` into the staging directory `/www.new`,
+        which is cleared first. On success the swap to `/www` happens on the
+        next main-loop tick. **No reboot.**
+
+        The tar must contain the *gzipped* build output with paths relative to
+        the dist root (`tar -C dist -cf webui.tar .`). The multipart field name
+        is irrelevant; there is no size limit.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                f: { type: string, format: binary, description: The `webui.tar`. }
+      responses:
+        "200":
+          description: Extracted; the swap to `/www` follows. Body is `ok`.
+          content:
+            text/plain: { schema: { type: string, const: ok } }
+        "500":
+          description: Body is `extract failed`. `/www` is left untouched.
+          content:
+            text/plain: { schema: { type: string, const: extract failed } }
+
+  # ── Backup ─────────────────────────────────────────────────────────────────
+  /api/backup:
+    get:
+      tags: [Backup]
+      operationId: exportBackup
+      summary: Export the full device configuration
+      description: |
+        Bundles `/config/registry.json`, `/config/dashboards.json` and
+        `/config/settings.json` into one downloadable file. `firmwareVersion`
+        and `variant` are informational — they are ignored on import.
+      responses:
+        "200":
+          description: Backup bundle.
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              example: attachment; filename="brewcontrol-backup.json"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BackupBundle" }
+    post:
+      tags: [Backup]
+      operationId: importBackup
+      summary: Restore a configuration from a backup bundle
+      description: |
+        Requires `Content-Type: application/json`. The bundle is fully validated
+        before anything is written. **On success the device reboots ~500 ms
+        after the response.**
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BackupBundle" }
+      responses:
+        "200":
+          description: Restored; the device reboots ~500 ms later. Body is `ok`.
+          content:
+            text/plain: { schema: { type: string, const: ok } }
+        "400":
+          description: |
+            Body is `invalid JSON`, `not a brewcontrol backup`,
+            `unsupported backup version`, `missing registry`,
+            `missing dashboards` or `missing settings`. Nothing was written.
+          content:
+            text/plain: { schema: { type: string } }
+        "500":
+          description: |
+            A write failed midway. Body is
+            `write failed — config may be partially restored, re-import to recover`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  # ── Files ──────────────────────────────────────────────────────────────────
+  /api/files:
+    get:
+      tags: [Files]
+      operationId: listFiles
+      summary: List a directory
+      parameters: [{ $ref: "#/components/parameters/PathQuery" }]
+      responses:
+        "200":
+          description: Directory listing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileListing" }
+        "400": { $ref: "#/components/responses/InvalidPath" }
+        "404":
+          description: Body is `not a directory`.
+          content:
+            text/plain: { schema: { type: string, const: not a directory } }
+    delete:
+      tags: [Files]
+      operationId: deleteFile
+      summary: Delete a file or directory
+      description: Directories are removed recursively.
+      parameters: [{ $ref: "#/components/parameters/PathQuery" }]
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `missing path`, `path must be absolute`, `path traversal`
+            or `cannot delete root`.
+          content:
+            text/plain: { schema: { type: string } }
+        "403": { $ref: "#/components/responses/ProtectedPath" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/files/download:
+    get:
+      tags: [Files]
+      operationId: downloadFile
+      summary: Download a file
+      description: |
+        Reads are not subject to the `/www` write protection — UI assets can be
+        downloaded.
+      parameters: [{ $ref: "#/components/parameters/PathQuery" }]
+      responses:
+        "200":
+          description: File contents as an attachment.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/InvalidPath" }
+        "404":
+          description: Body is `not found` — missing, or the path is a directory.
+          content:
+            text/plain: { schema: { type: string, const: not found } }
+
+  /api/files/upload:
+    post:
+      tags: [Files]
+      operationId: uploadFile
+      summary: Upload a file into a directory
+      description: |
+        `path` is the **destination directory**, which must already exist. The
+        target filename comes from the multipart part's `filename`; it must be
+        non-empty, must not contain `/` and must not be `..`. An existing file
+        is overwritten. There is no size limit.
+
+        Known issue: short writes are not detected, so a full device can
+        silently truncate the stored file while still answering `ok` — verify
+        the size via `GET /api/files` after uploading. See PLAN.md.
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema: { type: string }
+          description: Absolute path of the destination directory.
+          example: /
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                f:
+                  type: string
+                  format: binary
+                  description: |
+                    The file. The field name is irrelevant — only the part's
+                    `filename` is used, as the target name.
+      responses:
+        "200":
+          description: Stored. Body is `ok`.
+          content:
+            text/plain: { schema: { type: string, const: ok } }
+        "400":
+          description: |
+            Body is `path must be absolute`, `path traversal` or
+            `invalid filename or directory`.
+          content:
+            text/plain: { schema: { type: string } }
+        "403": { $ref: "#/components/responses/ProtectedPath" }
+        "500":
+          description: Body is `open failed`.
+          content:
+            text/plain: { schema: { type: string, const: open failed } }
+
+  /api/files/mkdir:
+    post:
+      tags: [Files]
+      operationId: makeDirectory
+      summary: Create a directory
+      description: |
+        Requires `Content-Type: application/json`. Creates exactly one level —
+        the parent directory must already exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string, example: /config }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidPath" }
+        "403": { $ref: "#/components/responses/ProtectedPath" }
+        "500":
+          description: Body is `mkdir failed`.
+          content:
+            text/plain: { schema: { type: string, const: mkdir failed } }
+
+  /api/files/rename:
+    post:
+      tags: [Files]
+      operationId: renameFile
+      summary: Rename or move a file or directory
+      description: "Requires `Content-Type: application/json`. Never overwrites."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: string, example: /logs/old.csv }
+                to: { type: string, example: /logs/new.csv }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `missing from/to`, `path must be absolute` or
+            `path traversal`.
+          content:
+            text/plain: { schema: { type: string } }
+        "403": { $ref: "#/components/responses/ProtectedPath" }
+        "404":
+          description: Body is `not found` — the source does not exist.
+          content:
+            text/plain: { schema: { type: string, const: not found } }
+        "409":
+          description: Body is `destination exists`.
+          content:
+            text/plain: { schema: { type: string, const: destination exists } }
+        "500":
+          description: Body is `rename failed`.
+          content:
+            text/plain: { schema: { type: string, const: rename failed } }
+
+  # ── Admin ──────────────────────────────────────────────────────────────────
+  /api/admin/wifi-reset:
+    post:
+      tags: [Admin]
+      operationId: resetWifi
+      summary: Clear all stored credentials and reboot into the setup portal
+      description: |
+        Clears the entire `brewctrl` NVS namespace — WiFi credentials *and* the
+        configured hostname. **The device reboots ~500 ms after the response**
+        and comes up as a captive-portal access point.
+      responses:
+        "204":
+          description: Cleared; the device reboots ~500 ms later.
+
+components:
+  parameters:
+    ItemId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: |
+        The item id as given at creation. Taken as a raw URL substring — not
+        percent-decoded, so ids containing `/` are unreachable.
+      example: kettle
+
+    HexId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[0-9a-f]{6}$" }
+      description: Six-character lowercase hex id assigned at creation.
+      example: 3f9ac1
+
+    SessionQuery:
+      name: session
+      in: query
+      required: false
+      schema: { type: integer, format: int64, default: 0 }
+      description: |
+        Session start as Unix epoch seconds. Omit or pass `0` for the currently
+        running session.
+
+    PathQuery:
+      name: path
+      in: query
+      required: true
+      schema: { type: string }
+      description: |
+        Absolute path on the device filesystem. `..` segments are rejected. A
+        trailing slash is stripped.
+      example: /
+
+  responses:
+    NoContent:
+      description: Success; empty body.
+
+    Created:
+      description: Created.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CreatedId" }
+
+    NotFound:
+      description: Body is `not found`.
+      content:
+        text/plain: { schema: { type: string, const: not found } }
+
+    NotFoundEmpty:
+      description: Not found; empty body.
+
+    InvalidJson:
+      description: Body is `invalid JSON`.
+      content:
+        text/plain: { schema: { type: string, const: invalid JSON } }
+
+    InvalidPath:
+      description: |
+        Body is `missing path`, `path must be absolute` or `path traversal`.
+      content:
+        text/plain: { schema: { type: string } }
+
+    ProtectedPath:
+      description: |
+        Body is `protected path (UI files)`. `/www` and `/www.new` (and anything
+        below them) are read-only — use `POST /api/update/assets` to replace the
+        UI.
+      content:
+        text/plain: { schema: { type: string, const: protected path (UI files) } }
+
+    BodyTooLarge:
+      description: |
+        Body is `body too large` — the request body did not arrive in a single
+        chunk. API payloads are expected to stay well below 4 KB.
+      content:
+        text/plain: { schema: { type: string, const: body too large } }
+
+  schemas:
+    # ── Snapshot ─────────────────────────────────────────────────────────────
+    ValueKind:
+      type: string
+      description: Mathematical nature of a value; orthogonal to `Quantity`.
+      enum: [Binary, Discrete, Continuous, Cumulative]
+
+    Quantity:
+      type: string
+      description: Physical quantity a value represents.
+      enum:
+        [None, Temperature, Humidity, Pressure, pH, Voltage, Current, Power,
+         Energy, Mass, Volume, FlowRate, Frequency, Duration, DutyCycle, Count,
+         Distance, Custom]
+
+    ItemMeta:
+      type: object
+      required: [kind, quantity, unit, min, max, res]
+      properties:
+        kind: { $ref: "#/components/schemas/ValueKind" }
+        quantity: { $ref: "#/components/schemas/Quantity" }
+        unit: { type: string, description: Empty string when the driver reports none. }
+        min: { type: number }
+        max: { type: number }
+        res: { type: number, description: Resolution (`Meta::resolution`). }
+
+    ItemState:
+      type: object
+      required: [v, t, ok]
+      properties:
+        v:
+          type: [number, "null"]
+          description: Value. `null` when the reading is NaN or infinite.
+        t:
+          type: integer
+          description: Device uptime in milliseconds at the time of the reading.
+        ok: { type: boolean, description: Whether the reading is valid. }
+
+    Sensor:
+      type: object
+      required: [id, meta, state]
+      properties:
+        id:
+          type: string
+          description: |
+            Sensor id, or `<sensorId>.<channelKey>` for multi-channel sensors —
+            one entry per channel. Falls back to the bare id if the composite
+            would exceed 63 characters.
+        meta: { $ref: "#/components/schemas/ItemMeta" }
+        state: { $ref: "#/components/schemas/ItemState" }
+        fault:
+          type: string
+          description: Present only while the driver reports a fault.
+
+    Actuator:
+      type: object
+      required: [id, meta, enabled, target, state]
+      properties:
+        id: { type: string }
+        meta: { $ref: "#/components/schemas/ItemMeta" }
+        enabled: { type: boolean }
+        target: { type: number, description: Last commanded value. }
+        state:
+          allOf: [{ $ref: "#/components/schemas/ItemState" }]
+          description: |
+            `t` is the serialization time, not a measurement time, and `ok` is
+            always `true` — actuators report no reading validity.
+        fault:
+          type: string
+          description: Present only while the driver reports a fault.
+        interval:
+          type: object
+          description: Present only when a duty interval is configured.
+          required: [onSec, periodSec]
+          properties:
+            onSec: { type: integer }
+            periodSec: { type: integer }
+
+    ControllerParams:
+      type: object
+      description: |
+        Controller-type specific runtime parameters, in **camelCase**. The
+        listed properties are the ones the built-in controllers use; the set is
+        open. Not to be confused with the snake_case keys of
+        `POST /api/controllers`.
+      additionalProperties: true
+      properties:
+        sensor: { type: string }
+        actuator: { type: string }
+        enabled: { type: boolean }
+        Kp: { type: number }
+        Ki: { type: number }
+        Kd: { type: number }
+        Ku: { type: number }
+        Tu: { type: number }
+        min: { type: number }
+        max: { type: number }
+        autotuneMethod: { type: string }
+        autotuneState: { type: string }
+        hystLow: { type: number }
+        hystHigh: { type: number }
+        inverted: { type: boolean }
+        heatActuator: { type: string }
+        coolActuator: { type: string }
+        heatDiff: { type: number }
+        coolDiff: { type: number }
+        coolMinOnMs: { type: integer }
+        coolMinOffMs: { type: integer }
+        deadband: { type: number }
+        changeoverMs: { type: integer }
+        heatOut: { type: number }
+        coolOut: { type: number }
+        maxRatePerSec: { type: number }
+        effectiveSetpoint: { type: number }
+
+    Controller:
+      type: object
+      required: [id, setpoint, enabled]
+      properties:
+        id: { type: string }
+        setpoint: { type: number }
+        enabled: { type: boolean }
+        params:
+          allOf: [{ $ref: "#/components/schemas/ControllerParams" }]
+          description: Omitted when the controller reports no parameters.
+
+    Snapshot:
+      type: object
+      required: [sensors, actuators, controllers]
+      properties:
+        sensors:
+          type: array
+          items: { $ref: "#/components/schemas/Sensor" }
+        actuators:
+          type: array
+          items: { $ref: "#/components/schemas/Actuator" }
+        controllers:
+          type: array
+          items: { $ref: "#/components/schemas/Controller" }
+        serverTime:
+          type: integer
+          format: int64
+          description: |
+            Device wall-clock as Unix epoch seconds. Present only once NTP has
+            synced.
+
+    # ── Item creation ────────────────────────────────────────────────────────
+    SensorCreate:
+      type: object
+      description: |
+        Sensor creation config, in **snake_case**. `type` and `id` are always
+        required; every other key depends on `type`. The authoritative list of
+        keys per type is `DynamicItems::addSensor()` in
+        `firmware/src/DynamicItems.cpp`.
+      required: [type, id]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          enum: [DS18B20, MAX31865, BME280, YF-S201, HCSR04, HX711, DigitalInput, MqttGeneric, Remote]
+        id: { type: string }
+        pin: { type: integer }
+        address: { type: string, description: "DS18B20 ROM address, 16 lowercase hex chars." }
+        cs: { type: integer }
+        clk: { type: integer }
+        miso: { type: integer }
+        mosi: { type: integer }
+        wires: { type: integer, enum: [2, 3, 4], description: MAX31865 wiring. }
+        rtd: { type: number }
+        rref: { type: number }
+        trig: { type: integer, description: HC-SR04 trigger pin. }
+        echo: { type: integer, description: HC-SR04 echo pin. }
+        dout: { type: integer, description: HX711 data pin. }
+        sck: { type: integer, description: HX711 clock pin. }
+        scale: { type: number }
+        calibration: { type: array, items: { type: number } }
+        factor: { type: number }
+        offset: { type: number }
+        unit: { type: string }
+        pullup: { type: boolean }
+        invert: { type: boolean }
+        debounce_ms: { type: integer }
+        value_min: { type: number }
+        value_max: { type: number }
+        resolution: { type: number }
+        topic: { type: string, description: MQTT topic (MqttGeneric). }
+        json_field: { type: string }
+        device: { type: string }
+        remote_id: { type: string }
+        channel_key: { type: string }
+        prefix: { type: string }
+        transport:
+          type: string
+          description: Remote transport — `mqtt`, `webhook` or `espnow`.
+        listen_port: { type: integer, description: Webhook transport. }
+        peer_url: { type: string, description: Webhook transport. }
+
+    ActuatorCreate:
+      type: object
+      description: |
+        Actuator creation config, in **snake_case**. Authoritative key list:
+        `DynamicItems::addActuator()`.
+      required: [type, id]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          enum: [DigitalOutput, AnalogOutput, IDS1, IDS2, MqttGeneric, Remote]
+        id: { type: string }
+        pin: { type: integer }
+        mode: { type: string, description: "e.g. `Binary` or `TPO`." }
+        invert: { type: boolean }
+        period_ms: { type: integer, description: TPO cycle length. }
+        freq: { type: integer, description: LEDC frequency (AnalogOutput). }
+        resolution_bits: { type: integer }
+        pin_white: { type: integer, description: IDS1/IDS2. }
+        pin_yellow: { type: integer, description: IDS1/IDS2. }
+        pin_interrupt: { type: integer, description: IDS1/IDS2. }
+        unit: { type: string }
+        value_min: { type: number }
+        value_max: { type: number }
+        resolution: { type: number }
+        topic: { type: string }
+        retained: { type: boolean }
+        kind: { $ref: "#/components/schemas/ValueKind" }
+        payload_template: { type: string }
+        on_payload: { type: string }
+        off_payload: { type: string }
+        device: { type: string }
+        remote_id: { type: string }
+        prefix: { type: string }
+        interval_on_sec: { type: integer }
+        interval_period_sec: { type: integer }
+
+    ControllerCreate:
+      type: object
+      description: |
+        Controller creation config, in **snake_case** — note this differs from
+        the camelCase runtime params of `POST /api/controllers/{id}/params`.
+        Authoritative key list: `DynamicItems::addController()`.
+      required: [type, id]
+      additionalProperties: true
+      properties:
+        type: { type: string, enum: [PID, TwoPoint, DualStage, SplitRangePID] }
+        id: { type: string }
+        sensor: { type: string }
+        actuator: { type: string }
+        heat_actuator: { type: string, description: DualStage / SplitRangePID. }
+        cool_actuator: { type: string, description: DualStage / SplitRangePID. }
+        setpoint: { type: number }
+        min: { type: number }
+        max: { type: number }
+        Kp: { type: number }
+        Ki: { type: number }
+        Kd: { type: number }
+        hyst_low: { type: number }
+        hyst_high: { type: number }
+        inverted: { type: boolean }
+        heat_diff: { type: number }
+        cool_diff: { type: number }
+        cool_min_on_ms: { type: integer }
+        cool_min_off_ms: { type: integer }
+        changeover_ms: { type: integer }
+        deadband: { type: number }
+        max_rate_per_sec: { type: number }
+
+    ActuatorWrite:
+      type: object
+      description: At least one property must be present.
+      minProperties: 1
+      properties:
+        v: { type: number, description: Value to write. }
+        enabled: { type: boolean }
+        interval:
+          type: object
+          description: |
+            Duty cycle. `periodSec` must be non-zero and `onSec` must not exceed
+            it.
+          properties:
+            onSec: { type: integer, default: 0 }
+            periodSec: { type: integer, default: 0 }
+
+    ConfigSnapshot:
+      type: object
+      required: [sensors, actuators, controllers]
+      description: The stored creation bodies of all dynamic items, verbatim.
+      properties:
+        sensors: { type: array, items: { $ref: "#/components/schemas/SensorCreate" } }
+        actuators: { type: array, items: { $ref: "#/components/schemas/ActuatorCreate" } }
+        controllers: { type: array, items: { $ref: "#/components/schemas/ControllerCreate" } }
+
+    # ── Bus discovery ────────────────────────────────────────────────────────
+    BusScanResult:
+      type: object
+      required: [type, pin, devices]
+      properties:
+        type: { type: string, const: onewire }
+        pin: { type: integer }
+        devices:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [index, address]
+            properties:
+              index: { type: integer }
+              address: { type: string, pattern: "^[0-9a-f]{16}$" }
+      example:
+        type: onewire
+        pin: 4
+        devices:
+          - { index: 0, address: 28ff64c8815604ef }
+
+    # ── Dashboards ───────────────────────────────────────────────────────────
+    DashboardInput:
+      type: object
+      description: Every key is optional; absent lists default to empty.
+      properties:
+        name: { type: string, default: Dashboard }
+        sensors: { type: array, items: { type: string } }
+        actuators: { type: array, items: { type: string } }
+        controllers: { type: array, items: { type: string } }
+        charts: { type: array, items: { type: string }, description: Log ids. }
+        programs: { type: array, items: { type: string }, description: Program ids. }
+
+    Dashboard:
+      type: object
+      required: [id, name, sensors, actuators, controllers, charts, programs]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        name: { type: string }
+        sensors: { type: array, items: { type: string } }
+        actuators: { type: array, items: { type: string } }
+        controllers: { type: array, items: { type: string } }
+        charts: { type: array, items: { type: string } }
+        programs: { type: array, items: { type: string } }
+
+    # ── Data logs ────────────────────────────────────────────────────────────
+    CompAlgo:
+      type: string
+      description: Sample compression algorithm.
+      enum: [none, linear, swingingdoor]
+
+    LogSeries:
+      type: object
+      required: [ref, tol]
+      properties:
+        ref:
+          type: string
+          description: |
+            Snapshot id of the logged item — a sensor id (possibly
+            `<id>.<channel>`), actuator id or controller id.
+        tol:
+          type: number
+          description: Compression tolerance; the deadband the algorithm may drop.
+
+    LogInput:
+      type: object
+      properties:
+        name: { type: string }
+        intervalSec: { type: integer, description: Sampling interval. }
+        series: { type: array, items: { $ref: "#/components/schemas/LogSeries" } }
+        algo: { $ref: "#/components/schemas/CompAlgo" }
+        maxGapSec:
+          type: integer
+          description: Force a sample after this long, even if compressed away.
+        enabled: { type: boolean }
+        bindEnableTo:
+          type: string
+          description: |
+            Id of a controller or program whose run state gates logging. Empty
+            to unbind.
+
+    LogConfig:
+      type: object
+      required: [id, name, intervalSec, algo, maxGapSec, enabled, series]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        name: { type: string }
+        intervalSec: { type: integer }
+        algo: { $ref: "#/components/schemas/CompAlgo" }
+        maxGapSec: { type: integer }
+        enabled: { type: boolean }
+        bindEnableTo: { type: string, description: Omitted when unbound. }
+        series: { type: array, items: { $ref: "#/components/schemas/LogSeries" } }
+        session:
+          type: integer
+          format: int64
+          description: |
+            Start of the currently recording session, as Unix epoch seconds.
+            Omitted when no session is active.
+
+    LogSession:
+      type: object
+      required: [start, size, active]
+      properties:
+        start:
+          type: integer
+          format: int64
+          description: Session start as Unix epoch seconds; also the CSV filename.
+        size: { type: integer, description: CSV size in bytes. }
+        active: { type: boolean, description: Whether this session is still recording. }
+
+    # ── Programs ─────────────────────────────────────────────────────────────
+    ProgramStatus:
+      type: string
+      description: |
+        `awaiting` means the current step is waiting for manual confirmation.
+      enum: [idle, running, awaiting, paused, done]
+
+    ProgramAction:
+      type: string
+      enum: [start, pause, resume, stop, next, prev]
+
+    ProgramStep:
+      type: object
+      required: [setpoint, holdSec]
+      properties:
+        name: { type: string, description: Omitted when empty. }
+        setpoint: { type: number }
+        holdSec: { type: integer, description: How long to hold this setpoint. }
+        confirm:
+          type: boolean
+          const: true
+          description: |
+            Present only when the step requires manual confirmation before
+            advancing. Omitted otherwise.
+
+    ProgramInput:
+      type: object
+      required: [controller, steps]
+      properties:
+        name: { type: string, default: Programm }
+        controller: { type: string, description: Id of the controller to drive. }
+        steps:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ProgramStep" }
+          description: Steps without a finite `setpoint` are silently skipped.
+
+    Program:
+      type: object
+      required:
+        [id, name, controller, steps, status, currentStep, stepStartedEpoch,
+         elapsedAtPauseSec]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        name: { type: string }
+        controller: { type: string }
+        steps: { type: array, items: { $ref: "#/components/schemas/ProgramStep" } }
+        status: { $ref: "#/components/schemas/ProgramStatus" }
+        currentStep: { type: integer, description: "-1 while idle." }
+        stepStartedEpoch:
+          type: integer
+          format: int64
+          description: When the current step began, as Unix epoch seconds.
+        elapsedAtPauseSec:
+          type: integer
+          format: int64
+          description: Seconds already elapsed in the current step when it was paused.
+        currentSetpoint:
+          type: number
+          description: |
+            Derived. Present only while `currentStep` addresses a real step.
+        stepRemainingSec:
+          type: integer
+          format: int64
+          description: |
+            Derived, clamped at 0. Present only while `currentStep` addresses a
+            real step.
+
+    # ── Settings ─────────────────────────────────────────────────────────────
+    ThemeSettings:
+      type: object
+      required: [mode, accent, background]
+      properties:
+        mode: { type: string, enum: [light, dark, system] }
+        accent: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        background: { type: string, enum: [neutral, warm, cool] }
+
+    FirmwareSettings:
+      type: object
+      required: [channel, autoCheck]
+      properties:
+        channel: { type: string, enum: [stable, preview] }
+        autoCheck: { type: boolean }
+
+    TimeSettings:
+      type: object
+      required: [ntpServer, utcOffsetSec, dstOffsetSec, timeFormat, dateFormat]
+      properties:
+        ntpServer: { type: string }
+        utcOffsetSec: { type: integer, minimum: -43200, maximum: 50400 }
+        dstOffsetSec: { type: integer, minimum: 0, maximum: 7200 }
+        timeFormat: { type: string, enum: ["24h", "12h"] }
+        dateFormat: { type: string, enum: [DD.MM.YYYY, MM/DD/YYYY, YYYY-MM-DD] }
+
+    MqttSettings:
+      type: object
+      required:
+        [enabled, mode, host, port, username, password, tls, clientId,
+         topicPrefix, embeddedBrokerSupported]
+      properties:
+        enabled: { type: boolean }
+        mode:
+          type: string
+          enum: [external, embedded]
+          description: |
+            `embedded` is rejected unless the board was built with
+            `BREWCTL_HAS_EMBEDDED_MQTT_BROKER`.
+        host: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string }
+        password:
+          type: string
+          format: password
+          description: Stored and returned in cleartext.
+        tls: { type: boolean }
+        clientId: { type: string, description: Must not contain `/`. }
+        topicPrefix: { type: string, description: Must not contain `/`. }
+        embeddedBrokerSupported:
+          type: boolean
+          readOnly: true
+          description: Compile-time capability of this firmware build.
+        connected: { type: boolean, readOnly: true, description: Live state. }
+        error: { type: string, readOnly: true, description: Last connection error. }
+
+    WebhookSettings:
+      type: object
+      required: [enabled, listenPort, peerUrl, clientId, topicPrefix]
+      properties:
+        enabled: { type: boolean }
+        listenPort: { type: integer, minimum: 1, maximum: 65535 }
+        peerUrl: { type: string }
+        clientId: { type: string, description: Must not contain `/`. }
+        topicPrefix: { type: string, description: Must not contain `/`. }
+        connected: { type: boolean, readOnly: true }
+        error: { type: string, readOnly: true }
+
+    EspNowSettings:
+      type: object
+      required: [enabled, clientId, topicPrefix]
+      properties:
+        enabled: { type: boolean }
+        clientId: { type: string, description: Must not contain `/`. }
+        topicPrefix: { type: string, description: Must not contain `/`. }
+        connected: { type: boolean, readOnly: true }
+        error: { type: string, readOnly: true }
+
+    AppSettings:
+      type: object
+      description: |
+        All six sections are always emitted. On `GET /api/settings` the `mqtt`,
+        `webhook` and `espnow` sections additionally carry the live `connected`
+        and `error` fields.
+      required: [theme, firmware, time, mqtt, webhook, espnow]
+      properties:
+        theme: { $ref: "#/components/schemas/ThemeSettings" }
+        firmware: { $ref: "#/components/schemas/FirmwareSettings" }
+        time: { $ref: "#/components/schemas/TimeSettings" }
+        mqtt: { $ref: "#/components/schemas/MqttSettings" }
+        webhook: { $ref: "#/components/schemas/WebhookSettings" }
+        espnow: { $ref: "#/components/schemas/EspNowSettings" }
+
+    AppSettingsPatch:
+      type: object
+      description: |
+        Partial patch — send only the sections and keys to change. Within a
+        section, absent keys keep their stored value.
+      properties:
+        theme: { type: object, description: Subset of `ThemeSettings`. }
+        firmware: { type: object, description: Subset of `FirmwareSettings`. }
+        time: { type: object, description: Subset of `TimeSettings`. }
+        mqtt: { type: object, description: Subset of `MqttSettings`. Triggers a reboot. }
+        webhook: { type: object, description: Subset of `WebhookSettings`. Triggers a reboot. }
+        espnow: { type: object, description: Subset of `EspNowSettings`. Triggers a reboot. }
+
+    # ── Network ──────────────────────────────────────────────────────────────
+    NetworkStatus:
+      type: object
+      required: [connected, ssid, ip, rssi, mac, hostname]
+      properties:
+        connected: { type: boolean }
+        ssid: { type: string }
+        ip: { type: string }
+        rssi: { type: integer, description: Signal strength in dBm. }
+        mac: { type: string }
+        hostname: { type: string, description: "mDNS name; defaults to `brewcontrol`." }
+
+    NetworkInput:
+      type: object
+      description: At least one of `ssid` or `hostname` must be present.
+      minProperties: 1
+      properties:
+        ssid: { type: string, description: Must not be empty when present. }
+        password: { type: string, format: password, default: "" }
+        hostname:
+          type: string
+          description: |
+            Lowercased before validation. Must be a valid DNS label — letters,
+            digits and inner hyphens.
+
+    ScanNetwork:
+      type: object
+      required: [ssid, rssi, open]
+      properties:
+        ssid: { type: string }
+        rssi: { type: integer }
+        open: { type: boolean, description: Whether the network is unencrypted. }
+
+    # ── Firmware update ──────────────────────────────────────────────────────
+    ChannelInput:
+      type: object
+      description: |
+        A non-empty body is required, but every key is optional — send `{}` to
+        use the configured channel.
+      properties:
+        channel:
+          type: string
+          enum: [stable, preview]
+          description: Overrides the configured channel for this request only.
+
+    UpdateStatus:
+      type: object
+      required: [state, currentVersion, variant, channel, autoCheck, progress, error, available]
+      properties:
+        state:
+          type: string
+          enum: [idle, checking, updateAvailable, noUpdate, downloading, flashing, success, error]
+        currentVersion:
+          type: string
+          description: "Build version — `git describe`, or the CI release tag."
+        variant: { type: string, description: "PlatformIO environment, e.g. `esp32dev`." }
+        channel: { type: string, enum: [stable, preview] }
+        autoCheck: { type: boolean }
+        progress: { type: integer, description: "Percent, while downloading or flashing." }
+        error: { type: string, description: Empty unless `state` is `error`. }
+        available:
+          type: ["object", "null"]
+          description: |
+            Non-null only in the `updateAvailable` and `noUpdate` states.
+          required: [version, notes]
+          properties:
+            version: { type: string }
+            notes: { type: string, description: Release notes. }
+
+    # ── Backup ───────────────────────────────────────────────────────────────
+    BackupBundle:
+      type: object
+      required: [type, version, registry, dashboards, settings]
+      properties:
+        type: { type: string, const: brewcontrol-backup }
+        version: { type: integer, const: 1 }
+        firmwareVersion:
+          type: string
+          description: Informational only — ignored on import.
+        variant:
+          type: string
+          description: Informational only — ignored on import.
+        registry: { $ref: "#/components/schemas/ConfigSnapshot" }
+        dashboards:
+          type: array
+          items: { $ref: "#/components/schemas/Dashboard" }
+        settings: { $ref: "#/components/schemas/AppSettings" }
+
+    # ── Files ────────────────────────────────────────────────────────────────
+    FileEntry:
+      type: object
+      required: [name, dir, size]
+      properties:
+        name: { type: string }
+        dir: { type: boolean }
+        size: { type: integer, description: Bytes; 0 for directories. }
+
+    FileListing:
+      type: object
+      required: [path, entries]
+      properties:
+        path: { type: string }
+        entries: { type: array, items: { $ref: "#/components/schemas/FileEntry" } }
+
+    # ── Shared ───────────────────────────────────────────────────────────────
+    CreatedId:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }

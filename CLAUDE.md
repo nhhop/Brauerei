@@ -49,7 +49,8 @@ davon, welches Teilprojekt eine Änderung betrifft:
 - **`SensActCtrl/CLAUDE.md`**: Library-spezifischer Kontext.
 - **`SensActCtrl/README.md`**: Architektur-/API-Referenz — bleibt bewusst eigenständig verständlich, da die Library separat als PlatformIO-/Arduino-Paket veröffentlichbar ist (Standalone-Publish-Anspruch).
 - **`BrewControl/CLAUDE.md`**: BrewControl-spezifischer Kontext.
-- **`BrewControl/README.md`**: Architektur-/API-Referenz, Setup/Build/Deploy, Troubleshooting.
+- **`BrewControl/README.md`**: Architektur-Referenz, API-Übersicht, Setup/Build/Deploy, Troubleshooting.
+- **`BrewControl/docs/openapi.yaml`**: maschinenlesbarer API-Vertrag (OpenAPI 3.1) — **Single Source of Truth** für alle HTTP-Endpoints der Firmware. Jede API-Änderung in `WebUI.cpp` muss im selben Commit hier nachgezogen werden.
 
 Vor substanziellen Änderungen: `PLAN.md` lesen. `SESSION.md` danach aktualisieren (neuer Eintrag, ggf. ältere abgeschlossene Themen nach `SESSION-archive.md` verschieben und im `SESSION.md`-Eintrag auf eine Kurzform kürzen).
 

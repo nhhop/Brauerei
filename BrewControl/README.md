@@ -226,34 +226,54 @@ selbst ein, kein Branch-Drift.
 
 ## API-Vertrag
 
-**Monitoring & Steuerung:**
+Der vollständige Vertrag — Request-/Response-Schemas, Status-Codes, Fehler-Bodies
+und Reboot-Verhalten — liegt maschinenlesbar in
+[`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1, Single Source of Truth).
+Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 
-| Endpoint                                | Methode | Body              | Wirkung                              |
-|-----------------------------------------|---------|-------------------|--------------------------------------|
-| `/api/snapshot`                         | GET     | —                 | Aktueller Registry-State (JSON)      |
-| `/api/events`                           | GET     | (SSE)             | `snapshot`-Event nach Connect, alle 1 s, und nach jedem Write |
-| `/api/actuators/<id>`                   | POST    | `{"v": <float>}`  | `Actuator::write(v)`                 |
-| `/api/controllers/<id>/setpoint`        | POST    | `{"v": <float>}`  | `Controller::setSetpoint(v)`         |
-| `/api/controllers/<id>/params`          | POST    | (Controller-JSON) | `Controller::setParamsJson(body)`    |
-| `/api/admin/wifi-reset`                 | POST    | —                 | Löscht NVS-Credentials, rebootet in Setup-Portal |
+| Endpoint | Methode | Zweck |
+|----------|---------|-------|
+| `/api/snapshot` | GET | Aktueller Registry-State |
+| `/api/events` | GET | SSE-Stream: `snapshot`-Event nach Connect, alle 1 s und nach jedem Write |
+| `/api/sensors` | POST | Sensor anlegen |
+| `/api/sensors/<id>` | DELETE | Sensor entfernen |
+| `/api/sensors/<id>/reset` | POST | Akkumulierten Sensorwert zurücksetzen (z.B. YF-S201-Volumen) |
+| `/api/actuators` | POST | Aktor anlegen |
+| `/api/actuators/<id>` | POST, DELETE | Wert / `enabled` / Takt-Intervall schreiben; Aktor entfernen |
+| `/api/controllers` | POST | Regler anlegen |
+| `/api/controllers/<id>` | DELETE | Regler entfernen |
+| `/api/controllers/<id>/setpoint` | POST | Sollwert setzen |
+| `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
+| `/api/bus/scan` | GET | 1-Wire-Bus nach Geräten scannen |
+| `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items |
+| `/api/dashboards` | GET, POST | Dashboards auflisten / anlegen |
+| `/api/dashboards/<id>` | POST, DELETE | Dashboard ändern / löschen |
+| `/api/logs` | GET, POST | Log-Konfigurationen auflisten / anlegen |
+| `/api/logs/<id>` | POST, DELETE | Log-Konfiguration ändern / löschen |
+| `/api/logs/<id>/enable` | POST | Logging an-/abschalten |
+| `/api/logs/<id>/clear` | POST | Laufende Session schließen, neue beginnen |
+| `/api/logs/<id>/sessions` | GET | Aufgezeichnete Sessions auflisten |
+| `/api/logs/<id>/sessions/<start>` | DELETE | Eine Session löschen |
+| `/api/logs/<id>/data` · `/download` | GET | Session als CSV (inline / als Download) |
+| `/api/programs` | GET, POST | Sollwert-Programme auflisten / anlegen |
+| `/api/programs/<id>` | POST, DELETE | Programm ändern / löschen |
+| `/api/programs/<id>/control` | POST | `start`/`pause`/`resume`/`stop`/`next`/`prev` |
+| `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/ESP-NOW |
+| `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
+| `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |
+| `/api/update/status` | GET | Updater-Zustand |
+| `/api/update/check` · `/install` | POST | Server-Pull: prüfen / installieren |
+| `/api/update/firmware` | POST | Firmware-`.bin` hochladen + flashen (rebootet) |
+| `/api/update/assets` | POST | UI-Paket `webui.tar` hochladen + entpacken |
+| `/api/backup` | GET, POST | Konfiguration exportieren / importieren (Import rebootet) |
+| `/api/files` | GET, DELETE | Verzeichnis listen / Datei oder Ordner löschen |
+| `/api/files/download` · `/upload` | GET, POST | Datei herunterladen / hochladen |
+| `/api/files/mkdir` · `/rename` | POST | Verzeichnis anlegen / umbenennen |
+| `/api/admin/wifi-reset` | POST | NVS löschen, Reboot ins Setup-Portal |
 
-**Laufzeit-Item-Verwaltung:**
-
-| Endpoint                  | Methode | Body (Beispiel)                                              | Wirkung                     |
-|---------------------------|---------|--------------------------------------------------------------|-----------------------------|
-| `/api/sensors`            | POST    | `{"type":"DS18B20","id":"x","pin":4}`                       | Sensor anlegen + persistieren |
-| `/api/sensors`            | POST    | `{"type":"DS18B20","id":"x","pin":4,"address":"28ff…"}`     | DS18B20 mit ROM-Adresse (Multi-Sensor-Bus) |
-| `/api/sensors/<id>`       | DELETE  | —                                                            | Sensor entfernen (404 wenn statisch) |
-| `/api/actuators`          | POST    | `{"type":"DigitalOutput","id":"x","pin":16,"mode":"Binary"}` | Aktor anlegen               |
-| `/api/actuators/<id>`     | DELETE  | —                                                            | Aktor entfernen             |
-| `/api/controllers`        | POST    | `{"type":"PID","id":"x","sensor":"s","actuator":"a",…}`     | Regler anlegen              |
-| `/api/controllers/<id>`   | DELETE  | —                                                            | Regler entfernen            |
-
-**Bus-Discovery:**
-
-| Endpoint                               | Methode | Parameter          | Antwort                                          |
-|----------------------------------------|---------|--------------------|--------------------------------------------------|
-| `/api/bus/scan?type=onewire&pin=<N>`   | GET     | `type`, `pin`      | `{"type":"onewire","pin":4,"devices":[{"index":0,"address":"28ff64c8815604ef"},…]}` |
+Es gibt **keine Authentifizierung** — das Gerät gehört in ein vertrauenswürdiges
+LAN. Erfolgreiche Schreib-Requests antworten mit `204` ohne Body, Fehler mit
+`text/plain` und der nackten Meldung (kein JSON-Error-Objekt).
 
 Mehrere DS18B20 auf einem Pin: erst scannen, dann jeden Sensor mit der
 gefundenen `address` anlegen — der ESP32 verwaltet die Shared-Bus-Instanz intern.
@@ -261,8 +281,8 @@ gefundenen `address` anlegen — der ESP32 verwaltet die Shared-Bus-Instanz inte
 Snapshot-Shape ist 1:1 zu `SensActCtrl/src/core/RegistrySnapshot.cpp` —
 siehe [`web/src/types.ts`](web/src/types.ts) für die TypeScript-Form.
 
-Dynamisch angelegte Items werden in `/config/registry.json` auf der SD-Karte
-persistiert und nach Reboot automatisch wiederhergestellt.
+Dynamisch angelegte Items werden in `/config/registry.json` auf SD bzw. LittleFS
+(je nach Board) persistiert und nach Reboot automatisch wiederhergestellt.
 
 ## Troubleshooting
 
@@ -339,6 +359,9 @@ Aufspielen: `/settings/firmware` → „Firmware (.bin)",
 als `firmware.bin` in den SD-Root kopieren (Boot-Flash, s.o.), oder
 USB via `pio run -e <env> -t upload`. ⚠ Bei den 4-MB-Boards muss der **erste** Flash
 mit dem `min_spiffs`-Layout per USB laufen (s. Partition-Layout unten).
+
+Der Multipart-Feldname (`f` in den `curl`-Beispielen oben) ist beliebig — die
+Firmware wertet ihn nicht aus und nimmt den ersten File-Part.
 
 ### Release erstellen
 `git tag vX.Y.Z && git push origin vX.Y.Z` → die GitHub-Action baut alle Board-
