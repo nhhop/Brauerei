@@ -80,9 +80,9 @@ paths:
       operationId: getSnapshot
       summary: Get the current registry snapshot
       description: |
-        Serialized into a fixed 4160-byte buffer (`kSnapshotCap`). If the
-        registry no longer fits, the response is a `200` with an **empty body**
-        rather than an error — see PLAN.md.
+        Serialized into a fixed 4160-byte buffer (`kSnapshotCap`). If the buffer
+        cannot be allocated, or the registry no longer fits it, the response is
+        `503` — never a truncated or empty `200`.
       responses:
         "200":
           description: Current snapshot.
@@ -90,10 +90,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Snapshot" }
         "503":
-          description: Snapshot buffer allocation failed (body `OOM`).
+          description: |
+            Snapshot unavailable — buffer allocation failed, or the registry
+            exceeds `kSnapshotCap`. Body `snapshot unavailable`.
           content:
             text/plain:
-              schema: { type: string, const: OOM }
+              schema: { type: string, const: snapshot unavailable }
 
   /api/events:
     get:

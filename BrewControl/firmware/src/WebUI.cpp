@@ -24,6 +24,10 @@ std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen)
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
   if (!buf) { *outLen = 0; return buf; }
   size_t n = SensActCtrl::serializeRegistry(reg, buf.get(), kSnapshotCap);
+  // serializeRegistry returns 0 when the registry doesn't fit kSnapshotCap
+  // (buf is then untouched). Signal failure to every caller the same way as OOM
+  // instead of handing back a zero-length / garbage buffer.
+  if (n == 0) { *outLen = 0; return nullptr; }
   // Append serverTime if NTP is synced (epoch > year 2000)
   time_t now = time(nullptr);
   if (now > 946684800L && n >= 2) {
@@ -119,7 +123,7 @@ void WebUI::begin() {
   server_.on("/api/snapshot", HTTP_GET, [this](AsyncWebServerRequest* req) {
     size_t n = 0;
     auto buf = makeSnapshot(reg_, &n);
-    if (!buf) { req->send(503, "text/plain", "OOM"); return; }
+    if (!buf) { req->send(503, "text/plain", "snapshot unavailable"); return; }
     auto* resp = req->beginResponseStream("application/json", n);
     resp->write(reinterpret_cast<const uint8_t*>(buf.get()), n);
     req->send(resp);

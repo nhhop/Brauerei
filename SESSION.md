@@ -479,3 +479,26 @@ Firmware-Serializer als Referenz:
 
 Rein Typen-eng/-losigkeit, kein Laufzeitverhalten. Verifikation:
 `pnpm typecheck` grün, keine Konsumenten betroffen.
+
+## 2026-09-01 — Fix: `GET /api/snapshot` bei Puffer-Überlauf → `503`
+
+**Root Cause:** `serializeRegistry()` gibt `0` zurück, wenn die Registry
+`kSnapshotCap` (4160 B) sprengt, und lässt den Puffer unangetastet. `makeSnapshot()`
+reichte in dem Fall einen nicht-null Puffer mit `n=0` zurück; der `/api/snapshot`-
+Handler prüfte nur `!buf` und schickte `200` mit leerem Body. Die beiden SSE-Pfade
+(`pushSnapshot_`/`sendSnapshotTo_`) hätten sogar den uninitialisierten Puffer als
+C-String verschickt.
+
+**Umsetzung** (`BrewControl/firmware/src/WebUI.cpp`): `makeSnapshot()` gibt bei
+`n == 0` jetzt `nullptr` zurück — dieselbe Fehlersignalisierung wie bei OOM, die
+alle drei Aufrufer bereits korrekt behandeln (Handler → `503`, SSE-Pfade →
+Tick überspringen). Handler-Body von `OOM` auf `snapshot unavailable`
+umbenannt (deckt beide Ursachen ab). `openapi.yaml`: `503`-Response und
+Beschreibung entsprechend aktualisiert, Known-Issue-Hinweis raus.
+
+**Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün, `redocly lint`
+valide. HW-E2E am LilyGo S3 (`192.168.178.87`, Firmware aus diesem Stand per
+USB/COM9): 23 DigitalInput-Sensoren zur Laufzeit angelegt, ab Sensor #23 (Snapshot
+> 4160 B) antwortet `GET /api/snapshot` mit `503 "snapshot unavailable"` statt
+leerem `200`; SSE-Stream im Normalfall unverändert. Testsensoren wieder gelöscht,
+Snapshot zurück auf `200` / 1219 B.
