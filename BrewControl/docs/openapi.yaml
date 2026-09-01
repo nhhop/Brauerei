@@ -1068,9 +1068,8 @@ paths:
         non-empty, must not contain `/` and must not be `..`. An existing file
         is overwritten. There is no size limit.
 
-        Known issue: short writes are not detected, so a full device can
-        silently truncate the stored file while still answering `ok` — verify
-        the size via `GET /api/files` after uploading. See PLAN.md.
+        A short write to the SD card (e.g. a full device) is detected: the
+        partial file is removed and the request answers `500`.
       parameters:
         - name: path
           in: query
@@ -1104,9 +1103,11 @@ paths:
             text/plain: { schema: { type: string } }
         "403": { $ref: "#/components/responses/ProtectedPath" }
         "500":
-          description: Body is `open failed`.
+          description: |
+            Body is `open failed` or
+            `write failed — partial file removed`.
           content:
-            text/plain: { schema: { type: string, const: open failed } }
+            text/plain: { schema: { type: string } }
 
   /api/files/mkdir:
     post:

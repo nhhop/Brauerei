@@ -434,3 +434,25 @@ Sektionen sind zu lose deklariert); die Create-Endpoints akzeptieren
 bibliotheksbedingt auch GET/PUT/PATCH; `GET /api/settings` gibt
 `mqtt.password` im Klartext zurück; `GET /api/snapshot` antwortet bei
 Puffer-Überlauf mit einem leeren `200` statt einem Fehler.
+
+## 2026-09-01 — Fix: `POST /api/files/upload` erkennt Short-Writes
+
+**Root Cause:** Der Upload-Callback schrieb Chunks mit
+`fileUpload_.write(data, len)` und ignorierte den Rückgabewert. Bei einem
+Short-Write auf die SD-Karte (volles Medium, I/O-Fehler) wurde die Datei still
+abgeschnitten, der Handler antwortete trotzdem `200 ok`. Beim
+SD-Boot-Flash-HW-E2E am 2026-09-01 einmal getroffen: 1.319.744-B-`firmware.bin`
+landete als 618.496 B auf dem SD-Root, Antwort `ok`.
+
+**Umsetzung** (`BrewControl/firmware/src/WebUI.cpp`, analog zum bestehenden
+`fileUploadRejected_`-Pfad im selben Handler und zum Fehlerpfad von
+`/api/update/firmware` / `/api/update/assets`): Rückgabewert von `write()`
+gegen `len` prüfen; bei Abweichung Datei schließen, die Teildatei per
+`fs_.remove()` entfernen, `fileUploadRejected_` setzen und
+`500 "write failed — partial file removed"` senden. Der Zielpfad wird dafür in
+`WebUI::fileUploadPath_` gehalten (neu). `openapi.yaml`: Known-Issue-Notiz
+entfernt, `500`-Response um den neuen Body ergänzt.
+
+**Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün.
+`npx @redocly/cli lint` weiterhin valide (nur die bekannte `license`-Warnung).
+HW-Gegentest am LilyGo S3 (`brewcontrol.local` / `192.168.178.87`) steht noch aus.

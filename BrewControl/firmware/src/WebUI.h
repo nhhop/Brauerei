@@ -120,6 +120,7 @@ class WebUI {
   bool assetSwapPending_ = false;
 
   File fileUpload_;
+  String fileUploadPath_;
   bool fileUploadRejected_ = false;
 };
 
