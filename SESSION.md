@@ -456,3 +456,21 @@ entfernt, `500`-Response um den neuen Body ergänzt.
 **Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün.
 `npx @redocly/cli lint` weiterhin valide (nur die bekannte `license`-Warnung).
 HW-Gegentest am LilyGo S3 (`brewcontrol.local` / `192.168.178.87`) steht noch aus.
+
+## 2026-09-01 — `web/src/types.ts` mit der Wire-Form synchronisiert
+
+Erster der beim OpenAPI-Abgleich gefundenen Nebenbefunde geschlossen. Die drei
+Firmware-Serializer als Referenz:
+
+- `ProgramRunner::serialize()` emittiert `stepStartedEpoch` und
+  `elapsedAtPauseSec` immer (persistierter Laufzeitstand) → in `ProgramConfig`
+  als Pflichtfelder ergänzt.
+- `DashboardStore::serialize()` schreibt `charts` und `programs` immer als Array
+  (ggf. leer) → `DashboardConfig.charts`/`.programs` von `?:` auf Pflicht.
+- `SettingsStore::serialize()` liefert immer alle sechs Sektionen → in
+  `AppSettings` `firmware`/`time`/`mqtt`/`webhook`/`espnow` von `?:` auf Pflicht,
+  ebenso `MqttSettings.embeddedBrokerSupported` (wird immer gesetzt).
+  Der Patch-Pfad ist unberührt (`updateSettings(patch: Partial<AppSettings>)`).
+
+Rein Typen-eng/-losigkeit, kein Laufzeitverhalten. Verifikation:
+`pnpm typecheck` grün, keine Konsumenten betroffen.

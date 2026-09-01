@@ -130,8 +130,8 @@ export interface DashboardConfig {
   sensors: string[];      // base IDs (without sub-channel suffix)
   actuators: string[];
   controllers: string[];
-  charts?: string[];      // referenced log/chart IDs (see LogConfig)
-  programs?: string[];    // referenced setpoint-program IDs (see ProgramConfig)
+  charts: string[];       // referenced log/chart IDs (see LogConfig); always present, may be empty
+  programs: string[];     // referenced setpoint-program IDs (see ProgramConfig); always present, may be empty
 }
 
 // ── Setpoint programs (mash profiles) ────────────────────────────────────────
@@ -154,9 +154,11 @@ export interface ProgramConfig {
   name: string;
   controller: string;     // bound controller id
   steps: ProgramStep[];
-  // Runtime state:
+  // Runtime state (always present, persisted across reboots):
   status: ProgramStatus;
   currentStep: number;
+  stepStartedEpoch: number;   // epoch (s) the current step started; 0 while idle
+  elapsedAtPauseSec: number;  // seconds already elapsed in the step when paused; 0 otherwise
   // Derived live fields (read-only, present in GET /api/programs):
   stepRemainingSec?: number;
   currentSetpoint?: number;
@@ -254,7 +256,7 @@ export interface MqttSettings {
   tls: boolean;
   clientId: string;
   topicPrefix: string;
-  embeddedBrokerSupported?: boolean;  // read-only, server-computed
+  embeddedBrokerSupported: boolean;   // read-only, server-computed; always present
   connected?: boolean;                // read-only, live transport state
   error?: string;                     // read-only, reason when !connected (external mode only)
 }
@@ -277,13 +279,15 @@ export interface EspNowSettings {
   error?: string;        // read-only, always "" — EspNowTransport has nothing specific to say
 }
 
+// GET /api/settings always returns all six sections; SettingsStore::serialize()
+// emits every one unconditionally.
 export interface AppSettings {
   theme: ThemeSettings;
-  firmware?: FirmwareSettings;
-  time?: TimeSettings;
-  mqtt?: MqttSettings;
-  webhook?: WebhookSettings;
-  espnow?: EspNowSettings;
+  firmware: FirmwareSettings;
+  time: TimeSettings;
+  mqtt: MqttSettings;
+  webhook: WebhookSettings;
+  espnow: EspNowSettings;
 }
 
 export type UpdateState =
