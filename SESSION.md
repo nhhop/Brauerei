@@ -502,3 +502,35 @@ USB/COM9): 23 DigitalInput-Sensoren zur Laufzeit angelegt, ab Sensor #23 (Snapsh
 > 4160 B) antwortet `GET /api/snapshot` mit `503 "snapshot unavailable"` statt
 leerem `200`; SSE-Stream im Normalfall unverändert. Testsensoren wieder gelöscht,
 Snapshot zurück auf `200` / 1219 B.
+
+## 2026-09-01 — Fix: `mqtt.password` als Write-only-Feld
+
+**Root Cause:** Die gesamte API ist unauthentifiziert; `GET /api/settings` gab
+das gespeicherte MQTT-Passwort im Klartext zurück (sichtbar in Browser-DevTools,
+Screenshots, evtl. Logs).
+
+**Umsetzung:**
+- `WebUI.cpp` (`GET /api/settings`): `mqtt.password` wird vor dem Senden immer
+  auf `""` überschrieben, zusätzlich `mqtt.passwordSet` (bool) eingespliced.
+- `SettingsStore::update()`: leerer/fehlender `mqtt.password` lässt das
+  gespeicherte Passwort unverändert; expliziter JSON-`null` löscht es. Nicht-
+  leerer String setzt es. `serialize()`/`saveToSD()` unverändert — auf Flash und
+  im Backup-Bundle liegt das Passwort weiterhin im Klartext (Restore braucht es).
+- `MqttPage.tsx`: Passwort-Input zeigt bei `passwordSet` einen Platzhalter
+  („gespeichert — leer lassen zum Behalten"); `DEFAULT` um `passwordSet` ergänzt.
+- `types.ts`: `MqttSettings.password` als write-only kommentiert, `passwordSet`
+  ergänzt.
+- `openapi.yaml`: `MqttSettings`-Schema (`password` readOnly `const ""`,
+  `passwordSet` neu), Endpoint-Beschreibungen `GET`/`POST /api/settings`,
+  Backup-Bundle-Hinweis, Top-Level-„No authentication"-Absatz.
+
+**Bekannte Einschränkung:** Das UI hat keinen „Passwort löschen"-Button — Klaren
+geht nur per `POST` mit `mqtt.password: null` direkt. Für den Alltag (setzen/
+ändern) reicht das Feld.
+
+**Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün, `pnpm typecheck`
+grün, `redocly lint` valide. HW-E2E am LilyGo S3 (`192.168.178.87`, per USB/COM9):
+`GET` zeigt nie das Passwort, `passwordSet` korrekt; Setzen (`"brewpass"`) →
+`passwordSet:true`, Broker reconnected (`connected:true`); leerer Round-Trip
+behält das Passwort; `null` löscht es (`passwordSet:false`); Backup-Bundle trägt
+das Passwort weiter. Board am Ende mit leerem Passwort hinterlassen.

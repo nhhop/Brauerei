@@ -10,8 +10,8 @@ info:
     endpoint overview table.
 
     **No authentication.** Every endpoint is open; the device is expected to run
-    on a trusted LAN. `GET /api/settings` returns the configured MQTT password
-    in cleartext.
+    on a trusted LAN. `GET /api/settings` never echoes the MQTT password
+    (write-only field), but `GET /api/backup` still bundles it in cleartext.
 
     **Conventions**
     - Successful mutations answer `204 No Content` with an empty body.
@@ -722,7 +722,9 @@ paths:
         The stored settings, with the live `connected`/`error` state of the
         MQTT, webhook and ESP-NOW transports spliced in.
 
-        **`mqtt.password` is returned in cleartext.**
+        **`mqtt.password` is write-only** — it is never returned. The response
+        carries `mqtt.passwordSet` (bool) instead. On `POST /api/settings`, an
+        empty or omitted `mqtt.password` leaves the stored password unchanged.
       responses:
         "200":
           description: Current settings.
@@ -742,6 +744,9 @@ paths:
         **Sending an `mqtt`, `webhook` or `espnow` section reboots the device
         ~500 ms after the response** — those transports are only established at
         boot.
+
+        `mqtt.password` is write-only: an empty string or an omitted key keeps
+        the stored password; an explicit JSON `null` clears it.
       requestBody:
         required: true
         content:
@@ -1773,7 +1778,7 @@ components:
       type: object
       required:
         [enabled, mode, host, port, username, password, tls, clientId,
-         topicPrefix, embeddedBrokerSupported]
+         topicPrefix, embeddedBrokerSupported, passwordSet]
       properties:
         enabled: { type: boolean }
         mode:
@@ -1787,8 +1792,19 @@ components:
         username: { type: string }
         password:
           type: string
-          format: password
-          description: Stored and returned in cleartext.
+          readOnly: true
+          const: ""
+          description: |
+            Always an empty string in responses — the stored password is
+            write-only. Present only so clients can bind it to a form field.
+        passwordSet:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether a broker password is stored. The password itself is
+            write-only and never returned. Set it via `POST /api/settings`
+            (`mqtt.password`); send an empty string to leave it unchanged,
+            `null` to clear it.
         tls: { type: boolean }
         clientId: { type: string, description: Must not contain `/`. }
         topicPrefix: { type: string, description: Must not contain `/`. }
@@ -1935,7 +1951,11 @@ components:
         dashboards:
           type: array
           items: { $ref: "#/components/schemas/Dashboard" }
-        settings: { $ref: "#/components/schemas/AppSettings" }
+        settings:
+          allOf: [{ $ref: "#/components/schemas/AppSettings" }]
+          description: |
+            Same shape as `GET /api/settings`, except `mqtt.password` is
+            included in cleartext — a backup must be self-contained for restore.
 
     # ── Files ────────────────────────────────────────────────────────────────
     FileEntry:

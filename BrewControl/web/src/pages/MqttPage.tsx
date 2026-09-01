@@ -17,6 +17,7 @@ const DEFAULT: MqttSettings = {
   port: 1883,
   username: '',
   password: '',
+  passwordSet: false,
   tls: false,
   clientId: '',
   topicPrefix: 'brewcontrol',
@@ -178,6 +179,7 @@ export function MqttPage(_: { path?: string }) {
                 <div>
                   <div class="mb-1 text-xs text-muted">Passwort</div>
                   <input type="password" class={inp} value={settings.password} autocomplete="off"
+                    placeholder={settings.passwordSet ? '•••••••• (gespeichert — leer lassen zum Behalten)' : ''}
                     onInput={(e) => update({ password: (e.target as HTMLInputElement).value })} />
                 </div>
               </div>

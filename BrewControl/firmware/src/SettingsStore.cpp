@@ -140,11 +140,15 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* h = mqtt["host"])      mqttHost_        = h;
     if (mqtt["port"].is<int>())            mqttPort_        = mqtt["port"].as<uint16_t>();
     if (const char* u = mqtt["username"])  mqttUsername_    = u;
-    if (const char* p = mqtt["password"])  mqttPassword_    = p;
+    // Write-only field. GET /api/settings never echoes the password, so a
+    // round-tripped patch carries "" — treat empty/omitted as "keep stored".
+    // An explicit JSON null clears it.
+    if (const char* p = mqtt["password"]) { if (*p) mqttPassword_ = p; }
+    else if (mqtt.containsKey("password")) mqttPassword_ = "";
     if (mqtt["tls"].is<bool>())            mqttTls_         = mqtt["tls"].as<bool>();
     if (const char* c = mqtt["clientId"])  mqttClientId_    = c;
     if (const char* p = mqtt["topicPrefix"]) mqttTopicPrefix_ = p;
-    // "embeddedBrokerSupported" is read-only (server-computed) — never read from a patch.
+    // "embeddedBrokerSupported"/"passwordSet" are read-only (server-computed) — never read from a patch.
   }
   JsonObject webhook = patch["webhook"].as<JsonObject>();
   if (!webhook.isNull()) {

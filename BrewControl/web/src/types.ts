@@ -252,7 +252,8 @@ export interface MqttSettings {
   host: string;
   port: number;
   username: string;
-  password: string;
+  password: string;                   // write-only: GET returns ""; POST with "" keeps the stored value
+  passwordSet: boolean;               // read-only, server-computed; true when a password is stored
   tls: boolean;
   clientId: string;
   topicPrefix: string;

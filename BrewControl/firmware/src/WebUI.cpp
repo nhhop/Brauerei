@@ -616,6 +616,10 @@ void WebUI::begin() {
     doc["webhook"]["error"] = webhook_.publishLastErrorMessage();
     doc["espnow"]["connected"] = espnow_.connected();
     doc["espnow"]["error"] = espnow_.lastErrorMessage();
+    // mqtt.password is write-only: never echo the stored secret. Report only
+    // whether one is set; POST /api/settings treats "" as "keep unchanged".
+    doc["mqtt"]["passwordSet"] = settings_.mqttPassword().length() > 0;
+    doc["mqtt"]["password"] = "";
     String out;
     serializeJson(doc, out);
     req->send(200, "application/json", out);
