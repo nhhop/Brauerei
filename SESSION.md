@@ -455,7 +455,12 @@ entfernt, `500`-Response um den neuen Body ergänzt.
 
 **Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün.
 `npx @redocly/cli lint` weiterhin valide (nur die bekannte `license`-Warnung).
-HW-Gegentest am LilyGo S3 (`brewcontrol.local` / `192.168.178.87`) steht noch aus.
+HW-E2E am LilyGo S3 (`192.168.178.87`, Firmware `2d429cd` per USB/COM9 geflasht)
+am 2026-09-01 nachgeholt: (1) Happy Path auf der regulären Karte — 405 KB
+hochgeladen, `200 ok`, SHA256 nach Download-Roundtrip identisch. (2) Overflow —
+kleine FAT32-Karte manuell auf 256 KB frei befüllt, 2-MB-Upload → `500 "write
+failed — partial file removed"`, `/api/files`-Listing zeigt keine Teildatei.
+(3) Recovery — 100-KB-Datei danach wieder sauber `200 ok`, SHA256 identisch.
 
 ## 2026-09-01 — `web/src/types.ts` mit der Wire-Form synchronisiert
 
