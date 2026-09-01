@@ -988,8 +988,9 @@ void WebUI::begin() {
             fileUploadRejected_ = true;
             return;
           }
+          fileUploadPath_ = dir + "/" + filename;
           SdLock lock;
-          fileUpload_ = fs_.open(dir + "/" + filename, FILE_WRITE);
+          fileUpload_ = fs_.open(fileUploadPath_, FILE_WRITE);
           if (!fileUpload_) {
             req->send(500, "text/plain", "open failed");
             fileUploadRejected_ = true;
@@ -997,7 +998,16 @@ void WebUI::begin() {
           }
         }
         if (fileUploadRejected_) return;
-        if (len) { SdLock lock; fileUpload_.write(data, len); }
+        if (len) {
+          SdLock lock;
+          if (fileUpload_.write(data, len) != len) {
+            fileUpload_.close();
+            fs_.remove(fileUploadPath_);
+            req->send(500, "text/plain", "write failed — partial file removed");
+            fileUploadRejected_ = true;
+            return;
+          }
+        }
         if (final) {
           { SdLock lock; fileUpload_.close(); }
           req->send(200, "text/plain", "ok");
