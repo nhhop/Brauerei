@@ -3,6 +3,7 @@ import type { LogConfig, LogSession, TimeSettings } from '../types';
 import { getLogs, getLogSessions, deleteLogSession, logDownloadUrl, getSettings } from '../api';
 import { ChartCard } from '../components/ChartCard';
 import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { formatDateTime } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { Trash2 } from 'lucide-preact';
@@ -18,10 +19,11 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
   const [sessions, setSessions] = useState<LogSession[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [time, setTime] = useState<TimeSettings | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
 
   function refresh() {
-    if (!id) return;
-    getLogSessions(id)
+    if (!id) return Promise.resolve();
+    return getLogSessions(id)
       .then((ss) => setSessions([...ss].sort((a, b) => b.start - a.start)))
       .catch(() => {});
   }
@@ -30,7 +32,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
     if (!id) return;
     getLogs().then((ls) => setLog(ls.find((l) => l.id === id) ?? null)).catch(() => {});
     getSettings().then((s) => setTime(s.time)).catch(() => {});
-    refresh();
+    refresh().finally(() => setLoaded(true));
   }, [id]);
 
   async function remove(start: number) {
@@ -50,7 +52,9 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
         ]} />
       </header>
 
-      {sessions.length === 0 ? (
+      {!loaded ? (
+        <SkeletonList count={3} />
+      ) : sessions.length === 0 ? (
         <p class="text-sm text-muted">Noch keine Sessions aufgezeichnet.</p>
       ) : (
         <div class="space-y-2">

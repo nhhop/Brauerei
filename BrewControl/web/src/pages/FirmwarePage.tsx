@@ -6,6 +6,8 @@ import {
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
+import { Spinner } from '../components/Spinner';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
@@ -28,7 +30,13 @@ export function FirmwarePage(_: { path?: string }) {
     return () => { if (poll.current) clearInterval(poll.current); };
   }, []);
 
-  if (!st) return <PageShell><p class="text-sm text-muted">Laden…</p></PageShell>;
+  const header = (
+    <header>
+      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Firmware-Update' }]} />
+    </header>
+  );
+
+  if (!st) return <PageShell>{header}<div class="mt-6"><SkeletonList count={4} /></div></PageShell>;
 
   const busy = ['checking', 'downloading', 'flashing'].includes(st.state);
   const channel = st.channel;
@@ -40,9 +48,7 @@ export function FirmwarePage(_: { path?: string }) {
 
   return (
     <PageShell>
-      <header>
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Firmware-Update' }]} />
-      </header>
+      {header}
 
       <div class="mt-4 flex items-center gap-2 rounded-md border border-caution/40 bg-[color-mix(in_srgb,var(--caution)_12%,transparent)] px-4 py-3 text-sm text-caution">
         <TriangleAlert size={16} class="shrink-0" /> Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
@@ -55,7 +61,9 @@ export function FirmwarePage(_: { path?: string }) {
             control={
               <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
                 class={btnSecondary}>
-                {st.state === 'checking' ? 'Prüfe…' : 'Auf Updates prüfen'}
+                {st.state === 'checking'
+                  ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />Prüfe…</>
+                  : 'Auf Updates prüfen'}
               </button>
             } />
 

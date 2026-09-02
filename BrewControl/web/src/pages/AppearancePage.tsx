@@ -5,6 +5,7 @@ import { getSettings, updateSettings } from '../api';
 import { applyTheme } from '../theme';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { Contrast, Palette, PaintBucket } from 'lucide-preact';
@@ -41,17 +42,17 @@ export function AppearancePage(_: { path?: string }) {
     });
   }
 
-  if (loading) return (
-    <PageShell>
-      <p class="text-sm text-muted">Laden…</p>
-    </PageShell>
+  const header = (
+    <header class="mb-6">
+      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Darstellung' }]} />
+    </header>
   );
+
+  if (loading) return <PageShell>{header}<SkeletonList count={3} /></PageShell>;
 
   return (
     <PageShell>
-      <header class="mb-6">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Darstellung' }]} />
-      </header>
+      {header}
 
       <SettingsGroup>
         <SettingsCard title="Modus" icon={Contrast} desc="Hell, dunkel oder dem System folgen"

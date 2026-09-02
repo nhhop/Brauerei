@@ -4,6 +4,7 @@ import type { EspNowSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { ToggleSwitch } from '../components/ToggleSwitch';
@@ -59,17 +60,17 @@ export function EspNowPage(_: { path?: string }) {
     </div>
   );
 
-  if (loading) return (
-    <PageShell>
-      <p class="text-sm text-muted">Laden…</p>
-    </PageShell>
+  const header = (
+    <header class="mb-6">
+      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'ESP-NOW' }]} />
+    </header>
   );
+
+  if (loading) return <PageShell>{header}<SkeletonList count={2} /></PageShell>;
 
   return (
     <PageShell>
-      <header class="mb-6">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'ESP-NOW' }]} />
-      </header>
+      {header}
 
       <SettingsGroup>
         <SettingsCard title="ESP-NOW-Publish aktivieren" icon={EspressifIcon}

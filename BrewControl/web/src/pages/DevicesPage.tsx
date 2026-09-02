@@ -4,6 +4,7 @@ import type { Snapshot, ItemConfig } from '../types';
 import { deleteSensor, deleteActuator, deleteController, getConfig } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { AddItemModal } from '../components/AddItemModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup } from '../components/SettingsCard';
@@ -60,7 +61,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
       </header>
 
       <div class="mt-6 space-y-4">
-        {!snap && <p class="text-sm text-muted">Laden…</p>}
+        {!snap && <SkeletonList count={3} />}
 
         {sensors.length > 0 && (
           <SettingsGroup title="Sensoren">

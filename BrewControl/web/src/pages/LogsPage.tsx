@@ -5,6 +5,7 @@ import { getLogs, createLog, updateLog, deleteLog, logDownloadUrl, setLogEnabled
 type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 import { ChartCard } from '../components/ChartCard';
 import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -18,11 +19,12 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [editing, setEditing] = useState<LogConfig | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LogConfig | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   // Bumped per log to force a ChartCard remount (re-hydrate) after Clear.
   const [versions, setVersions] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
-    getLogs().then(setLogs).catch(() => {});
+    getLogs().then(setLogs).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
   function toggleEnabled(log: LogConfig) {
@@ -70,7 +72,9 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
         </button>
       </header>
 
-      {logs.length === 0 ? (
+      {!loaded ? (
+        <SkeletonList count={2} />
+      ) : logs.length === 0 ? (
         <p class="text-sm text-muted">Noch keine Logs. Lege eines an, um Werte aufzuzeichnen und als Chart anzuzeigen.</p>
       ) : (
         <div class="space-y-4">

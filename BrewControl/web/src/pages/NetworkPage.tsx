@@ -5,6 +5,8 @@ import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
+import { Spinner } from '../components/Spinner';
+import { SkeletonList } from '../components/Skeleton';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnPrimary, btnSecondary, inp } from '../ui';
@@ -179,17 +181,17 @@ export function NetworkPage(_: { path?: string }) {
     </div>
   );
 
-  if (loading) return (
-    <PageShell>
-      <p class="text-sm text-muted">Laden…</p>
-    </PageShell>
+  const header = (
+    <header class="mb-6">
+      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Netzwerk' }]} />
+    </header>
   );
+
+  if (loading) return <PageShell>{header}<SkeletonList count={4} /></PageShell>;
 
   return (
     <PageShell>
-      <header class="mb-6">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Netzwerk' }]} />
-      </header>
+      {header}
 
       <SettingsGroup>
         {/* ── Status ─────────────────────────────────────────────────── */}
@@ -216,7 +218,7 @@ export function NetworkPage(_: { path?: string }) {
         <SettingsCard title="WLAN wechseln" icon={Wifi}
           control={
             <button type="button" onClick={doScan} disabled={scanning} class={btnSecondary}>
-              {scanning ? 'Suche…' : 'Netzwerke suchen'}
+              {scanning ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />Suche…</> : 'Netzwerke suchen'}
             </button>
           }>
           {(scanErr || nets.length > 0 || expanded === 'manual') && (
