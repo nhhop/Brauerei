@@ -4,6 +4,7 @@ import { getLogs, createLog, updateLog, deleteLog, logDownloadUrl, setLogEnabled
 
 type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 import { ChartCard } from '../components/ChartCard';
+import { PageShell } from '../components/PageShell';
 import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -60,7 +61,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   }
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell wide>
       <header class="mb-6 flex items-center justify-between gap-3">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Logs & Charts' }]} />
         <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }}
@@ -140,6 +141,6 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
           CSV-Dateien bleiben auf der SD-Karte erhalten.
         </p>
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }

@@ -5,6 +5,7 @@ import {
   uploadFirmware, uploadAssets, updateSettings,
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
@@ -27,7 +28,7 @@ export function FirmwarePage(_: { path?: string }) {
     return () => { if (poll.current) clearInterval(poll.current); };
   }, []);
 
-  if (!st) return <div class="min-h-full bg-bg p-6 text-fg">Lädt…</div>;
+  if (!st) return <PageShell><p class="text-sm text-muted">Laden…</p></PageShell>;
 
   const busy = ['checking', 'downloading', 'flashing'].includes(st.state);
   const channel = st.channel;
@@ -38,7 +39,7 @@ export function FirmwarePage(_: { path?: string }) {
     updateSettings({ firmware: { channel, autoCheck: a } }).then(refresh);
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header>
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Firmware-Update' }]} />
       </header>
@@ -107,7 +108,7 @@ export function FirmwarePage(_: { path?: string }) {
         onConfirm={() => { setConfirmInstall(false); installUpdate(channel).then(refresh); }}>
         Firmware <span class="font-mono">{st.available?.version}</span> wird geflasht und das Gerät startet neu.
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }
 

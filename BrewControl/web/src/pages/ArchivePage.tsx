@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { LogConfig, LogSession, TimeSettings } from '../types';
 import { getLogs, getLogSessions, deleteLogSession, logDownloadUrl, getSettings } from '../api';
 import { ChartCard } from '../components/ChartCard';
+import { PageShell } from '../components/PageShell';
 import { formatDateTime } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { Trash2 } from 'lucide-preact';
@@ -40,7 +41,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
   }
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell wide>
       <header class="mb-6">
         <Breadcrumb trail={[
           { label: 'Einstellungen', href: '/settings' },
@@ -91,6 +92,6 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
           <ChartCard log={log} snap={null} session={selected} />
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { getUpdateStatus } from '../api';
 import { SettingsCard } from '../components/SettingsCard';
+import { PageShell } from '../components/PageShell';
 import { EspressifIcon } from '../components/EspressifIcon';
 import { badgeCaution } from '../ui';
 import {
@@ -39,7 +40,7 @@ export function SettingsIndex(_: { path?: string }) {
   }, []);
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header class="mb-6 flex items-center gap-3">
         <h1 class="text-2xl font-semibold tracking-tight">Einstellungen</h1>
       </header>
@@ -52,6 +53,6 @@ export function SettingsIndex(_: { path?: string }) {
           />
         ))}
       </div>
-    </div>
+    </PageShell>
   );
 }

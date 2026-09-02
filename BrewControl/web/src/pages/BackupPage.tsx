@@ -1,6 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { downloadBackup, restoreBackup } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnSecondary } from '../ui';
@@ -45,7 +46,7 @@ export function BackupPage(_: { path?: string }) {
   };
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header>
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Backup & Restore' }]} />
       </header>
@@ -91,6 +92,6 @@ export function BackupPage(_: { path?: string }) {
         Die Datei <span class="font-mono">{pendingFile?.name}</span> ersetzt die
         komplette Konfiguration. Das Gerät startet danach neu.
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }

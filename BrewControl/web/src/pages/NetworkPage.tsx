@@ -4,6 +4,7 @@ import type { ComponentChildren } from 'preact';
 import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnPrimary, btnSecondary, inp } from '../ui';
@@ -179,13 +180,13 @@ export function NetworkPage(_: { path?: string }) {
   );
 
   if (loading) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <p class="text-sm text-muted">Laden…</p>
-    </div>
+    </PageShell>
   );
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header class="mb-6">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Netzwerk' }]} />
       </header>
@@ -355,6 +356,6 @@ export function NetworkPage(_: { path?: string }) {
         </p>
         {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }

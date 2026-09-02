@@ -3,6 +3,7 @@ import { useState } from 'preact/hooks';
 import type { Snapshot, ItemConfig } from '../types';
 import { deleteSensor, deleteActuator, deleteController, getConfig } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
 import { AddItemModal } from '../components/AddItemModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup } from '../components/SettingsCard';
@@ -50,7 +51,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
   }) : [];
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header class="flex items-center justify-between gap-3">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Geräte' }]} />
         <button type="button" onClick={() => setAddOpen(true)} class={btnPrimary}>
@@ -111,7 +112,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
         onClose={() => { setAddOpen(false); setEditItem(null); }}
         editConfig={editItem?.cfg}
         editRole={editItem?.role} />
-    </div>
+    </PageShell>
   );
 }
 

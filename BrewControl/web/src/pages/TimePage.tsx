@@ -4,6 +4,7 @@ import type { TimeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { formatTime, formatDate } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { PageShell } from '../components/PageShell';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { inp } from '../ui';
@@ -92,13 +93,13 @@ export function TimePage(_: { path?: string }) {
   const tzIdx = findTzIndex(settings.utcOffsetSec, settings.dstOffsetSec);
 
   if (loading) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <p class="text-sm text-muted">Laden…</p>
-    </div>
+    </PageShell>
   );
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header class="mb-6">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Zeit & Formate' }]} />
       </header>
@@ -151,6 +152,6 @@ export function TimePage(_: { path?: string }) {
             />
           } />
       </SettingsGroup>
-    </div>
+    </PageShell>
   );
 }

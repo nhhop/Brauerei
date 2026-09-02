@@ -3,6 +3,7 @@ import { useState, useEffect } from 'preact/hooks';
 import type { EspNowSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { ToggleSwitch } from '../components/ToggleSwitch';
@@ -59,13 +60,13 @@ export function EspNowPage(_: { path?: string }) {
   );
 
   if (loading) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <p class="text-sm text-muted">Laden…</p>
-    </div>
+    </PageShell>
   );
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header class="mb-6">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'ESP-NOW' }]} />
       </header>
@@ -128,6 +129,6 @@ export function EspNowPage(_: { path?: string }) {
         <p>Das Gerät startet neu, um die Verbindung mit den neuen Einstellungen aufzubauen.</p>
         {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }

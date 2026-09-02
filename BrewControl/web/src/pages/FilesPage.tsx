@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { FileEntry } from '../types';
 import { listFiles, fileDownloadUrl, deleteFile, renameFile, mkdirFile, uploadFileTo } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Folder, FileText, Download, Pencil, Trash2, ChevronRight, FolderPlus, Upload } from 'lucide-preact';
@@ -112,7 +113,7 @@ export function FilesPage(_: { path?: string }) {
   }
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <PageShell>
       <header class="mb-4">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Dateiverwaltung' }]} />
       </header>
@@ -267,6 +268,6 @@ export function FilesPage(_: { path?: string }) {
           unwiderruflich von der SD-Karte gelöscht.
         </p>
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }
