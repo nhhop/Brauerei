@@ -3,6 +3,8 @@ import type { FileEntry } from '../types';
 import { listFiles, fileDownloadUrl, deleteFile, renameFile, mkdirFile, uploadFileTo } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
+import { SkeletonBar } from '../components/Skeleton';
+import { Spinner } from '../components/Spinner';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Folder, FileText, Download, Pencil, Trash2, ChevronRight, FolderPlus, Upload } from 'lucide-preact';
@@ -44,18 +46,24 @@ export function FilesPage(_: { path?: string }) {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [dirLoading, setDirLoading] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
 
   function refresh() {
-    listFiles(dir)
+    return listFiles(dir)
       .then((l) => { setEntries(l.entries); setError(null); })
       .catch((e) => setError(String(e)));
   }
 
+  // Only a directory switch blanks the table: while it is in flight the path
+  // bar already names the new folder, so leaving the old folder's rows up
+  // would contradict it. The in-place refreshes after delete/rename/upload
+  // stay on screen — there the listing is still the right one.
   useEffect(() => {
     setRenameTarget(null);
     setCreatingFolder(false);
-    refresh();
+    setDirLoading(true);
+    refresh().finally(() => setDirLoading(false));
   }, [dir]);
 
   const fullPath = (name: string) => (dir === '/' ? `/${name}` : `${dir}/${name}`);
@@ -134,6 +142,7 @@ export function FilesPage(_: { path?: string }) {
             </span>
           ))}
         </nav>
+        {dirLoading && <Spinner size={14} class="text-muted" />}
         <div class="ml-auto flex items-center gap-2">
           <button type="button" onClick={() => { setCreatingFolder(true); setFolderName(''); }}
             disabled={dirProtected} title={dirProtected ? protectedTitle : undefined}
@@ -176,6 +185,13 @@ export function FilesPage(_: { path?: string }) {
             </tr>
           </thead>
           <tbody>
+            {dirLoading && [0, 1, 2, 3].map((i) => (
+              <tr key={`sk${i}`} class="border-b border-card-border last:border-0">
+                <td class="px-4 py-2.5"><SkeletonBar class="w-1/3" /></td>
+                <td class="px-4 py-2.5"><SkeletonBar class="w-12" /></td>
+                <td class="px-4 py-2.5" />
+              </tr>
+            ))}
             {creatingFolder && (
               <tr class="border-b border-card-border last:border-0">
                 <td class="px-4 py-2">
@@ -196,10 +212,10 @@ export function FilesPage(_: { path?: string }) {
                 </td>
               </tr>
             )}
-            {sorted.length === 0 && !creatingFolder && (
+            {!dirLoading && sorted.length === 0 && !creatingFolder && (
               <tr><td colSpan={3} class="px-4 py-6 text-center text-sm text-muted">Leer</td></tr>
             )}
-            {sorted.map((entry) => {
+            {!dirLoading && sorted.map((entry) => {
               const full = fullPath(entry.name);
               const rowProtected = isProtected(full);
               const renamingThis = renameTarget?.name === entry.name;
