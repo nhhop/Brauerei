@@ -3,11 +3,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { getUpdateStatus } from '../api';
 import { SettingsCard } from '../components/SettingsCard';
 import { PageShell } from '../components/PageShell';
-import { EspressifIcon } from '../components/EspressifIcon';
 import { badgeCaution } from '../ui';
 import {
-  Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Radio, FolderOpen,
-  Webhook,
+  Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Network, FolderOpen,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -26,9 +24,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/files', icon: FolderOpen, title: 'Dateiverwaltung', desc: 'SD-Karte durchsuchen, hoch-/herunterladen, löschen' },
   { href: '/settings/time', icon: Clock, title: 'Zeit & Formate', desc: 'Zeitzone, NTP-Server, Uhrzeit- und Datumsformat' },
   { href: '/settings/network', icon: Wifi, title: 'Netzwerk', desc: 'WLAN-Status, Netzwerk wechseln, Hostname' },
-  { href: '/settings/mqtt', icon: Radio, title: 'MQTT', desc: 'Externen oder eingebauten Broker konfigurieren' },
-  { href: '/settings/webhook', icon: Webhook, title: 'Webhook', desc: 'Registry per HTTP an ein Peer-Gerät senden' },
-  { href: '/settings/espnow', icon: EspressifIcon, title: 'ESP-NOW', desc: 'Registry per ESP-NOW-Broadcast senden' },
+  { href: '/settings/connectivity', icon: Network, title: 'Konnektivität', desc: 'MQTT, Webhook und ESP-NOW' },
   { href: '/settings/logs', icon: ChartLine, title: 'Logs & Charts', desc: 'Datenaufzeichnung konfigurieren und Verläufe anzeigen' },
 ];
 

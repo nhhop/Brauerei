@@ -83,7 +83,11 @@ export function MqttPage(_: { path?: string }) {
 
   const header = (
     <header class="mb-6">
-      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'MQTT' }]} />
+      <Breadcrumb trail={[
+        { label: 'Einstellungen', href: '/settings' },
+        { label: 'Konnektivität', href: '/settings/connectivity' },
+        { label: 'MQTT' },
+      ]} />
     </header>
   );
 

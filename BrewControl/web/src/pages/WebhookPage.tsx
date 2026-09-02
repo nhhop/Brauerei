@@ -63,7 +63,11 @@ export function WebhookPage(_: { path?: string }) {
 
   const header = (
     <header class="mb-6">
-      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Webhook' }]} />
+      <Breadcrumb trail={[
+        { label: 'Einstellungen', href: '/settings' },
+        { label: 'Konnektivität', href: '/settings/connectivity' },
+        { label: 'Webhook' },
+      ]} />
     </header>
   );
 
