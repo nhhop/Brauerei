@@ -455,7 +455,7 @@ void WebUI::begin() {
         String id   = tail.substring(0, slash);
         String verb = tail.substring(slash + 1);
         if (verb == "sessions") {
-          req->send(200, "application/json", logs_.serializeSessions(id.c_str(), fs_));
+          req->send(200, "application/json", logs_.serializeSessions(id.c_str()));
           return;
         }
         bool download = (verb == "download");

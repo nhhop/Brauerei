@@ -77,6 +77,11 @@ void LogStore::loadFromSD(fs::FS& sd) {
     l.enabled      = obj["enabled"] | true;
     l.bindEnableTo = obj["bindEnableTo"] | "";
     l.reconfigure();
+    // Resume the session that was open at the last shutdown instead of starting a
+    // fresh CSV on every boot — a reboot is not a session boundary.
+    l.sessionStart = (time_t)(obj["session"] | 0L);
+    l.firstSample  = (l.sessionStart == 0);
+    scanSessions_(sd, l);
     logs_.push_back(std::move(l));
   }
 }
@@ -202,33 +207,48 @@ bool LogStore::clear(const char* id) {
   return false;
 }
 
-String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
-  ScopedLock lk(mutex_);
+void LogStore::scanSessions_(fs::FS& sd, LogCfg& l) {
   SdLock sdLock;
+  l.sessions.clear();
+  char dirpath[40];
+  snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
+  File dir = sd.open(dirpath);
+  if (dir && dir.isDirectory()) {
+    uint32_t n = 0;
+    File e = dir.openNextFile();
+    while (e) {
+      String raw = e.name();  // basename or full path, depending on core
+      int sl = raw.lastIndexOf('/');
+      String fn = (sl >= 0) ? raw.substring(sl + 1) : raw;
+      if (fn.endsWith(".csv")) {
+        l.sessions.push_back({atol(fn.c_str()), (uint32_t)e.size()});
+      }
+      e.close();
+      // Runs in setup() before the web server starts; yield periodically so a
+      // surprise-large directory can't trip the watchdog mid-boot.
+      if ((++n & 63) == 0) delay(0);
+      e = dir.openNextFile();
+    }
+  }
+  if (dir) dir.close();
+  std::sort(l.sessions.begin(), l.sessions.end(),
+            [](const LogCfg::SessionMeta& a, const LogCfg::SessionMeta& b) {
+              return a.start < b.start;
+            });
+}
+
+String LogStore::serializeSessions(const char* id) const {
+  ScopedLock lk(mutex_);
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& l : logs_) {
     if (l.id != id) continue;
-    char dirpath[40];
-    snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
-    File dir = sd.open(dirpath);
-    if (dir && dir.isDirectory()) {
-      File e = dir.openNextFile();
-      while (e) {
-        String raw = e.name();  // basename or full path, depending on core
-        int sl = raw.lastIndexOf('/');
-        String fn = (sl >= 0) ? raw.substring(sl + 1) : raw;
-        if (fn.endsWith(".csv")) {
-          long start = atol(fn.c_str());
-          JsonObject o = arr.add<JsonObject>();
-          o["start"]  = start;
-          o["size"]   = (uint32_t)e.size();
-          o["active"] = (l.sessionStart > 0 && (long)l.sessionStart == start);
-        }
-        e = dir.openNextFile();
-      }
+    for (const auto& s : l.sessions) {
+      JsonObject o = arr.add<JsonObject>();
+      o["start"]  = s.start;
+      o["size"]   = s.size;
+      o["active"] = (l.sessionStart > 0 && (long)l.sessionStart == s.start);
     }
-    if (dir) dir.close();
     break;
   }
   String out;
@@ -239,13 +259,20 @@ String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
 bool LogStore::deleteSession(const char* id, time_t start, fs::FS& sd) {
   ScopedLock lk(mutex_);
   SdLock sdLock;
-  for (const auto& l : logs_) {
+  for (auto& l : logs_) {
     if (l.id != id) continue;
     if (l.sessionStart > 0 && l.sessionStart == start) return false;  // active
     char path[48];
     snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(), (long)start);
     if (!sd.exists(path)) return false;
-    return sd.remove(path);
+    if (!sd.remove(path)) return false;
+    l.sessions.erase(
+        std::remove_if(l.sessions.begin(), l.sessions.end(),
+                       [&](const LogCfg::SessionMeta& s) {
+                         return s.start == (long)start;
+                       }),
+        l.sessions.end());
+    return true;
   }
   return false;
 }
@@ -321,6 +348,7 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
   if (nowEpoch <= 946684800L) return;  // wait for a real clock (post-2000)
 
   ScopedLock lk(mutex_);
+  bool sessionCreated = false;
   for (auto& l : logs_) {
     if (l.series.empty()) continue;
 
@@ -336,14 +364,14 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
       // ends on the last real reading.
       if (l.loggingActive) {
         LogSample out;
-        if (l.comp.flush(out)) writeEmitted_(sd, l, out, nowEpoch);
+        if (l.comp.flush(out)) sessionCreated |= writeEmitted_(sd, l, out, nowEpoch);
         // Mark the stop with an empty row so charts break the line across the
         // off-period instead of connecting the last value to the next resume.
         if (l.sessionStart > 0) {
           LogSample gap;
           gap.ts = nowEpoch;
           gap.vals.assign(l.series.size(), NAN);
-          writeEmitted_(sd, l, gap, nowEpoch);
+          sessionCreated |= writeEmitted_(sd, l, gap, nowEpoch);
         }
         l.loggingActive = false;
       }
@@ -372,30 +400,39 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
 
     // Feed the compressor; only persist when it emits a (buffered) row.
     LogSample out;
-    if (l.comp.feed(in, out)) writeEmitted_(sd, l, out, nowEpoch);
+    if (l.comp.feed(in, out)) sessionCreated |= writeEmitted_(sd, l, out, nowEpoch);
   }
+
+  // A new session's start epoch is runtime state until this write — persist it so
+  // the next boot resumes the same CSV instead of opening a fresh one.
+  if (sessionCreated) saveToSD(sd);
 }
 
-void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
+bool LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
                              time_t nowEpoch) {
   SdLock sdLock;
-  const bool created = (l.sessionStart == 0);
-  if (created) {
-    l.sessionStart = nowEpoch;
-    sd.mkdir("/logs");
-    char dir[40];
-    snprintf(dir, sizeof(dir), "/logs/%s", l.id.c_str());
-    sd.mkdir(dir);
-    pruneToBudget_(sd);
-  }
+  const bool isNew = (l.sessionStart == 0);
+  if (isNew) l.sessionStart = nowEpoch;
+
+  char dir[40];
+  snprintf(dir, sizeof(dir), "/logs/%s", l.id.c_str());
   char path[48];
   snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(),
            (long)l.sessionStart);
 
-  File f = sd.open(path, FILE_APPEND);
-  if (!f) return;
+  // New session, or a resumed session whose file vanished (card swap / external
+  // delete): (re)create the directory and prune before the first write.
+  const bool fresh = isNew || !sd.exists(path);
+  if (fresh) {
+    sd.mkdir("/logs");
+    sd.mkdir(dir);
+    pruneToBudget_(sd);
+  }
 
-  if (created) {
+  File f = sd.open(path, FILE_APPEND);
+  if (!f) return isNew;
+
+  if (fresh || f.size() == 0) {
     String header = "ts";
     for (const auto& s : l.series) { header += ','; header += s.ref.c_str(); }
     f.println(header);
@@ -412,16 +449,27 @@ void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
     // NAN → empty cell
   }
   f.println(line);
+  const uint32_t sz = (uint32_t)f.size();
   f.close();
+
+  // Keep the RAM session mirror in step with the file.
+  bool tracked = false;
+  for (auto& s : l.sessions) {
+    if (s.start == (long)l.sessionStart) { s.size = sz; tracked = true; break; }
+  }
+  if (!tracked) l.sessions.push_back({(long)l.sessionStart, sz});
+
+  return isNew;
 }
 
 void LogStore::pruneToBudget_(fs::FS& sd) {
   SdLock sdLock;
-  struct Entry { String path; uint32_t size; long start; bool active; };
+  struct Entry { String path; uint32_t size; long start; bool active; size_t logIdx; };
   std::vector<Entry> entries;
   uint64_t total = 0;
 
-  for (const auto& l : logs_) {
+  for (size_t i = 0; i < logs_.size(); ++i) {
+    const auto& l = logs_[i];
     char dirpath[40];
     snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
     File dir = sd.open(dirpath);
@@ -436,7 +484,7 @@ void LogStore::pruneToBudget_(fs::FS& sd) {
         const uint32_t sz = (uint32_t)e.size();
         const bool active = (l.sessionStart > 0 && (long)l.sessionStart == start);
         total += sz;
-        entries.push_back({String(dirpath) + "/" + fn, sz, start, active});
+        entries.push_back({String(dirpath) + "/" + fn, sz, start, active, i});
       }
       e = dir.openNextFile();
     }
@@ -450,7 +498,15 @@ void LogStore::pruneToBudget_(fs::FS& sd) {
   for (auto& en : entries) {
     if (total <= kLogBudgetBytes) break;
     if (en.active) continue;
-    if (sd.remove(en.path)) total -= en.size;
+    if (sd.remove(en.path)) {
+      total -= en.size;
+      auto& sess = logs_[en.logIdx].sessions;
+      sess.erase(std::remove_if(sess.begin(), sess.end(),
+                                [&](const LogCfg::SessionMeta& s) {
+                                  return s.start == en.start;
+                                }),
+                 sess.end());
+    }
   }
 }
 
