@@ -605,3 +605,48 @@ sechs Aufrufer ungesetzt lassen.
 der 5× duplizierte Reboot-Vollbildschirm, die 2× nachgebaute ProgressBar und der
 10× wiederholte `pl-9`-Ausricht-Hack in den Karten — jeweils außerhalb des
 Auftrags.
+
+## 2026-09-03 — Fix: `/api/files` und `/api/logs/:id/sessions` hängen auf einem Log-Session-Verzeichnis
+
+**Root Cause (zwei Ebenen).** `LogStore::LogCfg::sessionStart` war reine
+Laufzeit-State und wurde nie zurückgelesen — obwohl `serialize()` den `session`-Key
+längst schreibt. Nach jedem Reboot war `sessionStart == 0`, und der nächste
+Sample-Tick legte in `writeEmitted_` eine neue `/logs/<id>/<epoch>.csv` an. Bei den
+im Betrieb üblichen Reboots (WiFi-Self-Heal `ESP.restart()` nach 5 min Link-Verlust,
+jedes Reflash) füllt das ein Log-Verzeichnis über die Zeit mit dutzenden bis
+hunderten Stub-CSVs; das Byte-Budget von `pruneToBudget_` (200 MB) löst bei 2-KB-
+Dateien nie aus. Zweitens machten beide Endpunkte dieselbe Operation:
+`serializeSessions` bzw. der `/api/files`-Listing-Zweig laufen synchron auf dem
+AsyncTCP-Task durch einen `openNextFile()`-Sweep des ganzen Verzeichnisses unter
+`SdLock` — pro Eintrag `open`+`name`+`size`+`close` über SPI-SD, JSON komplett im
+RAM, `req->send()` erst nach dem kompletten Sweep. `Einträge × Pro-Eintrag-Kosten`
+übersteigt den Client-Timeout; der Sweep hält dabei `SdLock` und pausiert
+`LogStore::tick()` (die laufende Aufzeichnung). `/api/snapshot` bleibt ok, weil es
+weder SD noch `SdLock` anfasst.
+
+**Umsetzung** (Branch `fix/logs-session-dir-hang`, 2 Commits, firmware-only):
+
+1. *Session über Reboots fortsetzen.* `loadFromSD` liest den `session`-Key;
+   `tick()` persistiert nach einer Session-Neuanlage einmalig via `saveToSD`
+   (Muster von `ProgramRunner::tick`); `writeEmitted_` schreibt die Kopfzeile auch,
+   wenn eine fortgesetzte Session ihre Datei verloren hat (Karte gewechselt /
+   extern gelöscht). Config-Änderung (`update()`) und „Löschen" (`clear()`) starten
+   wie bisher eine frische Session.
+2. *Session-Liste aus RAM-Spiegel.* `LogCfg` führt `std::vector<SessionMeta>`
+   (`start`, `size`), gefüllt von `scanSessions_` einmalig beim Boot, in Step
+   gehalten von `writeEmitted_` / `deleteSession` / `pruneToBudget_`.
+   `serializeSessions` liest nur noch den Spiegel — kein SD-Zugriff, kein `SdLock`,
+   sofortige Antwort. Response-Shape (`start`/`size`/`active`) unverändert, daher
+   `openapi.yaml` / `types.ts` unangetastet.
+
+`GET /api/files` behält seinen Sweep bewusst: generischer Dateimanager, und die
+`/logs/<id>/`-Verzeichnisse bleiben mit der Session-Persistenz jetzt klein.
+
+**Verifikation:** `pio run -e esp32dev` grün. HW-E2E am LilyGo S3 + einmalige
+Bereinigung des bereits aufgeblähten `/logs/3ca049/` (SD-Karte ziehen, Stub-CSVs
+löschen, `session`-Wert aus `/config/logs.json` entfernen) stehen noch aus — die
+Karten-Inspektion bestätigt zugleich die Akkumulations-These (erwartet: viele
+kleine `<epoch>.csv`).
+
+**Nebenbefund offen:** die englischen `ConfirmModal`-Default-Labels
+(„Confirm"/„Cancel") bleiben in PLAN.md.
