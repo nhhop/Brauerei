@@ -46,6 +46,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
 
   // DS18B20
   const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState(false);
   const [scannedDevices, setScannedDevices] = useState<ScannedDevice[]>([]);
   const [selectedAddress, setSelectedAddress] = useState('');
 
@@ -164,7 +165,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     if (!open) return;
     setErr(null);
     setAtErr(null); setAtBusy(false); setAtMethod('ZieglerNichols');
-    setScanning(false); setScannedDevices([]); setSelectedAddress('');
+    setScanning(false); setScanned(false); setScannedDevices([]); setSelectedAddress('');
 
     if (isEdit && editConfig && editRole) {
       setRole(editRole);
@@ -779,14 +780,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <label class={lbl}>OneWire Pin (GPIO)</label>
                 <div class="flex gap-2">
                   <input type="number" value={pin}
-                    onInput={(e) => { setPin((e.target as HTMLInputElement).value); setScannedDevices([]); setSelectedAddress(''); }}
+                    onInput={(e) => { setPin((e.target as HTMLInputElement).value); setScanned(false); setScannedDevices([]); setSelectedAddress(''); }}
                     placeholder="z.B. 4" class={`${inp} flex-1`} required />
                   <button type="button" disabled={scanning || !pin}
                     onClick={async () => {
-                      setScanning(true); setScannedDevices([]); setSelectedAddress(''); setErr(null);
+                      setScanning(true); setScanned(false); setScannedDevices([]); setSelectedAddress(''); setErr(null);
                       try {
                         const r = await scanOneWireBus(parseInt(pin, 10));
                         setScannedDevices(r.devices);
+                        setScanned(true);
                         if (r.devices.length === 1) setSelectedAddress(r.devices[0].address);
                       } catch (e) { setErr(String(e)); }
                       setScanning(false);
@@ -813,8 +815,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   </div>
                 </div>
               )}
-              {scannedDevices.length === 0 && pin && !scanning && (
+              {scannedDevices.length === 0 && pin && !scanning && !scanned && (
                 <p class="text-xs text-faint">Scan ausführen um Geräte auf diesem Bus zu finden.</p>
+              )}
+              {scannedDevices.length === 0 && pin && !scanning && scanned && (
+                <p class="text-xs text-caution">Kein Gerät auf diesem Bus gefunden — Verkabelung und Pull-up prüfen, dann erneut scannen.</p>
               )}
             </>
           )}
