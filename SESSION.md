@@ -728,3 +728,24 @@ und `GET /api/files/download?path=…` weiter `200`. Echter Roundtrip
 `POST /api/sensors {DS18B20,__mtest,pin 15}` → `204`, taucht im Snapshot auf,
 `DELETE /api/sensors/__mtest` → `204`, wieder weg. `POST` mit kaputtem/leerem
 Body → `400 invalid JSON` / `400 missing body`.
+
+## 2026-09-03 — Settings-UI: zwei offene UI-Zustände am Gerät verifiziert; QEMU-Punkt entfernt
+
+Die beiden seit dem WinUI-Redesign nur typgeprüften `DevicesPage`-Zustände am
+esp32dev-Testboard (`brewcontrol-esp32dev.local`, leere Config) live
+gegengecheckt — kein Reflash nötig, Create/Delete lief auf der vorhandenen
+Firmware:
+
+- **Empty-State der Geräteliste** — bei leerem Snapshot rendert
+  `/settings/devices` „Noch keine Geräte konfiguriert — über ‚+ Hinzufügen'
+  anlegen." statt einer leeren Seite. Screenshot im PR.
+- **`Spinner` im `ConfirmModal`** — Test-Sensor (`DigitalInput __mtest`, Pin 34)
+  angelegt, Löschen bestätigt; während des DELETE-Roundtrips zeigt der
+  Löschen-Button den Spinner, beide Buttons sind `disabled`, Backdrop-Klick
+  blockiert. Danach Modal zu, Item weg, Board sauber.
+
+`PLAN.md` → „Bugs & bekannte Einschränkungen": beide Punkte raus. Ebenfalls
+ersatzlos entfernt: die Alt-Notiz „QEMU/Simulation ist nicht viable" — das Thema
+ist abschließend geklärt (keine WiFi-Emulation für ESP32, Verifikation läuft
+immer am Gerät), die Historie steht in [SESSION-archive.md](SESSION-archive.md)
+(Pre-MVP 2026-05-17–20). Kein Code, kein API-Vertrag betroffen.
