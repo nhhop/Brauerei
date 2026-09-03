@@ -1,7 +1,6 @@
 #include "WebUI.h"
 
 #include <ArduinoJson.h>
-#include <AsyncJson.h>
 #include <Preferences.h>
 #include <Update.h>
 #include <WiFi.h>
@@ -106,6 +105,48 @@ class DeletePrefixHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
+// Matches exactly <path> (no sub-paths) and only POST: parses the JSON body in
+// one chunk and hands a JsonVariant to the callback. Every other method gets a
+// 405. Replaces AsyncCallbackJsonWebHandler, whose default method set is
+// GET|POST|PUT|PATCH and whose prefix URI matcher made e.g. GET /api/sensors
+// fall into the create handler and answer "400 missing id".
+class PostJsonHandler : public AsyncWebHandler {
+ public:
+  using Cb = std::function<void(AsyncWebServerRequest*, JsonVariant&)>;
+  PostJsonHandler(const char* path, Cb cb)
+      : path_(path), cb_(std::move(cb)) {}
+
+  bool canHandle(AsyncWebServerRequest* req) const override {
+    return req->url() == path_;
+  }
+  void handleRequest(AsyncWebServerRequest* req) override {
+    if (req->method() != HTTP_POST)
+      req->send(405, "text/plain", "method not allowed");
+    else if (req->contentLength() == 0)
+      req->send(400, "text/plain", "missing body");
+  }
+  void handleBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
+                  size_t index, size_t total) override {
+    if (req->method() != HTTP_POST) return;  // handleRequest sends the 405
+    if (index != 0 || len != total) {
+      if (index == 0) req->send(413, "text/plain", "body too large");
+      return;
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+      req->send(400, "text/plain", "invalid JSON");
+      return;
+    }
+    JsonVariant json = doc.as<JsonVariant>();
+    cb_(req, json);
+  }
+  bool isRequestHandlerTrivial() const override { return false; }
+
+ private:
+  String path_;
+  Cb cb_;
+};
+
 }  // namespace
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
@@ -133,8 +174,6 @@ void WebUI::begin() {
   server_.addHandler(&events_);
 
   // ── Delete (prefix, no body) ──────────────────────────────────────────────
-  // Registered before AsyncCallbackJsonWebHandler to prevent startsWith
-  // collision: "/api/actuators" matches "/api/actuators/heater" internally.
   server_.addHandler(new DeletePrefixHandler("/api/sensors/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/sensors/"));
@@ -244,9 +283,8 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // ── Create (AsyncCallbackJsonWebHandler — registered last so prefix
-  //    handlers above take priority for sub-paths like /api/actuators/:id) ──
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/sensors",
+  // ── Create ────────────────────────────────────────────────────────────────
+  server_.addHandler(new PostJsonHandler("/api/sensors",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addSensor(json.as<JsonObject>(), reg_);
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
@@ -255,7 +293,7 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/actuators",
+  server_.addHandler(new PostJsonHandler("/api/actuators",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addActuator(json.as<JsonObject>(), reg_);
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
@@ -264,7 +302,7 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/controllers",
+  server_.addHandler(new PostJsonHandler("/api/controllers",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addController(json.as<JsonObject>(), reg_);
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
@@ -336,7 +374,7 @@ void WebUI::begin() {
   // POST /api/network — change WiFi credentials and/or hostname, then reboot.
   // Body: {"ssid","password"} to switch network, {"hostname"} to rename, or both.
   // Both only take effect on the next boot (main.cpp reads NVS), so we reboot.
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/network",
+  server_.addHandler(new PostJsonHandler("/api/network",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
         JsonObject o = json.as<JsonObject>();
@@ -404,7 +442,7 @@ void WebUI::begin() {
     req->send(200, "application/json", store_.serialize());
   });
 
-  // DELETE /api/dashboards/:id — registered before AsyncCallbackJsonWebHandler
+  // DELETE /api/dashboards/:id
   server_.addHandler(new DeletePrefixHandler("/api/dashboards/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/dashboards/"));
@@ -416,7 +454,7 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // POST /api/dashboards/:id — update (BodyPrefixHandler, before create handler)
+  // POST /api/dashboards/:id — update (BodyPrefixHandler)
   server_.addHandler(new BodyPrefixHandler("/api/dashboards/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
         JsonDocument doc;
@@ -433,8 +471,8 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // POST /api/dashboards — create (registered last so prefix handlers above win)
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/dashboards",
+  // POST /api/dashboards — create
+  server_.addHandler(new PostJsonHandler("/api/dashboards",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         String id = store_.add(json.as<JsonObject>());
         store_.saveToSD(fs_);
@@ -534,8 +572,8 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // POST /api/logs — create (registered last so prefix handlers above win)
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/logs",
+  // POST /api/logs — create
+  server_.addHandler(new PostJsonHandler("/api/logs",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         String id = logs_.add(json.as<JsonObject>());
         logs_.saveToSD(fs_);
@@ -591,8 +629,8 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // POST /api/programs — create (registered last so prefix handlers above win)
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/programs",
+  // POST /api/programs — create
+  server_.addHandler(new PostJsonHandler("/api/programs",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         String id = programs_.add(json.as<JsonObject>());
         if (id.isEmpty()) {
@@ -626,7 +664,7 @@ void WebUI::begin() {
   });
 
   // POST /api/settings — must be BEFORE serveStatic (pattern from rest of file)
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/settings",
+  server_.addHandler(new PostJsonHandler("/api/settings",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
         JsonObject obj = json.as<JsonObject>();
@@ -847,7 +885,7 @@ void WebUI::begin() {
   });
 
   // POST: validate a backup bundle, overwrite the three /config files, reboot.
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/backup",
+  server_.addHandler(new PostJsonHandler("/api/backup",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
         JsonObject o = json.as<JsonObject>();
@@ -874,10 +912,11 @@ void WebUI::begin() {
       }));
 
   // ── SD file manager ─────────────────────────────────────────────────────────
-  // GET /api/files (list) and GET /api/files/download share the "/api/files"
-  // prefix, so one GetPrefixHandler dispatches both by url() — same reasoning
-  // as /api/network above.
-  server_.addHandler(new GetPrefixHandler("/api/files",
+  // GET /api/files (list) and GET /api/files/download run the same handler,
+  // dispatched by url(). Registered as exact matches (not a prefix) so that
+  // GET /api/files/mkdir and GET /api/files/rename fall through to their
+  // POST-only PostJsonHandlers and get a 405 instead of landing here.
+  auto filesGet =
       [this](AsyncWebServerRequest* req) {
         if (!req->hasParam("path")) { req->send(400, "text/plain", "missing path"); return; }
         String path = req->getParam("path")->value();
@@ -923,7 +962,9 @@ void WebUI::begin() {
         String out;
         serializeJson(doc, out);
         req->send(200, "application/json", out);
-      }));
+      };
+  server_.on(AsyncURIMatcher::exact("/api/files"), HTTP_GET, filesGet);
+  server_.on(AsyncURIMatcher::exact("/api/files/download"), HTTP_GET, filesGet);
 
   // DELETE /api/files?path=<path> — file, or directory removed recursively.
   server_.on("/api/files", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
@@ -940,7 +981,7 @@ void WebUI::begin() {
 
   // POST /api/files/mkdir {"path":"/foo/bar"} — creates one new level; parent
   // must already exist (mirrors DynamicItems::saveToSD's mkdir("/config")).
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/files/mkdir",
+  server_.addHandler(new PostJsonHandler("/api/files/mkdir",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json["path"].is<const char*>()) { req->send(400, "text/plain", "missing path"); return; }
         String path = json["path"].as<const char*>();
@@ -952,7 +993,7 @@ void WebUI::begin() {
       }));
 
   // POST /api/files/rename {"from":"...","to":"..."} — file or directory.
-  server_.addHandler(new AsyncCallbackJsonWebHandler("/api/files/rename",
+  server_.addHandler(new PostJsonHandler("/api/files/rename",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json["from"].is<const char*>() || !json["to"].is<const char*>()) {
           req->send(400, "text/plain", "missing from/to");
