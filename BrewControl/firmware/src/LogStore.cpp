@@ -214,6 +214,7 @@ void LogStore::scanSessions_(fs::FS& sd, LogCfg& l) {
   snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
   File dir = sd.open(dirpath);
   if (dir && dir.isDirectory()) {
+    uint32_t n = 0;
     File e = dir.openNextFile();
     while (e) {
       String raw = e.name();  // basename or full path, depending on core
@@ -223,6 +224,9 @@ void LogStore::scanSessions_(fs::FS& sd, LogCfg& l) {
         l.sessions.push_back({atol(fn.c_str()), (uint32_t)e.size()});
       }
       e.close();
+      // Runs in setup() before the web server starts; yield periodically so a
+      // surprise-large directory can't trip the watchdog mid-boot.
+      if ((++n & 63) == 0) delay(0);
       e = dir.openNextFile();
     }
   }
