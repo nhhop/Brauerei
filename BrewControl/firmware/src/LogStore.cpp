@@ -81,6 +81,7 @@ void LogStore::loadFromSD(fs::FS& sd) {
     // fresh CSV on every boot — a reboot is not a session boundary.
     l.sessionStart = (time_t)(obj["session"] | 0L);
     l.firstSample  = (l.sessionStart == 0);
+    scanSessions_(sd, l);
     logs_.push_back(std::move(l));
   }
 }
@@ -206,33 +207,44 @@ bool LogStore::clear(const char* id) {
   return false;
 }
 
-String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
-  ScopedLock lk(mutex_);
+void LogStore::scanSessions_(fs::FS& sd, LogCfg& l) {
   SdLock sdLock;
+  l.sessions.clear();
+  char dirpath[40];
+  snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
+  File dir = sd.open(dirpath);
+  if (dir && dir.isDirectory()) {
+    File e = dir.openNextFile();
+    while (e) {
+      String raw = e.name();  // basename or full path, depending on core
+      int sl = raw.lastIndexOf('/');
+      String fn = (sl >= 0) ? raw.substring(sl + 1) : raw;
+      if (fn.endsWith(".csv")) {
+        l.sessions.push_back({atol(fn.c_str()), (uint32_t)e.size()});
+      }
+      e.close();
+      e = dir.openNextFile();
+    }
+  }
+  if (dir) dir.close();
+  std::sort(l.sessions.begin(), l.sessions.end(),
+            [](const LogCfg::SessionMeta& a, const LogCfg::SessionMeta& b) {
+              return a.start < b.start;
+            });
+}
+
+String LogStore::serializeSessions(const char* id) const {
+  ScopedLock lk(mutex_);
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& l : logs_) {
     if (l.id != id) continue;
-    char dirpath[40];
-    snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
-    File dir = sd.open(dirpath);
-    if (dir && dir.isDirectory()) {
-      File e = dir.openNextFile();
-      while (e) {
-        String raw = e.name();  // basename or full path, depending on core
-        int sl = raw.lastIndexOf('/');
-        String fn = (sl >= 0) ? raw.substring(sl + 1) : raw;
-        if (fn.endsWith(".csv")) {
-          long start = atol(fn.c_str());
-          JsonObject o = arr.add<JsonObject>();
-          o["start"]  = start;
-          o["size"]   = (uint32_t)e.size();
-          o["active"] = (l.sessionStart > 0 && (long)l.sessionStart == start);
-        }
-        e = dir.openNextFile();
-      }
+    for (const auto& s : l.sessions) {
+      JsonObject o = arr.add<JsonObject>();
+      o["start"]  = s.start;
+      o["size"]   = s.size;
+      o["active"] = (l.sessionStart > 0 && (long)l.sessionStart == s.start);
     }
-    if (dir) dir.close();
     break;
   }
   String out;
@@ -243,13 +255,20 @@ String LogStore::serializeSessions(const char* id, fs::FS& sd) const {
 bool LogStore::deleteSession(const char* id, time_t start, fs::FS& sd) {
   ScopedLock lk(mutex_);
   SdLock sdLock;
-  for (const auto& l : logs_) {
+  for (auto& l : logs_) {
     if (l.id != id) continue;
     if (l.sessionStart > 0 && l.sessionStart == start) return false;  // active
     char path[48];
     snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(), (long)start);
     if (!sd.exists(path)) return false;
-    return sd.remove(path);
+    if (!sd.remove(path)) return false;
+    l.sessions.erase(
+        std::remove_if(l.sessions.begin(), l.sessions.end(),
+                       [&](const LogCfg::SessionMeta& s) {
+                         return s.start == (long)start;
+                       }),
+        l.sessions.end());
+    return true;
   }
   return false;
 }
@@ -426,17 +445,27 @@ bool LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
     // NAN → empty cell
   }
   f.println(line);
+  const uint32_t sz = (uint32_t)f.size();
   f.close();
+
+  // Keep the RAM session mirror in step with the file.
+  bool tracked = false;
+  for (auto& s : l.sessions) {
+    if (s.start == (long)l.sessionStart) { s.size = sz; tracked = true; break; }
+  }
+  if (!tracked) l.sessions.push_back({(long)l.sessionStart, sz});
+
   return isNew;
 }
 
 void LogStore::pruneToBudget_(fs::FS& sd) {
   SdLock sdLock;
-  struct Entry { String path; uint32_t size; long start; bool active; };
+  struct Entry { String path; uint32_t size; long start; bool active; size_t logIdx; };
   std::vector<Entry> entries;
   uint64_t total = 0;
 
-  for (const auto& l : logs_) {
+  for (size_t i = 0; i < logs_.size(); ++i) {
+    const auto& l = logs_[i];
     char dirpath[40];
     snprintf(dirpath, sizeof(dirpath), "/logs/%s", l.id.c_str());
     File dir = sd.open(dirpath);
@@ -451,7 +480,7 @@ void LogStore::pruneToBudget_(fs::FS& sd) {
         const uint32_t sz = (uint32_t)e.size();
         const bool active = (l.sessionStart > 0 && (long)l.sessionStart == start);
         total += sz;
-        entries.push_back({String(dirpath) + "/" + fn, sz, start, active});
+        entries.push_back({String(dirpath) + "/" + fn, sz, start, active, i});
       }
       e = dir.openNextFile();
     }
@@ -465,7 +494,15 @@ void LogStore::pruneToBudget_(fs::FS& sd) {
   for (auto& en : entries) {
     if (total <= kLogBudgetBytes) break;
     if (en.active) continue;
-    if (sd.remove(en.path)) total -= en.size;
+    if (sd.remove(en.path)) {
+      total -= en.size;
+      auto& sess = logs_[en.logIdx].sessions;
+      sess.erase(std::remove_if(sess.begin(), sess.end(),
+                                [&](const LogCfg::SessionMeta& s) {
+                                  return s.start == en.start;
+                                }),
+                 sess.end());
+    }
   }
 }
 

@@ -52,7 +52,8 @@ class LogStore {
 
   // JSON array of completed/active sessions for `id`:
   // [{"start":<epoch>,"size":<bytes>,"active":<bool>}, …]. "[]" if unknown id.
-  String serializeSessions(const char* id, fs::FS& sd) const;
+  // Served from the in-RAM mirror — no SD access.
+  String serializeSessions(const char* id) const;
 
   // Deletes one session file (never the active one). False if not found/active.
   bool deleteSession(const char* id, time_t start, fs::FS& sd);
@@ -90,6 +91,12 @@ class LogStore {
     bool          loggingActive = false;  // last-tick effective-enabled state
     LogCompressor comp;
 
+    // RAM mirror of /logs/<id>/*.csv (ascending by start) so serializeSessions
+    // never sweeps the SD directory. Filled by scanSessions_ at boot, kept in
+    // step by writeEmitted_ / deleteSession / pruneToBudget_.
+    struct SessionMeta { long start; uint32_t size = 0; };
+    std::vector<SessionMeta> sessions;
+
     // Rebuilds the compressor from the current series tolerances + algo.
     void reconfigure() {
       std::vector<float> tols;
@@ -123,6 +130,9 @@ class LogStore {
   // Deletes the oldest non-active session files across all logs until the
   // total /logs size is within the budget.
   void pruneToBudget_(fs::FS& sd);
+
+  // One-time SD sweep of /logs/<id>/ into l.sessions (boot only).
+  void scanSessions_(fs::FS& sd, LogCfg& l);
 
   static String generateId();
   static void   fillFromJson(LogCfg& l, const JsonObject& cfg);
