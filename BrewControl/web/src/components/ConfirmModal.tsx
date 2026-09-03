@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { btnPrimary, btnSecondary, btnDanger, dialogFrame, dialogFooter, dialogBtnRow } from '../ui';
+import { Spinner } from './Spinner';
 
 export function ConfirmModal({
   open, title, children, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
@@ -26,7 +27,7 @@ export function ConfirmModal({
             </button>
             <button type="button" onClick={onConfirm} disabled={pending}
               class={destructive ? btnDanger : btnPrimary}>
-              {pending ? 'Working…' : confirmLabel}
+              {pending ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />{confirmLabel}</> : confirmLabel}
             </button>
           </div>
         </div>

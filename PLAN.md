@@ -11,6 +11,8 @@ SensActCtrl und BrewControl werden gemeinsam geplant, unabhängig davon, welches
 ## Bugs & bekannte Einschränkungen
 
 - **ESP-NOW verwirft Pakete >250 Byte silently.** `EspNowTransport::sendDataPacket_()` gibt bei Überschreitung `false` zurück, kein Retry. Betrifft v.a. Controller mit vielen Params (DualStage/SplitRangePID) — deren Meta-Publish kann dauerhaft scheitern. `lastErrorMessage()` zeigt seit 2026-08-29 „Paket zu groß (…)", aber nichts liest das aktiv aus/loggt es.
+- **`GET /api/files` hängt auf einem Log-Session-Verzeichnis** (2026-09-03) — `?path=/logs/3ca049` nimmt die Verbindung an, empfängt den Request und antwortet dann nie (curl bricht nach Timeout mit 0 Bytes ab, 3× reproduziert). `GET /api/logs/3ca049/sessions` verhält sich genauso. `/logs`, `/config`, `/www` und `/www/assets` funktionieren, es ist also keine Frage der Pfadtiefe; das Gerät bleibt danach ansprechbar (`/api/snapshot` → 200). Folge im UI: Klick auf den Ordner in der Dateiverwaltung bleibt dauerhaft im Ladezustand, und die Archiv-Seite dieses Logs zeigt nie Sessions. Ursache nicht untersucht (Verdacht: SD-Verzeichnis-Iteration über die CSV-Session-Dateien).
+- **`ConfirmModal`-Default-Labels sind englisch** (2026-09-03) — `confirmLabel = 'Confirm'` / `cancelLabel = 'Cancel'`. Sechs Aufrufer setzen kein `cancelLabel` (DevicesPage, MqttPage, WebhookPage, EspNowPage, NetworkPage 3×) und zeigen dadurch einen „Cancel"-Button in einer sonst deutschen UI.
 - **Create-Endpoints akzeptieren auch GET/PUT/PATCH** (2026-09-01) — `AsyncCallbackJsonWebHandler` matcht per Default `HTTP_GET|POST|PUT|PATCH`, und die URI-Matcher der Library sind Prefix-Matcher (`^uri(/.*)?$`). `GET /api/sensors` landet dadurch im Create-Handler und antwortet `400 missing id` statt `405`. Implementierungsartefakt, bewusst **nicht** in `openapi.yaml` als Vertrag dokumentiert.
 - **`POST /api/update/assets` (UI-Tar-Upload) bricht auf LOLIN S2 Mini ab** (`Connection was reset` nach ~65 KB, Board bleibt stabil, kein Crash). Vorbestehender Code-Pfad (`SdTarSink`/`TarExtractor`), auf LilyGo S3 nicht reproduziert. Nicht weiter untersucht (2026-08-29).
 - **`WebhookService::getOrCreate()` cached strikt nach `(port, peerUrl)`.** Zwei verschiedene Peers, die sich denselben lokalen Port teilen wollen, erzeugen zwei separate `WebServer`-Instanzen auf demselben physischen Port → Bind-Konflikt. Im Test 2026-08-29 umgangen (anderer Port für den zweiten Consumer), Cache-Design selbst nicht gefixt.
@@ -19,6 +21,7 @@ SensActCtrl und BrewControl werden gemeinsam geplant, unabhängig davon, welches
 - **Frontend: keine gruppierte SensorCard für Multi-Channel-Sensoren** — HCSR04 und YF-S201 erzeugen je 2 separate Karten (`tank.distance` / `tank.derived`, `flow.rate` / `flow.volume`). Verbesserung: `app.tsx` gruppiert Snapshot-Einträge nach Base-ID, eine Karte pro logischem Sensor mit mehreren Kanal-Zeilen; Delete-Button und Zähler zeigen dann logische Sensoren statt Kanäle. Quick-Fix für korrektes Delete/Reset ist drin (2026-05-30). ⚠️ Voraussetzung für „Gradienten/Ableitungen".
 - **Bus-Scan-UX: kein visuelles Feedback nach einem Scan ohne Treffer** (2026-05-20) — Hint-Text im Sensor-Formular ist vor und nach einem ergebnislosen OneWire-Scan identisch, nicht erkennbar ob überhaupt gescannt wurde. Nicht buggy, nur verwirrend.
 - **`pio device monitor` auf TinyUSB-CDC unter Windows instabil** (ESP32-S2 und -S3): Monitor verliert sporadisch Output. Workaround: PowerShell-Skript mit `System.IO.Ports.SerialPort`, DTR/RTS-Toggle für Reset, `ReadExisting()`-Loop (siehe `BrewControl/README.md`). Mögliche Permanent-Fixes: `--filter direct`, anderes Terminal (PuTTY/Tera Term), Monitor-Reconnect-Tuning.
+- **Settings-UI: zwei UI-Zustände nicht praktisch verifiziert** (2026-09-03) — beide typgeprüft und aus derselben Komponente wie verifizierte Fälle: (a) Empty-State der Geräteliste (`DevicesPage`, „Noch keine Geräte konfiguriert…") — Testboard hatte immer Items; (b) `Spinner` im `ConfirmModal` beim Bestätigen — Auslösen hätte gelöscht bzw. das Board rebootet. Bei nächster Gelegenheit am Gerät gegenchecken.
 - QEMU/Simulation ist nicht viable (keine WiFi-Emulation für ESP32) — Verifikation läuft immer am Gerät.
 
 ## Hardware-Verifikation offen
@@ -49,12 +52,6 @@ Grob nach Bereitschaft / Aufwand; Abhängigkeiten stehen inline. Jeder Punkt bek
 - **Sensorgetriggerte Schritte** (vorgemerkt 2026-08-12) — ein Schritt endet heute nur über `holdSec` (Zeit) oder `confirm` (manuelle Freigabe). Dritte Bedingung: Schrittende an einen Sensorwert koppeln, z.B. „Gravity < 1.010" beim Gären. Braucht eine generische Schwellwert-Bedingung (`{sensorId, op, value}`) im Schritt-Schema — teilt sich vermutlich Logik mit „Alarme & Schwellwerte".
 - **AP-Modus** als wählbare Alternative (Standalone ohne Router) — verschoben, weil ohne Internet kein NTP (bricht Datalog-Timestamps); sinnvoll zusammen mit Hardware-RTC. Ebenso statische IP / DHCP-Konfiguration.
 - **Zugriffsschutz / Auth** — bewusst niedrig priorisiert (Heimnetz), nur als Vormerkung.
-- **Settings-UI-Überarbeitung** (vorgemerkt 2026-09-01) — reine Frontend-Politur, keine API-Änderung:
-  1. `/settings` umstrukturieren — MQTT, ESP-NOW und Webhook von der Top-Ebene auf eine gemeinsame Unterseite (z.B. „Anbindung"/„Konnektivität") verschieben, damit die Index-Seite kürzer wird.
-  2. `/settings/devices` überarbeiten — Layout/Interaktion der Geräte-/Item-Übersicht aufräumen (konkrete Mängel beim Angehen sammeln).
-  3. Kartenbreite begrenzen — `SettingsCard`/`SettingsGroup` bekommen ein `max-width` statt über die volle Spaltenbreite zu laufen (Lesbarkeit auf breiten Screens).
-  4. Ladezustand mit Animation statt reinem „Laden…"-Text — einheitlicher Spinner/Skeleton-Baustein, überall wo Seiten auf `getSettings()`/Snapshot warten.
-  5. Filemanager (`/settings/files`) — beim Ordnerwechsel eine Ladeanimation zeigen, solange die neue Verzeichnis-Liste lädt.
 
 ## Größere Brocken (eigene Spec vor Umsetzung)
 

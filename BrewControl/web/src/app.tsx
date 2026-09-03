@@ -7,6 +7,7 @@ import { applyTheme, loadCachedTheme } from './theme';
 import { NavShell } from './components/NavShell';
 import { Dashboard } from './pages/Dashboard';
 import { SettingsIndex } from './pages/SettingsIndex';
+import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FirmwarePage } from './pages/FirmwarePage';
@@ -58,9 +59,10 @@ export function App() {
         <BackupPage path="/settings/backup" />
         <TimePage path="/settings/time" />
         <NetworkPage path="/settings/network" />
-        <MqttPage path="/settings/mqtt" />
-        <WebhookPage path="/settings/webhook" />
-        <EspNowPage path="/settings/espnow" />
+        <ConnectivityPage path="/settings/connectivity" />
+        <MqttPage path="/settings/connectivity/mqtt" />
+        <WebhookPage path="/settings/connectivity/webhook" />
+        <EspNowPage path="/settings/connectivity/espnow" />
         <LogsPage path="/settings/logs" snap={snap} />
         <ArchivePage path="/settings/logs/:id/archive" />
         <FilesPage path="/settings/files" />

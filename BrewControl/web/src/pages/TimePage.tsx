@@ -4,6 +4,8 @@ import type { TimeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { formatTime, formatDate } from '../time';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { inp } from '../ui';
@@ -91,17 +93,17 @@ export function TimePage(_: { path?: string }) {
 
   const tzIdx = findTzIndex(settings.utcOffsetSec, settings.dstOffsetSec);
 
-  if (loading) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
-      <p class="text-sm text-muted">Laden…</p>
-    </div>
+  const header = (
+    <header class="mb-6">
+      <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Zeit & Formate' }]} />
+    </header>
   );
 
+  if (loading) return <PageShell>{header}<SkeletonList count={4} /></PageShell>;
+
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
-      <header class="mb-6">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Zeit & Formate' }]} />
-      </header>
+    <PageShell>
+      {header}
 
       <div class="mt-4 mb-6 px-1">
         <div class="text-5xl font-mono font-medium tabular-nums">{formatTime(now, settings)}</div>
@@ -151,6 +153,6 @@ export function TimePage(_: { path?: string }) {
             />
           } />
       </SettingsGroup>
-    </div>
+    </PageShell>
   );
 }

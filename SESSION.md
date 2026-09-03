@@ -534,3 +534,74 @@ grün, `redocly lint` valide. HW-E2E am LilyGo S3 (`192.168.178.87`, per USB/COM
 `passwordSet:true`, Broker reconnected (`connected:true`); leerer Round-Trip
 behält das Passwort; `null` löscht es (`passwordSet:false`); Backup-Bundle trägt
 das Passwort weiter. Board am Ende mit leerem Passwort hinterlassen.
+
+## 2026-09-02/03 — Settings-UI-Überarbeitung (5 Teilschritte)
+
+Der Backlog-Cluster aus PLAN.md komplett abgearbeitet, ein Commit pro Punkt.
+Reine Frontend-Arbeit — keine API-Änderung, `openapi.yaml`/`types.ts` unberührt.
+
+**1. `PageShell` + Breitenbegrenzung.** Der Container-String
+`min-h-full bg-bg p-4 text-fg md:p-6` war in 14 Seiten kopiert; die Karten liefen
+auf breiten Screens über die volle Fensterbreite. Neue Komponente `PageShell`
+kapselt den Container und legt eine zentrierte Spalte mit `max-w-4xl` (896 px)
+darüber. `LogsPage`/`ArchivePage` nutzen `wide` (uPlot-Charts), `Dashboard` bleibt
+unangetastet — sein `lg:flex`-Grid verträgt keinen zusätzlichen Wrapper.
+Nebenbei den `FirmwarePage`-Ausreißer (`p-6`, „Lädt…") eingesammelt.
+
+**2. Spinner + Skeleton.** Das Projekt hatte weder Spinner noch Skeleton — alle
+Ladezustände waren nackter Text (8× „Laden…", 1× „Lädt…"), durchgehend als
+Early-Return, wodurch Breadcrumb und Header verschwanden und beim Eintreffen der
+Daten zurücksprangen. Neu: `Spinner` (WinUI-ProgressRing in `currentColor`,
+Tailwind-`animate-spin` — keine eigenen Keyframes nötig) und `Skeleton`
+(`SkeletonBar`/`SkeletonCard`/`SkeletonList`; `SkeletonCard` spiegelt die
+Flächenklassen von `SettingsCard`, damit der Wechsel nichts verschiebt). Alle
+Settings-Seiten halten ihren Header jetzt über der Ladeanzeige (`header`-Const
+statt dupliziertem Breadcrumb). `LogsPage`/`ArchivePage` bekamen ein
+`loaded`-Flag — sie konnten „lädt" bisher nicht von „leer" unterscheiden.
+Spinner ersetzt die Busy-Texte in `ConfirmModal` (Label bleibt stehen, das
+englische „Working…" entfällt), `FirmwarePage` und `NetworkPage`.
+
+**3. Konnektivitäts-Unterseite.** Neue `ConnectivityPage` unter
+`/settings/connectivity`; MQTT, Webhook und ESP-NOW auf
+`/settings/connectivity/{mqtt,webhook,espnow}` umgezogen, damit URL und
+Breadcrumb deckungsgleich bleiben. Index von 11 auf 9 Einträge.
+
+**4. Geräteliste.** `DeviceRow` hatte die Flächenklassen von `SettingsCard`
+dupliziert und eine vierte Badge-Variante (`bg-fg/10`) erfunden; die Icon-Buttons
+hatten weder Padding noch Fokus-Ring; es gab keinen Empty-State; und
+`startEdit()` verschluckte Fehler per `catch {}`, während der Klick auf den Stift
+für die Dauer von `getConfig()` tot wirkte. Jetzt: `SettingsCard` mit dem Badge
+als gedämpfte Zweitzeile, 32-px-Trefferflächen mit WinUI-Subtle-Hover, Spinner
+auf der betroffenen Zeile, Fehlerausgabe, Empty-State.
+
+**5. Filemanager.** `setDir()` aktualisierte die Pfadleiste sofort, während die
+Tabelle bis zur Antwort von `listFiles()` noch die Dateien des *alten* Ordners
+auflistete — die Seite behauptete kurzzeitig, diese Dateien lägen im neuen
+Ordner. Beim ersten Mount blitzte zusätzlich „Leer" auf. Neues `dirLoading`-Flag
+im `[dir]`-Effect: solange es steht, rendert der `tbody` Skeleton-Zeilen und die
+Pfadleiste einen Spinner. Die In-Place-Refreshes nach Delete/Rename/Upload setzen
+es bewusst nicht — dort ist der stehende Inhalt korrekt.
+
+**Verifikation:** `pnpm typecheck` und `pnpm build` grün. Browser-Durchgang gegen
+den LilyGo S3 (`brewcontrol.local`, 192.168.178.87) auf 1400×900 und 375×812, in
+Light und Dark: 896-px-Spalte zentriert (mobil unverändert), Skeleton mit
+stehendem Breadcrumb und ohne Layout-Sprung beim Umschalten, Spinner in
+„Netzwerke suchen" und auf dem Stift der Geräteliste, alle drei neuen
+Konnektivitäts-Routen als Deep-Link (SPA-Fallback am Gerät per curl bestätigt),
+Filemanager beim Ordnerwechsel ohne widersprüchliche Liste und mit weiterhin
+korrektem „Leer" bei tatsächlich leerem Verzeichnis. Console durchgehend
+fehlerfrei. Nicht praktisch ausgelöst: der Empty-State der Geräteliste (Testboard
+hat Items) und der `ConfirmModal`-Spinner (Auslösen hätte gelöscht bzw. rebootet)
+— beide typgeprüft, der Spinner ist dieselbe Komponente wie in den verifizierten
+Fällen.
+
+**Nebenbefund (nicht gefixt, in PLAN.md eingetragen):** `GET /api/files` hängt
+reproduzierbar auf `/logs/3ca049` (Verbindung steht, keine Antwort), ebenso
+`GET /api/logs/3ca049/sessions`; andere Pfade inkl. `/www/assets` funktionieren.
+Dazu: die englischen Default-Labels von `ConfirmModal` („Confirm"/„Cancel"), die
+sechs Aufrufer ungesetzt lassen.
+
+**Bewusst nicht angefasst:** die 3× duplizierte Save-Bar (Mqtt/Webhook/EspNow),
+der 5× duplizierte Reboot-Vollbildschirm, die 2× nachgebaute ProgressBar und der
+10× wiederholte `pl-9`-Ausricht-Hack in den Karten — jeweils außerhalb des
+Auftrags.

@@ -3,6 +3,8 @@ import { useState, useEffect } from 'preact/hooks';
 import type { MqttSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { PageShell } from '../components/PageShell';
+import { SkeletonList } from '../components/Skeleton';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
@@ -79,19 +81,23 @@ export function MqttPage(_: { path?: string }) {
     </div>
   );
 
-  if (loading) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
-      <p class="text-sm text-muted">Laden…</p>
-    </div>
+  const header = (
+    <header class="mb-6">
+      <Breadcrumb trail={[
+        { label: 'Einstellungen', href: '/settings' },
+        { label: 'Konnektivität', href: '/settings/connectivity' },
+        { label: 'MQTT' },
+      ]} />
+    </header>
   );
+
+  if (loading) return <PageShell>{header}<SkeletonList count={3} /></PageShell>;
 
   const embeddedSupported = settings.embeddedBrokerSupported !== false;
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
-      <header class="mb-6">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'MQTT' }]} />
-      </header>
+    <PageShell>
+      {header}
 
       <SettingsGroup>
         <SettingsCard title="MQTT aktivieren" icon={Radio} desc="Sensoren, Aktoren und Regler per MQTT veröffentlichen"
@@ -237,6 +243,6 @@ export function MqttPage(_: { path?: string }) {
         <p>Das Gerät startet neu, um die Verbindung mit den neuen Einstellungen aufzubauen.</p>
         {actErr && <p class="mt-2 text-critical">{actErr}</p>}
       </ConfirmModal>
-    </div>
+    </PageShell>
   );
 }

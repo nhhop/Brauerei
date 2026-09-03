@@ -11,6 +11,7 @@ import { SensorCard } from '../components/SensorCard';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
+import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
 import { AddItemModal } from '../components/AddItemModal';
 import { DashboardMetaModal } from '../components/DashboardMetaModal';
@@ -278,7 +279,7 @@ export function Dashboard({ snap, err }: {
   if (!displaySnap) return (
     <div class="min-h-full bg-bg p-4 text-fg md:p-6">
       {header}{tabBar}
-      <p class="text-sm text-muted">Laden…</p>
+      <SkeletonList count={3} />
       {modals}
     </div>
   );
