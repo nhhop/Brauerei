@@ -3,7 +3,7 @@ import { btnPrimary, btnSecondary, btnDanger, dialogFrame, dialogFooter, dialogB
 import { Spinner } from './Spinner';
 
 export function ConfirmModal({
-  open, title, children, confirmLabel = 'Confirm', cancelLabel = 'Cancel',
+  open, title, children, confirmLabel = 'Bestätigen', cancelLabel = 'Abbrechen',
   destructive = false, pending = false, onConfirm, onCancel,
 }: {
   open: boolean; title: string; children: ComponentChildren;

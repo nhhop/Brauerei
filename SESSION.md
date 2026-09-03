@@ -656,5 +656,28 @@ den Eintrag in ~15 ms aus dem RAM-Spiegel; `/api/files` auf das Session-Verzeich
 Kopfzeile, Zeilen laufen über die Reboot-Lücke im selben File weiter, Boot-Scan
 füllt den Cache. Test-Log wieder entfernt.
 
-**Nebenbefund offen:** die englischen `ConfirmModal`-Default-Labels
-(„Confirm"/„Cancel") bleiben in PLAN.md.
+**Nebenbefund:** die englischen `ConfirmModal`-Default-Labels
+(„Confirm"/„Cancel") am 2026-09-03 gefixt (Eintrag unten).
+
+## 2026-09-03 — Frontend: deutsche ConfirmModal-Defaults + Feedback nach leerem Bus-Scan
+
+Zwei kleine UI-Punkte aus PLAN.md abgehakt.
+
+1. *`ConfirmModal`-Default-Labels.* `confirmLabel`/`cancelLabel` defaulteten auf
+   „Confirm"/„Cancel"; sieben Aufrufer (DevicesPage, EspNowPage, MqttPage,
+   WebhookPage, NetworkPage 3×) setzen kein `cancelLabel` und zeigten dadurch
+   einen „Cancel"-Button in der sonst deutschen UI. Defaults auf
+   „Bestätigen"/„Abbrechen" umgestellt — eine Zeile in `ConfirmModal.tsx`, kein
+   Aufrufer angefasst.
+2. *Bus-Scan ohne Treffer.* Der Hint im DS18B20-Sensorformular
+   (`AddItemModal.tsx`) war vor und nach einem ergebnislosen OneWire-Scan
+   identisch. Neues `scanned`-Flag (true nach erfolgreichem Scan, zurückgesetzt
+   bei Pin-Änderung / Modal-Open): vor dem Scan weiter „Scan ausführen um Geräte
+   … zu finden", nach einem leeren Scan stattdessen ein `text-caution`-Hinweis
+   „Kein Gerät auf diesem Bus gefunden — Verkabelung und Pull-up prüfen".
+
+Keine API-Änderung. `pnpm typecheck` + `pnpm build` grün. Browser-Pane gegen das
+Testboard: ConfirmModal auf der Geräteseite zeigt „Abbrechen"/„Löschen"; der
+„noch nicht gescannt"-Hint rendert an der erwarteten Stelle. Der leere-Scan-Zweig
+wurde nicht am Gerät ausgelöst (Bit-Banging eines beliebigen GPIO an der Live-
+Anlage vermieden) — reine Render-Verzweigung eines verifizierten Flags.
