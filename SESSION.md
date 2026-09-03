@@ -641,12 +641,20 @@ weder SD noch `SdLock` anfasst.
 
 `GET /api/files` behält seinen Sweep bewusst: generischer Dateimanager, und die
 `/logs/<id>/`-Verzeichnisse bleiben mit der Session-Persistenz jetzt klein.
+Zusätzlich `delay(0)` alle 64 Einträge im Boot-Scan (`scanSessions_` läuft in
+`setup()` vor `webUI.begin()`), damit ein überraschend großes Verzeichnis den
+Boot nicht wedged.
 
-**Verifikation:** `pio run -e esp32dev` grün. HW-E2E am LilyGo S3 + einmalige
-Bereinigung des bereits aufgeblähten `/logs/3ca049/` (SD-Karte ziehen, Stub-CSVs
-löschen, `session`-Wert aus `/config/logs.json` entfernen) stehen noch aus — die
-Karten-Inspektion bestätigt zugleich die Akkumulations-These (erwartet: viele
-kleine `<epoch>.csv`).
+**Verifikation:** `pio run -e esp32dev` und `-e lilygo_t_display_s3_amoled` grün.
+Baseline am LilyGo S3 reproduziert (`/api/logs/3ca049/sessions` und
+`/api/files?path=/logs/3ca049` ohne Antwort, >60 s; `/api/files?path=/logs`
+90 ms). Bereinigung: SD-Karte gezogen, `/logs/3ca049/` samt Demo-Log-Config
+gelöscht. Firmware `9690d13` per OTA geflasht, dann Test-Log (2 s Intervall)
+angelegt: `session` landet sofort in `/config/logs.json`; `.../sessions` liefert
+den Eintrag in ~15 ms aus dem RAM-Spiegel; `/api/files` auf das Session-Verzeichnis
+< 40 ms. Nach Reboot: `session`-Epoch unverändert, **eine** CSV mit **einer**
+Kopfzeile, Zeilen laufen über die Reboot-Lücke im selben File weiter, Boot-Scan
+füllt den Cache. Test-Log wieder entfernt.
 
 **Nebenbefund offen:** die englischen `ConfirmModal`-Default-Labels
 („Confirm"/„Cancel") bleiben in PLAN.md.
