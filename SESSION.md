@@ -677,7 +677,8 @@ Zwei kleine UI-Punkte aus PLAN.md abgehakt.
    „Kein Gerät auf diesem Bus gefunden — Verkabelung und Pull-up prüfen".
 
 Keine API-Änderung. `pnpm typecheck` + `pnpm build` grün. Browser-Pane gegen das
-Testboard: ConfirmModal auf der Geräteseite zeigt „Abbrechen"/„Löschen"; der
-„noch nicht gescannt"-Hint rendert an der erwarteten Stelle. Der leere-Scan-Zweig
-wurde nicht am Gerät ausgelöst (Bit-Banging eines beliebigen GPIO an der Live-
-Anlage vermieden) — reine Render-Verzweigung eines verifizierten Flags.
+Testboard (LilyGo S3-AMOLED): ConfirmModal auf der Geräteseite zeigt
+„Abbrechen"/„Löschen". OneWire-Scan auf dem unbelegten GPIO 10 (Header-Pin, kein
+Strapping/Flash, keine Config-Belegung) → `.../api/bus/scan` liefert `[]`, der
+`text-caution`-Hinweis erscheint; Pin-Änderung setzt zurück auf „Scan ausführen
+…". Board danach unverändert erreichbar (`/api/snapshot` 120 ms).
