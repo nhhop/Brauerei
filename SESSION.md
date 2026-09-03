@@ -682,3 +682,48 @@ Testboard (LilyGo S3-AMOLED): ConfirmModal auf der Geräteseite zeigt
 Strapping/Flash, keine Config-Belegung) → `.../api/bus/scan` liefert `[]`, der
 `text-caution`-Hinweis erscheint; Pin-Änderung setzt zurück auf „Scan ausführen
 …". Board danach unverändert erreichbar (`/api/snapshot` 120 ms).
+
+## 2026-09-03 — Fix: Collection-POST-Routen akzeptierten GET/PUT/PATCH statt `405`
+
+**Root Cause.** Alle elf JSON-Body-Routen in `WebUI.cpp` (`/api/sensors`,
+`/api/actuators`, `/api/controllers`, `/api/network`, `/api/dashboards`,
+`/api/logs`, `/api/programs`, `/api/settings`, `/api/backup`,
+`/api/files/mkdir`, `/api/files/rename`) hingen an
+`AsyncCallbackJsonWebHandler`. Dessen Default-Methodenset ist
+`HTTP_GET|POST|PUT|PATCH` und sein URI-Matcher ist ein Prefix-Matcher
+(`^uri(/.*)?$`). Dadurch landete z.B. `GET /api/sensors` im Create-Handler und
+antwortete `400 missing id` statt `405`; `PUT /api/dashboards` fiel (mangels
+JSON-Content-Type) in den Catch-all → `404`.
+
+**Umsetzung.** Neue `PostJsonHandler`-Klasse (anon. namespace in `WebUI.cpp`,
+neben den bestehenden `BodyPrefixHandler`/`GetPrefixHandler`/`DeletePrefixHandler`):
+exakter Pfad-Match statt Prefix, nur `POST`, parst den JSON-Body in einem Chunk
+und übergibt eine `JsonVariant`. Jede andere Methode → `405 method not allowed`,
+leerer Body → `400 missing body`, kaputtes JSON → `400 invalid JSON`, mehrere
+Chunks → `413`. Alle elf `new AsyncCallbackJsonWebHandler(...)` 1:1 auf
+`new PostJsonHandler(...)` umgestellt, die Handler-Lambdas unverändert.
+`#include <AsyncJson.h>` in `WebUI.cpp` entfernt (nur noch von
+`WiFiSetupPortal.cpp` mit eigenem Include genutzt). Da der Match jetzt exakt ist,
+sind die „registered last / before create handler"-Ordnungs-Kommentare an den
+Delete-/Body-Prefix-Handlern hinfällig und entfernt.
+
+Kein OpenAPI-Vertrag betroffen — die dokumentierte Methode je Pfad bleibt gleich;
+`405` für undokumentierte Methode+Pfad ist Standard und wird (wie `404` für
+unbekannte Pfade) nicht als Vertrag geführt.
+
+**Verifikation.** `pio run -e esp32dev` + `-e lilygo_t_display_s3_amoled` grün.
+S3-AMOLED (`brewcontrol.local`) über USB geflasht, danach Methoden-Matrix:
+`GET`/`PUT`/`PATCH`/`DELETE` auf `/api/sensors`, `/api/actuators`,
+`/api/controllers` → `405`; `PUT /api/{dashboards,logs,settings,network}` und
+`PUT /api/files/mkdir`, `PATCH /api/files/rename` → `405`;
+`GET /api/{dashboards,logs,programs,settings,backup}` weiter `200`. Echter
+Roundtrip `POST /api/sensors {DS18B20,__mtest,pin 15}` → `204`, taucht im
+Snapshot auf, `DELETE /api/sensors/__mtest` → `204`, wieder weg. `POST` mit
+kaputtem/leerem Body → `400 invalid JSON` / `400 missing body`.
+
+**Nebenbefund (nicht gefixt):** `GET /api/files/mkdir` bzw. `.../rename` liefern
+weiter `400 missing path` statt `405` — sie werden vom generischen
+`GetPrefixHandler("/api/files")` (Dateibrowser, früher registriert,
+Prefix-Match) abgefangen, bevor `PostJsonHandler` drankäme. Der Create-Handler
+selbst ist jetzt POST-only; `GET` trifft nur einen anderen, legitimen
+GET-Handler. Nicht weiter verfolgt.
