@@ -117,8 +117,8 @@ class LogStore {
 
   // Writes one emitted row to l's current session (creating it + header on
   // first write), then enforces the global storage budget. nowEpoch seeds a
-  // new session's start time.
-  void writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row, time_t nowEpoch);
+  // new session's start time. Returns true if this write started a new session.
+  bool writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row, time_t nowEpoch);
 
   // Deletes the oldest non-active session files across all logs until the
   // total /logs size is within the budget.

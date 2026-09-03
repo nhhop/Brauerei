@@ -77,6 +77,10 @@ void LogStore::loadFromSD(fs::FS& sd) {
     l.enabled      = obj["enabled"] | true;
     l.bindEnableTo = obj["bindEnableTo"] | "";
     l.reconfigure();
+    // Resume the session that was open at the last shutdown instead of starting a
+    // fresh CSV on every boot — a reboot is not a session boundary.
+    l.sessionStart = (time_t)(obj["session"] | 0L);
+    l.firstSample  = (l.sessionStart == 0);
     logs_.push_back(std::move(l));
   }
 }
@@ -321,6 +325,7 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
   if (nowEpoch <= 946684800L) return;  // wait for a real clock (post-2000)
 
   ScopedLock lk(mutex_);
+  bool sessionCreated = false;
   for (auto& l : logs_) {
     if (l.series.empty()) continue;
 
@@ -336,14 +341,14 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
       // ends on the last real reading.
       if (l.loggingActive) {
         LogSample out;
-        if (l.comp.flush(out)) writeEmitted_(sd, l, out, nowEpoch);
+        if (l.comp.flush(out)) sessionCreated |= writeEmitted_(sd, l, out, nowEpoch);
         // Mark the stop with an empty row so charts break the line across the
         // off-period instead of connecting the last value to the next resume.
         if (l.sessionStart > 0) {
           LogSample gap;
           gap.ts = nowEpoch;
           gap.vals.assign(l.series.size(), NAN);
-          writeEmitted_(sd, l, gap, nowEpoch);
+          sessionCreated |= writeEmitted_(sd, l, gap, nowEpoch);
         }
         l.loggingActive = false;
       }
@@ -372,30 +377,39 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
 
     // Feed the compressor; only persist when it emits a (buffered) row.
     LogSample out;
-    if (l.comp.feed(in, out)) writeEmitted_(sd, l, out, nowEpoch);
+    if (l.comp.feed(in, out)) sessionCreated |= writeEmitted_(sd, l, out, nowEpoch);
   }
+
+  // A new session's start epoch is runtime state until this write — persist it so
+  // the next boot resumes the same CSV instead of opening a fresh one.
+  if (sessionCreated) saveToSD(sd);
 }
 
-void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
+bool LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
                              time_t nowEpoch) {
   SdLock sdLock;
-  const bool created = (l.sessionStart == 0);
-  if (created) {
-    l.sessionStart = nowEpoch;
-    sd.mkdir("/logs");
-    char dir[40];
-    snprintf(dir, sizeof(dir), "/logs/%s", l.id.c_str());
-    sd.mkdir(dir);
-    pruneToBudget_(sd);
-  }
+  const bool isNew = (l.sessionStart == 0);
+  if (isNew) l.sessionStart = nowEpoch;
+
+  char dir[40];
+  snprintf(dir, sizeof(dir), "/logs/%s", l.id.c_str());
   char path[48];
   snprintf(path, sizeof(path), "/logs/%s/%ld.csv", l.id.c_str(),
            (long)l.sessionStart);
 
-  File f = sd.open(path, FILE_APPEND);
-  if (!f) return;
+  // New session, or a resumed session whose file vanished (card swap / external
+  // delete): (re)create the directory and prune before the first write.
+  const bool fresh = isNew || !sd.exists(path);
+  if (fresh) {
+    sd.mkdir("/logs");
+    sd.mkdir(dir);
+    pruneToBudget_(sd);
+  }
 
-  if (created) {
+  File f = sd.open(path, FILE_APPEND);
+  if (!f) return isNew;
+
+  if (fresh || f.size() == 0) {
     String header = "ts";
     for (const auto& s : l.series) { header += ','; header += s.ref.c_str(); }
     f.println(header);
@@ -413,6 +427,7 @@ void LogStore::writeEmitted_(fs::FS& sd, LogCfg& l, const LogSample& row,
   }
   f.println(line);
   f.close();
+  return isNew;
 }
 
 void LogStore::pruneToBudget_(fs::FS& sd) {
