@@ -912,10 +912,11 @@ void WebUI::begin() {
       }));
 
   // ── SD file manager ─────────────────────────────────────────────────────────
-  // GET /api/files (list) and GET /api/files/download share the "/api/files"
-  // prefix, so one GetPrefixHandler dispatches both by url() — same reasoning
-  // as /api/network above.
-  server_.addHandler(new GetPrefixHandler("/api/files",
+  // GET /api/files (list) and GET /api/files/download run the same handler,
+  // dispatched by url(). Registered as exact matches (not a prefix) so that
+  // GET /api/files/mkdir and GET /api/files/rename fall through to their
+  // POST-only PostJsonHandlers and get a 405 instead of landing here.
+  auto filesGet =
       [this](AsyncWebServerRequest* req) {
         if (!req->hasParam("path")) { req->send(400, "text/plain", "missing path"); return; }
         String path = req->getParam("path")->value();
@@ -961,7 +962,9 @@ void WebUI::begin() {
         String out;
         serializeJson(doc, out);
         req->send(200, "application/json", out);
-      }));
+      };
+  server_.on(AsyncURIMatcher::exact("/api/files"), HTTP_GET, filesGet);
+  server_.on(AsyncURIMatcher::exact("/api/files/download"), HTTP_GET, filesGet);
 
   // DELETE /api/files?path=<path> — file, or directory removed recursively.
   server_.on("/api/files", HTTP_DELETE, [this](AsyncWebServerRequest* req) {

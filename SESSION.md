@@ -707,6 +707,13 @@ Chunks → `413`. Alle elf `new AsyncCallbackJsonWebHandler(...)` 1:1 auf
 sind die „registered last / before create handler"-Ordnungs-Kommentare an den
 Delete-/Body-Prefix-Handlern hinfällig und entfernt.
 
+Der `GET /api/files`-Dateibrowser hing an einem Prefix-Match (`GetPrefixHandler`)
+und fing dadurch auch `GET /api/files/mkdir` / `.../rename` ab (→ `400 missing
+path` statt `405`). Auf zwei exakte Registrierungen umgestellt
+(`server_.on(AsyncURIMatcher::exact("/api/files")…)` +
+`…exact("/api/files/download")…`), sodass diese GETs zum jeweiligen
+POST-only-`PostJsonHandler` durchfallen.
+
 Kein OpenAPI-Vertrag betroffen — die dokumentierte Methode je Pfad bleibt gleich;
 `405` für undokumentierte Methode+Pfad ist Standard und wird (wie `404` für
 unbekannte Pfade) nicht als Vertrag geführt.
@@ -714,16 +721,10 @@ unbekannte Pfade) nicht als Vertrag geführt.
 **Verifikation.** `pio run -e esp32dev` + `-e lilygo_t_display_s3_amoled` grün.
 S3-AMOLED (`brewcontrol.local`) über USB geflasht, danach Methoden-Matrix:
 `GET`/`PUT`/`PATCH`/`DELETE` auf `/api/sensors`, `/api/actuators`,
-`/api/controllers` → `405`; `PUT /api/{dashboards,logs,settings,network}` und
-`PUT /api/files/mkdir`, `PATCH /api/files/rename` → `405`;
-`GET /api/{dashboards,logs,programs,settings,backup}` weiter `200`. Echter
-Roundtrip `POST /api/sensors {DS18B20,__mtest,pin 15}` → `204`, taucht im
-Snapshot auf, `DELETE /api/sensors/__mtest` → `204`, wieder weg. `POST` mit
-kaputtem/leerem Body → `400 invalid JSON` / `400 missing body`.
-
-**Nebenbefund (nicht gefixt):** `GET /api/files/mkdir` bzw. `.../rename` liefern
-weiter `400 missing path` statt `405` — sie werden vom generischen
-`GetPrefixHandler("/api/files")` (Dateibrowser, früher registriert,
-Prefix-Match) abgefangen, bevor `PostJsonHandler` drankäme. Der Create-Handler
-selbst ist jetzt POST-only; `GET` trifft nur einen anderen, legitimen
-GET-Handler. Nicht weiter verfolgt.
+`/api/controllers` → `405`; `PUT /api/{dashboards,logs,settings,network}`,
+`GET`/`PUT /api/files/mkdir`, `GET`/`PATCH /api/files/rename` → `405`;
+`GET /api/{dashboards,logs,programs,settings,backup}`, `GET /api/files?path=/`
+und `GET /api/files/download?path=…` weiter `200`. Echter Roundtrip
+`POST /api/sensors {DS18B20,__mtest,pin 15}` → `204`, taucht im Snapshot auf,
+`DELETE /api/sensors/__mtest` → `204`, wieder weg. `POST` mit kaputtem/leerem
+Body → `400 invalid JSON` / `400 missing body`.
