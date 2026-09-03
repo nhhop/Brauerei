@@ -17,8 +17,6 @@ SensActCtrl und BrewControl werden gemeinsam geplant, unabhängig davon, welches
 - **GPIO/LEDC-Leak-Fix (2026-08-14) ohne Hardware-Nachtest** — der Fix (`ledcDetachPin()` in `end()`, `removeActuator`/`removeSensor` rufen jetzt `end()`) ist umgesetzt, der praktische Nachtest („Pin nach Löschen ohne Reboot erneut mit Sensor belegen") blieb mangels Board offen.
 - **Frontend: keine gruppierte SensorCard für Multi-Channel-Sensoren** — HCSR04 und YF-S201 erzeugen je 2 separate Karten (`tank.distance` / `tank.derived`, `flow.rate` / `flow.volume`). Verbesserung: `app.tsx` gruppiert Snapshot-Einträge nach Base-ID, eine Karte pro logischem Sensor mit mehreren Kanal-Zeilen; Delete-Button und Zähler zeigen dann logische Sensoren statt Kanäle. Quick-Fix für korrektes Delete/Reset ist drin (2026-05-30). ⚠️ Voraussetzung für „Gradienten/Ableitungen".
 - **`pio device monitor` auf TinyUSB-CDC unter Windows instabil** (ESP32-S2 und -S3): Monitor verliert sporadisch Output. Workaround: PowerShell-Skript mit `System.IO.Ports.SerialPort`, DTR/RTS-Toggle für Reset, `ReadExisting()`-Loop (siehe `BrewControl/README.md`). Mögliche Permanent-Fixes: `--filter direct`, anderes Terminal (PuTTY/Tera Term), Monitor-Reconnect-Tuning.
-- **Settings-UI: zwei UI-Zustände nicht praktisch verifiziert** (2026-09-03) — beide typgeprüft und aus derselben Komponente wie verifizierte Fälle: (a) Empty-State der Geräteliste (`DevicesPage`, „Noch keine Geräte konfiguriert…") — Testboard hatte immer Items; (b) `Spinner` im `ConfirmModal` beim Bestätigen — Auslösen hätte gelöscht bzw. das Board rebootet. Bei nächster Gelegenheit am Gerät gegenchecken.
-- QEMU/Simulation ist nicht viable (keine WiFi-Emulation für ESP32) — Verifikation läuft immer am Gerät.
 
 ## Hardware-Verifikation offen
 
