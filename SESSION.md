@@ -887,9 +887,27 @@ Einstellungen. Dabei gefunden und gefixt: das `initial`-Objekt für den
 Profil-Editor wurde bei jedem Render neu erzeugt, wodurch der Hydration-Effekt
 erneut feuerte und Eingaben zurücksetzen konnte — jetzt `useMemo`.
 
-**Offen:** E2E gegen echte Firmware auf dem Board (Flashen steht noch aus) —
-Persistenz über Reboot, Backup-Roundtrip und Import eines Bundles ohne
-`profiles`-Sektion sind damit noch nicht am Gerät bestätigt.
+**HW-E2E** am LilyGo T-Display-S3-AMOLED (`brewcontrol.local` / 192.168.178.87),
+Firmware `948c3c7` und UI-Paket per OTA eingespielt
+(`/api/update/firmware` + `/api/update/assets`, beide `200 ok`, Assets-Upload
+lief auf dem S3 wie erwartet durch): `GET /api/profiles` liefert direkt nach dem
+Flash `{"categories":[],"profiles":[]}`. Kategorie anlegen → `201 {"id":"34489e"}`
+(Format `^[0-9a-f]{6}$`, passt zur Spec), leerer Name → `400 invalid category`,
+Profil mit unbekannter Kategorie → `400 invalid profile`. Profil mit drei
+Schritten angelegt: der Schritt mit nicht-numerischem `setpoint` wurde still
+verworfen, `confirm` nur beim gesetzten Schritt emittiert, `name` beim leeren
+weggelassen. Umbenennen und Update je `204`, unbekannte Ids `404 not found` bzw.
+`404 not found or invalid`. `/config/profiles.json` (165 B) auf der SD, Inhalt
+identisch zur API-Antwort; nach einem Reboot (identische Firmware nochmal per OTA)
+sind Kategorie und Profil unverändert da. Kategorie löschen → `204`, Bibliothek
+danach leer (Kaskade greift). `GET /api/backup` enthält die `profiles`-Sektion in
+der erwarteten Form. Die vom Board servierte UI (`/profiles` als Deep-Link → 200
+über den SPA-Fallback) legt eine Kategorie an und zeigt Tab plus Empty-State,
+keine Konsolenfehler.
+
+**Offen:** Restore eines Bundles **ohne** `profiles`-Sektion (Import aus älterer
+Firmware) am Gerät — der Code-Pfad ist da und der Rest des Restores unverändert,
+der Test selbst steht noch aus.
 
 **Nebenbefund** (in `PLAN.md` → „Bugs & bekannte Einschränkungen" eingetragen,
 nicht mitgefixt): Programm-Ids sind `p_XXXXX`, die OpenAPI-Spec pinnt sie auf
