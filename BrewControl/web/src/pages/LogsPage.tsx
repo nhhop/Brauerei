@@ -10,8 +10,9 @@ import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { ToggleSwitch } from '../components/ToggleSwitch';
+import { Fab } from '../components/Fab';
 import { btnPrimary } from '../ui';
-import { Pencil, Trash2, LineChart } from 'lucide-preact';
+import { Pencil, Plus, Trash2, LineChart } from 'lucide-preact';
 
 export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [logs, setLogs] = useState<LogConfig[]>([]);
@@ -67,10 +68,11 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
       <header class="mb-6 flex items-center justify-between gap-3">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Logs & Charts' }]} />
         <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }}
-          class={btnPrimary}>
+          class={`${btnPrimary} hidden md:inline-flex`}>
           + Neues Log
         </button>
       </header>
+      <Fab icon={Plus} label="Neues Log" onClick={() => { setEditing(null); setEditorOpen(true); }} />
 
       {!loaded ? (
         <SkeletonList count={2} />

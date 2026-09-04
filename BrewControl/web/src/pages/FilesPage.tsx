@@ -6,8 +6,9 @@ import { PageShell } from '../components/PageShell';
 import { SkeletonBar } from '../components/Skeleton';
 import { Spinner } from '../components/Spinner';
 import { Breadcrumb } from '../components/Breadcrumb';
+import { SpeedDialFab } from '../components/Fab';
 import { btnPrimary, btnSecondary, inp } from '../ui';
-import { Folder, FileText, Download, Pencil, Trash2, ChevronRight, FolderPlus, Upload } from 'lucide-preact';
+import { Folder, FileText, Download, Pencil, Trash2, ChevronRight, FolderPlus, Plus, Upload } from 'lucide-preact';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -146,14 +147,14 @@ export function FilesPage(_: { path?: string }) {
         <div class="ml-auto flex items-center gap-2">
           <button type="button" onClick={() => { setCreatingFolder(true); setFolderName(''); }}
             disabled={dirProtected} title={dirProtected ? protectedTitle : undefined}
-            class={btnSecondary}>
-            <FolderPlus size={14} class="mr-1.5 -mt-0.5 inline" /> Ordner
+            class={`${btnSecondary} hidden items-center md:inline-flex`}>
+            <FolderPlus size={14} class="mr-1.5" /> Ordner
           </button>
           <button type="button" onClick={() => fileInput.current?.click()}
             disabled={dirProtected || uploadPct !== null}
             title={dirProtected ? protectedTitle : undefined}
-            class={btnPrimary}>
-            <Upload size={14} class="mr-1.5 -mt-0.5 inline" /> Hochladen
+            class={`${btnPrimary} hidden items-center md:inline-flex`}>
+            <Upload size={14} class="mr-1.5" /> Hochladen
           </button>
           <input ref={fileInput} type="file" class="hidden"
             onChange={(e) => {
@@ -163,6 +164,16 @@ export function FilesPage(_: { path?: string }) {
             }} />
         </div>
       </div>
+      <SpeedDialFab icon={Plus} actions={[
+        {
+          icon: FolderPlus, label: 'Ordner', disabled: dirProtected,
+          onClick: () => { setCreatingFolder(true); setFolderName(''); },
+        },
+        {
+          icon: Upload, label: 'Hochladen', disabled: dirProtected || uploadPct !== null,
+          onClick: () => fileInput.current?.click(),
+        },
+      ]} />
 
       {uploadPct !== null && (
         <div class="mb-4 text-xs text-muted">
@@ -237,11 +248,11 @@ export function FilesPage(_: { path?: string }) {
                       </div>
                     ) : entry.dir ? (
                       <button type="button" onClick={() => setDir(full)}
-                        class="flex items-center gap-2 text-fg hover:underline">
+                        class="flex items-center gap-2 text-left text-fg hover:underline">
                         <Folder size={16} class="shrink-0 text-muted" /> {entry.name}
                       </button>
                     ) : (
-                      <span class="flex items-center gap-2">
+                      <span class="flex items-center gap-2 text-left">
                         <FileText size={16} class="shrink-0 text-muted" /> {entry.name}
                       </span>
                     )}

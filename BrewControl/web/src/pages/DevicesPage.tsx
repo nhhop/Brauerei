@@ -9,8 +9,9 @@ import { Spinner } from '../components/Spinner';
 import { AddItemModal } from '../components/AddItemModal';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
+import { Fab } from '../components/Fab';
 import { btnPrimary } from '../ui';
-import { Pencil, X, Gauge, SlidersHorizontal, Zap, type LucideIcon } from 'lucide-preact';
+import { Pencil, Plus, X, Gauge, SlidersHorizontal, Zap, type LucideIcon } from 'lucide-preact';
 
 type Role = 'sensor' | 'actuator' | 'controller';
 
@@ -74,10 +75,11 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
     <PageShell>
       <header class="flex items-center justify-between gap-3">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Geräte' }]} />
-        <button type="button" onClick={() => setAddOpen(true)} class={btnPrimary}>
+        <button type="button" onClick={() => setAddOpen(true)} class={`${btnPrimary} hidden md:inline-flex`}>
           + Hinzufügen
         </button>
       </header>
+      <Fab icon={Plus} label="Hinzufügen" onClick={() => setAddOpen(true)} />
 
       <div class="mt-6 space-y-4">
         {!snap && <SkeletonList count={3} />}
