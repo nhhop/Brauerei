@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, ProfileLibrary } from '../types';
 import {
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
   getLogs,
   getPrograms, createProgram, updateProgram, deleteProgram,
+  getProfiles, createProfile,
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
 import { ActuatorCard } from '../components/ActuatorCard';
@@ -14,9 +15,11 @@ import { ChartCard } from '../components/ChartCard';
 import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
 import { AddItemModal } from '../components/AddItemModal';
-import { DashboardMetaModal } from '../components/DashboardMetaModal';
+import { NameModal } from '../components/NameModal';
+import { TabBtn } from '../components/TabBtn';
 import { DashboardContentModal } from '../components/DashboardContentModal';
 import { ProgramEditorModal } from '../components/ProgramEditorModal';
+import { ProfileEditorModal } from '../components/ProfileEditorModal';
 import { Pencil, Check, Plus, X } from 'lucide-preact';
 
 type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
@@ -123,6 +126,13 @@ export function Dashboard({ snap, err }: {
   // ── Programs (create / edit / delete) ─────────────────────────────────────
   const [progEditorOpen, setProgEditorOpen] = useState(false);
   const [editingProg, setEditingProg] = useState<ProgramConfig | null>(null);
+  // Profile library — read-only here: fills a program's steps, and takes the
+  // current steps back as a new profile. No poll, profiles have no run state.
+  const [library, setLibrary] = useState<ProfileLibrary | null>(null);
+  const [profileDraft, setProfileDraft] = useState<{ name: string; steps: ProgramStep[] } | null>(null);
+
+  function refreshLibrary() { getProfiles().then(setLibrary).catch(() => {}); }
+  useEffect(() => { refreshLibrary(); }, []);
 
   function openCreateProgram() { setEditingProg(null); setProgEditorOpen(true); }
   function openEditProgram(p: ProgramConfig) { setEditingProg(p); setProgEditorOpen(true); }
@@ -230,8 +240,11 @@ export function Dashboard({ snap, err }: {
         editRole={editItem?.role}
       />
 
-      <DashboardMetaModal
+      <NameModal
         open={meta !== null}
+        title={meta === 'edit' ? 'Dashboard bearbeiten' : 'Neues Dashboard'}
+        submitLabel={meta === 'edit' ? 'Speichern' : 'Erstellen'}
+        placeholder="z.B. Maischen"
         initial={meta === 'edit' ? (activeDash ?? undefined) : undefined}
         onSave={meta === 'edit'
           ? (name) => { patchActiveDash({ name }); setMeta(null); }
@@ -261,9 +274,24 @@ export function Dashboard({ snap, err }: {
         open={progEditorOpen}
         snap={snap}
         initial={editingProg ?? undefined}
+        library={library ?? undefined}
+        onSaveAsProfile={setProfileDraft}
         onSave={saveProgram}
         onDelete={editingProg ? () => doDeleteProgram(editingProg.id) : undefined}
         onClose={() => { setProgEditorOpen(false); setEditingProg(null); }}
+      />
+
+      {/* Rendered after the program editor so it stacks on top of it. */}
+      <ProfileEditorModal
+        open={profileDraft !== null}
+        categories={library?.categories ?? []}
+        initial={profileDraft ?? undefined}
+        onSave={async (cfg) => {
+          await createProfile(cfg);
+          setProfileDraft(null);
+          refreshLibrary();
+        }}
+        onClose={() => setProfileDraft(null)}
       />
     </>
   );
@@ -373,22 +401,6 @@ export function Dashboard({ snap, err }: {
         </div>
       </div>
       {modals}
-    </div>
-  );
-}
-
-function TabBtn({ active, onClick, children }: {
-  active: boolean;
-  onClick: () => void;
-  children: ComponentChildren;
-}) {
-  return (
-    <div role="button" onClick={onClick}
-      class={`flex shrink-0 cursor-pointer select-none items-center gap-0 whitespace-nowrap border-b-2 px-3 pb-2 pt-1.5 text-sm transition-colors
-        ${active
-          ? 'border-accent font-medium text-fg'
-          : 'border-transparent text-muted hover:text-fg'}`}>
-      {children}
     </div>
   );
 }

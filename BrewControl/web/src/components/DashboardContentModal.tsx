@@ -19,7 +19,7 @@ interface Props {
 }
 
 // Content picker: check which sensors / actuators / controllers / charts /
-// programs the dashboard shows. Name & delete live in DashboardMetaModal.
+// programs the dashboard shows. Name & delete live in NameModal.
 export function DashboardContentModal({ open, snap, logs, programs, dash, onSave, onNewProgram, onClose }: Props) {
   const [sensors, setSensors] = useState<Set<string>>(new Set());
   const [actuators, setActuators] = useState<Set<string>>(new Set());

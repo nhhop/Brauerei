@@ -6,6 +6,7 @@ import { getSnapshot, subscribeEvents, getSettings } from './api';
 import { applyTheme, loadCachedTheme } from './theme';
 import { NavShell } from './components/NavShell';
 import { Dashboard } from './pages/Dashboard';
+import { ProfilesPage } from './pages/ProfilesPage';
 import { SettingsIndex } from './pages/SettingsIndex';
 import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
@@ -52,6 +53,7 @@ export function App() {
     <NavShell>
       <Router>
         <Dashboard path="/" snap={snap} err={err} />
+        <ProfilesPage path="/profiles" />
         <SettingsIndex path="/settings" />
         <AppearancePage path="/settings/appearance" />
         <DevicesPage path="/settings/devices" snap={snap} />

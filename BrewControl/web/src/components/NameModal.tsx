@@ -1,18 +1,21 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { DashboardConfig } from '../types';
 import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
 
 interface Props {
   open: boolean;
-  initial?: DashboardConfig;   // present = edit (rename + delete), absent = create
+  title: string;
+  submitLabel: string;
+  placeholder?: string;
+  initial?: { name: string };  // present = edit (rename + delete), absent = create
   onSave: (name: string) => void;
   onDelete?: () => void;
   onClose: () => void;
 }
 
-// Dashboard-level meta: create / rename, plus delete when editing. Content
-// (which sensors/charts/… are shown) lives in DashboardContentModal + card ×.
-export function DashboardMetaModal({ open, initial, onSave, onDelete, onClose }: Props) {
+// One-field name dialog: create / rename, plus delete when editing. Used for
+// dashboards (content lives in DashboardContentModal + card ×) and for profile
+// categories. Titles are passed in — German genders rule out deriving them.
+export function NameModal({ open, title, submitLabel, placeholder, initial, onSave, onDelete, onClose }: Props) {
   const [name, setName] = useState('');
 
   useEffect(() => { if (open) setName(initial?.name ?? ''); }, [open, initial]);
@@ -29,14 +32,12 @@ export function DashboardMetaModal({ open, initial, onSave, onDelete, onClose }:
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <form onSubmit={submit} class={`w-full max-w-sm ${dialogFrame}`}>
         <div class="p-6">
-          <h2 class="mb-4 text-base font-medium text-fg">
-            {initial ? 'Dashboard bearbeiten' : 'Neues Dashboard'}
-          </h2>
+          <h2 class="mb-4 text-base font-medium text-fg">{title}</h2>
           <label class="block">
             <span class="text-xs text-muted">Name</span>
             <input class={`mt-1 ${inp}`} value={name}
               onInput={(e) => setName((e.target as HTMLInputElement).value)}
-              placeholder="z.B. Maischen" autoFocus />
+              placeholder={placeholder} autoFocus />
           </label>
         </div>
 
@@ -47,7 +48,7 @@ export function DashboardMetaModal({ open, initial, onSave, onDelete, onClose }:
           <div class={dialogBtnRow}>
             <button type="button" onClick={onClose} class={btnSecondary}>Abbrechen</button>
             <button type="submit" disabled={!name.trim()} class={btnPrimary}>
-              {initial ? 'Speichern' : 'Erstellen'}
+              {submitLabel}
             </button>
           </div>
         </div>

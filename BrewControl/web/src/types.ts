@@ -164,6 +164,28 @@ export interface ProgramConfig {
   currentSetpoint?: number;
 }
 
+// ── Profile library ──────────────────────────────────────────────────────────
+// Wire format of GET /api/profiles. Reusable step templates, grouped into
+// user-defined categories. Steps are ProgramStep — applying a profile copies
+// them into a program. Mirrors ProfileStore in the firmware.
+
+export interface ProfileCategory {
+  id: string;
+  name: string;
+}
+
+export interface ProfileConfig {
+  id: string;
+  name: string;
+  category: string;       // ProfileCategory id; mandatory
+  steps: ProgramStep[];
+}
+
+export interface ProfileLibrary {
+  categories: ProfileCategory[];
+  profiles: ProfileConfig[];
+}
+
 // One plotted/logged channel. ref is "<role>/<snapshotId>", e.g.
 // "sensor/bme280.temp", "actuator/heizung", "controller/maische".
 export interface LogSeries {

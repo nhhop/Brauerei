@@ -152,11 +152,11 @@ class PostJsonHandler : public AsyncWebHandler {
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
-             MqttService& mqtt, WebhookService& webhook, EspNowPublishService& espnow,
-             uint16_t port)
+             ProfileStore& profiles, MqttService& mqtt, WebhookService& webhook,
+             EspNowPublishService& espnow, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), logs_(logs), programs_(programs), mqtt_(mqtt),
-      webhook_(webhook), espnow_(espnow),
+      updater_(updater), logs_(logs), programs_(programs), profiles_(profiles),
+      mqtt_(mqtt), webhook_(webhook), espnow_(espnow),
       server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
@@ -641,6 +641,100 @@ void WebUI::begin() {
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
 
+  // ── Profile library ─────────────────────────────────────────────────────────
+  // Reusable step templates, grouped into categories. Applying a profile to a
+  // program copies its steps (see the web UI) — nothing here touches the
+  // registry, so no snapshot push.
+  server_.on("/api/profiles", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", profiles_.serialize());
+  });
+
+  // DELETE /api/profiles/:id
+  server_.addHandler(new DeletePrefixHandler("/api/profiles/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/profiles/"));
+        if (!profiles_.removeProfile(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        profiles_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/profiles/:id — update
+  server_.addHandler(new BodyPrefixHandler("/api/profiles/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String id = req->url().substring(strlen("/api/profiles/"));
+        if (!profiles_.updateProfile(id.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found or invalid");
+          return;
+        }
+        profiles_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/profiles — create
+  server_.addHandler(new PostJsonHandler("/api/profiles",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = profiles_.addProfile(json.as<JsonObject>());
+        if (id.isEmpty()) {
+          req->send(400, "text/plain", "invalid profile");
+          return;
+        }
+        profiles_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
+  // Categories live on their own path stem so that neither the
+  // /api/profiles/ prefix handlers above nor a profile id can shadow them.
+  // No GET — the categories ride along in GET /api/profiles.
+
+  // DELETE /api/profile-categories/:id — also removes the profiles in it
+  server_.addHandler(new DeletePrefixHandler("/api/profile-categories/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/profile-categories/"));
+        if (!profiles_.removeCategory(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        profiles_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/profile-categories/:id — rename
+  server_.addHandler(new BodyPrefixHandler("/api/profile-categories/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String id = req->url().substring(strlen("/api/profile-categories/"));
+        if (!profiles_.updateCategory(id.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found or invalid");
+          return;
+        }
+        profiles_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/profile-categories — create
+  server_.addHandler(new PostJsonHandler("/api/profile-categories",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = profiles_.addCategory(json.as<JsonObject>());
+        if (id.isEmpty()) {
+          req->send(400, "text/plain", "invalid category");
+          return;
+        }
+        profiles_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
   // ── Settings ──────────────────────────────────────────────────────────────
   server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* req) {
     // Splice in live (non-persisted) state the settings store itself
@@ -864,7 +958,7 @@ void WebUI::begin() {
       });
 
   // ── Backup & Restore ───────────────────────────────────────────────────────
-  // GET: bundle the three /config stores into one downloadable JSON file.
+  // GET: bundle the /config stores into one downloadable JSON file.
   server_.on("/api/backup", HTTP_GET, [this](AsyncWebServerRequest* req) {
     String out = "{\"type\":\"brewcontrol-backup\",\"version\":1,"
                  "\"firmwareVersion\":\"";
@@ -877,6 +971,8 @@ void WebUI::begin() {
     out += store_.serialize();
     out += ",\"settings\":";
     out += settings_.serialize();
+    out += ",\"profiles\":";
+    out += profiles_.serialize();
     out += "}";
     AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", out);
     resp->addHeader("Content-Disposition",
@@ -884,7 +980,7 @@ void WebUI::begin() {
     req->send(resp);
   });
 
-  // POST: validate a backup bundle, overwrite the three /config files, reboot.
+  // POST: validate a backup bundle, overwrite the /config files, reboot.
   server_.addHandler(new PostJsonHandler("/api/backup",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
@@ -898,11 +994,18 @@ void WebUI::begin() {
         if (!o["registry"].is<JsonObject>())   { req->send(400, "text/plain", "missing registry");   return; }
         if (!o["dashboards"].is<JsonArray>())  { req->send(400, "text/plain", "missing dashboards");  return; }
         if (!o["settings"].is<JsonObject>())   { req->send(400, "text/plain", "missing settings");    return; }
+        // Optional: bundles written before the profile library have no
+        // "profiles" section and must stay importable.
+        const bool hasProfiles = !o["profiles"].isNull();
+        if (hasProfiles && !o["profiles"].is<JsonObject>()) {
+          req->send(400, "text/plain", "invalid profiles"); return;
+        }
 
         // Validation passed — only now touch the filesystem.
         if (!writeSection_("/config/registry.json",   o["registry"]) ||
             !writeSection_("/config/dashboards.json",  o["dashboards"]) ||
-            !writeSection_("/config/settings.json",    o["settings"])) {
+            !writeSection_("/config/settings.json",    o["settings"]) ||
+            (hasProfiles && !writeSection_("/config/profiles.json", o["profiles"]))) {
           req->send(500, "text/plain",
                     "write failed — config may be partially restored, re-import to recover");
           return;

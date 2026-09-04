@@ -258,6 +258,10 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/programs` | GET, POST | Sollwert-Programme auflisten / anlegen |
 | `/api/programs/<id>` | POST, DELETE | Programm ändern / löschen |
 | `/api/programs/<id>/control` | POST | `start`/`pause`/`resume`/`stop`/`next`/`prev` |
+| `/api/profiles` | GET, POST | Profil-Bibliothek (Kategorien + Profile) lesen / Profil anlegen |
+| `/api/profiles/<id>` | POST, DELETE | Profil ändern / löschen |
+| `/api/profile-categories` | POST | Kategorie anlegen |
+| `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
 | `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/ESP-NOW |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
 | `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |
@@ -265,7 +269,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/update/check` · `/install` | POST | Server-Pull: prüfen / installieren |
 | `/api/update/firmware` | POST | Firmware-`.bin` hochladen + flashen (rebootet) |
 | `/api/update/assets` | POST | UI-Paket `webui.tar` hochladen + entpacken |
-| `/api/backup` | GET, POST | Konfiguration exportieren / importieren (Import rebootet) |
+| `/api/backup` | GET, POST | Konfiguration (inkl. Profile) exportieren / importieren (Import rebootet) |
 | `/api/files` | GET, DELETE | Verzeichnis listen / Datei oder Ordner löschen |
 | `/api/files/download` · `/upload` | GET, POST | Datei herunterladen / hochladen |
 | `/api/files/mkdir` · `/rename` | POST | Verzeichnis anlegen / umbenennen |
