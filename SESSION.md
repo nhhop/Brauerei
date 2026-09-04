@@ -823,3 +823,128 @@ funktionieren, kein Doppel-Toggle. Alle Programm-Status durchgespielt
 Block reagieren korrekt. Desktop-Sidebar und Mehrfach-Programm-Fall ohne
 Regression. Acrylic-Effekt per `getComputedStyle` verifiziert
 (`backdrop-filter: blur(12px)`).
+
+## 2026-09-04 — Profil-Bibliothek („Profilmanager")
+
+Backlog-Punkt aus `PLAN.md` umgesetzt: wiederverwendbare Schritt-Vorlagen, die
+sich in ein Sollwert-Programm kopieren lassen, statt jede Maische-/Gärfolge neu
+einzutippen. Entscheidungen vorab mit dem User geklärt: Kategorien sind Pflicht
+und werden als Tabs auf der Profile-Seite verwaltet (gleiche Mechanik wie die
+Dashboard-Tabs), der Controller bleibt Sache des Programms, und ein Profil
+anzuwenden **ersetzt** die vorhandenen Schritte nach Rückfrage.
+
+**Firmware** — neuer `ProfileStore` (`firmware/src/ProfileStore.h/.cpp`) nach dem
+Vorbild `DashboardStore`: `SdLock`, Silent-Return bei fehlender/kaputter Datei,
+kein Mutex (nur REST-Handler im AsyncTCP-Task), Ids per `%06lx` wie Dashboards
+und Logs. Persistenz in `/config/profiles.json` als
+`{"categories":[…],"profiles":[…]}`; ein Profil ist `{id,name,category,steps[]}`
+mit derselben Step-Form wie ein Programm (`name?`,`setpoint`,`holdSec`,`confirm`),
+`name`/`confirm` werden beim Serialisieren weggelassen wenn leer/false. Kategorie
+ist Pflichtfeld, deshalb kaskadiert `removeCategory()` in die enthaltenen Profile.
+Routen in `WebUI.cpp` analog zum Dashboards-Block: `GET/POST /api/profiles`,
+`POST/DELETE /api/profiles/:id`, plus `POST /api/profile-categories` und
+`POST/DELETE /api/profile-categories/:id` — eigener Pfad-Stamm, damit weder der
+`/api/profiles/`-Prefix-Handler noch eine Profil-Id die Kategorien verschattet;
+kein eigenes GET, die Kategorien reisen in `GET /api/profiles` mit.
+
+**Backup** — `GET /api/backup` bündelt jetzt zusätzlich `/config/profiles.json`.
+Beim Restore ist die Sektion **optional** (Bundles älterer Firmware haben sie
+nicht und bleiben importierbar); fehlt sie, bleibt die Datei unangetastet.
+`version` bleibt 1, weil eine additive optionale Sektion keinen Konsumenten
+bricht.
+
+**Frontend** — neue Top-Level-Seite `/profiles` (`pages/ProfilesPage.tsx`,
+Gerüst aus `LogsPage`) mit Kategorie-Tabs, „Kategorien"-Edit-Modus (Stift am
+aktiven Tab, `+ Neu`), Profil-Rows mit „N Schritte · Dauer", Löschen über
+`ConfirmModal` — beim Kategorie-Löschen mit Anzahl der betroffenen Profile im
+Text. `components/ProfileEditorModal.tsx` ist der Schritt-Editor des Programms
+ohne Regler-Select, dafür mit Kategorie-Select und (anders als das Original)
+`pending`/`err`-State. Der `ProgramEditorModal` bekam zwei optionale Props:
+`library` für „Aus Profil befüllen" (Select mit `optgroup` je Kategorie,
+Rückfrage nur wenn schon Schritte erfasst sind) und `onSaveAsProfile` für die
+Gegenrichtung — das Dashboard rendert dafür den `ProfileEditorModal` als
+Geschwister nach dem Programm-Dialog, vorbefüllt mit Name und Schritten.
+Nav-Eintrag in `NavShell.mainItems` deckt Desktop-Rail und Hamburger-Drawer ab
+(dasselbe `<nav>`).
+
+Drei kleine Extraktionen, jeweils durch den zweiten Consumer ausgelöst:
+`TabBtn` aus `Dashboard.tsx` in `components/TabBtn.tsx`, `DashboardMetaModal` →
+`components/NameModal.tsx` (generisch über `title`/`submitLabel`/`placeholder`,
+`initial?: { name: string }`), und `fmtDuration` aus `ProgramCard.tsx`
+exportiert.
+
+**Verifikation:** `pio run -e esp32dev` und `-e lilygo_t_display_s3_amoled` grün;
+`npx @redocly/cli lint` valide (nur die bekannte `license`-Warnung);
+`pnpm typecheck` grün. UI-Flows im Dev-Server durchgespielt (Endpoints per
+In-Page-Stub bedient, da das Testboard noch die alte Firmware fährt): Kategorie
+anlegen/umbenennen, Profil anlegen (15 min → `holdSec` 900, Metazeile
+„1 Schritt · 15:00"), Profil in ein leeres Programm übernehmen (ohne Rückfrage)
+und in ein gefülltes (Rückfrage; Abbrechen lässt die Schritte stehen), Programm
+als Profil speichern (Schritte inkl. Namen landen im neuen Profil),
+Kategorie-Löschen mit Kaskade („… zusammen mit 2 Profilen darin") → Empty-State.
+Hamburger-Drawer im Mobil-Viewport zeigt „Profile" zwischen Dashboard und
+Einstellungen. Dabei gefunden und gefixt: das `initial`-Objekt für den
+Profil-Editor wurde bei jedem Render neu erzeugt, wodurch der Hydration-Effekt
+erneut feuerte und Eingaben zurücksetzen konnte — jetzt `useMemo`.
+
+**HW-E2E** am LilyGo T-Display-S3-AMOLED (`brewcontrol.local` / 192.168.178.87),
+Firmware `948c3c7` und UI-Paket per OTA eingespielt
+(`/api/update/firmware` + `/api/update/assets`, beide `200 ok`, Assets-Upload
+lief auf dem S3 wie erwartet durch): `GET /api/profiles` liefert direkt nach dem
+Flash `{"categories":[],"profiles":[]}`. Kategorie anlegen → `201 {"id":"34489e"}`
+(Format `^[0-9a-f]{6}$`, passt zur Spec), leerer Name → `400 invalid category`,
+Profil mit unbekannter Kategorie → `400 invalid profile`. Profil mit drei
+Schritten angelegt: der Schritt mit nicht-numerischem `setpoint` wurde still
+verworfen, `confirm` nur beim gesetzten Schritt emittiert, `name` beim leeren
+weggelassen. Umbenennen und Update je `204`, unbekannte Ids `404 not found` bzw.
+`404 not found or invalid`. `/config/profiles.json` (165 B) auf der SD, Inhalt
+identisch zur API-Antwort; nach einem Reboot (identische Firmware nochmal per OTA)
+sind Kategorie und Profil unverändert da. Kategorie löschen → `204`, Bibliothek
+danach leer (Kaskade greift). `GET /api/backup` enthält die `profiles`-Sektion in
+der erwarteten Form. Die vom Board servierte UI (`/profiles` als Deep-Link → 200
+über den SPA-Fallback) legt eine Kategorie an und zeigt Tab plus Empty-State,
+keine Konsolenfehler.
+
+**Dabei gefunden:** `POST /api/backup` scheiterte an jedem realistischen Bündel
+mit `413 body too large` — siehe den eigenen Eintrag unten, der Fix kam direkt
+hinterher. Danach ist auch der Optional-Pfad für `profiles` am Gerät bestätigt.
+
+**Nebenbefund** (in `PLAN.md` → „Bugs & bekannte Einschränkungen" eingetragen,
+nicht mitgefixt): Programm-Ids sind `p_XXXXX`, die OpenAPI-Spec pinnt sie auf
+`^[0-9a-f]{6}$`; `Program.currentStep` ist als „-1 while idle" dokumentiert,
+der Code setzt `0`.
+
+## 2026-09-04 — Fix: `POST /api/backup` (Restore) scheiterte an jedem realen Bündel
+
+**Root Cause:** `PostJsonHandler::handleBody()` und `BodyPrefixHandler::handleBody()`
+(`firmware/src/WebUI.cpp`) akzeptierten nur Bodies, die in einem Stück ankommen
+(`index == 0 && len == total`), und lehnten alles andere mit `413 body too large`
+ab — es gab keine Body-Akkumulation. ESPAsyncWebServer liefert den Body aber
+segmentweise, also scheitert jeder Request, der nicht in ein TCP-Segment passt
+(~1,4 KB inkl. Header). Beim Backup-Restore steckt die ganze `/config` im Body:
+das Bündel des LilyGo S3 ist 1656 B, der Restore war damit **unbenutzbar** —
+auch über die UI, denn `restoreBackup()` (`web/src/api.ts`) postet dasselbe JSON.
+Am Gerät eingegrenzt mit unschädlichen Proben (ungültiger `type`, wird vor jedem
+Schreibzugriff abgewiesen): 1284 B → `400 not a brewcontrol backup`, ab 1384 B →
+`413`. Vorbestehend; die Profil-Bibliothek hat das Bündel nur vergrößert.
+
+**Umsetzung:** neuer Helper `collectBody()` im anonymen Namespace von `WebUI.cpp`,
+beide Handler nutzen ihn. Einzel-Chunk-Bodies — der Normalfall für die kleinen
+API-Payloads — gehen weiterhin ohne Kopie durch; größere sammeln sich in
+`request->_tempObject`, das der Request-Destruktor freigibt (dasselbe Verfahren
+wie im bibliothekseigenen `AsyncCallbackJsonWebHandler`). Obergrenze
+`kMaxBodyBytes = 16384`; darüber weiterhin `413`, bei fehlgeschlagenem `malloc`
+`500 out of memory`. `openapi.yaml`: `BodyTooLarge` neu beschrieben (nicht mehr
+„kam nicht in einem Stück an", sondern „über 16 KB"), `/api/backup` um die bis
+dahin gar nicht dokumentierte `413` und den `out of memory`-Fall ergänzt.
+
+**Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün, `redocly lint`
+valide. Am Board (Firmware per OTA): Proben 1368 B / 1684 B / 4984 B / 15984 B
+kommen jetzt alle an (`400`, d.h. Body geparst), 16984 B → `413` wie vorgesehen.
+Restore des Pre-OTA-Bündels **ohne** `profiles`-Sektion (1656 B) → `200 ok`,
+Reboot, Dashboards und Settings restauriert, `/config/profiles.json` unangetastet
+und die Bibliothek unverändert — der Optional-Pfad hält. Voller Roundtrip mit
+einem Bündel **mit** Profilen (1872 B): exportieren, alle Kategorien löschen,
+importieren → Kategorien und Profil kommen unverändert zurück. Randnotiz: die
+allererste Anfrage direkt nach einem Boot lief einmal in ein `413`, danach nicht
+mehr reproduzierbar — nicht weiter verfolgt.

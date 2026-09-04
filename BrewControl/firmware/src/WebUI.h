@@ -13,6 +13,7 @@
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
 #include "MqttService.h"
+#include "ProfileStore.h"
 #include "ProgramRunner.h"
 #include "SdTarSink.h"
 #include "SettingsStore.h"
@@ -58,6 +59,13 @@ namespace BrewControl {
 //   POST /api/programs/<id>                — update setpoint program
 //   DELETE /api/programs/<id>              — remove setpoint program
 //   POST /api/programs/<id>/control        — {"action":start|pause|resume|stop|next|prev}
+//   GET  /api/profiles                     — profile library {categories,profiles}
+//   POST /api/profiles                     — create profile
+//   POST /api/profiles/<id>                — update profile
+//   DELETE /api/profiles/<id>              — remove profile
+//   POST /api/profile-categories           — create profile category
+//   POST /api/profile-categories/<id>      — rename profile category
+//   DELETE /api/profile-categories/<id>    — remove category and its profiles
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
 //   GET  /api/files?path=<dir>             — list directory entries (JSON)
 //   GET  /api/files/download?path=<file>   — download one file (attachment)
@@ -76,8 +84,9 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        LogStore& logs, ProgramRunner& programs, MqttService& mqtt,
-        WebhookService& webhook, EspNowPublishService& espnow, uint16_t port = 80);
+        LogStore& logs, ProgramRunner& programs, ProfileStore& profiles,
+        MqttService& mqtt, WebhookService& webhook,
+        EspNowPublishService& espnow, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -107,6 +116,7 @@ class WebUI {
   FirmwareUpdater& updater_;
   LogStore& logs_;
   ProgramRunner& programs_;
+  ProfileStore& profiles_;
   MqttService& mqtt_;
   WebhookService& webhook_;
   EspNowPublishService& espnow_;

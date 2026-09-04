@@ -15,8 +15,9 @@ info:
 
     **Conventions**
     - Successful mutations answer `204 No Content` with an empty body.
-      Exceptions: the three create endpoints (`/api/dashboards`, `/api/logs`,
-      `/api/programs`) answer `201` with `{"id": …}`; multipart uploads and
+      Exceptions: the five create endpoints (`/api/dashboards`, `/api/logs`,
+      `/api/programs`, `/api/profiles`, `/api/profile-categories`) answer `201`
+      with `{"id": …}`; multipart uploads and
       `POST /api/backup` answer `200 text/plain` with the body `ok`;
       `/api/update/check` and `/api/update/install` answer `202`.
     - **Errors are `text/plain`, not JSON** — the body is the bare message.
@@ -59,6 +60,11 @@ tags:
     description: Time-series logging of sensor/actuator values to CSV sessions.
   - name: Setpoint Programs
     description: Multi-step setpoint schedules driving a controller.
+  - name: Profiles
+    description: |
+      Reusable step templates ("Maischeplan", "Gaerverlauf") grouped into
+      user-defined categories. Applying a profile copies its steps into a
+      program; nothing here references a controller or runs.
   - name: Settings
     description: Theme, time, firmware channel and remote-transport settings.
   - name: Network
@@ -712,6 +718,115 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
+  # ── Profile Library ────────────────────────────────────────────────────────
+  /api/profiles:
+    get:
+      tags: [Profiles]
+      operationId: listProfiles
+      summary: Get the profile library
+      description: The categories ride along here; they have no GET of their own.
+      responses:
+        "200":
+          description: All categories and profiles.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileLibrary" }
+    post:
+      tags: [Profiles]
+      operationId: createProfile
+      summary: Create a profile
+      description: |
+        Requires `Content-Type: application/json`. Needs a non-empty `name`, a
+        `category` that exists and at least one step with a finite `setpoint`;
+        steps without a valid `setpoint` are silently skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfileInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Created" }
+        "400":
+          description: Body is `invalid profile`.
+          content:
+            text/plain: { schema: { type: string, const: invalid profile } }
+
+  /api/profiles/{id}:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Profiles]
+      operationId: updateProfile
+      summary: Replace a profile's definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfileInput" }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404":
+          description: Body is `not found or invalid`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Profiles]
+      operationId: deleteProfile
+      summary: Delete a profile
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/profile-categories:
+    post:
+      tags: [Profiles]
+      operationId: createProfileCategory
+      summary: Create a profile category
+      description: |
+        Requires `Content-Type: application/json`. Needs a non-empty `name`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfileCategoryInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Created" }
+        "400":
+          description: Body is `invalid category`.
+          content:
+            text/plain: { schema: { type: string, const: invalid category } }
+
+  /api/profile-categories/{id}:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Profiles]
+      operationId: updateProfileCategory
+      summary: Rename a profile category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProfileCategoryInput" }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404":
+          description: Body is `not found or invalid`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Profiles]
+      operationId: deleteProfileCategory
+      summary: Delete a profile category and every profile in it
+      description: |
+        Cascades: the category is a mandatory field on a profile, so its
+        profiles are removed with it.
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── Settings ───────────────────────────────────────────────────────────────
   /api/settings:
     get:
@@ -963,9 +1078,10 @@ paths:
       operationId: exportBackup
       summary: Export the full device configuration
       description: |
-        Bundles `/config/registry.json`, `/config/dashboards.json` and
-        `/config/settings.json` into one downloadable file. `firmwareVersion`
-        and `variant` are informational — they are ignored on import.
+        Bundles `/config/registry.json`, `/config/dashboards.json`,
+        `/config/settings.json` and `/config/profiles.json` into one
+        downloadable file. `firmwareVersion` and `variant` are informational —
+        they are ignored on import.
       responses:
         "200":
           description: Backup bundle.
@@ -998,13 +1114,17 @@ paths:
           description: |
             Body is `invalid JSON`, `not a brewcontrol backup`,
             `unsupported backup version`, `missing registry`,
-            `missing dashboards` or `missing settings`. Nothing was written.
+            `missing dashboards`, `missing settings` or `invalid profiles`.
+            Nothing was written.
           content:
             text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500":
           description: |
-            A write failed midway. Body is
-            `write failed — config may be partially restored, re-import to recover`.
+            A write failed midway (body
+            `write failed — config may be partially restored, re-import to recover`)
+            or the firmware could not allocate the buffer for the incoming
+            bundle (`out of memory`).
           content:
             text/plain: { schema: { type: string } }
 
@@ -1272,8 +1392,9 @@ components:
 
     BodyTooLarge:
       description: |
-        Body is `body too large` — the request body did not arrive in a single
-        chunk. API payloads are expected to stay well below 4 KB.
+        Body is `body too large` — the request body exceeds the 16 KB the
+        firmware buffers. Bodies spanning several TCP segments are collected
+        first, so only genuinely oversized payloads are rejected.
       content:
         text/plain: { schema: { type: string, const: body too large } }
 
@@ -1748,6 +1869,57 @@ components:
             Derived, clamped at 0. Present only while `currentStep` addresses a
             real step.
 
+    # ── Profile Library ──────────────────────────────────────────────────────
+    ProfileCategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+
+    ProfileCategory:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        name: { type: string }
+
+    ProfileInput:
+      type: object
+      required: [name, category, steps]
+      properties:
+        name: { type: string, minLength: 1 }
+        category:
+          type: string
+          description: Id of an existing ProfileCategory. Mandatory.
+        steps:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ProgramStep" }
+          description: |
+            Same step shape as a program's — applying a profile copies these
+            into a program. Steps without a finite `setpoint` are silently
+            skipped.
+
+    Profile:
+      type: object
+      required: [id, name, category, steps]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        name: { type: string }
+        category: { type: string, pattern: "^[0-9a-f]{6}$" }
+        steps: { type: array, items: { $ref: "#/components/schemas/ProgramStep" } }
+
+    ProfileLibrary:
+      type: object
+      required: [categories, profiles]
+      properties:
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/ProfileCategory" }
+        profiles:
+          type: array
+          items: { $ref: "#/components/schemas/Profile" }
+
     # ── Settings ─────────────────────────────────────────────────────────────
     ThemeSettings:
       type: object
@@ -1956,6 +2128,12 @@ components:
           description: |
             Same shape as `GET /api/settings`, except `mqtt.password` is
             included in cleartext — a backup must be self-contained for restore.
+        profiles:
+          allOf: [{ $ref: "#/components/schemas/ProfileLibrary" }]
+          description: |
+            Optional — absent in bundles written by firmware from before the
+            profile library. On import a missing section leaves
+            `/config/profiles.json` untouched.
 
     # ── Files ────────────────────────────────────────────────────────────────
     FileEntry:

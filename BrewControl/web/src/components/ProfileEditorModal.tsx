@@ -1,27 +1,26 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, ProgramConfig, ProgramStep, ProfileLibrary } from '../types';
+import type { ProfileCategory, ProfileConfig, ProgramStep } from '../types';
 import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
-import { ConfirmModal } from './ConfirmModal';
 
-type SaveCfg = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
+type SaveCfg = Pick<ProfileConfig, 'name' | 'category' | 'steps'>;
 
 interface Props {
   open: boolean;
-  snap: Snapshot | null;
-  initial?: ProgramConfig;
-  // Profile library, for filling the steps from a saved template and for
-  // saving the current steps back as one. Both optional — without them the
-  // dialog behaves exactly as before.
-  library?: ProfileLibrary;
-  onSaveAsProfile?: (draft: { name: string; steps: ProgramStep[] }) => void;
-  onSave: (cfg: SaveCfg) => void;
+  categories: ProfileCategory[];
+  // Prefilled values. With editing=false this is a draft (e.g. "save this
+  // program as a profile"), with editing=true the profile being edited.
+  initial?: { name?: string; category?: string; steps?: ProgramStep[] };
+  editing?: boolean;
+  onSave: (cfg: SaveCfg) => Promise<void>;
   onDelete?: () => void;
   onClose: () => void;
 }
 
 // Step row in edit form: values kept as strings so in-progress input survives
 // re-renders; parsed on submit. Hold time is entered in minutes (decimals
-// allowed → short values usable for testing) and stored as seconds.
+// allowed → short values usable for testing) and stored as seconds. Same model
+// as ProgramEditorModal — a profile is a program's steps without the controller
+// and without any runtime state.
 interface Row {
   name: string;
   setpoint: string;
@@ -42,25 +41,24 @@ function emptyRow(): Row {
   return { name: '', setpoint: '', holdMin: '', confirm: false };
 }
 
-export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfile, onSave, onDelete, onClose }: Props) {
+export function ProfileEditorModal({ open, categories, initial, editing, onSave, onDelete, onClose }: Props) {
   const [name, setName] = useState('');
-  const [controller, setController] = useState('');
+  const [category, setCategory] = useState('');
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
-  // Profile whose steps are waiting for a replace confirmation.
-  const [pendingProfile, setPendingProfile] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setName(initial?.name ?? '');
-      setController(initial?.controller ?? '');
-      setRows(initial?.steps.length ? initial.steps.map(toRow) : [emptyRow()]);
-      setPendingProfile(null);
+      setCategory(initial?.category ?? '');
+      setRows(initial?.steps?.length ? initial.steps.map(toRow) : [emptyRow()]);
+      setPending(false);
+      setErr(null);
     }
   }, [open, initial]);
 
   if (!open) return null;
-
-  const controllerIds = (snap?.controllers ?? []).map((c) => c.id);
 
   function patchRow(i: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -77,21 +75,6 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
     });
   }
 
-  // Applying a profile copies its steps — the program stays independent of the
-  // library afterwards. Replaces what's there, after asking if anything is.
-  function applyProfile(id: string) {
-    const p = library?.profiles.find((x) => x.id === id);
-    if (!p) return;
-    setRows(p.steps.length ? p.steps.map(toRow) : [emptyRow()]);
-  }
-
-  function pickProfile(id: string) {
-    if (!id) return;
-    const filled = rows.some((r) => r.name.trim() !== '' || r.setpoint.trim() !== '' || r.holdMin.trim() !== '');
-    if (filled) setPendingProfile(id);
-    else applyProfile(id);
-  }
-
   const steps: ProgramStep[] = rows
     .map((r) => ({
       name: r.name.trim(),
@@ -102,12 +85,19 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
     .filter((s) => isFinite(s.setpoint))
     .map((s) => (s.name ? s : { ...s, name: undefined }));
 
-  const valid = name.trim() !== '' && controller !== '' && steps.length > 0;
+  const valid = name.trim() !== '' && category !== '' && steps.length > 0;
 
-  function handleSubmit(e: Event) {
+  async function handleSubmit(e: Event) {
     e.preventDefault();
-    if (!valid) return;
-    onSave({ name: name.trim(), controller, steps });
+    if (!valid || pending) return;
+    setPending(true);
+    setErr(null);
+    try {
+      await onSave({ name: name.trim(), category, steps });
+    } catch (e2) {
+      setErr(String(e2));
+      setPending(false);
+    }
   }
 
   return (
@@ -115,7 +105,7 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
       <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-lg ${dialogFrame}`}>
         <div class="min-h-0 overflow-y-auto p-6">
         <h2 class="mb-4 text-base font-medium text-fg">
-          {initial ? 'Programm bearbeiten' : 'Neues Programm'}
+          {editing ? 'Profil bearbeiten' : 'Neues Profil'}
         </h2>
 
         <div class="mb-4 flex gap-3">
@@ -126,41 +116,17 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
               placeholder="z.B. Pils-Maische" autoFocus />
           </label>
           <label class="block flex-1">
-            <span class="text-xs text-muted">Regler</span>
+            <span class="text-xs text-muted">Kategorie</span>
             <select class={`mt-1 ${inp}`}
-              value={controller}
-              onChange={(e) => setController((e.target as HTMLSelectElement).value)}>
+              value={category}
+              onChange={(e) => setCategory((e.target as HTMLSelectElement).value)}>
               <option value="">— wählen —</option>
-              {controllerIds.map((id) => <option key={id} value={id}>{id}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
         </div>
 
-        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span class="text-xs font-medium uppercase tracking-wide text-muted">Schritte</span>
-          {library && library.profiles.length > 0 && (
-            <label class="flex items-center gap-1.5 text-xs text-muted">
-              Aus Profil befüllen
-              <select class={`${inp} w-48`} value=""
-                onChange={(e) => {
-                  const sel = e.target as HTMLSelectElement;
-                  pickProfile(sel.value);
-                  sel.value = '';
-                }}>
-                <option value="">— wählen —</option>
-                {library.categories.map((c) => {
-                  const inCat = library.profiles.filter((p) => p.category === c.id);
-                  if (inCat.length === 0) return null;
-                  return (
-                    <optgroup key={c.id} label={c.name}>
-                      {inCat.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </optgroup>
-                  );
-                })}
-              </select>
-            </label>
-          )}
-        </div>
+        <div class="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Schritte</div>
         <div class="space-y-2">
           {rows.map((r, i) => (
             <div key={i} class="rounded-md border border-border p-2">
@@ -209,42 +175,31 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
           + Schritt hinzufügen
         </button>
 
+        {categories.length === 0 && (
+          <p class="mt-3 text-xs text-muted">
+            Noch keine Kategorie vorhanden — lege zuerst eine an.
+          </p>
+        )}
+        {err && <p class="mt-3 text-xs text-critical">{err}</p>}
+
         </div>
 
         <div class={`${dialogFooter} justify-between`}>
-          <div class="flex items-center gap-4">
-            {onDelete && (
-              <button type="button" onClick={onDelete} class={linkDanger}>
-                Löschen
-              </button>
-            )}
-            {onSaveAsProfile && (
-              <button type="button" disabled={steps.length === 0}
-                onClick={() => onSaveAsProfile({ name: name.trim(), steps })}
-                class="text-sm text-muted transition-colors hover:text-fg disabled:opacity-40">
-                Als Profil speichern
-              </button>
-            )}
-          </div>
+          {onDelete ? (
+            <button type="button" onClick={onDelete} class={linkDanger}>
+              Löschen
+            </button>
+          ) : <span />}
           <div class={dialogBtnRow}>
             <button type="button" onClick={onClose} class={btnSecondary}>
               Abbrechen
             </button>
-            <button type="submit" disabled={!valid} class={btnPrimary}>
-              {initial ? 'Speichern' : 'Erstellen'}
+            <button type="submit" disabled={!valid || pending} class={btnPrimary}>
+              {pending ? 'Speichern…' : editing ? 'Speichern' : 'Erstellen'}
             </button>
           </div>
         </div>
       </form>
-
-      <ConfirmModal
-        open={pendingProfile !== null}
-        title="Schritte ersetzen?"
-        confirmLabel="Ersetzen"
-        onConfirm={() => { if (pendingProfile) applyProfile(pendingProfile); setPendingProfile(null); }}
-        onCancel={() => setPendingProfile(null)}>
-        Die vorhandenen Schritte werden durch die des Profils ersetzt.
-      </ConfirmModal>
     </div>
   );
 }

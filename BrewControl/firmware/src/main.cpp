@@ -26,6 +26,7 @@
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
 #include "MqttService.h"
+#include "ProfileStore.h"
 #include "ProgramRunner.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
@@ -62,10 +63,11 @@ BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(deviceFs, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
+BrewControl::ProfileStore profileStore;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
 BrewControl::EspNowPublishService espNowPublishService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, mqttService, webhookService, espNowPublishService);
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, profileStore, mqttService, webhookService, espNowPublishService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -229,6 +231,7 @@ void setup() {
     dashboardStore.loadFromSD(deviceFs);
     logStore.loadFromSD(deviceFs);
     programRunner.loadFromSD(deviceFs);
+    profileStore.loadFromSD(deviceFs);
   }
 
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),

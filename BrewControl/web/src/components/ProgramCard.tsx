@@ -16,7 +16,7 @@ interface Props {
   fill?: boolean;          // stretch to full column height on desktop (single program)
 }
 
-function fmtDuration(sec: number): string {
+export function fmtDuration(sec: number): string {
   if (!isFinite(sec) || sec < 0) sec = 0;
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);

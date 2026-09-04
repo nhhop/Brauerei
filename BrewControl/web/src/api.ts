@@ -1,4 +1,4 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, FileListing } from './types';
+import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing } from './types';
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -318,6 +318,54 @@ export async function deleteProgram(id: string): Promise<void> {
 
 export function controlProgram(id: string, action: ProgramAction): Promise<void> {
   return postJson(`/api/programs/${encodeURIComponent(id)}/control`, { action });
+}
+
+// ── Profile library ──────────────────────────────────────────────────────────
+
+type ProfileSave = Pick<ProfileConfig, 'name' | 'category' | 'steps'>;
+
+export async function getProfiles(): Promise<ProfileLibrary> {
+  const r = await fetch('/api/profiles');
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json() as Promise<ProfileLibrary>;
+}
+
+export async function createProfile(cfg: ProfileSave): Promise<string> {
+  const r = await fetch('/api/profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json() as { id: string }).id;
+}
+
+export function updateProfile(id: string, cfg: ProfileSave): Promise<void> {
+  return postJson(`/api/profiles/${encodeURIComponent(id)}`, cfg);
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  const r = await fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+}
+
+export async function createProfileCategory(name: string): Promise<string> {
+  const r = await fetch('/api/profile-categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json() as { id: string }).id;
+}
+
+export function updateProfileCategory(id: string, name: string): Promise<void> {
+  return postJson(`/api/profile-categories/${encodeURIComponent(id)}`, { name });
+}
+
+export async function deleteProfileCategory(id: string): Promise<void> {
+  const r = await fetch(`/api/profile-categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
 }
 
 // ── Bus discovery ────────────────────────────────────────────────────────────
