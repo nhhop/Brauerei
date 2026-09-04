@@ -905,19 +905,46 @@ der erwarteten Form. Die vom Board servierte UI (`/profiles` als Deep-Link → 2
 über den SPA-Fallback) legt eine Kategorie an und zeigt Tab plus Empty-State,
 keine Konsolenfehler.
 
-**Restore-Test blockiert — Nebenbefund:** Der Import eines Bündels ohne
-`profiles`-Sektion ließ sich am Gerät nicht durchspielen. `POST /api/backup`
-antwortet auf das reale Pre-OTA-Bündel des Boards (1656 B) mit
-`413 body too large`: `PostJsonHandler::handleBody()` nimmt nur Bodies an, die in
-einem Stück ankommen, und akkumuliert nicht. Mit unschädlichen Proben
-(ungültiger `type`, wird vor jedem Schreibzugriff abgelehnt) eingegrenzt: 1284 B
-→ `400 not a brewcontrol backup`, ab 1384 B → `413`. Der Restore ist damit für
-jede realistische Config unbenutzbar, auch über die UI (`restoreBackup()` postet
-dasselbe JSON). Vorbestehend, nicht durch die Profil-Bibliothek verursacht — die
-vergrößert das Bündel aber. In `PLAN.md` → „Bugs & bekannte Einschränkungen"
-eingetragen; der Optional-Pfad für `profiles` bleibt bis dahin ungetestet.
+**Dabei gefunden:** `POST /api/backup` scheiterte an jedem realistischen Bündel
+mit `413 body too large` — siehe den eigenen Eintrag unten, der Fix kam direkt
+hinterher. Danach ist auch der Optional-Pfad für `profiles` am Gerät bestätigt.
 
 **Nebenbefund** (in `PLAN.md` → „Bugs & bekannte Einschränkungen" eingetragen,
 nicht mitgefixt): Programm-Ids sind `p_XXXXX`, die OpenAPI-Spec pinnt sie auf
 `^[0-9a-f]{6}$`; `Program.currentStep` ist als „-1 while idle" dokumentiert,
 der Code setzt `0`.
+
+## 2026-09-04 — Fix: `POST /api/backup` (Restore) scheiterte an jedem realen Bündel
+
+**Root Cause:** `PostJsonHandler::handleBody()` und `BodyPrefixHandler::handleBody()`
+(`firmware/src/WebUI.cpp`) akzeptierten nur Bodies, die in einem Stück ankommen
+(`index == 0 && len == total`), und lehnten alles andere mit `413 body too large`
+ab — es gab keine Body-Akkumulation. ESPAsyncWebServer liefert den Body aber
+segmentweise, also scheitert jeder Request, der nicht in ein TCP-Segment passt
+(~1,4 KB inkl. Header). Beim Backup-Restore steckt die ganze `/config` im Body:
+das Bündel des LilyGo S3 ist 1656 B, der Restore war damit **unbenutzbar** —
+auch über die UI, denn `restoreBackup()` (`web/src/api.ts`) postet dasselbe JSON.
+Am Gerät eingegrenzt mit unschädlichen Proben (ungültiger `type`, wird vor jedem
+Schreibzugriff abgewiesen): 1284 B → `400 not a brewcontrol backup`, ab 1384 B →
+`413`. Vorbestehend; die Profil-Bibliothek hat das Bündel nur vergrößert.
+
+**Umsetzung:** neuer Helper `collectBody()` im anonymen Namespace von `WebUI.cpp`,
+beide Handler nutzen ihn. Einzel-Chunk-Bodies — der Normalfall für die kleinen
+API-Payloads — gehen weiterhin ohne Kopie durch; größere sammeln sich in
+`request->_tempObject`, das der Request-Destruktor freigibt (dasselbe Verfahren
+wie im bibliothekseigenen `AsyncCallbackJsonWebHandler`). Obergrenze
+`kMaxBodyBytes = 16384`; darüber weiterhin `413`, bei fehlgeschlagenem `malloc`
+`500 out of memory`. `openapi.yaml`: `BodyTooLarge` neu beschrieben (nicht mehr
+„kam nicht in einem Stück an", sondern „über 16 KB"), `/api/backup` um die bis
+dahin gar nicht dokumentierte `413` und den `out of memory`-Fall ergänzt.
+
+**Verifikation:** `pio run -e lilygo_t_display_s3_amoled` grün, `redocly lint`
+valide. Am Board (Firmware per OTA): Proben 1368 B / 1684 B / 4984 B / 15984 B
+kommen jetzt alle an (`400`, d.h. Body geparst), 16984 B → `413` wie vorgesehen.
+Restore des Pre-OTA-Bündels **ohne** `profiles`-Sektion (1656 B) → `200 ok`,
+Reboot, Dashboards und Settings restauriert, `/config/profiles.json` unangetastet
+und die Bibliothek unverändert — der Optional-Pfad hält. Voller Roundtrip mit
+einem Bündel **mit** Profilen (1872 B): exportieren, alle Kategorien löschen,
+importieren → Kategorien und Profil kommen unverändert zurück. Randnotiz: die
+allererste Anfrage direkt nach einem Boot lief einmal in ein `413`, danach nicht
+mehr reproduzierbar — nicht weiter verfolgt.

@@ -1118,10 +1118,13 @@ paths:
             Nothing was written.
           content:
             text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
         "500":
           description: |
-            A write failed midway. Body is
-            `write failed — config may be partially restored, re-import to recover`.
+            A write failed midway (body
+            `write failed — config may be partially restored, re-import to recover`)
+            or the firmware could not allocate the buffer for the incoming
+            bundle (`out of memory`).
           content:
             text/plain: { schema: { type: string } }
 
@@ -1389,8 +1392,9 @@ components:
 
     BodyTooLarge:
       description: |
-        Body is `body too large` — the request body did not arrive in a single
-        chunk. API payloads are expected to stay well below 4 KB.
+        Body is `body too large` — the request body exceeds the 16 KB the
+        firmware buffers. Bodies spanning several TCP segments are collected
+        first, so only genuinely oversized payloads are rejected.
       content:
         text/plain: { schema: { type: string, const: body too large } }
 

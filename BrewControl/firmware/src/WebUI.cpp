@@ -19,6 +19,12 @@ namespace {
 constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
 
+// Upper bound for a buffered request body (see collectBody). Sized for the
+// largest realistic payload, the backup bundle: the whole /config tree as one
+// JSON document. Allocated only for bodies that actually span several chunks,
+// and only for as long as the request lives.
+constexpr size_t kMaxBodyBytes = 16384;
+
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
   if (!buf) { *outLen = 0; return buf; }
@@ -41,10 +47,42 @@ std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen)
   return buf;
 }
 
+// Collects a request body that TCP delivered in more than one chunk.
+//
+// ESPAsyncWebServer hands the body to handleBody() segment by segment; anything
+// larger than one TCP segment (~1.4 KB including headers) therefore arrives in
+// pieces. Single-chunk bodies — the common case for the small API payloads —
+// are passed straight through without a copy; larger ones accumulate in
+// request->_tempObject, which the request destructor frees (same mechanism the
+// library's own AsyncCallbackJsonWebHandler uses).
+//
+// Returns the complete body once the last chunk arrived, `nullptr` while more
+// are pending or on error (the error response has been sent then). The body is
+// always `total` bytes long.
+const uint8_t* collectBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
+                           size_t index, size_t total) {
+  if (index == 0 && len == total) return data;  // single chunk — no copy
+  if (index == 0) {
+    if (total > kMaxBodyBytes) {
+      req->send(413, "text/plain", "body too large");
+      return nullptr;
+    }
+    req->_tempObject = malloc(total);
+    if (req->_tempObject == nullptr) {
+      req->send(500, "text/plain", "out of memory");
+      return nullptr;
+    }
+  }
+  if (req->_tempObject == nullptr) return nullptr;  // rejected on the first chunk
+  memcpy(static_cast<uint8_t*>(req->_tempObject) + index, data, len);
+  if (index + len < total) return nullptr;          // more to come
+  return static_cast<const uint8_t*>(req->_tempObject);
+}
+
 // Matches POST <prefix>* requests and delivers the body in a single call.
 // Used for write and create routes where the URL contains a path param or
-// the body must be parsed. For small API payloads (< kSnapshotCap) the body
-// always arrives in one chunk, so we reject multi-chunk deliveries (413).
+// the body must be parsed. Bodies spanning several TCP segments are collected
+// first (see collectBody); only bodies above kMaxBodyBytes are rejected (413).
 class BodyPrefixHandler : public AsyncWebHandler {
  public:
   using Cb = std::function<void(AsyncWebServerRequest*, const uint8_t*, size_t)>;
@@ -57,10 +95,8 @@ class BodyPrefixHandler : public AsyncWebHandler {
   void handleRequest(AsyncWebServerRequest*) override {}
   void handleBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
                   size_t index, size_t total) override {
-    if (index == 0 && len == total)
-      cb_(req, data, len);
-    else if (index == 0)
-      req->send(413, "text/plain", "body too large");
+    if (const uint8_t* body = collectBody(req, data, len, index, total))
+      cb_(req, body, total);
   }
   bool isRequestHandlerTrivial() const override { return false; }
 
@@ -105,8 +141,9 @@ class DeletePrefixHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
-// Matches exactly <path> (no sub-paths) and only POST: parses the JSON body in
-// one chunk and hands a JsonVariant to the callback. Every other method gets a
+// Matches exactly <path> (no sub-paths) and only POST: parses the JSON body
+// (collected first if it spans several TCP segments) and hands a JsonVariant to
+// the callback. Every other method gets a
 // 405. Replaces AsyncCallbackJsonWebHandler, whose default method set is
 // GET|POST|PUT|PATCH and whose prefix URI matcher made e.g. GET /api/sensors
 // fall into the create handler and answer "400 missing id".
@@ -128,12 +165,10 @@ class PostJsonHandler : public AsyncWebHandler {
   void handleBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
                   size_t index, size_t total) override {
     if (req->method() != HTTP_POST) return;  // handleRequest sends the 405
-    if (index != 0 || len != total) {
-      if (index == 0) req->send(413, "text/plain", "body too large");
-      return;
-    }
+    const uint8_t* body = collectBody(req, data, len, index, total);
+    if (body == nullptr) return;
     JsonDocument doc;
-    if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+    if (deserializeJson(doc, body, total) != DeserializationError::Ok) {
       req->send(400, "text/plain", "invalid JSON");
       return;
     }
