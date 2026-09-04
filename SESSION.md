@@ -776,3 +776,50 @@ Speed-Dial fährt in Dateiverwaltung korrekt aus, `disabled`-Zustand
 (`dirProtected`/laufender Upload) greift weiter. Ab `md:` (getestet bei
 1280×900) FAB weg, Header-Buttons wie vorher. Kein Hardware-Test nötig (reine
 Web-UI-Änderung).
+
+## 2026-09-04 — Programmsteuerung: mobiles Bottom Sheet mit Drag-Geste + Redesign
+
+Die `ProgramCard` (Programmsteuerung, z.B. Maischeprogramm mit
+Fortsetzen/Zurück/Weiter/Stop) saß bei genau einem Dashboard-Programm auf
+Mobile/Tablet `sticky` nahe dem oberen Rand — kollidierte beim Scrollen
+visuell mit Chart-Inhalten darunter, schlecht mit dem Daumen erreichbar, und
+die halbtransparente Fluent-Card (`bg-card`) ließ beliebigen Seiteninhalt
+durchscheinen (User-Report per Screenshot-Annotation).
+
+Umgebaut zu einem fixed Bottom Sheet (`components/ProgramCard.tsx`):
+opaker/Acrylic-Hintergrund (`bg-surface-acrylic` + `backdrop-blur-md`, wie
+die mobile `NavShell`-Kopfzeile — erst opak `bg-surface` versucht, dann auf
+Wunsch des Users auf Acrylic umgestellt, da der Blur das Bleed-Through-Problem
+löst ohne auf den Look verzichten zu müssen), abgerundete Oberkante,
+Drag-Handle mit echter Swipe-Geste (Pointer-Events: `beginDrag`/`moveDrag`/
+`endDrag`, `liveHeight`-State treibt `max-height` der Schrittliste live
+während des Ziehens; Tap ohne nennenswerte Bewegung togglet stattdessen
+direkt). `Dashboard.tsx` bekommt einen Bottom-Spacer, damit der fixed Sheet
+den letzten Seiteninhalt nicht dauerhaft verdeckt. Desktop (`lg+`, normale
+Sidebar-Card) und der Mehrfach-Programm-Fall (normale Inline-Card, kein
+Sheet) bleiben unverändert.
+
+Zusätzlich Redesign des Karteninhalts nach einem vom User gezeigten
+Claude-Design-Mockup (Optik only, alle bestehenden Aktionen/Zustände
+unverändert): Dokument-Icon + Status-Pill im Header (neuer `badgeAccent`-
+Token in `ui.ts` ersetzt das hartkodierte Sky-Blau des „pausiert“-Zustands),
+großer „Hero“-Block für den aktuellen Schritt (Schrittname, Countdown nur
+bei `running`, Zieltemperatur, dünner Fortschrittsbalken, „X / Y min“),
+nummerierte/Haken-Kreise in der Schrittliste, größere Icon-Buttons
+(Play/Pause/SkipBack/SkipForward/Square) in einer per CSS-Grid
+(`grid-flow-col auto-cols-fr`) gleichmäßig verteilten Zeile statt der alten
+Text-Glyph-Buttons in `flex-wrap` (die bei schmaler Spalte auf zwei Zeilen
+umbrachen und rechts Leerraum ließen). Die alte Mobile-Zusammenfassungs-Zeile
+(„Einmaischen · 68° · noch 5:16“) entfällt, sobald der Hero-Block sichtbar
+ist — reine Dopplung; bleibt für den Idle/Done-Fall (kein Hero) als einzige
+Info-Quelle erhalten. `var(--accent)` durchgängig statt hartkodierter Farben,
+bleibt mit der konfigurierbaren Akzentfarbe (`AppearancePage.tsx`) konsistent.
+
+**Verifikation.** `pnpm typecheck` grün. Drag-Geste per dispatchten
+`PointerEvent`s getestet (das Browser-Preview-Tool simuliert selbst keine
+echten Pointer-Events für Drag) — Hoch-/Runterziehen und reiner Tap
+funktionieren, kein Doppel-Toggle. Alle Programm-Status durchgespielt
+(inkl. echtem Pause/Resume-Zyklus am Testboard) — Badges, Buttons, Hero-
+Block reagieren korrekt. Desktop-Sidebar und Mehrfach-Programm-Fall ohne
+Regression. Acrylic-Effekt per `getComputedStyle` verifiziert
+(`backdrop-filter: blur(12px)`).
