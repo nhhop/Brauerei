@@ -32,6 +32,8 @@ export const badgeSuccess =
   `${badge} text-success bg-[color-mix(in_srgb,var(--success)_16%,transparent)]`;
 export const badgeCritical =
   `${badge} text-critical bg-[color-mix(in_srgb,var(--critical)_16%,transparent)]`;
+export const badgeAccent =
+  `${badge} text-accent bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]`;
 
 // Dialog frame — ContentDialog-style corner radius + elevation. A flex column
 // of content zone (scrolls when capped by max-h) + footer strip; padding lives

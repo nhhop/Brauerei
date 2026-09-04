@@ -284,6 +284,8 @@ export function Dashboard({ snap, err }: {
     </div>
   );
 
+  const hasProgramSheet = (activeDash?.programs?.length ?? 0) === 1;
+
   return (
     <div class="min-h-full bg-bg p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
       {header}
@@ -367,6 +369,7 @@ export function Dashboard({ snap, err }: {
               ))}
             </Column>
           </div>
+          {hasProgramSheet && <div aria-hidden class="h-40 lg:hidden" />}
         </div>
       </div>
       {modals}
