@@ -948,3 +948,31 @@ einem Bündel **mit** Profilen (1872 B): exportieren, alle Kategorien löschen,
 importieren → Kategorien und Profil kommen unverändert zurück. Randnotiz: die
 allererste Anfrage direkt nach einem Boot lief einmal in ein `413`, danach nicht
 mehr reproduzierbar — nicht weiter verfolgt.
+
+## 2026-09-05 — HW-Nachtest: GPIO/LEDC-Leak-Fix (2026-08-14)
+
+Der am 2026-08-14 umgesetzte Fix (`AnalogOutputActuator::end()` ruft
+`ledcDetachPin()`; `DynamicItems::removeSensor`/`removeActuator` rufen beim
+Löschen jetzt `end()`) hatte mangels Board keinen praktischen Nachtest —
+jetzt am `esp32dev`-Testboard (192.168.178.74, zu Testbeginn leere Registry)
+nachgeholt.
+
+**Aufbau:** `AnalogOutputActuator` (PWM) auf GPIO4 angelegt, Jumperkabel
+GPIO4 ↔ GPIO5, `DigitalInputSensor` mit `pullup:true` auf GPIO5 als Probe.
+Baseline bestätigt: Aktor-Werte `v:1`/`v:0` spiegeln sich sofort und exakt in
+der Probe — der aktive Push-Pull-Treiber überstimmt zuverlässig das schwache
+interne Pull-up in beide Richtungen.
+
+**Test:** Aktor bei `v:0` (GPIO4 aktiv LOW) ohne Reboot gelöscht. Direkt
+danach blieb die Probe bei LOW — erwartet, da nichts den Pin zwischenzeitlich
+auf `INPUT` umkonfiguriert (reines GPIO-Output-Register-Restverhalten, kein
+Leak-Indiz für sich). Erst der eigentliche Nachtest laut PLAN.md-Formulierung
+zeigt es: neuer `DigitalInputSensor` (`pullup:true`) exakt auf GPIO4 angelegt
+(derselbe Pin wie der gelöschte Aktor) — `pinMode(INPUT_PULLUP)` greift
+sauber, beide Pins (GPIO4 und die gejumperte Probe auf GPIO5) springen auf
+HIGH. Kein LEDC-Kanal überschreibt den Pin mehr trotz `pinMode`-Wechsel — das
+wäre bei unterbliebenem `ledcDetachPin()` der klassische ESP32-Fallstrick
+(GPIO-Matrix-Routing überlebt einen reinen `pinMode()`-Aufruf).
+
+**Ergebnis:** Fix bestätigt. Testsensoren wieder gelöscht, Board am Ende mit
+leerer Registry hinterlassen (Ausgangszustand). PLAN.md-Eintrag entfernt.
