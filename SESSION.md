@@ -905,9 +905,17 @@ der erwarteten Form. Die vom Board servierte UI (`/profiles` als Deep-Link → 2
 über den SPA-Fallback) legt eine Kategorie an und zeigt Tab plus Empty-State,
 keine Konsolenfehler.
 
-**Offen:** Restore eines Bundles **ohne** `profiles`-Sektion (Import aus älterer
-Firmware) am Gerät — der Code-Pfad ist da und der Rest des Restores unverändert,
-der Test selbst steht noch aus.
+**Restore-Test blockiert — Nebenbefund:** Der Import eines Bündels ohne
+`profiles`-Sektion ließ sich am Gerät nicht durchspielen. `POST /api/backup`
+antwortet auf das reale Pre-OTA-Bündel des Boards (1656 B) mit
+`413 body too large`: `PostJsonHandler::handleBody()` nimmt nur Bodies an, die in
+einem Stück ankommen, und akkumuliert nicht. Mit unschädlichen Proben
+(ungültiger `type`, wird vor jedem Schreibzugriff abgelehnt) eingegrenzt: 1284 B
+→ `400 not a brewcontrol backup`, ab 1384 B → `413`. Der Restore ist damit für
+jede realistische Config unbenutzbar, auch über die UI (`restoreBackup()` postet
+dasselbe JSON). Vorbestehend, nicht durch die Profil-Bibliothek verursacht — die
+vergrößert das Bündel aber. In `PLAN.md` → „Bugs & bekannte Einschränkungen"
+eingetragen; der Optional-Pfad für `profiles` bleibt bis dahin ungetestet.
 
 **Nebenbefund** (in `PLAN.md` → „Bugs & bekannte Einschränkungen" eingetragen,
 nicht mitgefixt): Programm-Ids sind `p_XXXXX`, die OpenAPI-Spec pinnt sie auf
