@@ -749,3 +749,30 @@ ersatzlos entfernt: die Alt-Notiz „QEMU/Simulation ist nicht viable" — das T
 ist abschließend geklärt (keine WiFi-Emulation für ESP32, Verifikation läuft
 immer am Gerät), die Historie steht in [SESSION-archive.md](SESSION-archive.md)
 (Pre-MVP 2026-05-17–20). Kein Code, kein API-Vertrag betroffen.
+
+## 2026-09-04 — Mobile FAB für Geräte/Logs-Hinzufügen und Datei-Upload
+
+Die primären Aktions-Buttons (Geräte „+ Hinzufügen", Logs „+ Neues Log",
+Dateiverwaltung „+ Ordner"/„Hochladen") saßen bislang nur im Seiten-Header —
+auf Mobilgeräten mit dem Daumen schlecht erreichbar. Neue Komponente
+`components/Fab.tsx` (`Fab` für Einzelaktion, `SpeedDialFab` für mehrere)
+ersetzt sie unterhalb `md:` (768px) durch einen fixed Bottom-Right-Button;
+ab `md:` bleiben die Header-Buttons unverändert, der FAB verschwindet.
+Dateiverwaltung bekommt echten Speed-Dial (Tap fährt „Ordner“ + „Hochladen“
+mit Labels aus). Eingebunden in `DevicesPage.tsx`, `LogsPage.tsx`,
+`FilesPage.tsx`.
+
+Dabei zwei Nebenbugs in `FilesPage.tsx` gefixt (User-Report per
+Screenshot-Annotation): die Icons in den „+ Ordner"/„Hochladen"-Buttons waren
+durch den Wechsel auf `hidden md:inline-flex` nicht mehr vertikal zentriert
+(alter `-mt-0.5 inline`-Hack passte nicht mehr zum jetzt flexen Container —
+gefixt mit `items-center` statt Margin-Hack); und lange Ordnernamen wurden bei
+Zeilenumbruch zentriert statt linksbündig dargestellt (Ursache: `<button>` hat
+laut Browser-UA-Stylesheet `text-align: center`, mit `text-left` übersteuert).
+
+**Verifikation.** `pnpm typecheck` grün. Alle drei Seiten im Browser-Preview
+(Mobile-Viewport 375×812) durchgeklickt: FAB öffnet Geräte-/Log-Modal direkt,
+Speed-Dial fährt in Dateiverwaltung korrekt aus, `disabled`-Zustand
+(`dirProtected`/laufender Upload) greift weiter. Ab `md:` (getestet bei
+1280×900) FAB weg, Header-Buttons wie vorher. Kein Hardware-Test nötig (reine
+Web-UI-Änderung).
