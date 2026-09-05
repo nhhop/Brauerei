@@ -208,6 +208,33 @@ void test_stop_autotune_idempotent_when_idle() {
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
 }
 
+void test_autotune_progress_starts_at_zero_cycles() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+
+  TEST_ASSERT_TRUE(c.setParamsJson("{\"autotune\":\"start\"}"));
+  char buf[384];
+  c.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesObserved\":0"));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesTotal\":10"));
+}
+
+void test_autotune_progress_reaches_full_when_done() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+
+  c.setParamsJson("{\"autotune\":\"start\"}");
+  step(s, c, 20.0f, 1000);  // nativ: isTuneMode() liefert sofort false -> completes
+
+  char buf[384];
+  c.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"done\""));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesObserved\":10"));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesTotal\":10"));
+}
+
 void setUp() { splitRangeSetMillisForTest(0); }
 void tearDown() {}
 
@@ -226,5 +253,7 @@ int main(int, char**) {
   RUN_TEST(test_autotune_start_with_method);
   RUN_TEST(test_autotune_stop_returns_to_idle);
   RUN_TEST(test_stop_autotune_idempotent_when_idle);
+  RUN_TEST(test_autotune_progress_starts_at_zero_cycles);
+  RUN_TEST(test_autotune_progress_reaches_full_when_done);
   return UNITY_END();
 }

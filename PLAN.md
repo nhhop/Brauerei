@@ -19,13 +19,14 @@ Jeder Punkt trägt am Ende eine Einschätzung *(Modell · Aufwand · Planmodus)*
 - **Frontend: keine gruppierte SensorCard für Multi-Channel-Sensoren** — HCSR04 und YF-S201 erzeugen je 2 separate Karten (`tank.distance` / `tank.derived`, `flow.rate` / `flow.volume`). Verbesserung: `app.tsx` gruppiert Snapshot-Einträge nach Base-ID, eine Karte pro logischem Sensor mit mehreren Kanal-Zeilen; Delete-Button und Zähler zeigen dann logische Sensoren statt Kanäle. Quick-Fix für korrektes Delete/Reset ist drin (2026-05-30). ⚠️ Voraussetzung für „Gradienten/Ableitungen". *(Sonnet · mittel · mit Plan — Datenmodell-Entscheidung, wie Gruppierung durchgereicht wird)*
 - **Programm-IDs und `currentStep` weichen von der OpenAPI-Spec ab** (gefunden 2026-09-04 beim Bau der Profil-Bibliothek). `ProgramRunner::generateId()` erzeugt `p_XXXXX` (`ProgramRunner.cpp:156`), die Spec pinnt Programm-Ids aber auf `HexId` `^[0-9a-f]{6}$` (`openapi.yaml` bei `/api/programs/{id}`, `Program.id`, `CreatedId`) — keine reale Programm-Id matcht das dokumentierte Pattern. Ebenso ist `Program.currentStep` als „-1 while idle" beschrieben, der Code setzt konsequent `0`. Reine Doku-Drift; Fix entweder Spec an den Code angleichen oder die ID-Erzeugung auf `%06lx` vereinheitlichen (betrifft nur neue Ids, bestehende Dashboard-Referenzen bleiben gültig). *(Sonnet · klein · ohne Plan)*
 - **`pio device monitor` auf TinyUSB-CDC unter Windows instabil** (ESP32-S2 und -S3): Monitor verliert sporadisch Output. Workaround: PowerShell-Skript mit `System.IO.Ports.SerialPort`, DTR/RTS-Toggle für Reset, `ReadExisting()`-Loop (siehe `BrewControl/README.md`). Mögliche Permanent-Fixes: `--filter direct`, anderes Terminal (PuTTY/Tera Term), Monitor-Reconnect-Tuning. *(Sonnet · klein · ohne Plan — Workaround existiert schon, nur Komfort)*
+- **AutoTunePID-Dependency zeigt auf ungetaggten `main`-Commit** (`SensActCtrl/library.json`, Commit `34c6f39`, Stand 2026-07-26) — `v1.1.6` bleibt die einzige veröffentlichte Version von `lily-osp/AutoTunePID` und enthält den alten, physikalisch bedeutungslosen Relay-Timer (siehe SESSION.md 2026-09-05). Arduino-IDE-Library-Manager-Nutzer (`library.properties`, nur Namensliste ohne Version) bekämen bei einer Standalone-Installation weiterhin `v1.1.6`. Beobachten, ob/wann `lily-osp/AutoTunePID` einen neuen Tag veröffentlicht, dann auf den Tag umstellen. *(Sonnet · klein · ohne Plan — nur Pin-Update, sobald ein Tag existiert)*
 
 ## Hardware-Verifikation offen
 
 - **SSR-Heizung unter Last mit Oszilloskop** — TPO-Schaltflanken prüfen. *(Sonnet · klein · ohne Plan)*
 - **IDS-Induktionskocher E2E** mit echter Hardware. *(Sonnet · klein · ohne Plan)*
 - **Gärsteuerung Dual-Output-Regler E2E am Gerät** — DualStage/SplitRangePID anlegen, beide Ausgänge live, Anti-Short-Cycle der Kühlstufe, Kühl-Aktor-Löschen-Block. *(Sonnet · mittel · ohne Plan — mehrere Szenarien, aber reine Verifikation)*
-- **PID-AutoTune E2E am Gerät** — Status idle→running→done, übernommene Gains, Abbruch. Ebenso **SplitRangePID-AutoTune E2E**. *(Sonnet · klein · ohne Plan)*
+- **PID-AutoTune E2E am Gerät** — Status idle→running→done, übernommene Gains, Abbruch, 3-Phasen-Stepper + %-Balken korrekt; insbesondere prüfen, dass ein echter Kessel/Maischebottich jetzt spürbar länger als die alten ~10 s braucht (Beleg, dass der Relay-Timing-Fix vom 2026-09-05 wirkt und nicht nur die UI-Zahlen kosmetisch sind). Ebenso **SplitRangePID-AutoTune E2E**. *(Sonnet · klein · ohne Plan)*
 
 ---
 
@@ -34,7 +35,6 @@ Jeder Punkt trägt am Ende eine Einschätzung *(Modell · Aufwand · Planmodus)*
 Grob nach Bereitschaft / Aufwand; Abhängigkeiten stehen inline. Jeder Punkt bekommt bei Bedarf eine eigene Spec → Plan → Implementierung.
 
 - **Sensor-Kalibrierung** — einheitliches Offset/Scale-Interface (ggf. Mehrpunkt) + UI; ersetzt die heutigen ad-hoc-Lösungen (HX711-`tare`, YF-S201-`calibration`, Analog-`setRange`). *(Opus · groß · mit Plan)*
-- **PID-AutoTune — Fortschrittsanzeige/Restzeit** für den laufenden Vorgang (braucht zusätzliche Backend-Instrumentierung; die aktuelle UI zeigt nur idle/running/done). *(Sonnet · mittel · mit Plan — Instrumentierungs-Ansatz klären)*
 - **Timer-Widget** — Dashboard-Element für Brau-Timings. *(Sonnet · mittel · mit Plan — UX/Datenmodell klären)*
 - **Gradienten/Ableitungen (Library)** — rate-of-change als zusätzlicher Channel (°C/min, K/min, L/min²). ⚠️ Erst nach gruppierter SensorCard (s. Bugs), da sonst noch mehr Einzelkarten pro Sensor entstehen. *(Opus · groß · mit Plan)*
 - **Alarme & Schwellwerte** — „Wert > X" → Warnung/Badge, baut auf `fault()` auf.

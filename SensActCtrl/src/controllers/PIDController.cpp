@@ -193,6 +193,10 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
   if (!buf || bufSize == 0) return 0;
   const char* state = autotuneCompleted_ ? "done"
                        : autotuneStarted_ ? "running" : "idle";
+  const int32_t cyclesTotal = engine_->autotuneOscillationSteps();
+  int32_t cyclesObserved = autotuneCompleted_ ? cyclesTotal
+                             : autotuneStarted_ ? engine_->autotuneObservedCycles() : 0;
+  if (cyclesObserved > cyclesTotal) cyclesObserved = cyclesTotal;
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,"
                          "\"Kd\":%.4f,\"Ku\":%.4f,\"Tu\":%.4f,"
@@ -200,12 +204,15 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
                          "\"sensor\":\"%s\",\"actuator\":\"%s\","
                          "\"enabled\":%s,"
                          "\"autotuneMethod\":\"%s\","
-                         "\"autotuneState\":\"%s\"}",
+                         "\"autotuneState\":\"%s\","
+                         "\"autotuneCyclesObserved\":%d,"
+                         "\"autotuneCyclesTotal\":%d}",
                          setpoint_, kp_, ki_, kd_, ku_, tu_,
                          minOutput_, maxOutput_,
                          sensor_->id(), actuator_->id(),
                          enabled() ? "true" : "false",
-                         tuningMethodName(tuningMethod_), state);
+                         tuningMethodName(tuningMethod_), state,
+                         cyclesObserved, cyclesTotal);
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;
   return static_cast<size_t>(n);
 }

@@ -45,7 +45,7 @@
     },
     {
       "name": "AutoTunePID",
-      "version": "https://github.com/lily-osp/AutoTunePID.git#v1.1.6"
+      "version": "https://github.com/lily-osp/AutoTunePID.git#34c6f39"
     },
     {
       "name": "PubSubClient",

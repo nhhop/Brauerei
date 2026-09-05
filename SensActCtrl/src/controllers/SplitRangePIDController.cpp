@@ -226,6 +226,10 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
   if (!buf || bufSize == 0) return 0;
   const char* state = autotuneCompleted_ ? "done"
                        : autotuneStarted_ ? "running" : "idle";
+  const int32_t cyclesTotal = engine_->autotuneOscillationSteps();
+  int32_t cyclesObserved = autotuneCompleted_ ? cyclesTotal
+                             : autotuneStarted_ ? engine_->autotuneObservedCycles() : 0;
+  if (cyclesObserved > cyclesTotal) cyclesObserved = cyclesTotal;
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,\"Kd\":%.4f,"
                          "\"Ku\":%.4f,\"Tu\":%.4f,\"deadband\":%.4f,"
@@ -233,6 +237,8 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
                          "\"heatActuator\":\"%s\",\"coolActuator\":\"%s\","
                          "\"enabled\":%s,\"autotuneMethod\":\"%s\","
                          "\"autotuneState\":\"%s\","
+                         "\"autotuneCyclesObserved\":%d,"
+                         "\"autotuneCyclesTotal\":%d,"
                          "\"heatOut\":%.4f,\"coolOut\":%.4f}",
                          setpoint_, kp_, ki_, kd_, ku_, tu_, deadband_,
                          static_cast<unsigned>(changeoverMs_),
@@ -241,6 +247,7 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
                          cool_ ? cool_->id() : "",
                          enabled() ? "true" : "false",
                          tuningMethodName(tuningMethod_), state,
+                         cyclesObserved, cyclesTotal,
                          heatOut_, coolOut_);
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;
   return static_cast<size_t>(n);

@@ -3,6 +3,7 @@ import { Pencil, X } from 'lucide-preact';
 import type { Controller, Sensor, Actuator } from '../types';
 import { setControllerSetpoint, enableController, writeActuator } from '../api';
 import { ToggleSwitch } from './ToggleSwitch';
+import { AutotuneProgress } from './AutotuneProgress';
 import { btnPrimary, inp } from '../ui';
 
 interface Props {
@@ -134,9 +135,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
 
       {isPid && autotuneState && (
         <div class="mt-3 border-t border-border/50 pt-3">
-          {autotuneState === 'running' && (
-            <span class="text-xs text-caution">AutoTune läuft…</span>
-          )}
+          {autotuneState === 'running' && <AutotuneProgress params={params} />}
           {autotuneState === 'done' && (
             <span class="text-xs text-success font-mono">
               Kp {Number(params?.Kp).toFixed(2)} · Ki {Number(params?.Ki).toFixed(2)} · Kd {Number(params?.Kd).toFixed(2)}

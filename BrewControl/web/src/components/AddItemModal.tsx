@@ -7,6 +7,7 @@ import {
 } from '../api';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
+import { AutotuneProgress } from './AutotuneProgress';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -1541,12 +1542,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
             <div class="border-t border-border/50 pt-3">
               <label class={lbl}>AutoTune</label>
               {autotuneState === 'running' ? (
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs text-caution">AutoTune läuft…</span>
-                  <button type="button" onClick={onStopAutotune} disabled={atBusy}
-                    class="rounded bg-fg/5 px-2 py-1 text-xs text-fg hover:bg-fg/10 disabled:opacity-50">
-                    Abbrechen
-                  </button>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-end">
+                    <button type="button" onClick={onStopAutotune} disabled={atBusy}
+                      class="rounded bg-fg/5 px-2 py-1 text-xs text-fg hover:bg-fg/10 disabled:opacity-50">
+                      Abbrechen
+                    </button>
+                  </div>
+                  <AutotuneProgress params={liveController?.params} />
                 </div>
               ) : (
                 <div class="space-y-2">

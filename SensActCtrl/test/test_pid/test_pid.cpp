@@ -75,7 +75,7 @@ void test_params_json_roundtrip() {
   pid.setSetpoint(65.0f);
   pid.setTunings(3.0f, 0.2f, 0.01f);
 
-  char buf[256];
+  char buf[384];
   size_t n = pid.paramsJson(buf, sizeof(buf));
   TEST_ASSERT_GREATER_THAN(0, n);
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"Kp\":3.0000"));
@@ -115,7 +115,7 @@ void test_autotune_start_runs_and_enables() {
   TEST_ASSERT_TRUE(pid.setParamsJson("{\"autotune\":\"start\"}"));
   TEST_ASSERT_TRUE(pid.enabled());  // Auto-Enable beim Start
 
-  char buf[256];
+  char buf[384];
   pid.paramsJson(buf, sizeof(buf));
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"running\""));
 }
@@ -127,7 +127,7 @@ void test_autotune_start_with_method() {
 
   TEST_ASSERT_TRUE(pid.setParamsJson(
       "{\"autotune\":\"start\",\"autotuneMethod\":\"CohenCoon\"}"));
-  char buf[256];
+  char buf[384];
   pid.paramsJson(buf, sizeof(buf));
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneMethod\":\"CohenCoon\""));
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"running\""));
@@ -140,7 +140,7 @@ void test_autotune_stop_returns_to_idle() {
 
   pid.setParamsJson("{\"autotune\":\"start\"}");
   pid.setParamsJson("{\"autotune\":\"stop\"}");
-  char buf[256];
+  char buf[384];
   pid.paramsJson(buf, sizeof(buf));
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
 }
@@ -150,9 +150,38 @@ void test_stop_autotune_idempotent_when_idle() {
   MockActuator a("o1", dutyMeta());
   PIDController pid("pid", s, a, 0.0f, 1.0f);
   pid.stopAutotune();  // kein laufender Tune → sicherer No-Op
-  char buf[256];
+  char buf[384];
   pid.paramsJson(buf, sizeof(buf));
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"idle\""));
+}
+
+void test_autotune_progress_starts_at_zero_cycles() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+
+  TEST_ASSERT_TRUE(pid.setParamsJson("{\"autotune\":\"start\"}"));
+  char buf[384];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesObserved\":0"));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesTotal\":10"));
+}
+
+void test_autotune_progress_reaches_full_when_done() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+
+  pid.setParamsJson("{\"autotune\":\"start\"}");
+  s.value = 65.0f;
+  s.tick();
+  pid.tick();  // nativ: isTuneMode() liefert sofort false -> completes
+
+  char buf[384];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneState\":\"done\""));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesObserved\":10"));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesTotal\":10"));
 }
 
 void setUp() {}
@@ -169,5 +198,7 @@ int main(int, char**) {
   RUN_TEST(test_autotune_start_with_method);
   RUN_TEST(test_autotune_stop_returns_to_idle);
   RUN_TEST(test_stop_autotune_idempotent_when_idle);
+  RUN_TEST(test_autotune_progress_starts_at_zero_cycles);
+  RUN_TEST(test_autotune_progress_reaches_full_when_done);
   return UNITY_END();
 }

@@ -1496,7 +1496,17 @@ components:
         min: { type: number }
         max: { type: number }
         autotuneMethod: { type: string }
-        autotuneState: { type: string }
+        autotuneState: { type: string, enum: [idle, running, done] }
+        autotuneCyclesObserved:
+          type: integer
+          minimum: 0
+          description: >-
+            Anzahl real erkannter Halbwellen-Zyklen des laufenden/letzten
+            AutoTune-Laufs.
+        autotuneCyclesTotal:
+          type: integer
+          minimum: 0
+          description: Aktiv konfigurierte Ziel-Zyklenzahl (aktuell 10).
         hystLow: { type: number }
         hystHigh: { type: number }
         inverted: { type: boolean }

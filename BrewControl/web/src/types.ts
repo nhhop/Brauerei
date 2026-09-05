@@ -79,6 +79,8 @@ export interface ControllerParams {
   max?: number;
   autotuneMethod?: string;
   autotuneState?: string;
+  autotuneCyclesObserved?: number;
+  autotuneCyclesTotal?: number;
   // TwoPoint
   hystLow?: number;
   hystHigh?: number;

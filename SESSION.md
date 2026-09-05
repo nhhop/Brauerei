@@ -976,3 +976,44 @@ wäre bei unterbliebenem `ledcDetachPin()` der klassische ESP32-Fallstrick
 
 **Ergebnis:** Fix bestätigt. Testsensoren wieder gelöscht, Board am Ende mit
 leerer Registry hinterlassen (Ausgangszustand). PLAN.md-Eintrag entfernt.
+
+## 2026-09-05 — PID-AutoTune: Fortschrittsanzeige + Korrektheits-Fix der Relay-Timing
+
+Ausgangspunkt war der Backlog-Punkt „Fortschrittsanzeige/Restzeit" — bei der
+Analyse aber ein grundlegenderer Bug gefunden: das vendorte `AutoTunePID`
+(Tag `v1.1.6`, `SensActCtrl/library.json`) liest `currentInput` in
+`performAutoTune()` nie, sondern kippt den Output stur alle 1000 ms für
+`oscillationSteps` (Default 10) Schritte und berechnet Ku/Tu rein aus der
+Wanduhr — für träge Prozesse (Kessel, Maischebottich) physikalisch
+bedeutungslos (`Ku` reduziert sich algebraisch auf die Konstante `4/π`).
+Vergleich mit dem Upstream-Repo zeigt: der `main`-Branch (Commit `34c6f39`,
+kein Tag) hat eine vollständige Neufassung mit echter Hysterese-basierter
+Relay-Rückkopplung (reagiert auf tatsächliche Sollwert-Kreuzungen, misst
+reale Halbwellen-Perioden) und behebt nebenbei einen zweiten Bug
+(Zähler/Zeitstempel waren `static`-Lokale statt Instanzfelder — mehrere
+gleichzeitige AutoTune-Läufe hätten sich korrumpiert).
+
+**Fix:** `library.json`-Pin auf den main-Commit umgestellt (Präzedenzfall für
+Commit-Hash-Pins bereits vorhanden: `IdsInductionCooker.git#bf5be40`),
+`PidEngine.h/.cpp` auf den neuen `atp::`-Namespace migriert. Da auch `main`
+keinen Getter für den internen Halbwellen-Zähler/das konfigurierte
+`oscillationSteps` hat: `PidEngine` ruft `setOscillationMode()` jetzt aktiv
+selbst auf (nicht `setOscillationSteps()` direkt — das würde von einem
+späteren `setOscillationMode()`-Aufruf überschrieben) und zählt reale Zyklen
+über Flankenerkennung auf `getOutput()` (kippt bei jeder Kreuzung zwischen
+zwei diskreten Werten — exakt, keine Off-by-one-Falle wie bei einer
+`getTu()`-Änderungserkennung, die die erste Kreuzung verpasst hätte). Neue
+Felder `autotuneCyclesObserved`/`autotuneCyclesTotal` in `paramsJson()`,
+OpenAPI und `types.ts`. Frontend: neue Komponente `AutotuneProgress.tsx`
+(horizontaler 3-Phasen-Stepper „Anfahren → Schwingung → Fertig" + %-Balken,
+keine Zeitanzeige), in `ControllerCard.tsx` und `AddItemModal.tsx` eingesetzt.
+
+**Bekannte Einschränkung:** `main` ist kein offizielles Release — Arduino-IDE-
+Library-Manager-Nutzer (`library.properties`) bekämen weiterhin `v1.1.6`.
+In PLAN.md vermerkt.
+
+**Verifikation:** `pio test -e native` (SensActCtrl, 196 Tests inkl. 4 neue
+grün), `pio run -e esp32dev` (BrewControl/firmware, zieht den neuen Pin,
+kompiliert gegen `atp::`), `redocly lint` valide, `pnpm typecheck` clean.
+Echte Zyklen-Numerik auf echter Hardware noch offen (PLAN.md-Hardware-Item
+ergänzt).

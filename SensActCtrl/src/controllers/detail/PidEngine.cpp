@@ -12,13 +12,36 @@
 namespace SensActCtrl {
 namespace detail {
 
+#if BC_USE_AUTOTUNEPID
+// AutoTunePID (main-Branch, kein Tag — siehe SensActCtrl/library.json) hat
+// keinen Getter für das intern konfigurierte oscillationSteps. setOscillationMode()
+// überschreibt _oscillationSteps intern über ein eigenes Switch (Normal=10/
+// Half=20/Mild=40) — dieses Mapping wird hier gespiegelt, damit unser
+// getrackter Wert exakt dem entspricht, was wir der Engine selbst vorgeben.
+static constexpr atp::OscillationMode kAutotuneOscillationMode = atp::OscillationMode::Normal;
+
+static int32_t oscillationStepsForMode(atp::OscillationMode mode) {
+  switch (mode) {
+    case atp::OscillationMode::Normal: return 10;
+    case atp::OscillationMode::Half:   return 20;
+    case atp::OscillationMode::Mild:   return 40;
+  }
+  return 10;
+}
+#endif
+
 PidEngine::PidEngine(float minOutput, float maxOutput)
     :
 #if BC_USE_AUTOTUNEPID
-      backend_(minOutput, maxOutput, ::TuningMethod::ZieglerNichols),
+      backend_(minOutput, maxOutput, atp::TuningMethod::ZieglerNichols),
 #endif
       minOutput_(minOutput),
-      maxOutput_(maxOutput) {}
+      maxOutput_(maxOutput) {
+#if BC_USE_AUTOTUNEPID
+  backend_.setOscillationMode(kAutotuneOscillationMode);
+  oscillationSteps_ = oscillationStepsForMode(kAutotuneOscillationMode);
+#endif
+}
 
 void PidEngine::setSetpoint(float sp) {
   setpoint_ = sp;
@@ -31,7 +54,7 @@ void PidEngine::setManualGains(float kp, float ki, float kd) {
   kp_ = kp; ki_ = ki; kd_ = kd;
 #if BC_USE_AUTOTUNEPID
   backend_.setManualGains(kp, ki, kd);
-  backend_.setOperationalMode(::OperationalMode::Normal);
+  backend_.setOperationalMode(atp::OperationalMode::Normal);
 #endif
 }
 
@@ -62,16 +85,18 @@ void PidEngine::enableAntiWindup(bool enable, float threshold) {
 
 void PidEngine::startAutotune(TuningMethod method) {
 #if BC_USE_AUTOTUNEPID
-  ::TuningMethod m = ::TuningMethod::ZieglerNichols;
+  atp::TuningMethod m = atp::TuningMethod::ZieglerNichols;
   switch (method) {
-    case TuningMethod::ZieglerNichols: m = ::TuningMethod::ZieglerNichols; break;
-    case TuningMethod::CohenCoon:      m = ::TuningMethod::CohenCoon; break;
-    case TuningMethod::IMC:            m = ::TuningMethod::IMC; break;
-    case TuningMethod::TyreusLuyben:   m = ::TuningMethod::TyreusLuyben; break;
-    case TuningMethod::LambdaTuning:   m = ::TuningMethod::LambdaTuning; break;
+    case TuningMethod::ZieglerNichols: m = atp::TuningMethod::ZieglerNichols; break;
+    case TuningMethod::CohenCoon:      m = atp::TuningMethod::CohenCoon; break;
+    case TuningMethod::IMC:            m = atp::TuningMethod::IMC; break;
+    case TuningMethod::TyreusLuyben:   m = atp::TuningMethod::TyreusLuyben; break;
+    case TuningMethod::LambdaTuning:   m = atp::TuningMethod::LambdaTuning; break;
   }
   backend_.setTuningMethod(m);
-  backend_.setOperationalMode(::OperationalMode::Tune);
+  observedCycles_ = 0;
+  autotuneOutputPrimed_ = false;
+  backend_.setOperationalMode(atp::OperationalMode::Tune);
 #else
   (void)method;  // nativ: no-op, AutoTune ist hardware-only
 #endif
@@ -79,7 +104,7 @@ void PidEngine::startAutotune(TuningMethod method) {
 
 bool PidEngine::isTuneMode() const {
 #if BC_USE_AUTOTUNEPID
-  return backend_.getOperationalMode() == ::OperationalMode::Tune;
+  return backend_.getOperationalMode() == atp::OperationalMode::Tune;
 #else
   return false;
 #endif
@@ -88,7 +113,21 @@ bool PidEngine::isTuneMode() const {
 float PidEngine::update(float input, float dtSeconds) {
 #if BC_USE_AUTOTUNEPID
   (void)dtSeconds;
+  // Tune-Status VOR dem Update erfassen: bei der letzten Kreuzung ändert die
+  // Engine Ausgang und Modus atomar im selben Aufruf — ein Check danach würde
+  // die letzte Kreuzung verpassen.
+  const bool wasTuning = isTuneMode();
   backend_.update(input);
+  if (wasTuning) {
+    const float out = backend_.getOutput();
+    if (!autotuneOutputPrimed_) {
+      lastObservedOutput_ = out;  // erster Tick nach Start = Baseline, keine echte Flanke
+      autotuneOutputPrimed_ = true;
+    } else if (out != lastObservedOutput_) {
+      lastObservedOutput_ = out;
+      observedCycles_++;
+    }
+  }
   return backend_.getOutput();
 #else
   // Simple positional PID with clamping anti-windup.
@@ -130,6 +169,10 @@ void PidEngine::readGains(float* kp, float* ki, float* kd, float* ku, float* tu)
   *ku = 0.0f; *tu = 0.0f;
 #endif
 }
+
+int32_t PidEngine::autotuneOscillationSteps() const { return oscillationSteps_; }
+
+int32_t PidEngine::autotuneObservedCycles() const { return observedCycles_; }
 
 }  // namespace detail
 }  // namespace SensActCtrl
