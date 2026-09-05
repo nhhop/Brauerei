@@ -1017,3 +1017,136 @@ grün), `pio run -e esp32dev` (BrewControl/firmware, zieht den neuen Pin,
 kompiliert gegen `atp::`), `redocly lint` valide, `pnpm typecheck` clean.
 Echte Zyklen-Numerik auf echter Hardware noch offen (PLAN.md-Hardware-Item
 ergänzt).
+
+## 2026-09-05 — Reihenfolge Auth/Push/HTTPS geklärt + Zugriffsschutz umgesetzt
+
+**Auslöser:** Beobachtung, dass `esp-webPush` JWT-Klassen mitbringt, die man
+„auch für Auth bräuchte" — plus die PLAN.md-Annahme, HTTPS sei harte
+Voraussetzung für Push. Beide Annahmen halten der Prüfung nicht stand.
+
+**Recherche-Ergebnis:**
+
+- **Kein geteilter JWT-Baustein.** `esp-webPush` implementiert VAPID-JWT nach
+  RFC 8292 (ES256/P-256-ECDSA über mbedTLS), um das *Gerät gegenüber dem
+  Push-Service* zu authentisieren — lib-intern, nicht als allgemeine JWT-API
+  exponiert. Ein Login braucht ein symmetrisches, kurzlebiges Session-Token;
+  ECDSA-Verify pro API-Request wäre auf dem ESP32 die falsche Größenordnung.
+  Gleicher Name, anderer Algorithmus, anderes Threat-Model.
+- **`esp-webPush` braucht kein Server-TLS** — es ist HTTPS-*Client*, das läuft
+  längst (`FirmwareUpdater.cpp:98`, `MqttService.cpp:56`). Der Secure-Context-
+  Zwang trifft nur die Seite, die den Service Worker registriert.
+- **Self-signed trägt für Push nicht** — Chrome verweigert SW-Registrierung bei
+  Zertifikatsfehlern (w3c/ServiceWorker#1514, Chromium 40423989); der in
+  PLAN.md notierte Weg „User akzeptiert einmalig" ist tot.
+- **Server-TLS wäre teuer** — `esp32async/ESPAsyncWebServer`+`AsyncTCP` haben
+  keinen Server-TLS-Pfad (me-no-dev#899; TLS nur client-seitig im
+  tve/AsyncTCP-Fork), bliebe `esp_https_server` mit ~50 Routen, SSE und zwei
+  Upload-Pfaden.
+
+**Entschiedene Reihenfolge:** Auth → Web Push über gehosteten Bootstrap-Origin
+→ HTTPS (entkoppelt, optional). Damit fällt der teuerste Punkt aus dem
+kritischen Pfad, auch für Installationen bei anderen, die sonst zuhause
+HTTPS einrichten müssten. Push-Design und HTTPS-Varianten stehen in PLAN.md.
+
+**Umgesetzt: Stufe 1 — Zugriffsschutz (optional, Lesen frei, Schreiben
+geschützt).**
+
+Neue Klasse `AuthService.{h,cpp}`: salted, 10k-fach iteriertes SHA-256 über
+`mbedtls_md` (versionsstabil über mbedTLS 2.x/3.x), Credentials in
+`Preferences("brewctrl")` — derselben NVS-Namespace wie die WLAN-Daten. Das
+hält das Secret aus `GET /api/settings`, aus dem Backup-Bundle und von der
+SD-Karte fern und macht den bestehenden BOOT-Tasten-Factory-Reset
+(`main.cpp:131`, `prefs.clear()`) ohne eine Zeile Extra-Code zum
+„Passwort vergessen"-Pfad. Sessions: 4 Slots, opake 16-Byte-Tokens aus
+`esp_random()`, 7 Tage Gleitablauf, wrap-sichere `millis()`-Vergleiche,
+Constant-Time-Compare. Bewusst **nur RAM** — persistierte Sessions bräuchten
+Epoch-Zeit statt `millis()` und damit einen synchronisierten NTP-Stand.
+
+**Kein separates `enabled`-Flag:** `isConfigured()` ist die einzige Wahrheit.
+Kein Passwort ⇒ jedes Gate ist ein No-op, Bestandsgeräte bleiben nach dem
+Update unverändert offen. Schutz einschalten = Passwort setzen, ausschalten =
+löschen.
+
+**Cookie statt Bearer-Header**, weil `EventSource` keine Custom-Header setzen
+kann — ein Token im Header hätte `/api/events` unlösbar gemacht. Cookies fahren
+same-origin automatisch mit, deshalb blieben alle 31 `fetch()`-Aufrufstellen in
+`api.ts` inhaltlich unangetastet.
+
+**Gate-Schnitt in `WebUI.cpp`:** Die Prüfung sitzt in den drei generischen
+Handler-Klassen (`BodyPrefixHandler`, `DeletePrefixHandler`, `PostJsonHandler`)
+statt an ~30 Registrierungsstellen; `requireAuth()` nimmt `/api/auth/*` aus
+(sonst wäre Login unmöglich). Explizit nachgezogen an den fünf Roh-Routen
+(`wifi-reset`, `update/firmware`, `update/assets`, `files` DELETE,
+`files/upload`). Die beiden OTA-Uploads brauchten dafür ein
+`uploadUnauthorized_`-Flag analog zum vorhandenen `fileUploadRejected_` — ohne
+das hätte der finale Chunk ein zweites Mal geantwortet.
+
+**Nebenbei geschlossen:** `GET /api/backup` gab das MQTT-Passwort im Klartext
+aus (`SettingsStore::serialize()` emittiert `mqtt.password`,
+`WebUI.cpp:788` schwärzt es nur für `GET /api/settings`). Als einzige Leseroute
+liegt das Backup jetzt hinter dem Gate.
+
+**Frontend:** zentrale `failed()`-Fehlerbahn in `api.ts` (alle 30 identischen
+Fehlerzeilen umgestellt), die bei 401 einmalig `bc:unauthorized` feuert;
+`app.tsx` öffnet darauf das neue `LoginModal.tsx`. Neue Seite
+`SecurityPage.tsx` (Einstellungen → Zugriffsschutz): einrichten, ändern,
+aufheben, alle Sitzungen abmelden — ohne An/Aus-Toggle, passend zum
+Firmware-Modell. Antwortet das Gerät nicht auf `/api/auth/status` (ältere
+Firmware), zeigt die Seite das explizit an, statt „ungeschützt" zu raten oder
+im Skeleton hängen zu bleiben.
+
+**Verhalten bei Hostnamen-Änderung** (durchgespielt, kein Sonderfall-Code
+nötig): Passwort überlebt (`POST /api/network` macht `putString`, kein
+`clear()`), das Cookie nicht — es hängt am alten Host. Gleiches gilt schon
+immer zwischen IP und `.local`: zwei Origins, zwei Anmeldungen. In README
+dokumentiert.
+
+**Grenze, bewusst so:** ohne TLS geht das Passwort beim Anmelden im Klartext
+über das LAN. Schutz gegen Fehlbedienung und beiläufige Zugriffe, nicht gegen
+einen aktiven Angreifer im Segment. Challenge-Response wurde verworfen — es
+schließt nur passives Mitlesen, solange das JS selbst über http kommt.
+
+**Verifikation:** `pio run -e esp32dev` grün, Δ gegen HEAD gemessen (Baseline-
+Build mit zurückgesetzten Quellen): Flash 1 408 453 → 1 415 325 B (74,1 % →
+74,5 %), RAM 52 128 → 52 320 B (+192 B). `pnpm typecheck` clean, `pnpm build`
+grün, `redocly lint` valide (die bisher unterdrückte `security-defined`-Warnung
+ist damit erledigt; `info-license` war schon vorher offen). Im Browser gegen
+den Vite-Dev-Server geprüft: Settings-Eintrag da, Login-Modal rendert korrekt,
+und der Degradationspfad griff live — das Gerät unter `brewcontrol.local`
+läuft noch mit alter Firmware und antwortet 404 auf `/api/auth/status`.
+
+**Hardware-E2E am LilyGo T-Display-S3-AMOLED (`brewcontrol.local`,
+192.168.178.87) — vollständig grün.** Firmware geflasht (COM9, Hash verifiziert,
+Flash 20,5 % / RAM 15,5 % auf dem 16-MB-Board), UI-Paket über
+`POST /api/update/assets` nachgezogen (4,3 s, neues Bundle wird ausgeliefert).
+
+Durchlauf in dieser Reihenfolge, jeweils per `curl`:
+
+1. **Aus-Zustand als Regressionstest** — `/api/auth/status` meldet
+   `{"enabled":false,"authenticated":true}`, Schreiben ohne Cookie `204`,
+   `GET /api/backup` `200`, Login gegen ein passwortloses Gerät `409 no password
+   configured`. Verhalten identisch zu vorher.
+2. **Passwort gesetzt** (ohne `currentPassword`, wie vorgesehen) → `204` +
+   `Set-Cookie`. Status ohne Cookie danach `{"enabled":true,"authenticated":false}`.
+3. **Reads bleiben offen** — `/api/snapshot` und `/api/settings` je `200`.
+4. **Writes gesperrt** — `POST /api/actuators/<id>`, `POST /api/settings`,
+   `DELETE /api/actuators/<id>` je `401`.
+5. **Gated read** — `GET /api/backup` ohne Cookie `401`, mit Cookie `200`.
+6. **SSE** bleibt bei aktivem Schutz ohne Cookie offen (`200`,
+   `text/event-stream`, laufende `snapshot`-Events).
+7. **Negativtests** — falsches Passwort `401`, gefälschtes `bcsid` `401`,
+   falsches `currentPassword` beim Ändern `403`.
+8. **Cookie-Präfix-Falle** — `Cookie: xbcsid=<gültiges Token>` wird korrekt
+   abgelehnt (`401`); die Separator-Prüfung in `sessionCookie()` greift.
+9. **Reboot** (über `POST /api/network` mit unverändertem Hostnamen, selbst
+   gated) — nach ~25 s wieder da: Passwort überlebt (`enabled:true`, NVS),
+   Session nicht (altes Cookie → `401`, RAM-only wie entworfen).
+10. **Aufgeräumt** — Schutz mit leerem Passwort aufgehoben, `Set-Cookie` mit
+    `Max-Age=0`, Endzustand wieder `{"enabled":false,"authenticated":true}` und
+    Schreiben ohne Cookie `204`.
+
+**Falscher Alarm unterwegs:** `curl http://<ip>/api/events` antwortet `404`.
+Nicht durch diese Änderung verursacht — die beiden Boards mit alter Firmware
+(`.74`, `.82`) verhalten sich identisch. `AsyncEventSource::canHandle` verlangt
+`Accept: text/event-stream`; mit dem Header kommt sauber `200` plus Event-Strom.
+Für künftige SSE-Tests per curl also immer den Accept-Header mitgeben.

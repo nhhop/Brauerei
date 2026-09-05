@@ -79,6 +79,57 @@ const uint8_t* collectBody(AsyncWebServerRequest* req, uint8_t* data, size_t len
   return static_cast<const uint8_t*>(req->_tempObject);
 }
 
+// Access gate for the write side of the API.
+//
+// Set once from WebUI::begin(); there is exactly one WebUI per device. Kept as
+// a file-static rather than a WebUI member so the generic handler classes
+// below can consult it without threading it through every one of their ~30
+// construction sites.
+AuthService* g_auth = nullptr;
+
+// Session token out of the Cookie header, empty when absent.
+String sessionCookie(AsyncWebServerRequest* req) {
+  const AsyncWebHeader* h = req->getHeader("Cookie");
+  if (h == nullptr) return String();
+  const String& c = h->value();
+  // Only match at the start of the header or right behind a separator, so a
+  // cookie named e.g. "xbcsid" can't be mistaken for ours.
+  int i = c.indexOf("bcsid=");
+  while (i > 0 && c[i - 1] != ' ' && c[i - 1] != ';') i = c.indexOf("bcsid=", i + 1);
+  if (i < 0) return String();
+  const int start = i + 6;
+  int end = c.indexOf(';', start);
+  if (end < 0) end = c.length();
+  return c.substring(start, end);
+}
+
+String sessionCookieHeader(const String& token) {
+  // No Secure flag — the UI is served over plain HTTP and a Secure cookie
+  // would never be sent back. Revisit if the device ever serves TLS.
+  return "bcsid=" + token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800";
+}
+
+String clearedCookieHeader() {
+  return "bcsid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0";
+}
+
+// True when the request may write. With no password configured this is always
+// true and the whole feature is invisible.
+bool isAuthenticated(AsyncWebServerRequest* req) {
+  if (g_auth == nullptr || !g_auth->isConfigured()) return true;
+  return g_auth->checkSession(sessionCookie(req));
+}
+
+// Gate for mutating routes: sends the 401 itself and returns false when the
+// caller must stop. /api/auth/* is exempt — those handlers enforce their own
+// rules, and gating them would make logging in impossible.
+bool requireAuth(AsyncWebServerRequest* req) {
+  if (req->url().startsWith("/api/auth/")) return true;
+  if (isAuthenticated(req)) return true;
+  req->send(401, "text/plain", "authentication required");
+  return false;
+}
+
 // Matches POST <prefix>* requests and delivers the body in a single call.
 // Used for write and create routes where the URL contains a path param or
 // the body must be parsed. Bodies spanning several TCP segments are collected
@@ -95,8 +146,10 @@ class BodyPrefixHandler : public AsyncWebHandler {
   void handleRequest(AsyncWebServerRequest*) override {}
   void handleBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
                   size_t index, size_t total) override {
-    if (const uint8_t* body = collectBody(req, data, len, index, total))
+    if (const uint8_t* body = collectBody(req, data, len, index, total)) {
+      if (!requireAuth(req)) return;
       cb_(req, body, total);
+    }
   }
   bool isRequestHandlerTrivial() const override { return false; }
 
@@ -133,7 +186,10 @@ class DeletePrefixHandler : public AsyncWebHandler {
   bool canHandle(AsyncWebServerRequest* req) const override {
     return req->method() == HTTP_DELETE && req->url().startsWith(prefix_);
   }
-  void handleRequest(AsyncWebServerRequest* req) override { cb_(req); }
+  void handleRequest(AsyncWebServerRequest* req) override {
+    if (!requireAuth(req)) return;
+    cb_(req);
+  }
   bool isRequestHandlerTrivial() const override { return false; }
 
  private:
@@ -167,6 +223,7 @@ class PostJsonHandler : public AsyncWebHandler {
     if (req->method() != HTTP_POST) return;  // handleRequest sends the 405
     const uint8_t* body = collectBody(req, data, len, index, total);
     if (body == nullptr) return;
+    if (!requireAuth(req)) return;
     JsonDocument doc;
     if (deserializeJson(doc, body, total) != DeserializationError::Ok) {
       req->send(400, "text/plain", "invalid JSON");
@@ -207,6 +264,77 @@ void WebUI::begin() {
 
   events_.onConnect([this](AsyncEventSourceClient* c) { sendSnapshotTo_(c); });
   server_.addHandler(&events_);
+
+  // ── Access control (optional) ─────────────────────────────────────────────
+  // With no password configured every gate is a no-op and the API behaves
+  // exactly as it did before this feature. Reads stay open either way; only
+  // mutating routes are gated, plus GET /api/backup (it carries the MQTT
+  // password). See requireAuth above.
+  auth_.begin();
+  g_auth = &auth_;
+
+  server_.on("/api/auth/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    String out = "{\"enabled\":";
+    out += auth_.isConfigured() ? "true" : "false";
+    out += ",\"authenticated\":";
+    out += isAuthenticated(req) ? "true" : "false";
+    out += "}";
+    req->send(200, "application/json", out);
+  });
+
+  server_.addHandler(new PostJsonHandler("/api/auth/login",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        if (!auth_.isConfigured()) { req->send(409, "text/plain", "no password configured"); return; }
+        const char* pw = json["password"] | "";
+        if (!auth_.verifyPassword(pw)) { req->send(401, "text/plain", "wrong password"); return; }
+        AsyncWebServerResponse* resp = req->beginResponse(204);
+        resp->addHeader("Set-Cookie", sessionCookieHeader(auth_.issueSession()));
+        req->send(resp);
+      }));
+
+  // No body — a PostJsonHandler would answer "400 missing body".
+  server_.on("/api/auth/logout", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    auth_.revokeSession(sessionCookie(req));
+    AsyncWebServerResponse* resp = req->beginResponse(204);
+    resp->addHeader("Set-Cookie", clearedCookieHeader());
+    req->send(resp);
+  });
+
+  // Set, change or — with an empty "password" — clear the device password.
+  // Clearing turns the protection off; there is no separate enable flag.
+  server_.addHandler(new PostJsonHandler("/api/auth/password",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        // Once a password exists, knowing it is not enough — the caller must
+        // also hold a session, so a password sniffed off the wire can't be
+        // replayed into a takeover from a fresh client.
+        if (auth_.isConfigured() && !isAuthenticated(req)) {
+          req->send(401, "text/plain", "authentication required");
+          return;
+        }
+        const char* current = json["currentPassword"] | "";
+        const char* next = json["password"] | "";
+        if (!auth_.setPassword(current, next)) {
+          req->send(403, "text/plain", "wrong current password");
+          return;
+        }
+        // setPassword revoked every session including this caller's; hand out
+        // a fresh one so a password change doesn't log the user out.
+        AsyncWebServerResponse* resp = req->beginResponse(204);
+        resp->addHeader("Set-Cookie", auth_.isConfigured()
+                                          ? sessionCookieHeader(auth_.issueSession())
+                                          : clearedCookieHeader());
+        req->send(resp);
+      }));
+
+  server_.on("/api/auth/revoke-all", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    if (!isAuthenticated(req)) { req->send(401, "text/plain", "authentication required"); return; }
+    auth_.revokeAll();
+    AsyncWebServerResponse* resp = req->beginResponse(204);
+    resp->addHeader("Set-Cookie", clearedCookieHeader());
+    req->send(resp);
+  });
 
   // ── Delete (prefix, no body) ──────────────────────────────────────────────
   server_.addHandler(new DeletePrefixHandler("/api/sensors/",
@@ -349,6 +477,7 @@ void WebUI::begin() {
   // ── Admin ─────────────────────────────────────────────────────────────────
   server_.on("/api/admin/wifi-reset", HTTP_POST,
              [this](AsyncWebServerRequest* req) {
+               if (!requireAuth(req)) return;
                Preferences prefs;
                prefs.begin("brewctrl", false);
                prefs.clear();
@@ -951,11 +1080,14 @@ void WebUI::begin() {
       [this](AsyncWebServerRequest* req, const String& filename, size_t index,
              uint8_t* data, size_t len, bool final) {
         if (index == 0) {
+          uploadUnauthorized_ = !requireAuth(req);
+          if (uploadUnauthorized_) return;
           if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
             req->send(500, "text/plain", Update.errorString());
             return;
           }
         }
+        if (uploadUnauthorized_) return;
         if (len) Update.write(data, len);
         if (final) {
           if (Update.end(true)) {
@@ -973,6 +1105,8 @@ void WebUI::begin() {
       [this](AsyncWebServerRequest* req, const String& filename, size_t index,
              uint8_t* data, size_t len, bool final) {
         if (index == 0) {
+          uploadUnauthorized_ = !requireAuth(req);
+          if (uploadUnauthorized_) return;
           assetSink_.reset(new SdTarSink(fs_, "/www.new"));
           assetTar_.reset(new TarExtractor(assetSink_->openCb(),
                                            assetSink_->writeCb(),
@@ -982,6 +1116,7 @@ void WebUI::begin() {
           fs_.rmdir("/www.new");
           fs_.mkdir("/www.new");
         }
+        if (uploadUnauthorized_) return;
         if (len && assetTar_) assetTar_->feed(data, len);
         if (final) {
           bool ok = assetTar_ && !assetTar_->hasError();
@@ -995,6 +1130,9 @@ void WebUI::begin() {
   // ── Backup & Restore ───────────────────────────────────────────────────────
   // GET: bundle the /config stores into one downloadable JSON file.
   server_.on("/api/backup", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    // The only gated read: the bundle embeds settings_.serialize(), which —
+    // unlike GET /api/settings — carries the MQTT password in the clear.
+    if (!requireAuth(req)) return;
     String out = "{\"type\":\"brewcontrol-backup\",\"version\":1,"
                  "\"firmwareVersion\":\"";
     out += BREWCTL_VERSION;
@@ -1106,6 +1244,7 @@ void WebUI::begin() {
 
   // DELETE /api/files?path=<path> — file, or directory removed recursively.
   server_.on("/api/files", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+    if (!requireAuth(req)) return;
     if (!req->hasParam("path")) { req->send(400, "text/plain", "missing path"); return; }
     String path = req->getParam("path")->value();
     if (!validFilePath_(path, /*forMutation=*/true, req)) return;
@@ -1160,6 +1299,7 @@ void WebUI::begin() {
              uint8_t* data, size_t len, bool final) {
         if (index == 0) {
           fileUploadRejected_ = false;
+          if (!requireAuth(req)) { fileUploadRejected_ = true; return; }
           String dir = req->hasParam("path") ? req->getParam("path")->value() : "";
           if (!validFilePath_(dir, /*forMutation=*/true, req)) { fileUploadRejected_ = true; return; }
           bool nameOk = !filename.isEmpty() && filename.indexOf('/') < 0 && filename != "..";

@@ -274,10 +274,39 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/files/download` · `/upload` | GET, POST | Datei herunterladen / hochladen |
 | `/api/files/mkdir` · `/rename` | POST | Verzeichnis anlegen / umbenennen |
 | `/api/admin/wifi-reset` | POST | NVS löschen, Reboot ins Setup-Portal |
+| `/api/auth/status` | GET | Ob ein Gerätepasswort gesetzt ist und ob dieser Client angemeldet ist |
+| `/api/auth/login` · `/logout` | POST | Anmelden (Session-Cookie) / abmelden |
+| `/api/auth/password` | POST | Passwort setzen, ändern oder (leer) löschen |
+| `/api/auth/revoke-all` | POST | Alle Sitzungen abmelden |
 
-Es gibt **keine Authentifizierung** — das Gerät gehört in ein vertrauenswürdiges
-LAN. Erfolgreiche Schreib-Requests antworten mit `204` ohne Body, Fehler mit
+Erfolgreiche Schreib-Requests antworten mit `204` ohne Body, Fehler mit
 `text/plain` und der nackten Meldung (kein JSON-Error-Objekt).
+
+### Zugriffsschutz (optional, standardmäßig aus)
+
+Ohne gesetztes Gerätepasswort ist jeder Endpoint offen — der Auslieferungs- und
+Bestandszustand, das Verhalten ist identisch zu vorher. Ein Passwort
+(`POST /api/auth/password`, oder Einstellungen → Zugriffsschutz) sperrt danach
+**alle schreibenden** Endpoints hinter das Session-Cookie aus
+`POST /api/auth/login`; Lesen bleibt offen. Einzige gesperrte Leseroute ist
+`GET /api/backup` — das Bundle enthält das MQTT-Passwort im Klartext
+(`GET /api/settings` schwärzt es, das Backup nicht).
+
+Einen separaten An/Aus-Schalter gibt es nicht: das gesetzte Passwort *ist* der
+Schutz, Löschen hebt ihn auf. Ein paar Verhaltensweisen, die sich aus dem
+Cookie-Modell ergeben:
+
+- Sitzungen liegen nur im RAM — jeder Reboot meldet alle ab.
+- Das Cookie hängt am Host, für den es ausgestellt wurde. `http://192.168.1.50/`
+  und `http://brewcontrol.local/` sind für den Browser zwei Origins, also zwei
+  getrennte Anmeldungen. Nach einer Hostnamen-Änderung ist ebenfalls eine neue
+  Anmeldung fällig — das Passwort selbst bleibt erhalten.
+- Passwort vergessen: BOOT-Taste beim Einschalten halten. Das leert dieselbe
+  NVS-Namespace wie der WLAN-Reset, also auch die Zugangsdaten.
+
+Ohne TLS geht das Passwort beim Anmelden unverschlüsselt über das Netz. Der
+Schutz ist gegen Fehlbedienung und beiläufige Zugriffe im Heimnetz gedacht,
+nicht gegen einen aktiven Angreifer im selben Segment.
 
 Mehrere DS18B20 auf einem Pin: erst scannen, dann jeden Sensor mit der
 gefundenen `address` anlegen — der ESP32 verwaltet die Shared-Bus-Instanz intern.

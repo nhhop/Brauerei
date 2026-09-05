@@ -9,9 +9,25 @@ info:
     Single source of truth for this contract — `README.md` only carries an
     endpoint overview table.
 
-    **No authentication.** Every endpoint is open; the device is expected to run
-    on a trusted LAN. `GET /api/settings` never echoes the MQTT password
-    (write-only field), but `GET /api/backup` still bundles it in cleartext.
+    **Authentication is optional and off by default.** With no device password
+    configured — the factory state — every endpoint is open, exactly as before,
+    and the `401` responses documented below never occur. Setting a password
+    (`POST /api/auth/password`) gates every *mutating* endpoint behind the
+    session cookie from `POST /api/auth/login`; reads stay open. The one gated
+    read is `GET /api/backup`, whose bundle carries the MQTT password in
+    cleartext (`GET /api/settings` redacts it — the backup does not).
+
+    There is no separate "enabled" flag: a configured password *is* the
+    protection. `GET /api/auth/status` reports both whether one is set and
+    whether the caller holds a valid session.
+
+    Sessions live in device RAM, so a reboot invalidates every login. The
+    cookie is scoped to the host it was issued for — reaching the same device
+    by IP and by mDNS name means two separate logins.
+
+    Without TLS the password crosses the LAN in cleartext on login. The
+    protection is meant for stray writes and casual access on a home network,
+    not against an active attacker on the same segment.
 
     **Conventions**
     - Successful mutations answer `204 No Content` with an empty body.
@@ -42,7 +58,18 @@ servers:
         default: brewcontrol.local
         description: mDNS hostname (configurable) or IP address
 
+# Two alternatives, matching the device: `{}` is the unprotected default, the
+# cookie applies once a password is configured. Reads accept both either way;
+# mutations accept `{}` only while no password is set.
+security:
+  - {}
+  - sessionCookie: []
+
 tags:
+  - name: Access Control
+    description: |
+      Optional device password protecting every mutating endpoint. Off until a
+      password is set; see the `Authentication` section of the API description.
   - name: Live State
     description: Current registry state as a full snapshot, on demand or pushed.
   - name: Dynamic Items
@@ -150,6 +177,7 @@ paths:
                 summary: DS18B20 addressed on a shared bus
                 value: { type: DS18B20, id: kettle, pin: 4, address: 28ff64c8815604ef }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
@@ -166,6 +194,7 @@ paths:
       operationId: deleteSensor
       summary: Remove a dynamic sensor
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "405":
           description: |
@@ -191,6 +220,7 @@ paths:
             schema: { type: object }
             example: {}
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: Body is `sensor does not support reset` or `sensor not found`.
@@ -211,6 +241,7 @@ paths:
             schema: { $ref: "#/components/schemas/ActuatorCreate" }
             example: { type: DigitalOutput, id: pump, pin: 16, mode: Binary }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
@@ -240,6 +271,7 @@ paths:
                 summary: Run 30 s on in a 300 s cycle
                 value: { interval: { onSec: 30, periodSec: 300 } }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
@@ -254,6 +286,7 @@ paths:
       operationId: deleteActuator
       summary: Remove a dynamic actuator
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "405":
           description: Body is `not a dynamic item` or `actuator is referenced by a controller`.
@@ -280,6 +313,7 @@ paths:
               Ki: 0.05
               Kd: 0
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
@@ -295,6 +329,7 @@ paths:
       operationId: deleteController
       summary: Remove a dynamic controller
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "405":
           description: Body is `not a dynamic item`.
@@ -318,6 +353,7 @@ paths:
                 v: { type: number, description: New setpoint. }
             example: { v: 67.5 }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: Body is `invalid JSON` or `missing v` (absent or not a number).
@@ -344,6 +380,7 @@ paths:
             schema: { $ref: "#/components/schemas/ControllerParams" }
             example: { Kp: 14, Ki: 0.08, enabled: true }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: Body is `invalid JSON` or `params rejected`.
@@ -429,6 +466,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DashboardInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "201": { $ref: "#/components/responses/Created" }
 
   /api/dashboards/{id}:
@@ -443,6 +481,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DashboardInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -452,6 +491,7 @@ paths:
       operationId: deleteDashboard
       summary: Delete a dashboard
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -480,6 +520,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/LogInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "201": { $ref: "#/components/responses/Created" }
 
   /api/logs/{id}:
@@ -495,6 +536,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/LogInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -504,6 +546,7 @@ paths:
       operationId: deleteLog
       summary: Delete a log configuration
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -526,6 +569,7 @@ paths:
                   description: Defaults to `true` when the key is absent.
             example: { enabled: false }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
@@ -545,6 +589,7 @@ paths:
             schema: { type: object }
             example: {}
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
@@ -580,6 +625,7 @@ paths:
       summary: Delete one recorded session
       description: The currently active session cannot be deleted.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404":
           description: Body is `not found or active`.
@@ -655,6 +701,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ProgramInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "201": { $ref: "#/components/responses/Created" }
         "400":
           description: Body is `invalid program`.
@@ -674,6 +721,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ProgramInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404":
@@ -686,6 +734,7 @@ paths:
       operationId: deleteProgram
       summary: Delete a program
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -710,6 +759,7 @@ paths:
                 action: { $ref: "#/components/schemas/ProgramAction" }
             example: { action: start }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: Body is `invalid JSON`, `unknown action` or `invalid action for state`.
@@ -745,6 +795,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ProfileInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "201": { $ref: "#/components/responses/Created" }
         "400":
           description: Body is `invalid profile`.
@@ -763,6 +814,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ProfileInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404":
@@ -775,6 +827,7 @@ paths:
       operationId: deleteProfile
       summary: Delete a profile
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -791,6 +844,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ProfileCategoryInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "201": { $ref: "#/components/responses/Created" }
         "400":
           description: Body is `invalid category`.
@@ -809,6 +863,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ProfileCategoryInput" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidJson" }
         "404":
@@ -824,6 +879,7 @@ paths:
         Cascades: the category is a mandatory field on a profile, so its
         profiles are removed with it.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -869,6 +925,7 @@ paths:
             schema: { $ref: "#/components/schemas/AppSettingsPatch" }
             example: { theme: { mode: dark }, time: { utcOffsetSec: 3600 } }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204":
           description: |
             Settings stored. A reboot follows if `mqtt`, `webhook` or `espnow`
@@ -923,6 +980,7 @@ paths:
                 summary: Rename the device (mDNS)
                 value: { hostname: brewcontrol }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204":
           description: Stored; the device reboots ~500 ms later.
         "400":
@@ -988,6 +1046,7 @@ paths:
             schema: { $ref: "#/components/schemas/ChannelInput" }
             example: {}
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "202": { description: Check queued. }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
@@ -1007,6 +1066,7 @@ paths:
             schema: { $ref: "#/components/schemas/ChannelInput" }
             example: {}
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "202": { description: Install queued. }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
@@ -1031,6 +1091,7 @@ paths:
               properties:
                 f: { type: string, format: binary, description: The firmware `.bin`. }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Flashed; the device reboots ~500 ms later. Body is `ok`.
           content:
@@ -1062,6 +1123,7 @@ paths:
               properties:
                 f: { type: string, format: binary, description: The `webui.tar`. }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Extracted; the swap to `/www` follows. Body is `ok`.
           content:
@@ -1082,7 +1144,12 @@ paths:
         `/config/settings.json` and `/config/profiles.json` into one
         downloadable file. `firmwareVersion` and `variant` are informational —
         they are ignored on import.
+
+        Unlike every other read this one is gated once a device password is
+        configured: the bundle embeds `/config/settings.json`, which carries
+        the MQTT password in cleartext (`GET /api/settings` redacts it).
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Backup bundle.
           headers:
@@ -1106,6 +1173,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/BackupBundle" }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Restored; the device reboots ~500 ms later. Body is `ok`.
           content:
@@ -1153,6 +1221,7 @@ paths:
       description: Directories are removed recursively.
       parameters: [{ $ref: "#/components/parameters/PathQuery" }]
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
@@ -1218,6 +1287,7 @@ paths:
                     The file. The field name is irrelevant — only the part's
                     `filename` is used, as the target name.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Stored. Body is `ok`.
           content:
@@ -1254,6 +1324,7 @@ paths:
               properties:
                 path: { type: string, example: /config }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/InvalidPath" }
         "403": { $ref: "#/components/responses/ProtectedPath" }
@@ -1279,6 +1350,7 @@ paths:
                 from: { type: string, example: /logs/old.csv }
                 to: { type: string, example: /logs/new.csv }
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
@@ -1311,10 +1383,173 @@ paths:
         configured hostname. **The device reboots ~500 ms after the response**
         and comes up as a captive-portal access point.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "204":
           description: Cleared; the device reboots ~500 ms later.
 
+  /api/auth/status:
+    get:
+      tags: [Access Control]
+      operationId: getAuthStatus
+      summary: Whether a device password is set, and whether this caller is logged in
+      description: |
+        Always open, including while protection is active — the UI needs it to
+        decide whether to show the login prompt at all.
+      responses:
+        "200":
+          description: Current protection state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, authenticated]
+                properties:
+                  enabled:
+                    type: boolean
+                    description: A device password is configured.
+                  authenticated:
+                    type: boolean
+                    description: |
+                      This request carried a valid session cookie. Always `true`
+                      while `enabled` is `false` — nothing is gated then.
+                additionalProperties: false
+              examples:
+                open: { summary: No password set, value: { enabled: false, authenticated: true } }
+                loggedOut: { summary: "Protected, no session", value: { enabled: true, authenticated: false } }
+
+  /api/auth/login:
+    post:
+      tags: [Access Control]
+      operationId: login
+      summary: Exchange the device password for a session cookie
+      description: |
+        Issues an opaque session token valid for 7 days of inactivity. At most
+        four sessions exist at once; a fifth login evicts the one closest to
+        expiry. Sessions live in RAM only — a reboot invalidates all of them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+              additionalProperties: false
+      responses:
+        "204":
+          description: Logged in.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              example: bcsid=3f2a…; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "401":
+          description: Body is `wrong password`. No session is issued.
+          content:
+            text/plain: { schema: { type: string, const: wrong password } }
+        "409":
+          description: |
+            Body is `no password configured` — nothing to log in to. Callers
+            should treat this as "device is open", not as an error.
+          content:
+            text/plain: { schema: { type: string, const: no password configured } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/auth/logout:
+    post:
+      tags: [Access Control]
+      operationId: logout
+      summary: Drop this session
+      description: No body. Succeeds even without a valid session.
+      responses:
+        "204":
+          description: Session dropped and the cookie cleared.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              example: bcsid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
+
+  /api/auth/password:
+    post:
+      tags: [Access Control]
+      operationId: setDevicePassword
+      summary: Set, change or clear the device password
+      description: |
+        An empty `password` clears it and turns the protection off — there is
+        no separate flag. `currentPassword` is required once a password is set,
+        and is ignored while none is.
+
+        Changing or clearing revokes every session including the caller's; on a
+        change a fresh cookie comes back with the response, so the caller stays
+        logged in. On a clear the cookie is expired instead.
+
+        While a password is set, knowing it is not sufficient: the request must
+        also carry a valid session, so a password sniffed off the wire cannot
+        be replayed into a takeover from a fresh client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  description: New password; empty string turns protection off.
+                currentPassword:
+                  type: string
+                  description: Required once a password is configured.
+              additionalProperties: false
+            examples:
+              enable: { summary: Turn protection on, value: { password: "hopfen" } }
+              change: { summary: Change it, value: { currentPassword: "hopfen", password: "malz" } }
+              disable: { summary: Turn protection off, value: { currentPassword: "malz", password: "" } }
+      responses:
+        "204":
+          description: Stored.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Fresh session on a change, an expired cookie on a clear.
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Body is `wrong current password`.
+          content:
+            text/plain: { schema: { type: string, const: wrong current password } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/auth/revoke-all:
+    post:
+      tags: [Access Control]
+      operationId: revokeAllSessions
+      summary: Log every client out, including this one
+      description: No body. Requires a valid session.
+      responses:
+        "204":
+          description: All sessions dropped and this caller's cookie cleared.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              example: bcsid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: bcsid
+      description: |
+        Opaque session token issued by `POST /api/auth/login` as
+        `Set-Cookie: bcsid=…; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`.
+        No `Secure` flag — the UI is served over plain HTTP, and a `Secure`
+        cookie would never be sent back. Browsers attach it automatically,
+        including on the `EventSource` connection to `/api/events`.
+
   parameters:
     ItemId:
       name: id
@@ -1389,6 +1624,13 @@ components:
         UI.
       content:
         text/plain: { schema: { type: string, const: protected path (UI files) } }
+
+    Unauthorized:
+      description: |
+        Body is `authentication required`. Only occurs when a device password
+        is configured and the request carried no valid `bcsid` session cookie.
+      content:
+        text/plain: { schema: { type: string, const: authentication required } }
 
     BodyTooLarge:
       description: |
