@@ -5,6 +5,7 @@ import type { Snapshot } from './types';
 import { getSnapshot, subscribeEvents, getSettings } from './api';
 import { applyTheme, loadCachedTheme } from './theme';
 import { NavShell } from './components/NavShell';
+import { LoginModal } from './components/LoginModal';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
 import { SettingsIndex } from './pages/SettingsIndex';
@@ -21,6 +22,7 @@ import { EspNowPage } from './pages/EspNowPage';
 import { LogsPage } from './pages/LogsPage';
 import { ArchivePage } from './pages/ArchivePage';
 import { FilesPage } from './pages/FilesPage';
+import { SecurityPage } from './pages/SecurityPage';
 
 function useSnapshot() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -40,6 +42,16 @@ function useSnapshot() {
 
 export function App() {
   const { snap, err } = useSnapshot();
+  const [locked, setLocked] = useState(false);
+
+  // api.ts fires this on any 401, so no call site has to know about auth: the
+  // device either grew a password while this tab was open, or the session
+  // expired. Reading stays open, hence dismissing without logging in is fine.
+  useEffect(() => {
+    const onUnauthorized = () => setLocked(true);
+    window.addEventListener('bc:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('bc:unauthorized', onUnauthorized);
+  }, []);
 
   useEffect(() => {
     const cached = loadCachedTheme();
@@ -68,7 +80,10 @@ export function App() {
         <LogsPage path="/settings/logs" snap={snap} />
         <ArchivePage path="/settings/logs/:id/archive" />
         <FilesPage path="/settings/files" />
+        <SecurityPage path="/settings/security" />
       </Router>
+      <LoginModal open={locked} onSuccess={() => setLocked(false)}
+        onDismiss={() => setLocked(false)} />
     </NavShell>
   );
 }

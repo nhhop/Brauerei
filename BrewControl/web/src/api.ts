@@ -1,4 +1,14 @@
-import type { Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing } from './types';
+import type { AuthStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing } from './types';
+
+// Central failure path for every call below. A 401 means the device is
+// password-protected and this client has no valid session (or it expired) —
+// announced once here as an event so no caller has to know about auth at all;
+// app.tsx listens and opens the login modal.
+async function failed(r: Response): Promise<never> {
+  const body = await r.text();
+  if (r.status === 401) window.dispatchEvent(new Event('bc:unauthorized'));
+  throw new Error(`${r.status} ${body}`);
+}
 
 async function postJson(url: string, body: unknown): Promise<void> {
   const r = await fetch(url, {
@@ -6,12 +16,12 @@ async function postJson(url: string, body: unknown): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export async function getSnapshot(): Promise<Snapshot> {
   const r = await fetch('/api/snapshot');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json()) as Snapshot;
 }
 
@@ -55,14 +65,14 @@ export function setControllerParams(
 
 export async function wifiReset(): Promise<void> {
   const r = await fetch('/api/admin/wifi-reset', { method: 'POST' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 // ── Network ──────────────────────────────────────────────────────────────
 
 export async function getNetwork(): Promise<NetworkStatus> {
   const r = await fetch('/api/network');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json()) as NetworkStatus;
 }
 
@@ -113,7 +123,7 @@ export function createController(cfg: object): Promise<void> {
 
 async function deleteItem(url: string): Promise<void> {
   const r = await fetch(url, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export function deleteSensor(id: string): Promise<void> {
@@ -136,7 +146,7 @@ export function deleteController(id: string): Promise<void> {
 
 export async function getConfig(): Promise<ConfigSnapshot> {
   const r = await fetch('/api/config');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json()) as ConfigSnapshot;
 }
 
@@ -156,7 +166,7 @@ export function stopAutotune(id: string): Promise<void> {
 
 export async function getDashboards(): Promise<DashboardConfig[]> {
   const r = await fetch('/api/dashboards');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return r.json() as Promise<DashboardConfig[]>;
 }
 
@@ -166,7 +176,7 @@ export async function createDashboard(cfg: Omit<DashboardConfig, 'id'>): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   const data = await r.json() as { id: string };
   return data.id;
 }
@@ -177,14 +187,14 @@ export function updateDashboard(id: string, cfg: Omit<DashboardConfig, 'id'>): P
 
 export async function deleteDashboard(id: string): Promise<void> {
   const r = await fetch(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 // ── Data logs / charts ─────────────────────────────────────────────────────────
 
 export async function getLogs(): Promise<LogConfig[]> {
   const r = await fetch('/api/logs');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return r.json() as Promise<LogConfig[]>;
 }
 
@@ -194,7 +204,7 @@ export async function createLog(cfg: Omit<LogConfig, 'id' | 'session'>): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json() as { id: string }).id;
 }
 
@@ -204,7 +214,7 @@ export function updateLog(id: string, cfg: Omit<LogConfig, 'id' | 'session'>): P
 
 export async function deleteLog(id: string): Promise<void> {
   const r = await fetch(`/api/logs/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export function setLogEnabled(id: string, enabled: boolean): Promise<void> {
@@ -217,13 +227,13 @@ export function clearLog(id: string): Promise<void> {
 
 export async function getLogSessions(id: string): Promise<LogSession[]> {
   const r = await fetch(`/api/logs/${encodeURIComponent(id)}/sessions`);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return r.json() as Promise<LogSession[]>;
 }
 
 export async function deleteLogSession(id: string, start: number): Promise<void> {
   const r = await fetch(`/api/logs/${encodeURIComponent(id)}/sessions/${start}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export function logDownloadUrl(id: string, session?: number): string {
@@ -242,7 +252,7 @@ export async function getLogData(id: string, session?: number): Promise<LogData>
   const url = `/api/logs/${encodeURIComponent(id)}/data${session ? `?session=${session}` : ''}`;
   const r = await fetch(url);
   if (r.status === 404) return { refs: [], data: [[]] };
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return parseCsv(await r.text());
 }
 
@@ -293,7 +303,7 @@ type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
 export async function getPrograms(): Promise<ProgramConfig[]> {
   const r = await fetch('/api/programs');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return r.json() as Promise<ProgramConfig[]>;
 }
 
@@ -303,7 +313,7 @@ export async function createProgram(cfg: ProgramSave): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json() as { id: string }).id;
 }
 
@@ -313,7 +323,7 @@ export function updateProgram(id: string, cfg: ProgramSave): Promise<void> {
 
 export async function deleteProgram(id: string): Promise<void> {
   const r = await fetch(`/api/programs/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export function controlProgram(id: string, action: ProgramAction): Promise<void> {
@@ -326,7 +336,7 @@ type ProfileSave = Pick<ProfileConfig, 'name' | 'category' | 'steps'>;
 
 export async function getProfiles(): Promise<ProfileLibrary> {
   const r = await fetch('/api/profiles');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return r.json() as Promise<ProfileLibrary>;
 }
 
@@ -336,7 +346,7 @@ export async function createProfile(cfg: ProfileSave): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json() as { id: string }).id;
 }
 
@@ -346,7 +356,7 @@ export function updateProfile(id: string, cfg: ProfileSave): Promise<void> {
 
 export async function deleteProfile(id: string): Promise<void> {
   const r = await fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export async function createProfileCategory(name: string): Promise<string> {
@@ -355,7 +365,7 @@ export async function createProfileCategory(name: string): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json() as { id: string }).id;
 }
 
@@ -365,14 +375,14 @@ export function updateProfileCategory(id: string, name: string): Promise<void> {
 
 export async function deleteProfileCategory(id: string): Promise<void> {
   const r = await fetch(`/api/profile-categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 // ── Bus discovery ────────────────────────────────────────────────────────────
 
 export async function scanOneWireBus(pin: number): Promise<BusScanResult> {
   const r = await fetch(`/api/bus/scan?type=onewire&pin=${pin}`);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return r.json() as Promise<BusScanResult>;
 }
 
@@ -380,7 +390,7 @@ export async function scanOneWireBus(pin: number): Promise<BusScanResult> {
 
 export async function getSettings(): Promise<AppSettings> {
   const r = await fetch('/api/settings');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json()) as AppSettings;
 }
 
@@ -392,7 +402,7 @@ export function updateSettings(patch: Partial<AppSettings>): Promise<void> {
 
 export async function getUpdateStatus(): Promise<UpdateStatus> {
   const r = await fetch('/api/update/status');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json()) as UpdateStatus;
 }
 
@@ -432,7 +442,7 @@ export function uploadAssets(file: File, onProgress: (pct: number) => void): Pro
 
 export async function downloadBackup(): Promise<void> {
   const r = await fetch('/api/backup');
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -451,14 +461,14 @@ export async function restoreBackup(text: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: text,
   });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 // ── SD file manager ─────────────────────────────────────────────────────────
 
 export async function listFiles(path: string): Promise<FileListing> {
   const r = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
   return (await r.json()) as FileListing;
 }
 
@@ -468,7 +478,7 @@ export function fileDownloadUrl(path: string): string {
 
 export async function deleteFile(path: string): Promise<void> {
   const r = await fetch(`/api/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) await failed(r);
 }
 
 export function renameFile(from: string, to: string): Promise<void> {
@@ -481,4 +491,31 @@ export function mkdirFile(path: string): Promise<void> {
 
 export function uploadFileTo(dir: string, file: File, onProgress: (pct: number) => void): Promise<void> {
   return uploadFile(`/api/files/upload?path=${encodeURIComponent(dir)}`, file, onProgress);
+}
+
+// ── Access protection ──────────────────────────────────────────────────────────
+
+export async function getAuthStatus(): Promise<AuthStatus> {
+  const r = await fetch('/api/auth/status');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as AuthStatus;
+}
+
+export function login(password: string): Promise<void> {
+  return postJson('/api/auth/login', { password });
+}
+
+export async function logout(): Promise<void> {
+  const r = await fetch('/api/auth/logout', { method: 'POST' });
+  if (!r.ok) await failed(r);
+}
+
+// An empty newPassword clears the password and turns the protection off.
+export function setDevicePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return postJson('/api/auth/password', { currentPassword, password: newPassword });
+}
+
+export async function revokeAllSessions(): Promise<void> {
+  const r = await fetch('/api/auth/revoke-all', { method: 'POST' });
+  if (!r.ok) await failed(r);
 }

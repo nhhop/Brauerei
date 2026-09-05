@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "AuthService.h"
 #include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "EspNowPublishService.h"
@@ -39,6 +40,11 @@ namespace BrewControl {
 //   POST /api/controllers/<id>/setpoint    — {"v":<float>}
 //   POST /api/controllers/<id>/params      — raw controller-params JSON
 //   POST /api/admin/wifi-reset             — clear WiFi creds, reboot
+//   GET  /api/auth/status                  — {enabled, authenticated}
+//   POST /api/auth/login                   — {"password":…} → session cookie
+//   POST /api/auth/logout                  — drop this session
+//   POST /api/auth/password                — set/change/clear device password
+//   POST /api/auth/revoke-all              — drop every session
 //   GET  /api/network                      — STA status + hostname (JSON)
 //   GET  /api/network/scan                 — async WiFi scan (202 → 200+JSON)
 //   POST /api/network                      — set SSID/password and/or hostname, reboot
@@ -76,6 +82,11 @@ namespace BrewControl {
 //   All mutating file ops reject paths under /www or /www.new (403) — the
 //   running UI's own files and the OTA-asset staging dir are read-only.
 //   GET  /*                                — SD static (default index.html)
+//
+// Access control is optional and off until a password is set (see
+// AuthService). Once one is, every mutating route needs the session cookie
+// from POST /api/auth/login; reads stay open, with GET /api/backup the one
+// exception because its bundle carries the MQTT password.
 //
 // Concurrency: serializeRegistry runs from the AsyncTCP task while
 // Registry::tick runs from loopTask. Reading values are non-atomic — a
@@ -120,6 +131,7 @@ class WebUI {
   MqttService& mqtt_;
   WebhookService& webhook_;
   EspNowPublishService& espnow_;
+  AuthService auth_;
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;
@@ -132,6 +144,10 @@ class WebUI {
   File fileUpload_;
   String fileUploadPath_;
   bool fileUploadRejected_ = false;
+  // Same idea as fileUploadRejected_, for the two OTA upload routes: an
+  // unauthorized upload must be dropped on every later chunk too, or the
+  // final chunk would answer a second time on top of the 401.
+  bool uploadUnauthorized_ = false;
 };
 
 }  // namespace BrewControl

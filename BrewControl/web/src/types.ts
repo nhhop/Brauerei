@@ -342,3 +342,10 @@ export interface FileListing {
   path: string;
   entries: FileEntry[];
 }
+
+// GET /api/auth/status. `enabled` is false until a device password is set —
+// there is no separate on/off flag on the device either.
+export interface AuthStatus {
+  enabled: boolean;
+  authenticated: boolean;
+}
