@@ -157,6 +157,12 @@ String ProgramRunner::generateId() {
   return String(buf);
 }
 
+void ProgramRunner::setStatus_(Program& p, Status s) {
+  if (p.status == s) return;
+  p.status = s;
+  if (onStatusChanged_) onStatusChanged_(p.id.c_str(), p.name.c_str(), statusToStr(s));
+}
+
 ProgramRunner::Program* ProgramRunner::find_(const char* id) {
   for (auto& p : programs_)
     if (p.id == id) return &p;
@@ -183,7 +189,7 @@ bool ProgramRunner::update(const char* id, const JsonObject& cfg) {
   p->name             = std::move(tmp.name);
   p->controller       = std::move(tmp.controller);
   p->steps            = std::move(tmp.steps);
-  p->status           = Status::Idle;
+  setStatus_(*p, Status::Idle);
   p->currentStep      = 0;
   p->stepStartedEpoch = 0;
   p->elapsedAtPauseSec = 0;
@@ -212,11 +218,11 @@ void ProgramRunner::applyStep_(Program& p, SensActCtrl::Registry& reg,
 void ProgramRunner::advance_(Program& p, SensActCtrl::Registry& reg,
                              time_t nowEpoch) {
   if (p.currentStep + 1 >= (int)p.steps.size()) {
-    p.status = Status::Done;  // last setpoint stays applied
+    setStatus_(p, Status::Done);  // last setpoint stays applied
     return;
   }
   p.currentStep++;
-  p.status            = Status::Running;
+  setStatus_(p, Status::Running);
   p.stepStartedEpoch  = nowEpoch;
   p.elapsedAtPauseSec = 0;
   applyStep_(p, reg, /*enable=*/true);
@@ -238,7 +244,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
       return {false, "invalid action for state"};
     if (p->steps.empty()) return {false, "no steps"};
     p->currentStep       = 0;
-    p->status            = Status::Running;
+    setStatus_(*p, Status::Running);
     p->stepStartedEpoch  = now;
     p->elapsedAtPauseSec = 0;
     applyStep_(*p, reg, /*enable=*/true);
@@ -256,21 +262,21 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     } else {
       return {false, "invalid action for state"};
     }
-    p->status = Status::Paused;
+    setStatus_(*p, Status::Paused);
     return {true};
   }
 
   if (strcmp(action, "resume") == 0) {
     if (st != Status::Paused) return {false, "invalid action for state"};
     p->stepStartedEpoch = now - (time_t)p->elapsedAtPauseSec;
-    p->status           = Status::Running;
+    setStatus_(*p, Status::Running);
     applyStep_(*p, reg, /*enable=*/true);
     return {true};
   }
 
   if (strcmp(action, "stop") == 0) {
     if (st == Status::Idle) return {false, "invalid action for state"};
-    p->status            = Status::Idle;
+    setStatus_(*p, Status::Idle);
     p->currentStep       = 0;
     p->elapsedAtPauseSec = 0;
     return {true};  // controller setpoint/enable left as-is
@@ -287,7 +293,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     if (st != Status::Running && st != Status::Paused && st != Status::Awaiting)
       return {false, "invalid action for state"};
     if (p->currentStep > 0) p->currentStep--;
-    p->status            = Status::Running;
+    setStatus_(*p, Status::Running);
     p->stepStartedEpoch  = now;
     p->elapsedAtPauseSec = 0;
     applyStep_(*p, reg, /*enable=*/true);
@@ -328,7 +334,7 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
     if (elapsed < (long)cur.holdSec) continue;
 
     if (cur.confirm) {
-      p.status = Status::Awaiting;  // wait for manual "next"
+      setStatus_(p, Status::Awaiting);  // wait for manual "next"
     } else {
       advance_(p, reg, nowEpoch);
     }

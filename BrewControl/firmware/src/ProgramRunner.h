@@ -7,6 +7,7 @@
 #include <freertos/semphr.h>
 #include <time.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,16 @@ class ProgramRunner {
   // until nowEpoch is a real (post-2000) time.
   void tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch);
 
+  // Fired on every run-state transition after boot, with `status` as it
+  // appears in serialize(). Runs on whichever task caused the transition —
+  // loopTask from tick(), the AsyncTCP task from control() — and always with
+  // this runner's lock held, so the callback must not call back into it.
+  // Restoring persisted state in loadFromSD deliberately does not fire.
+  void setOnStatusChanged(
+      std::function<void(const char* id, const char* name, const char* status)> cb) {
+    onStatusChanged_ = std::move(cb);
+  }
+
  private:
   enum class Status { Idle, Running, Awaiting, Paused, Done };
 
@@ -91,7 +102,13 @@ class ProgramRunner {
   // locked doesn't self-deadlock.
   mutable SemaphoreHandle_t mutex_ = nullptr;
 
+  std::function<void(const char*, const char*, const char*)> onStatusChanged_;
+
   Program* find_(const char* id);
+
+  // Single funnel for every run-state change after boot: assigns and, on a
+  // real transition, notifies onStatusChanged_.
+  void setStatus_(Program& p, Status s);
 
   // Apply the current step's setpoint to the bound controller; enable it too
   // when `enable` is set. No-op if the controller no longer exists.

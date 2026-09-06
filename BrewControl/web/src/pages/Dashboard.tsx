@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, ProfileLibrary } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, ProfileLibrary, Severity } from '../types';
 import {
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
@@ -41,9 +41,11 @@ function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
   };
 }
 
-export function Dashboard({ snap, err }: {
+export function Dashboard({ snap, err, alarmByRef }: {
   snap: Snapshot | null;
   err: string | null;
+  // Active threshold alarms keyed by their watched ref, for the card badges.
+  alarmByRef?: Map<string, Severity>;
   path?: string;
 }) {
   // ── Dashboards ────────────────────────────────────────────────────────────
@@ -370,6 +372,7 @@ export function Dashboard({ snap, err }: {
                 const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
                 return (
                   <SensorCard key={s.id} sensor={s}
+                    alarm={alarmByRef?.get(`sensor/${s.id}`)}
                     onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
                     onDelete={editMode ? () => removeFromDashboard('sensor', baseId) : undefined}
                     onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
@@ -391,6 +394,7 @@ export function Dashboard({ snap, err }: {
             <Column title="Aktoren" count={displaySnap.actuators.length}>
               {displaySnap.actuators.map((a) => (
                 <ActuatorCard key={a.id} actuator={a}
+                  alarm={alarmByRef?.get(`actuator/${a.id}`)}
                   onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
                   onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}
                 />

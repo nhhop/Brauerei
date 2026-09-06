@@ -87,6 +87,11 @@ tags:
     description: Time-series logging of sensor/actuator values to CSV sessions.
   - name: Setpoint Programs
     description: Multi-step setpoint schedules driving a controller.
+  - name: Alarms
+    description: |
+      Threshold rules on sensor/actuator/controller values, plus the alert
+      history they feed together with driver faults, program run-state changes
+      and autotune completion.
   - name: Profiles
     description: |
       Reusable step templates ("Maischeplan", "Gaerverlauf") grouped into
@@ -136,14 +141,20 @@ paths:
       operationId: streamEvents
       summary: Subscribe to snapshot pushes (SSE)
       description: |
-        Server-Sent-Events stream. The only event name is **`snapshot`**; its
-        `data:` payload is identical to `GET /api/snapshot`. The `id:` field is
+        Server-Sent-Events stream carrying two event names. The `id:` field is
         the device uptime in milliseconds (`millis()`, wraps after ~49 days).
 
-        A snapshot is pushed on connect, then every 1000 ms, and additionally
-        after every write that changes registry state (actuator write, setpoint
-        change, params change, item create/delete, sensor reset, program
-        control).
+        **`snapshot`** — `data:` is identical to `GET /api/snapshot`. Pushed on
+        connect, then every 1000 ms, and additionally after every write that
+        changes registry state (actuator write, setpoint change, params change,
+        item create/delete, sensor reset, program control).
+
+        **`alert`** — `data:` is a single `Alert` object, identical in shape to
+        one element of `GET /api/alerts`. Pushed as alerts are raised, at most
+        four per loop pass. Nothing is replayed on connect and the underlying
+        event source drops silently when a client's queue is full, so a client
+        that must not miss an alert tracks the highest `seq` it saw and calls
+        `GET /api/alerts?since=<seq>` after every (re)connect.
       responses:
         "200":
           description: Event stream.
@@ -154,6 +165,10 @@ paths:
                 id: 128394
                 event: snapshot
                 data: {"sensors":[],"actuators":[],"controllers":[]}
+
+                id: 131402
+                event: alert
+                data: {"seq":7,"ts":1757030400,"sev":"critical","state":"raised","kind":"threshold","src":"sensor/kettle.temp","name":"Sudpfanne zu heiss","rule":"3f9ac1","v":79.4}
 
   # ── Dynamic Items ──────────────────────────────────────────────────────────
   /api/sensors:
@@ -767,6 +782,141 @@ paths:
             text/plain: { schema: { type: string } }
         "404": { $ref: "#/components/responses/NotFound" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  # ── Alarms & Alerts ────────────────────────────────────────────────────────
+  /api/alarms:
+    get:
+      tags: [Alarms]
+      operationId: getAlarms
+      summary: List alarm rules
+      description: |
+        Every rule with its definition plus the live latch state (`active`,
+        `since`, `resolved`), so a client can badge cards without replaying the
+        alert history.
+      responses:
+        "200":
+          description: All alarm rules.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Alarm" }
+    post:
+      tags: [Alarms]
+      operationId: createAlarm
+      summary: Create an alarm rule
+      description: Persists to `/config/alarms.json`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AlarmInput" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "201": { $ref: "#/components/responses/Created" }
+        "400":
+          description: Body is `invalid JSON` or `invalid alarm`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/alarms/{id}:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Alarms]
+      operationId: updateAlarm
+      summary: Replace an alarm rule
+      description: |
+        Replaces the definition and resets the rule's latch, so a changed
+        threshold is re-evaluated from scratch rather than inheriting the old
+        raised/cleared state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AlarmInput" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404":
+          description: Body is `not found or invalid`.
+          content:
+            text/plain: { schema: { type: string, const: not found or invalid } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Alarms]
+      operationId: deleteAlarm
+      summary: Remove an alarm rule
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/alarms/{id}/enable:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Alarms]
+      operationId: setAlarmEnabled
+      summary: Enable or disable an alarm rule
+      description: |
+        Leaves the definition alone. Disabling also drops the latch, so
+        re-enabling cannot emit a stale `cleared` alert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+            example: { enabled: false }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/alerts:
+    get:
+      tags: [Alarms]
+      operationId: getAlerts
+      summary: Read the alert history
+      description: |
+        A RAM ring of the last 40 alerts, ascending by `seq`, lost on reboot.
+        An active threshold or fault re-raises itself on the next tick, so only
+        the history is gone — not the current state.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema: { type: integer, format: int64, default: 0 }
+          description: |
+            Return only alerts with a `seq` greater than this. The catch-up
+            path after an SSE reconnect. `seq` restarts at 1 on reboot, so a
+            client whose stored cursor exceeds the newest `seq` should reset it.
+      responses:
+        "200":
+          description: Alert history.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Alert" }
+
+  /api/alerts/clear:
+    post:
+      tags: [Alarms]
+      operationId: clearAlerts
+      summary: Empty the alert history
+      description: |
+        Discards the ring. Rule latches are untouched — a still-active alarm
+        does not re-fire just because the list was wiped.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
 
   # ── Profile Library ────────────────────────────────────────────────────────
   /api/profiles:
@@ -2120,6 +2270,142 @@ components:
           description: |
             Derived, clamped at 0. Present only while `currentStep` addresses a
             real step.
+
+    # ── Alarms & Alerts ──────────────────────────────────────────────────────
+    Severity:
+      type: string
+      enum: [info, warning, critical]
+
+    CondOp:
+      type: string
+      enum: [gt, lt]
+      description: |
+        Only `>` and `<`. Equality is meaningless on floats once hysteresis
+        exists, and a window ("outside 60-70") is two rules.
+
+    Condition:
+      type: object
+      required: [ref, op, value, hyst]
+      description: |
+        Shared threshold primitive. `ref` uses the same `"<role>/<snapshotId>"`
+        form as log series and chart config — note that role `controller`
+        resolves to the controller's **setpoint**, not a process value.
+      properties:
+        ref:
+          type: string
+          description: "`sensor/<id>[.<channelKey>]`, `actuator/<id>` or `controller/<id>`."
+          example: sensor/kettle.temp
+        op: { $ref: "#/components/schemas/CondOp" }
+        value: { type: number }
+        hyst:
+          type: number
+          minimum: 0
+          default: 0
+          description: |
+            Release band. With `op: gt` the rule latches on at `v > value` and
+            off only at `v < value - hyst`, so a value sitting on the limit
+            cannot chatter. Mirrored for `lt`; `0` is a plain comparison.
+
+    AlarmInput:
+      type: object
+      required: [name, cond]
+      properties:
+        name: { type: string, minLength: 1 }
+        enabled: { type: boolean, default: true }
+        severity: { $ref: "#/components/schemas/Severity" }
+        forSec:
+          type: integer
+          default: 0
+          maximum: 3600
+          description: |
+            The condition must hold this long before the alert fires. Debounce
+            runs on `millis()`, so it works before NTP has synced. Clamped.
+        cond: { $ref: "#/components/schemas/Condition" }
+
+    Alarm:
+      type: object
+      required: [id, name, enabled, severity, forSec, cond, active, since, resolved]
+      properties:
+        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        name: { type: string }
+        enabled: { type: boolean }
+        severity: { $ref: "#/components/schemas/Severity" }
+        forSec: { type: integer }
+        cond: { $ref: "#/components/schemas/Condition" }
+        active:
+          type: boolean
+          description: |
+            Read-only. True while the rule is firing, i.e. the condition holds
+            and `forSec` has elapsed. Not persisted.
+        since:
+          type: integer
+          format: int64
+          description: |
+            Read-only. Unix epoch seconds when the rule started firing; `0`
+            while not firing, and also while firing if the clock was unset at
+            that moment. Not persisted.
+        resolved:
+          type: boolean
+          description: |
+            Read-only. False when `cond.ref` currently points at nothing (item
+            deleted, or no reading yet). Such a rule neither fires nor clears —
+            it is not removed, so it heals if the item comes back.
+
+    AlertKind:
+      type: string
+      enum: [threshold, fault, program, autotune]
+
+    AlertState:
+      type: string
+      enum: [raised, cleared]
+
+    Alert:
+      type: object
+      required: [seq, ts, sev, state, kind, src]
+      description: |
+        Deliberately carries no prose: the firmware emits structured fields and
+        the frontend composes the user-facing sentence, matching how the rest of
+        the API keeps its strings machine-readable.
+      properties:
+        seq:
+          type: integer
+          format: int64
+          description: |
+            Monotonic since boot, starting at 1. Sort key, dedupe key and the
+            `?since=` cursor.
+        ts:
+          type: integer
+          format: int64
+          description: |
+            Unix epoch seconds, or `0` when the alert was raised before NTP
+            synced. Alerts are never suppressed for an unset clock — the first
+            minute after boot is when a wiring fault shows up.
+        sev: { $ref: "#/components/schemas/Severity" }
+        state: { $ref: "#/components/schemas/AlertState" }
+        kind: { $ref: "#/components/schemas/AlertKind" }
+        src:
+          type: string
+          description: |
+            What the alert is about: `sensor/<id>`, `actuator/<id>`,
+            `controller/<id>` or `program/<id>`. For `kind: threshold` this is
+            the rule's `cond.ref`.
+          example: sensor/kettle.temp
+        name:
+          type: string
+          description: Rule name, program name or item id. Omitted when empty.
+        rule:
+          type: string
+          description: "Originating rule id. Present for `kind: threshold` only."
+        detail:
+          type: string
+          description: |
+            The driver's `fault()` text, the program status, or the breached
+            comparison. Truncated to 47 characters. Omitted when empty.
+        v:
+          type: number
+          description: |
+            The measured value at the moment of the edge. Omitted when not
+            applicable.
 
     # ── Profile Library ──────────────────────────────────────────────────────
     ProfileCategoryInput:

@@ -20,6 +20,7 @@
 #include <WiFi.h>
 #include <memory>
 
+#include "AlarmStore.h"
 #include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "EspNowPublishService.h"
@@ -63,11 +64,12 @@ BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(deviceFs, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
+BrewControl::AlarmStore alarmStore;
 BrewControl::ProfileStore profileStore;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
 BrewControl::EspNowPublishService espNowPublishService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, profileStore, mqttService, webhookService, espNowPublishService);
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, alarmStore, profileStore, mqttService, webhookService, espNowPublishService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -231,6 +233,7 @@ void setup() {
     dashboardStore.loadFromSD(deviceFs);
     logStore.loadFromSD(deviceFs);
     programRunner.loadFromSD(deviceFs);
+    alarmStore.loadFromSD(deviceFs);
     profileStore.loadFromSD(deviceFs);
   }
 
@@ -244,6 +247,13 @@ void setup() {
                                     // webUI can serve add/remove requests
   webhookService.attachExistingPublish(registry, dynamicItems);
   espNowPublishService.attachExisting(registry, dynamicItems);
+
+  // Program run-state transitions feed the alert centre. Fires with the
+  // runner's lock held, so the callback must not call back into it.
+  programRunner.setOnStatusChanged(
+      [](const char* id, const char* name, const char* status) {
+        alarmStore.onProgramStatus(id, name, status, time(nullptr), millis());
+      });
 
   webUI.begin();
   firmwareUpdater.begin();

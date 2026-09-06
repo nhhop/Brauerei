@@ -166,6 +166,57 @@ export interface ProgramConfig {
   currentSetpoint?: number;
 }
 
+// ── Alarme & Meldungen ───────────────────────────────────────────────────────
+// Wire format of GET /api/alarms and GET /api/alerts. Mirrors AlarmStore in the
+// firmware. A rule is user config; an alert is a point-in-time edge, kept in a
+// RAM ring on the device and therefore lost on reboot.
+
+export type Severity = 'info' | 'warning' | 'critical';
+
+export type CondOp = 'gt' | 'lt';
+
+// Shared threshold primitive. `ref` is the same "<role>/<snapshotId>" form the
+// log series and chart config use — resolveRef() in api.ts resolves it against
+// a snapshot. Note role "controller" means its *setpoint*, not a process value.
+export interface Condition {
+  ref: string;
+  op: CondOp;
+  value: number;
+  hyst: number;   // release band; gt clears only below value - hyst. 0 = plain compare
+}
+
+export interface AlarmConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  severity: Severity;
+  forSec: number;         // condition must hold this long before firing
+  cond: Condition;
+  // Runtime state (read-only, not persisted on the device):
+  active: boolean;        // firing right now
+  since: number;          // epoch (s) it started firing; 0 while idle or pre-NTP
+  resolved: boolean;      // false → cond.ref points at nothing; rule is dormant
+}
+
+export type AlertKind = 'threshold' | 'fault' | 'program' | 'autotune';
+
+export type AlertState = 'raised' | 'cleared';
+
+// Carries no prose: the firmware emits structured fields, alertText() in
+// AlertCenter.tsx composes the German sentence.
+export interface Alert {
+  seq: number;            // monotonic since boot, starts at 1; also the ?since= cursor
+  ts: number;             // epoch (s), or 0 when raised before NTP synced
+  sev: Severity;
+  state: AlertState;
+  kind: AlertKind;
+  src: string;            // sensor/<id> | actuator/<id> | controller/<id> | program/<id>
+  name?: string;          // rule name, program name or item id
+  rule?: string;          // originating rule id, kind === 'threshold' only
+  detail?: string;        // fault() text, program status, or the breached comparison
+  v?: number;             // measured value at the edge
+}
+
 // ── Profile library ──────────────────────────────────────────────────────────
 // Wire format of GET /api/profiles. Reusable step templates, grouped into
 // user-defined categories. Steps are ProgramStep — applying a profile copies
