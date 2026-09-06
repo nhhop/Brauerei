@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { useRouter } from 'preact-router';
-import { LayoutDashboard, ListChecks, Settings, Menu, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, Settings, Menu, Bell, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -25,7 +25,12 @@ const footerItems: NavItem[] = [
   { href: '/settings', label: 'Einstellungen', icon: Settings, match: (p) => p.startsWith('/settings') },
 ];
 
-export function NavShell({ children }: { children: ComponentChildren }) {
+export function NavShell({ children, alertCount = 0, onBell }: {
+  children: ComponentChildren;
+  // Optional so the shell stays usable on its own; App supplies both.
+  alertCount?: number;
+  onBell?: () => void;
+}) {
   const [expanded, setExpanded] = useState(loadExpanded);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [{ url }] = useRouter();
@@ -79,6 +84,19 @@ export function NavShell({ children }: { children: ComponentChildren }) {
           {mainItems.map(renderItem)}
         </div>
         <div class="mt-auto flex flex-col gap-1 p-2">
+          {onBell && (
+            <button type="button" onClick={() => { setMobileOpen(false); onBell(); }}
+              title={alertCount > 0 ? `Meldungen (${alertCount} aktiv)` : 'Meldungen'}
+              class="relative flex items-center gap-3 rounded px-3 py-2 text-sm text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
+              <Bell size={20} class="shrink-0" />
+              {alertCount > 0 && (
+                <span class="absolute left-6 top-1 min-w-4 rounded-full bg-critical px-1 text-center text-[10px] font-medium leading-4 text-white">
+                  {alertCount > 9 ? '9+' : alertCount}
+                </span>
+              )}
+              {showLabels && <span class="truncate">Meldungen</span>}
+            </button>
+          )}
           {footerItems.map(renderItem)}
         </div>
       </nav>

@@ -1,8 +1,8 @@
 import { Pencil, RotateCcw, X, TriangleAlert } from 'lucide-preact';
-import type { Sensor } from '../types';
-import { badgeCaution } from '../ui';
+import type { Sensor, Severity } from '../types';
+import { badgeCaution, badgeCritical } from '../ui';
 
-export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sensor; onDelete?: () => void; onReset?: () => void; onEdit?: () => void }) {
+export function SensorCard({ sensor, alarm, onDelete, onReset, onEdit }: { sensor: Sensor; alarm?: Severity; onDelete?: () => void; onReset?: () => void; onEdit?: () => void }) {
   const { id, meta, state } = sensor;
   const v = state.v;
   const live = state.ok && v != null && isFinite(v);
@@ -53,6 +53,11 @@ export function SensorCard({ sensor, onDelete, onReset, onEdit }: { sensor: Sens
       {sensor.fault && (
         <span class={`mt-2 ${badgeCaution}`}>
           <TriangleAlert size={12} /> {sensor.fault}
+        </span>
+      )}
+      {alarm && (
+        <span class={`mt-2 ${alarm === 'critical' ? badgeCritical : badgeCaution}`}>
+          <TriangleAlert size={12} /> Grenzwert
         </span>
       )}
     </div>

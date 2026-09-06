@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "Condition.h"
 #include "LogCompressor.h"
 
 namespace BrewControl {
@@ -105,15 +106,6 @@ class LogStore {
       comp.configure(algo, maxGapSec, std::move(tols));
     }
   };
-
-  // Resolved current value of a single series.
-  struct Value {
-    float value = 0.0f;
-    bool  valid = false;
-    float res   = 0.0f;
-  };
-
-  static Value resolve(SensActCtrl::Registry& reg, const std::string& ref);
 
   std::vector<LogCfg> logs_;
 

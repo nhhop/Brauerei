@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X, TriangleAlert } from 'lucide-preact';
-import type { Actuator } from '../types';
+import type { Actuator, Severity } from '../types';
 import { writeActuator, enableActuator, setActuatorInterval } from '../api';
 import { pickIntervalUnit, intervalUnitMultiplier } from '../intervalUnit';
 import { ToggleSwitch } from './ToggleSwitch';
-import { btnPrimary, inp, badgeCaution } from '../ui';
+import { btnPrimary, inp, badgeCaution, badgeCritical } from '../ui';
 
-export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuator; onDelete?: () => void; onEdit?: () => void }) {
+export function ActuatorCard({ actuator, alarm, onDelete, onEdit }: { actuator: Actuator; alarm?: Severity; onDelete?: () => void; onEdit?: () => void }) {
   const { id, meta, state, target, enabled, interval } = actuator;
   const [pending, setPending] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -77,6 +77,11 @@ export function ActuatorCard({ actuator, onDelete, onEdit }: { actuator: Actuato
       {actuator.fault && (
         <span class={`mt-2 ${badgeCaution}`}>
           <TriangleAlert size={12} /> {actuator.fault}
+        </span>
+      )}
+      {alarm && (
+        <span class={`mt-2 ${alarm === 'critical' ? badgeCritical : badgeCaution}`}>
+          <TriangleAlert size={12} /> Grenzwert
         </span>
       )}
     </div>
