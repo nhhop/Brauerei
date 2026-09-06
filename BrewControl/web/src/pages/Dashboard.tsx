@@ -56,6 +56,9 @@ export function Dashboard({ snap, err }: {
   // Meta dialog (create / rename+delete) and the checkbox content modal.
   const [meta, setMeta] = useState<null | 'create' | 'edit'>(null);
   const [contentOpen, setContentOpen] = useState(false);
+  // Live height (px) of the fixed mobile program bottom sheet — drives the
+  // spacer that keeps the list's last row reachable above it.
+  const [sheetH, setSheetH] = useState(0);
 
   useEffect(() => {
     getDashboards().then(ds => {
@@ -337,6 +340,7 @@ export function Dashboard({ snap, err }: {
                   onEdit={editMode ? () => openEditProgram(prog) : undefined}
                   onDelete={editMode ? () => removeProgramRef(pid) : undefined}
                   fill={activeDash.programs!.length === 1}
+                  onSheetHeight={setSheetH}
                 />
               );
             })}
@@ -397,7 +401,7 @@ export function Dashboard({ snap, err }: {
               ))}
             </Column>
           </div>
-          {hasProgramSheet && <div aria-hidden class="h-40 lg:hidden" />}
+          {hasProgramSheet && <div aria-hidden class="lg:hidden" style={{ height: sheetH }} />}
         </div>
       </div>
       {modals}

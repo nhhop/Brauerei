@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ProgramConfig, ProgramAction } from '../types';
 import { controlProgram } from '../api';
 import { badge, badgeAccent, badgeCaution, badgeSuccess } from '../ui';
@@ -14,6 +14,7 @@ interface Props {
   onEdit?: () => void;
   onDelete?: () => void;
   fill?: boolean;          // stretch to full column height on desktop (single program)
+  onSheetHeight?: (px: number) => void;  // mobile bottom-sheet height, for the list spacer
 }
 
 export function fmtDuration(sec: number): string {
@@ -40,7 +41,7 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
-export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDelete, fill }: Props) {
+export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDelete, fill, onSheetHeight }: Props) {
   const { name, controller, steps, status, currentStep } = program;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -49,6 +50,21 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
   // Live drag height (px) while the handle is being dragged; null when not dragging.
   const [liveHeight, setLiveHeight] = useState<number | null>(null);
   const dragRef = useRef<{ startY: number; baseline: number; maxPx: number } | null>(null);
+
+  // Report the rendered height of the fixed mobile bottom sheet so the list
+  // behind it can reserve matching space — a static spacer clips the last row
+  // once the sheet grows (active hero block, expanded step list).
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!fill || !onSheetHeight) return;
+    const el = rootRef.current;
+    if (!el) return;
+    const report = () => onSheetHeight(matchMedia('(min-width: 1024px)').matches ? 0 : el.offsetHeight);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => { ro.disconnect(); onSheetHeight(0); };
+  }, [fill, onSheetHeight]);
 
   function beginDrag(e: PointerEvent) {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -128,7 +144,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
   }
 
   return (
-    <div class={`rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
+    <div ref={rootRef} class={`rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
       ${fill ? 'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:m-0 ' +
         'max-lg:rounded-t-lg max-lg:rounded-b-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:border-border ' +
         'max-lg:bg-surface-acrylic max-lg:backdrop-blur-md max-lg:shadow-elev-64 ' +

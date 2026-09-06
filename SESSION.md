@@ -1150,3 +1150,20 @@ Nicht durch diese Änderung verursacht — die beiden Boards mit alter Firmware
 (`.74`, `.82`) verhalten sich identisch. `AsyncEventSource::canHandle` verlangt
 `Accept: text/event-stream`; mit dem Header kommt sauber `200` plus Event-Strom.
 Für künftige SSE-Tests per curl also immer den Accept-Header mitgeben.
+
+## 2026-09-06 — Fix: mobiles Programm-Bottom-Sheet verdeckte das letzte Listenelement
+
+Das fixe Bottom Sheet (`ProgramCard` mit `fill`, seit 2026-09-04) liegt auf
+Mobile bewusst über der gescrollten Dashboard-Liste. Der dafür vorgesehene
+Platzhalter in `Dashboard.tsx` war fest auf `h-40` (10 rem) — sobald das Sheet
+höher wurde (aktiver Hero-Block mit Fortschrittsbalken, oder per Drag auf
+`max-h-[50vh]` aufgezogen), reichte der Abstand nicht und das unterste
+Karten-/Listenelement blieb hinter dem Sheet unerreichbar.
+
+Umsetzung: `ProgramCard` misst die eigene gerenderte Höhe per `ResizeObserver`
+auf dem Root-Element und meldet sie über den neuen Callback `onSheetHeight`
+(auf Desktop `0`, da das Sheet dort eine normale Spaltenkarte ist). `Dashboard`
+hält die Höhe in `sheetH` und setzt den Platzhalter (`lg:hidden`) per Inline-
+`style={{ height: sheetH }}` — wächst und schrumpft jetzt mit dem Sheet, auch
+während des Drags. `pnpm typecheck` + `pnpm build` grün; HW-Verifikation am
+Gerät steht noch aus.
