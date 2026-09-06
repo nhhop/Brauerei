@@ -1,4 +1,4 @@
-import type { AuthStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing } from './types';
+import type { AuthStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -25,10 +25,19 @@ export async function getSnapshot(): Promise<Snapshot> {
   return (await r.json()) as Snapshot;
 }
 
-// Subscribe to the named "snapshot" SSE event. The browser EventSource
-// auto-reconnects on transport drop, so callers don't need to handle that.
+// Subscribe to the SSE stream. The browser EventSource auto-reconnects on
+// transport drop, so callers don't need to handle that — but alerts raised
+// during the gap are never replayed, which is what onOpen is for: it fires on
+// every (re)connect, so the caller can catch up via getAlerts(lastSeq).
+//
+// One EventSource for both event names on purpose: each connection costs the
+// device an SSE client slot and its buffer.
 // Returns an unsubscribe function.
-export function subscribeEvents(onSnapshot: (s: Snapshot) => void): () => void {
+export function subscribeEvents(
+  onSnapshot: (s: Snapshot) => void,
+  onAlert?: (a: Alert) => void,
+  onOpen?: () => void,
+): () => void {
   const es = new EventSource('/api/events');
   es.addEventListener('snapshot', (e) => {
     try {
@@ -37,6 +46,16 @@ export function subscribeEvents(onSnapshot: (s: Snapshot) => void): () => void {
       // malformed payload — skip
     }
   });
+  if (onAlert) {
+    es.addEventListener('alert', (e) => {
+      try {
+        onAlert(JSON.parse((e as MessageEvent).data) as Alert);
+      } catch {
+        // malformed payload — skip
+      }
+    });
+  }
+  if (onOpen) es.addEventListener('open', onOpen);
   return () => es.close();
 }
 
@@ -328,6 +347,51 @@ export async function deleteProgram(id: string): Promise<void> {
 
 export function controlProgram(id: string, action: ProgramAction): Promise<void> {
   return postJson(`/api/programs/${encodeURIComponent(id)}/control`, { action });
+}
+
+// ── Alarme & Meldungen ─────────────────────────────────────────────────
+type AlarmSave = Pick<AlarmConfig, 'name' | 'enabled' | 'severity' | 'forSec' | 'cond'>;
+
+export async function getAlarms(): Promise<AlarmConfig[]> {
+  const r = await fetch('/api/alarms');
+  if (!r.ok) await failed(r);
+  return r.json() as Promise<AlarmConfig[]>;
+}
+
+export async function createAlarm(cfg: AlarmSave): Promise<string> {
+  const r = await fetch('/api/alarms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!r.ok) await failed(r);
+  return (await r.json() as { id: string }).id;
+}
+
+export function updateAlarm(id: string, cfg: AlarmSave): Promise<void> {
+  return postJson(`/api/alarms/${encodeURIComponent(id)}`, cfg);
+}
+
+export async function deleteAlarm(id: string): Promise<void> {
+  const r = await fetch(`/api/alarms/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) await failed(r);
+}
+
+export function setAlarmEnabled(id: string, enabled: boolean): Promise<void> {
+  return postJson(`/api/alarms/${encodeURIComponent(id)}/enable`, { enabled });
+}
+
+// sinceSeq > 0 returns only alerts newer than that — the catch-up call after an
+// SSE (re)connect, since nothing is replayed on the stream itself.
+export async function getAlerts(sinceSeq = 0): Promise<Alert[]> {
+  const url = sinceSeq > 0 ? `/api/alerts?since=${sinceSeq}` : '/api/alerts';
+  const r = await fetch(url);
+  if (!r.ok) await failed(r);
+  return r.json() as Promise<Alert[]>;
+}
+
+export function clearAlerts(): Promise<void> {
+  return postJson('/api/alerts/clear', {});
 }
 
 // ── Profile library ──────────────────────────────────────────────────────────

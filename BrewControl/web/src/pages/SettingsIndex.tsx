@@ -6,7 +6,7 @@ import { PageShell } from '../components/PageShell';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Network, FolderOpen,
-  ShieldCheck,
+  ShieldCheck, BellRing,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -28,6 +28,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/connectivity', icon: Network, title: 'Konnektivität', desc: 'MQTT, Webhook und ESP-NOW' },
   { href: '/settings/security', icon: ShieldCheck, title: 'Zugriffsschutz', desc: 'Gerätepasswort für schreibende Zugriffe' },
   { href: '/settings/logs', icon: ChartLine, title: 'Logs & Charts', desc: 'Datenaufzeichnung konfigurieren und Verläufe anzeigen' },
+  { href: '/settings/alarms', icon: BellRing, title: 'Alarme', desc: 'Grenzwerte überwachen und melden' },
 ];
 
 export function SettingsIndex(_: { path?: string }) {

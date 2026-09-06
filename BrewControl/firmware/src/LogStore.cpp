@@ -277,57 +277,6 @@ bool LogStore::deleteSession(const char* id, time_t start, fs::FS& sd) {
   return false;
 }
 
-// ── Series resolution ──────────────────────────────────────────────────────────
-
-LogStore::Value LogStore::resolve(SensActCtrl::Registry& reg,
-                                  const std::string& ref) {
-  Value out;
-  const size_t slash = ref.find('/');
-  if (slash == std::string::npos) return out;
-  const std::string role = ref.substr(0, slash);
-  const std::string id   = ref.substr(slash + 1);
-
-  if (role == "sensor") {
-    // id is "<base>.<key>" or "<base>" for single-channel sensors.
-    const size_t dot = id.find('.');
-    const std::string base = (dot == std::string::npos) ? id : id.substr(0, dot);
-    const std::string key  = (dot == std::string::npos) ? "" : id.substr(dot + 1);
-    SensActCtrl::Sensor* s = reg.findSensor(base.c_str());
-    if (!s) return out;
-    for (size_t i = 0; i < s->channelCount(); ++i) {
-      const SensActCtrl::Channel ch = s->channel(i);
-      const char* ck = ch.key ? ch.key : "";
-      if (key == ck) {
-        out.value = ch.reading.value;
-        out.valid = ch.reading.valid;
-        out.res   = ch.meta.resolution;
-        return out;
-      }
-    }
-    return out;
-  }
-
-  if (role == "actuator") {
-    SensActCtrl::Actuator* a = reg.findActuator(id.c_str());
-    if (!a) return out;
-    out.value = a->state();
-    out.valid = true;
-    out.res   = a->meta().resolution;
-    return out;
-  }
-
-  if (role == "controller") {
-    SensActCtrl::Controller* c = reg.findController(id.c_str());
-    if (!c) return out;
-    out.value = c->setpoint();
-    out.valid = true;
-    out.res   = 0.0f;
-    return out;
-  }
-
-  return out;
-}
-
 // ── Sampling ───────────────────────────────────────────────────────────────────
 
 String LogStore::sessionPath(const char* id, time_t start) const {
@@ -389,7 +338,7 @@ void LogStore::tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch,
     in.ts = nowEpoch;
     in.vals.reserve(l.series.size());
     for (const auto& s : l.series) {
-      const Value v = resolve(reg, s.ref);
+      const RefValue v = resolveRef(reg, s.ref);
       float val = NAN;
       if (v.valid) {
         val = v.value;

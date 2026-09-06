@@ -1150,3 +1150,125 @@ Nicht durch diese Änderung verursacht — die beiden Boards mit alter Firmware
 (`.74`, `.82`) verhalten sich identisch. `AsyncEventSource::canHandle` verlangt
 `Accept: text/event-stream`; mit dem Header kommt sauber `200` plus Event-Strom.
 Für künftige SSE-Tests per curl also immer den Accept-Header mitgeben.
+
+
+## 2026-09-05 — Alarme & Schwellwerte + Notification/Alert-Center
+
+Der Backlog-Punkt „Alarme & Schwellwerte" samt seiner Erweiterung
+„Notification/Alert-Center" umgesetzt. Vorher war ein `fault()` nur als Badge
+auf der jeweiligen Karte sichtbar — lag die Karte auf einem anderen
+Dashboard-Tab, sah man ihn gar nicht; es gab keine Aggregation, keinen Verlauf,
+und Grenzwerte auf Messwerte überhaupt nicht.
+
+**Entscheidungen vorab** (mit dem Nutzer geklärt): Auswertung komplett in der
+BrewControl-Firmware, SensActCtrl bleibt unangetastet — damit teilt sich der
+später geplante Punkt „Sensorgetriggerte Schritte" die Condition-Struktur
+direkt, beide liegen in BrewControl. Alle vier Trigger in v1. Alert-Verlauf im
+RAM-Ring, Regeln persistiert. Eigenes SSE-Event statt Snapshot-Erweiterung,
+weil dessen fester 4160-Byte-Puffer bei Überlauf den Push still verwirft.
+
+**Firmware.** Neu `Condition.h/.cpp` — `LogStore::resolve()` als freie Funktion
+`resolveRef()` herausgezogen (reiner Verschiebe-Schritt, `LogStore` ruft sie
+jetzt auf) und um das wiederverwendbare Primitiv `Condition {ref, op, value,
+hyst}` + `evalCondition()` mit Latch-Semantik ergänzt. Neu `AlarmStore.h/.cpp`
+nach dem Store-Muster von `ProfileStore`/`LogStore`: Regeln in
+`/config/alarms.json`, Alert-Ring (40 Einträge, feste `char`-Arrays statt
+`std::string` — deterministische ~6 KB im `.bss` statt Heap-Fragmentierung neben
+WiFi/AsyncTCP/SD), rekursiver Mutex wie bei den anderen Stores mit `tick()`.
+Drei Detektoren im Tick: Schwellwerte mit Hysterese und `forSec`-Entprellung,
+`fault()`-Flanken, AutoTune-Abschluss (per `strstr` über `paramsJson()`, weil
+`Controller` keinen Autotune-Accessor auf dem Basis-Interface hat). Gelöschte
+Items fallen per Mark-and-Sweep aus der Flanken-Tabelle — kein
+`DynamicItems`-Observer nötig; eine Regel auf ein verschwundenes Item feuert
+weder noch löscht sie sich, sondern meldet `resolved: false` und heilt, wenn das
+Item zurückkommt.
+
+`ProgramRunner` bekam `setOnStatusChanged()` plus ein privates `setStatus_()`,
+über das alle neun Zuweisungsstellen laufen (die in `loadFromSD` bewusst nicht,
+sonst würde der Boot Alerts für Übergänge von vor dem Reboot feuern).
+
+**Zwei Details, die Ärger verhindern:** Der `AlarmStore` sendet nicht selbst,
+sondern legt Alerts in eine Outbox, die `WebUI::tick()` mit max. 4 pro Durchlauf
+leert — `raise_()` kann über den ProgramRunner-Callback auf dem AsyncTCP-Task
+laufen und bleibt so allokations- und netzwerkfrei. Und anders als
+`LogStore`/`ProgramRunner` wartet der Store *nicht* auf NTP: ein unterdrückter
+Alert ist für immer weg, und die erste Minute nach dem Boot ist genau die, in
+der ein Verdrahtungsfehler auffällt. Vor dem Sync ausgelöste Alerts tragen
+`ts: 0`, die Entprellung läuft durchgehend auf `millis()`.
+
+**API.** `GET/POST /api/alarms`, `POST/DELETE /api/alarms/<id>`,
+`POST /api/alarms/<id>/enable`, `GET /api/alerts[?since=<seq>]`,
+`POST /api/alerts/clear`, plus das SSE-Event `alert`. Auth kommt gratis über die
+bestehenden Handler-Klassen; nur `/api/alerts/clear` (body-los) braucht
+`requireAuth` von Hand. `?since=` ist der einzige Reparaturpfad und deckt
+Kaltstart, Reconnect *und* von `AsyncEventSource` still verworfene Pushes mit
+einem Mechanismus ab. `openapi.yaml` und die README-Routentabelle im selben
+Zug nachgezogen, inkl. der bisher falschen Behauptung „The only event name is
+`snapshot`".
+
+**Frontend.** `subscribeEvents()` nimmt jetzt optional `onAlert` und `onOpen` —
+eine EventSource für beide Event-Namen, weil jede Verbindung dem Gerät einen
+SSE-Client-Slot kostet. Neu `AlertCenter.tsx` (Toast-Stack unten rechts plus
+Slide-in-Panel an einer Glocke in der NavShell mit Aktiv-Zähler),
+`AlarmEditorModal.tsx` und die Seite `/settings/alarms`. Die Firmware sendet
+bewusst keine deutschen Texte — sie liefert strukturierte Felder, die deutsche
+Formulierung entsteht in genau einer Funktion `alertText()`. Aktive Alarme
+badgen zusätzlich die Sensor-/Aktorkarte. `styles.css` blieb unangetastet:
+`--success/--caution/--critical/--accent` decken das Severity-Vokabular ab.
+
+**Bewusst *kein* Alert-Center als eigene Route:** eine Seite ist genau dann
+nicht erreichbar, wenn man sie braucht — man steht am Kessel auf dem Dashboard.
+Deshalb Glocke plus Panel, das über jeder Seite aufgeht.
+
+**Verifikation.** `pio run` grün für alle drei Board-Envs; RAM auf esp32dev
+52320 → 58632 Byte, also die kalkulierten ~6 KB für den Ring.
+`pio test -e native` grün in beiden Projekten (BrewControl 16, SensActCtrl 196).
+`npx @redocly/cli lint` sauber (die eine `info-license`-Warnung ist vorbestehend).
+`pnpm typecheck` und `pnpm build` grün.
+
+Danach per Netzwerk-OTA auf den LilyGo (`brewcontrol.local`) geflasht und E2E
+durchgespielt — Regeln auf den echten DS18B20 (`sensor/mlt`) und auf
+`actuator/pump`:
+
+1. **Schwellwert raise** — Regel `mlt > 20` angelegt, feuert innerhalb einer
+   Sekunde: SSE-`alert` auf der Leitung, `active: true` mit `since`,
+   Ring-Eintrag mit `v: 22.5`.
+2. **Raise → cleared → raise** über `actuator/pump` (an/aus/an) — alle drei
+   Flanken kamen als eigene SSE-Events, `cleared` korrekt mit `sev: info`.
+3. **enable-Toggle** — Deaktivieren löscht den Latch und setzt
+   `resolved: false`, Reaktivieren feuert neu.
+4. **Tote Referenz** — Regel auf `sensor/gibtesnicht`: `resolved: false`,
+   `active: false`, kein Alert, keine Löschung.
+5. **Programm-Trigger** — Zweischritt-Programm mit `confirm` (Sollwert 0, damit
+   der PID garantiert Ausgang 0 kommandiert): `awaiting` als Warnung, `done` als
+   Info.
+6. **Validierung** — fehlender Name/`cond`/`value` und kaputtes JSON je `400`,
+   unbekannte Id bei POST und DELETE je `404`.
+7. **`?since=`** — `since=2` liefert genau `[3, 4]`, `since=999` leer.
+8. **Reboot** — Regeln überleben (`/config/alarms.json`), der Ring läuft bei
+   `seq: 1` neu an, und der noch anstehende Schwellwert meldet sich beim ersten
+   Tick von selbst wieder — genau das Verhalten, das den RAM-Ring vertretbar
+   macht.
+9. **UI gegen dasselbe Gerät** — Glocken-Zähler (1 → 2), „Grenzwert“-Badge auf
+   Sensor- und Aktorkarte, Live-Toast unten rechts, Panel mit Verlauf in
+   Geräte-Zeitformat, Severity-Filter, „Verlauf leeren“. Regelseite und Editor
+   (Live-Kanalliste aus dem Snapshot, Validierung) in hellem und dunklem Theme.
+
+Beim UI-Test fiel auf, dass der Rohwert als `aktuell 22.4375` erschien — der
+Alert trägt keine Kanalauflösung, also rundet `alertText()` jetzt auf zwei
+Nachkommastellen.
+
+**Ein echter Fund im Testlauf:** `alarms_.tick()` stand zunächst vor dem
+1-Hz-Gate in `WebUI::tick()` und lief damit bei jedem Loop-Durchlauf (~5 ms) —
+inklusive `paramsJson()` für jeden Controller. Auf 1 Hz gezogen und mit einem
+eigenen `lastAlarmMs_` versehen; die Entprellung hängt ohnehin an `millis()`,
+nicht an der Tick-Zahl.
+
+**Testartefakte entfernt:** Regeln, Testprogramm und Verlauf gelöscht, Pumpe und
+`testpid` auf ihren Ausgangszustand zurückgesetzt.
+
+**Noch offen:** die Trigger `fault()` und AutoTune — ersterer hätte auf dem
+Board eine Umstellung des MQTT-Transports auf einen toten externen Host
+gebraucht, letzterer einen vollständigen AutoTune-Durchlauf. Als eigener Punkt
+in [PLAN.md](PLAN.md) notiert, zusammen mit der dabei aufgefallenen Lücke, dass
+`GET /api/backup` weder Logs noch Programme noch Alarme mitnimmt.

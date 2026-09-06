@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "AlarmStore.h"
 #include "AuthService.h"
 #include "DashboardStore.h"
 #include "DynamicItems.h"
@@ -29,7 +30,8 @@ namespace BrewControl {
 //   GET  /api/snapshot                      — current registry state (JSON)
 //   GET  /api/events                        — SSE; "snapshot" event on
 //                                             connect, every 1 s, and after
-//                                             every write or add/remove
+//                                             every write or add/remove, plus
+//                                             an "alert" event per new alert
 //   POST /api/sensors                       — create dynamic sensor
 //   POST /api/actuators                     — create dynamic actuator
 //   POST /api/controllers                   — create dynamic controller
@@ -65,6 +67,13 @@ namespace BrewControl {
 //   POST /api/programs/<id>                — update setpoint program
 //   DELETE /api/programs/<id>              — remove setpoint program
 //   POST /api/programs/<id>/control        — {"action":start|pause|resume|stop|next|prev}
+//   GET  /api/alarms                       — list alarm rules incl. live state
+//   POST /api/alarms                       — create alarm rule
+//   POST /api/alarms/<id>                  — update alarm rule
+//   POST /api/alarms/<id>/enable           — {"enabled":bool}
+//   DELETE /api/alarms/<id>                — remove alarm rule
+//   GET  /api/alerts[?since=<seq>]         — alert history (ascending seq)
+//   POST /api/alerts/clear                 — empty the alert history
 //   GET  /api/profiles                     — profile library {categories,profiles}
 //   POST /api/profiles                     — create profile
 //   POST /api/profiles/<id>                — update profile
@@ -95,8 +104,8 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        LogStore& logs, ProgramRunner& programs, ProfileStore& profiles,
-        MqttService& mqtt, WebhookService& webhook,
+        LogStore& logs, ProgramRunner& programs, AlarmStore& alarms,
+        ProfileStore& profiles, MqttService& mqtt, WebhookService& webhook,
         EspNowPublishService& espnow, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
@@ -127,6 +136,7 @@ class WebUI {
   FirmwareUpdater& updater_;
   LogStore& logs_;
   ProgramRunner& programs_;
+  AlarmStore& alarms_;
   ProfileStore& profiles_;
   MqttService& mqtt_;
   WebhookService& webhook_;
@@ -135,6 +145,7 @@ class WebUI {
   AsyncWebServer server_;
   AsyncEventSource events_;
   uint32_t lastPushMs_ = 0;
+  uint32_t lastAlarmMs_ = 0;
   uint32_t rebootAtMs_ = 0;
 
   std::unique_ptr<SdTarSink> assetSink_;

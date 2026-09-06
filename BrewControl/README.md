@@ -234,7 +234,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | Endpoint | Methode | Zweck |
 |----------|---------|-------|
 | `/api/snapshot` | GET | Aktueller Registry-State |
-| `/api/events` | GET | SSE-Stream: `snapshot`-Event nach Connect, alle 1 s und nach jedem Write |
+| `/api/events` | GET | SSE-Stream: `snapshot`-Event nach Connect, alle 1 s und nach jedem Write; `alert`-Event je neuer Meldung |
 | `/api/sensors` | POST | Sensor anlegen |
 | `/api/sensors/<id>` | DELETE | Sensor entfernen |
 | `/api/sensors/<id>/reset` | POST | Akkumulierten Sensorwert zurücksetzen (z.B. YF-S201-Volumen) |
@@ -258,6 +258,11 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/programs` | GET, POST | Sollwert-Programme auflisten / anlegen |
 | `/api/programs/<id>` | POST, DELETE | Programm ändern / löschen |
 | `/api/programs/<id>/control` | POST | `start`/`pause`/`resume`/`stop`/`next`/`prev` |
+| `/api/alarms` | GET, POST | Alarmregeln auflisten (inkl. Live-Zustand) / anlegen |
+| `/api/alarms/<id>` | POST, DELETE | Regel ändern / löschen |
+| `/api/alarms/<id>/enable` | POST | Regel an-/abschalten |
+| `/api/alerts` | GET | Meldungsverlauf; `?since=<seq>` holt nur Neueres nach |
+| `/api/alerts/clear` | POST | Meldungsverlauf leeren |
 | `/api/profiles` | GET, POST | Profil-Bibliothek (Kategorien + Profile) lesen / Profil anlegen |
 | `/api/profiles/<id>` | POST, DELETE | Profil ändern / löschen |
 | `/api/profile-categories` | POST | Kategorie anlegen |

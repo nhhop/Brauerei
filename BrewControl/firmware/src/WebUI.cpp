@@ -244,11 +244,12 @@ class PostJsonHandler : public AsyncWebHandler {
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
-             ProfileStore& profiles, MqttService& mqtt, WebhookService& webhook,
+             AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
+             WebhookService& webhook,
              EspNowPublishService& espnow, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), logs_(logs), programs_(programs), profiles_(profiles),
-      mqtt_(mqtt), webhook_(webhook), espnow_(espnow),
+      updater_(updater), logs_(logs), programs_(programs), alarms_(alarms),
+      profiles_(profiles), mqtt_(mqtt), webhook_(webhook), espnow_(espnow),
       server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
@@ -802,6 +803,85 @@ void WebUI::begin() {
           return;
         }
         programs_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
+  // ── Alarms & alerts ─────────────────────────────────────────────────────────
+  // Rules are persisted config; the alert history is a RAM ring pushed as the
+  // "alert" SSE event. Nothing here touches the registry, so no snapshot push.
+
+  // POST /api/alerts/clear — registered before the GET so the bare
+  // /api/alerts route (BackwardCompatible matching) can't swallow it.
+  // Body-less, so it needs the auth gate by hand.
+  server_.on("/api/alerts/clear", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    if (!requireAuth(req)) return;
+    alarms_.clearAlerts();
+    req->send(204);
+  });
+
+  // GET /api/alerts[?since=<seq>] — full ring, or only what came after <seq>.
+  // The catch-up path for a reconnected client and for pushes the event source
+  // dropped.
+  server_.on("/api/alerts", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    uint32_t since = 0;
+    if (const AsyncWebParameter* p = req->getParam("since"))
+      since = (uint32_t)strtoul(p->value().c_str(), nullptr, 10);
+    req->send(200, "application/json", alarms_.serializeAlerts(since));
+  });
+
+  server_.on("/api/alarms", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", alarms_.serialize());
+  });
+
+  // DELETE /api/alarms/:id — remove a rule
+  server_.addHandler(new DeletePrefixHandler("/api/alarms/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/alarms/"));
+        if (!alarms_.remove(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        alarms_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/alarms/:id          — update definition (resets the latch)
+  // POST /api/alarms/:id/enable   — {"enabled":bool}
+  server_.addHandler(new BodyPrefixHandler("/api/alarms/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String tail = req->url().substring(strlen("/api/alarms/"));
+        if (tail.endsWith("/enable")) {
+          String id = tail.substring(0, tail.length() - strlen("/enable"));
+          if (!alarms_.setEnabled(id.c_str(), doc["enabled"] | false)) {
+            req->send(404, "text/plain", "not found");
+            return;
+          }
+          alarms_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (!alarms_.update(tail.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found or invalid");
+          return;
+        }
+        alarms_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/alarms — create
+  server_.addHandler(new PostJsonHandler("/api/alarms",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = alarms_.add(json.as<JsonObject>());
+        if (id.isEmpty()) {
+          req->send(400, "text/plain", "invalid alarm");
+          return;
+        }
+        alarms_.saveToSD(fs_);
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
 
@@ -1366,6 +1446,22 @@ void WebUI::tick() {
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
   logs_.tick(reg_, fs_, time(nullptr), now);
   programs_.tick(reg_, fs_, time(nullptr));
+
+  // Alarm evaluation is deliberately gated to 1 Hz: it resolves every rule and
+  // calls paramsJson() on every controller, which at loop rate (~5 ms) would
+  // burn a lot of loopTask for a threshold that cannot be acted on faster
+  // anyway. Debounce inside the store works on millis(), not on tick count.
+  if (now - lastAlarmMs_ >= 1000) {
+    lastAlarmMs_ = now;
+    alarms_.tick(reg_, time(nullptr), now);
+  }
+  // Drain new alerts here rather than sending from inside the store: raise_
+  // can run on the AsyncTCP task (program control), and the bound keeps a
+  // burst from monopolising loopTask. AsyncEventSource drops silently when a
+  // client's queue is full — GET /api/alerts?since=<seq> is the repair path.
+  String alertJson;
+  for (int i = 0; i < 4 && alarms_.takePending(alertJson); ++i)
+    events_.send(alertJson.c_str(), "alert", millis());
   if (now - lastPushMs_ >= 1000) {
     lastPushMs_ = now;
     pushSnapshot_();
