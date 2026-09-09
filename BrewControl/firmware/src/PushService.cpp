@@ -231,13 +231,20 @@ bool PushService::setSubscription(const JsonObject& j) {
   const char* endpoint = j["endpoint"]   | "";
   const char* p256dh   = j["p256dh"]     | "";
   const char* auth     = j["auth"]       | "";
-  if (!*pub || !*priv || !*endpoint || !*p256dh || !*auth) return false;
+  if (!*pub || !*endpoint || !*p256dh || !*auth) return false;
   if (strncmp(endpoint, "https://", 8) != 0) return false;
 
   ScopedLock lk(mutex_);
-  // A different key means every stored subscription belongs to another keypair
-  // and would only ever answer 403.
-  if (vapidPub_ != pub) {
+  // A browser that subscribed against the key we handed it sends no private
+  // half back — it never had one, and only the public half is needed to
+  // subscribe. Keep ours and just add the subscription. Demanding the private
+  // key here is what used to make a second browser look like a key change, and
+  // a key change drops every subscription.
+  const bool sameKey = (vapidPub_ == pub);
+  if (!sameKey) {
+    // A key we don't know is only usable with its private half.
+    if (!*priv) return false;
+    // Everything stored belongs to the old keypair and would answer 403.
     subs_.clear();
     vapidPub_  = pub;
     vapidPriv_ = priv;

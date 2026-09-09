@@ -950,11 +950,18 @@ paths:
       summary: Store a browser subscription (and the keypair it belongs to)
       description: |
         Posted by the SPA with what the bootstrap page handed back through the
-        URL fragment. A `publicKey` that differs from the stored one drops every
-        existing subscription — they were taken out against the old keypair and
-        would only ever answer 403. Re-posting a known `endpoint` refreshes it in
-        place; past `maxSubscriptions` the oldest entry is dropped rather than
-        the request refused.
+        URL fragment.
+
+        `privateKey` may be empty when `publicKey` is the one already stored: a
+        browser that subscribed against the device's own key never holds the
+        private half, and does not need it — only the public half goes into
+        `pushManager.subscribe()`. An unknown `publicKey` does require it, and
+        drops every existing subscription: those were taken out against the old
+        keypair and would only ever answer 403.
+
+        Re-posting a known `endpoint` refreshes it in place; past
+        `maxSubscriptions` the oldest entry is dropped rather than the request
+        refused.
 
         Persisted to NVS, deliberately outside the backup bundle: an endpoint URL
         is the only thing standing between a stranger and these notifications.
@@ -1931,7 +1938,7 @@ components:
 
     PushSubscriptionBody:
       type: object
-      required: [publicKey, privateKey, endpoint, p256dh, auth]
+      required: [publicKey, endpoint, p256dh, auth]
       description: |
         The keypair belongs to the installation, not to one device — every
         device shares it so one browser subscription serves all of them.
@@ -1941,7 +1948,10 @@ components:
           description: VAPID public key, unpadded base64url (65-byte P-256 point).
         privateKey:
           type: string
-          description: VAPID private key, unpadded base64url (32-byte scalar). Never served back.
+          description: |
+            VAPID private key, unpadded base64url (32-byte scalar). Never served
+            back. May be empty when `publicKey` matches the stored one; required
+            for a key the device does not know yet.
         endpoint:
           type: string
           format: uri

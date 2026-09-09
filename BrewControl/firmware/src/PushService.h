@@ -53,9 +53,11 @@ class PushService {
   String serialize() const;
 
   // POST /api/push/subscription — {publicKey, privateKey, endpoint, p256dh, auth}.
-  // A publicKey that differs from the stored one drops every existing
-  // subscription: they were taken out against the old key and would only ever
-  // answer 403. Re-posting a known endpoint refreshes it in place.
+  // privateKey may be empty when publicKey is the one already stored: a browser
+  // that subscribed against our key never holds the private half. An unknown
+  // publicKey needs it, and drops every existing subscription — those were
+  // taken out against the old key and would only ever answer 403. Re-posting a
+  // known endpoint refreshes it in place.
   bool setSubscription(const JsonObject& j);
 
   bool removeSubscription(const char* id);

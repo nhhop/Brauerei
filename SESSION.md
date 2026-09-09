@@ -1361,3 +1361,30 @@ zugestellt** — dafür fehlt der Pages-Deploy; die vier Trigger, der
 Klick-Rücksprung, das zweite Board und das Handy stehen in PLAN.md. Der
 Automatisierungs-Browser hilft dabei nicht: er meldet
 `Notification.permission === "denied"` und verweigert die SW-Registrierung.
+## 2026-09-10 — Fix: zweiter Browser ersetzte das Abo des ersten
+
+**Symptom:** Ein zweiter Browser einrichten warf das Abo des ersten raus — die
+Liste blieb bei einem Eintrag.
+
+**Root Cause:** Denkfehler in `push-bootstrap/app.js`. `resolveKeypair()` gab bei
+einem per `?k=` übergebenen Gerätekey `{publicKey, privateKey: null}` zurück, und
+der Aufrufer ersetzte das anschließend durch ein **frisch erzeugtes Keypair** —
+mit dem Kommentar „nothing here can sign for it". Falsch: der Browser signiert
+nichts, `pushManager.subscribe()` nimmt ausschließlich den *öffentlichen*
+Schlüssel; signiert wird beim Senden auf dem Gerät, das die private Hälfte längst
+hat. Der neue Schlüssel kam als Key-Wechsel beim Gerät an, und ein Key-Wechsel
+verwirft per Design alle Abos (sie würden gegen den neuen Key nur 403 liefern).
+
+**Umsetzung:** In `app.js` hat `?k=` jetzt Vorrang vor dem localStorage — das
+Gerät ist der Anker, damit alle Geräte einer Installation dieselbe Subscription
+bedienen. Der localStorage-Eintrag wird nur genutzt, wenn er zum Gerätekey passt
+(dann reisen beide Hälften mit) oder wenn das Gerät noch gar keinen Key hat. Der
+Neu-Erzeugen-Block ist ersatzlos weg. `PushService::setSubscription()` akzeptiert
+dafür einen leeren `privateKey`, solange der `publicKey` der gespeicherte ist;
+ein *unbekannter* Key braucht die private Hälfte weiterhin, sonst wäre er
+unbrauchbar.
+
+**Verifikation:** Am LilyGo S3 (`8d85d14-dirty`) direkt gegen die API geprüft —
+zweiter Browser (gleicher `publicKey`, leerer `privateKey`, neuer Endpoint) →
+`204`, Liste wächst auf zwei Abos, `publicKey` unverändert; unbekannter Key ohne
+private Hälfte → `400`; Test-Eintrag wieder entfernt → `204`. Redocly-Lint grün.

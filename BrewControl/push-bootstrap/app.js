@@ -98,13 +98,23 @@ function storeKeypair(kp) {
   }
 }
 
-// The page wins when it already holds a key, so several devices converge on
-// one subscription. A device key is only adopted when this browser has none,
-// which is the recovery path after cleared site data.
+// The device is the anchor: once it knows a key, every browser subscribes
+// against that one, so all devices of an installation are served by the same
+// subscription. Only the public half is needed to subscribe — signing happens
+// on the device, which already holds the private half. Handing back a fresh
+// pair instead would make the device drop every subscription it has, since a
+// changed key invalidates them all.
+//
+// This browser's stored pair is used when it is the same key (then we can pass
+// the private half along too, which costs nothing), and as the seed when the
+// device has no key at all.
 async function resolveKeypair(deviceKey) {
   const stored = loadStoredKeypair();
+  if (deviceKey) {
+    if (stored && stored.publicKey === deviceKey) return stored;
+    return { publicKey: deviceKey, privateKey: null };
+  }
   if (stored) return stored;
-  if (deviceKey) return { publicKey: deviceKey, privateKey: null };
   const fresh = await generateKeypair();
   storeKeypair(fresh);
   return fresh;
@@ -163,18 +173,12 @@ async function run() {
     }
 
     const keypair = await resolveKeypair(deviceKey);
-    if (!keypair.privateKey) {
-      // Device passed a public key this browser has never seen the other half
-      // of. Nothing here can sign for it, so start over with a fresh pair.
-      const fresh = await generateKeypair();
-      storeKeypair(fresh);
-      Object.assign(keypair, fresh);
-    }
     const sub = await subscribe(keypair);
 
     const payload = {
       publicKey: keypair.publicKey,
-      privateKey: keypair.privateKey,
+      // Empty when the device supplied the key: it keeps the half it has.
+      privateKey: keypair.privateKey || '',
       endpoint: sub.endpoint,
       p256dh: sub.p256dh,
       auth: sub.auth,
