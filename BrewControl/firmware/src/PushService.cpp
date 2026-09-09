@@ -118,8 +118,14 @@ void PushService::applyConfig_() {
   vapid.privateKeyBase64 = vapidPriv_;
 
   WebPushConfig cfg;
-  // The library defaults to PSRAM, which esp32dev and lolin_s2_mini do not have.
-  cfg.queueMemory = WebPushQueueMemory::Internal;
+  // The library defaults to PSRAM, which esp32dev and lolin_s2_mini do not
+  // have. Not `Internal` though: that maps to MALLOC_CAP_INTERNAL, which means
+  // "not PSRAM" and therefore includes IRAM — and IRAM only allows 32-bit
+  // accesses. Once DRAM got tight on the esp32dev the queue item landed there,
+  // and constructing the std::string members of PushMessage byte-wise panicked
+  // with a LoadStoreError. `Any` is MALLOC_CAP_DEFAULT, which is
+  // byte-addressable and on a board without PSRAM is internal memory anyway.
+  cfg.queueMemory = WebPushQueueMemory::Any;
   cfg.queueLength = 8;  // 4 alerts per WebUI::tick, times a couple of subscriptions
   // 4096 (the library default) does not survive a TLS handshake; upstream's own
   // example uses 16 KB. 12 KB is enough here and leaves the heap alone.
@@ -139,6 +145,9 @@ void PushService::tick() {
   if (testPending_) {
     testPending_ = false;
     ScopedLock lk(mutex_);
+    // Same guard as send(): without it a test on a service that failed to
+    // start would call into an uninitialised queue.
+    if (!initialized_) return;
     for (const Sub& s : subs_)
       sendTo_(s, "BrewControl",
               "Testmeldung — Benachrichtigungen sind eingerichtet.", "test");

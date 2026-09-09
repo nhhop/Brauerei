@@ -1414,3 +1414,27 @@ trat auf dem esp32dev nicht auf; für den LOLIN bleibt die Einschränkung besteh
 Regel in `CLAUDE.md` entsprechend präzisiert (statt pauschalem Ausschluss) und
 den Weg in `README.md` als eigenen Abschnitt ergänzt. Beide Boards laufen jetzt
 auf `97cfdb6` mit identischer UI.
+## 2026-09-10 — Fix: Push-Test crashte den esp32dev (IRAM statt DRAM)
+
+**Symptom:** `POST /api/push/test` auf dem esp32dev lieferte keine Antwort; das
+S3 beantwortete dieselbe Route in 0,1 s. Ein Poll-Loop zeigte nur einen einzelnen
+Aussetzer, was zunächst gegen einen Reboot sprach.
+
+**Root Cause:** Die serielle Konsole zeigte `Guru Meditation Error (LoadStoreError)`
+plus Reboot — der Boot war schnell genug, dass der Poll ihn fast verpasste. Der
+per `addr2line` dekodierte Backtrace führte von `PushService::tick()` über
+`ESPWebPush::allocateItem()` bis in den `std::string`-Konstruktor von
+`PushMessage`. Ursache war `cfg.queueMemory = WebPushQueueMemory::Internal`: das
+mappt auf `MALLOC_CAP_INTERNAL`, was „nicht PSRAM" bedeutet und deshalb **IRAM
+einschließt** — und IRAM erlaubt nur 32-Bit-Zugriffe. Auf dem esp32dev war der
+DRAM knapp genug, dass `heap_caps_malloc` das Queue-Item dorthin legte; der
+byteweise Zugriff des `std::string` löste den Panic aus. Auf dem S3 (PSRAM, mehr
+freier DRAM) trat es nie auf.
+
+**Umsetzung:** `WebPushQueueMemory::Any` (= `MALLOC_CAP_DEFAULT`, byte-adressierbar;
+auf Boards ohne PSRAM ohnehin interner Speicher). Dazu im Test-Pfad von `tick()`
+derselbe `initialized_`-Guard, den `send()` schon hatte — ohne ihn würde ein Test
+auf einem nicht gestarteten Dienst in eine uninitialisierte Queue greifen.
+
+**Verifikation:** Am esp32dev geflasht — `POST /api/push/test` antwortet `204` in
+0,22 s, seriell 15 s lang keine Ausgabe (kein Crash), `lastError` leer.
