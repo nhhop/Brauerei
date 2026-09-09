@@ -52,6 +52,13 @@ class PushService {
   // GET /api/push. Never contains the private key.
   String serialize() const;
 
+  // GET /api/push/keypair — the full pair, so the bootstrap page can keep its
+  // copy current and hand it to the next device that has none. Gated behind
+  // requireAuth() at the route, unlike every other read, and passed on through
+  // the URL fragment so it never reaches the hosting server. Empty strings when
+  // nothing is stored.
+  String serializeKeypair() const;
+
   // POST /api/push/subscription — {publicKey, privateKey, endpoint, p256dh, auth}.
   // privateKey may be empty when publicKey is the one already stored: a browser
   // that subscribed against our key never holds the private half. An unknown

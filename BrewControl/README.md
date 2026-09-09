@@ -287,6 +287,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/alerts` | GET | Meldungsverlauf; `?since=<seq>` holt nur Neueres nach |
 | `/api/alerts/clear` | POST | Meldungsverlauf leeren |
 | `/api/push` | GET | Push-Status, VAPID-Public-Key und eingerichtete Abos |
+| `/api/push/keypair` | GET | Vollständiges VAPID-Keypair (auth-gated, wandert nur im URL-Fragment weiter) |
 | `/api/push/subscription` | POST | Keypair + Browser-Abo speichern |
 | `/api/push/subscription/<id>` | DELETE | Ein Abo entfernen |
 | `/api/push/test` · `/reset` | POST | Testmeldung senden / Keypair und Abos verwerfen |
@@ -340,6 +341,14 @@ pro Gerät bräuchte einen eigenen statischen Scope-Ordner je Gerät. So genügt
 Abo pro Browser für beliebig viele Geräte; Gerät zwei ist ein Klick. Kennt ein
 Gerät bereits einen Key, reicht die SPA ihn als `?k=` mit, damit ein zweiter
 Browser gegen denselben Key abonniert.
+
+Damit der Browser-Speicher nicht veraltet, reicht die SPA beim Einrichten das
+vollständige Keypair des Geräts an die Bootstrap-Seite weiter — über
+`GET /api/push/keypair` (auth-gated) und dann im **URL-Fragment**, das nie an
+GitHubs Server geht. Ohne das behält ein Browser, der gegen einen vom Gerät
+gelieferten Schlüssel abonniert hat, seinen eigenen alten im Speicher; das
+nächste Gerät ohne eigenen Schlüssel bekäme diesen veralteten, müsste dafür neu
+abonnieren — und würde damit allen anderen Geräten ihr Abo entziehen.
 
 Keypair und Abos liegen in NVS und bewusst **nicht** in `/config/*.json` — so
 bleiben sie aus `GET /api/backup` heraus. Eine Endpoint-URL ist das Einzige, was

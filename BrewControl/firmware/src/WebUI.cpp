@@ -825,6 +825,16 @@ void WebUI::begin() {
     req->send(204);
   });
 
+  // GET /api/push/keypair — the full VAPID pair. The one read besides
+  // /api/backup that needs the gate: the SPA passes this on to the bootstrap
+  // page so a device that has no key yet can join the existing subscription
+  // instead of forcing a new keypair on everyone. Registered before the bare
+  // /api/push GET so BackwardCompatible matching can't swallow it.
+  server_.on("/api/push/keypair", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    if (!requireAuth(req)) return;
+    req->send(200, "application/json", push_.serializeKeypair());
+  });
+
   // GET /api/push — status, public key and the subscription list. Open like
   // every other read: it carries no private key and no endpoint URL.
   server_.on("/api/push", HTTP_GET, [this](AsyncWebServerRequest* req) {

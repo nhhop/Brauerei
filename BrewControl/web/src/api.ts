@@ -604,6 +604,15 @@ export async function deletePushSubscription(id: number): Promise<void> {
   if (!r.ok) await failed(r);
 }
 
+// The full VAPID pair, so the bootstrap page can keep its copy current — the
+// one read besides getBackup() that needs a session when a password is set.
+// Never put this in a URL query: it goes on as a fragment.
+export async function getPushKeypair(): Promise<{ publicKey: string; privateKey: string }> {
+  const r = await fetch('/api/push/keypair');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as { publicKey: string; privateKey: string };
+}
+
 export async function testPush(): Promise<void> {
   const r = await fetch('/api/push/test', { method: 'POST' });
   if (!r.ok) await failed(r);
