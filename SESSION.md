@@ -1356,11 +1356,13 @@ gleichzeitig neuerer Firmware, weil damals `cdf5fe0-dirty` geflasht und die UI
 nicht mit deployt worden war. Danach verifiziert: `GET /api/push` liefert den
 erwarteten Zustand, `test`/`reset` `204`, Validierung `400`/`404`,
 `GET /api/backup` enthält weder `privateKey` noch Endpoint-URL (der Grund für
-NVS statt `/config/*.json`), Gerät über eine Minute stabil. **Noch nie
-zugestellt** — dafür fehlt der Pages-Deploy; die vier Trigger, der
-Klick-Rücksprung, das zweite Board und das Handy stehen in PLAN.md. Der
-Automatisierungs-Browser hilft dabei nicht: er meldet
-`Notification.permission === "denied"` und verweigert die SW-Registrierung.
+NVS statt `/config/*.json`), Gerät über eine Minute stabil. Zustellung am 2026-09-10 bestätigt (nach dem Pages-Deploy
+und dem Fix unten): Testmeldung und echte Trigger kommen an, auf Desktop und
+Handy, auch bei geschlossenem Tab und geschlossenem Browser; ein Klick auf die
+Meldung öffnet das Dashboard. Offen bleibt nur der Mehr-Geräte-Fall, siehe
+PLAN.md. Automatisiert war das nicht zu prüfen: der Browser der Werkzeugkette
+meldet `Notification.permission === "denied"` und verweigert die
+SW-Registrierung.
 ## 2026-09-10 — Fix: zweiter Browser ersetzte das Abo des ersten
 
 **Symptom:** Ein zweiter Browser einrichten warf das Abo des ersten raus — die
@@ -1387,4 +1389,6 @@ unbrauchbar.
 **Verifikation:** Am LilyGo S3 (`8d85d14-dirty`) direkt gegen die API geprüft —
 zweiter Browser (gleicher `publicKey`, leerer `privateKey`, neuer Endpoint) →
 `204`, Liste wächst auf zwei Abos, `publicKey` unverändert; unbekannter Key ohne
-private Hälfte → `400`; Test-Eintrag wieder entfernt → `204`. Redocly-Lint grün.
+private Hälfte → `400`; Test-Eintrag wieder entfernt → `204`. Redocly-Lint grün. Nach dem Merge
+vom Nutzer bestätigt: zwei echte Abos nebeneinander (Windows-Desktop und
+FCM/Handy), beide bekommen die Meldungen.
