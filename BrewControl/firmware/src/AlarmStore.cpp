@@ -140,6 +140,19 @@ void AlarmStore::clearAlerts() {
   pushedSeq_ = nextSeq_ - 1;  // don't re-push what was just discarded
 }
 
+bool AlarmStore::takePendingPush(Alert& out) {
+  ScopedLock lk(mutex_);
+  const size_t first = (ringHead_ + kRing - ringCount_) % kRing;
+  for (size_t i = 0; i < ringCount_; ++i) {
+    const Alert& a = ring_[(first + i) % kRing];
+    if (a.seq <= pushedSeqPush_) continue;
+    out = a;
+    pushedSeqPush_ = a.seq;
+    return true;
+  }
+  return false;
+}
+
 bool AlarmStore::takePending(String& out) {
   ScopedLock lk(mutex_);
   const size_t first = (ringHead_ + kRing - ringCount_) % kRing;

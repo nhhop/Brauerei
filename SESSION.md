@@ -1288,3 +1288,76 @@ Board eine Umstellung des MQTT-Transports auf einen toten externen Host
 gebraucht, letzterer einen vollständigen AutoTune-Durchlauf. Als eigener Punkt
 in [PLAN.md](PLAN.md) notiert, zusammen mit der dabei aufgefallenen Lücke, dass
 `GET /api/backup` weder Logs noch Programme noch Alarme mitnimmt.
+
+## 2026-09-09 — Push-Notifications umgesetzt (esp-webPush, ein Keypair pro Installation)
+
+**Auslöser:** Wunsch, Meldungen aufs Handy zu bekommen — bis dahin liefen alle
+Alerts nur über SSE ins offene Dashboard, also genau dann nicht, wenn es zählt.
+
+**Zwei Planannahmen fielen bei der Prüfung:**
+
+- **Curier ist mit dieser Platform nicht baubar.** Weil `ESPToolKit/esp-webPush`
+  seit 2026-08-03 archiviert ist, war zunächst der Nachfolger
+  [ZekStack/curier](https://github.com/ZekStack/curier) gesetzt. Er nutzt
+  `std::span` — libstdc++ liefert das erst ab GCC 10, `espressif32@6.10.0` pinnt
+  für Arduino aber fest GCC 8.4. Der Compiler kennt `-std=gnu++20` nicht einmal
+  dem Namen nach (nur `gnu++2a`), und unter `gnu++2a` verlor er zusätzlich die
+  implizite Inline-Eigenschaft von `static constexpr`-Membern
+  (`YF_S201Sensor::kHzPerLiterPerMin` → undefined reference). Curier hängt damit
+  am Sprung auf Arduino Core 3 / ESP-IDF 5 — eigenes Vorhaben, steht in PLAN.md.
+  Also esp-webPush auf seinem letzten Commit, bewusst nicht auf dem Tag `v2.0.0`:
+  die TLS-Zertifikatsprüfung (`useTlsCertBundle`) kam erst danach, ohne sie hätte
+  der Push-Request keine CA. Archiviert heißt: der SHA ist so unveränderlich wie
+  ein Tag.
+- **Die Trigger waren schon gebaut.** PLAN.md ging noch davon aus, Flankenerkennung
+  für `fault()` und Programm-Ende müsse erfunden werden. Seit `c1a1b64` erzeugt
+  `AlarmStore` aber genau diese vier Ereignisse fertig entprellt. Push hängt sich
+  deshalb nur mit einem zweiten Lese-Cursor (`takePendingPush`) an denselben Ring,
+  den `WebUI::tick()` schon für SSE leert — getrennte Cursor, damit sich beide
+  Verbraucher keine Meldungen wegnehmen.
+
+**Ein VAPID-Keypair pro Installation statt pro Gerät** (PLAN.md hatte pro Gerät
+vorgesehen): Ein Browser hält pro Service-Worker-Scope genau ein Abo, fest
+gebunden an einen `applicationServerKey`. Ein Keypair pro Gerät bräuchte damit
+einen eigenen statischen Scope-Ordner je Gerät auf Pages plus eine Gerät→Platz-
+Liste im Browser, die beim Löschen der Browserdaten verfällt. Die Bootstrap-Seite
+erzeugt das Keypair stattdessen per WebCrypto, hält es in ihrem localStorage und
+gibt es jedem Gerät mit; ein Gerät, das schon einen Key kennt, reicht ihn als
+`?k=` mit. Ergebnis: ein Abo pro Browser für beliebig viele Geräte, kein
+Krypto-Code auf dem ESP32, und nichts Geheimes im öffentlichen Repo.
+
+**Umsetzung:** `PushService.{h,cpp}` nach dem `WebhookService`-Muster (Globale in
+`main.cpp`, `begin()` nach dem STA-Connect, `tick()` im Loop). Keypair und bis zu
+vier Abos in NVS, bewusst nicht in `/config/*.json`, damit sie aus
+`GET /api/backup` herausbleiben — eine Endpoint-URL ist das einzige Geheimnis,
+das eine fremde Benachrichtigung verhindert. Fünf Routen unter `/api/push/*`,
+Schreibzugriffe automatisch über die vorhandenen Handler-Klassen auth-gated.
+Neue statische Seite `BrewControl/push-bootstrap/` plus `.github/workflows/pages.yml`
+(→ `nhhop.github.io/Brauerei/push/`), neue SPA-Seite
+`/settings/notifications`.
+
+Zwei Details, die Ärger gespart haben: `WebPushConfig` defaultet auf
+`queueMemory = Psram`, das zwei der drei Boards nicht haben (→ `Internal`), und
+der Worker-Stack-Default von 4 KB übersteht keinen TLS-Handshake (→ 12 KB, wie
+das Upstream-Beispiel nahelegt). Die Klick-URL der Meldung wird bei *jedem* Push
+frisch aus `WiFi.localIP()` gebaut statt aus dem Hostnamen — Android löst mDNS
+nicht zuverlässig auf, und das Handy ist der ganze Zweck der Übung.
+
+**Verifikation:** Alle drei Envs bauen; Flash `esp32dev` 75,3 % → 83,3 %
+(+152 KB, im Wesentlichen TLS-Pfad und Zertifikats-Bundle), RAM +888 B.
+`pnpm typecheck` und `pnpm build` grün, Redocly-Lint grün. Lokal verifiziert:
+Redirector-Schutz der Bootstrap-Seite (`https://…`, fremde Hosts abgelehnt,
+`.local` und private IPs akzeptiert), die WebCrypto-Formate (65-Byte-P-256-Punkt
+mit `0x04`-Marker, 32-Byte-Privatschlüssel, unpadded base64url) und der
+Fragment-Übergabepfad (`#push=…` → `POST /api/push/subscription` → `204`, Hash
+danach aus der URL). Am Gerät (LilyGo S3, `brewcontrol.local`) nachgezogen: Firmware und UI
+geflasht — das Board lief zuvor auf einem UI-Stand *vor* dem Alarm-Center, bei
+gleichzeitig neuerer Firmware, weil damals `cdf5fe0-dirty` geflasht und die UI
+nicht mit deployt worden war. Danach verifiziert: `GET /api/push` liefert den
+erwarteten Zustand, `test`/`reset` `204`, Validierung `400`/`404`,
+`GET /api/backup` enthält weder `privateKey` noch Endpoint-URL (der Grund für
+NVS statt `/config/*.json`), Gerät über eine Minute stabil. **Noch nie
+zugestellt** — dafür fehlt der Pages-Deploy; die vier Trigger, der
+Klick-Rücksprung, das zweite Board und das Handy stehen in PLAN.md. Der
+Automatisierungs-Browser hilft dabei nicht: er meldet
+`Notification.permission === "denied"` und verweigert die SW-Registrierung.

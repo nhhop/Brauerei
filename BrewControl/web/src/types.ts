@@ -400,3 +400,21 @@ export interface AuthStatus {
   enabled: boolean;
   authenticated: boolean;
 }
+
+// ── Web Push ────────────────────────────────────────────────────────────────
+// GET /api/push. `publicKey` is the installation's VAPID public key, passed on
+// to the bootstrap page as ?k= so a second browser subscribes against the same
+// key instead of starting its own. The private key is never served.
+export interface PushSubscriptionInfo {
+  id: number;      // slot index, also the DELETE path segment
+  host: string;    // push service host, so two browsers are tellable apart
+  addedAt: number; // unix seconds, 0 if the clock was unset
+}
+
+export interface PushStatus {
+  configured: boolean;
+  publicKey: string;
+  maxSubscriptions: number;
+  lastError: string;
+  subscriptions: PushSubscriptionInfo[];
+}

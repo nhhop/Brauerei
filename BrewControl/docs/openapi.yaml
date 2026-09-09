@@ -107,6 +107,12 @@ tags:
     description: Export and import the full device configuration.
   - name: Files
     description: File manager for the device filesystem (SD or LittleFS).
+  - name: Push Notifications
+    description: |
+      Web Push delivery of the same alerts the alert center shows, so they
+      reach a phone with the dashboard closed. Subscribing happens on a hosted
+      bootstrap page because it requires a secure context and the device serves
+      plain http; the device only ever sends outbound from then on.
   - name: Admin
     description: Device-level administrative actions.
 
@@ -914,6 +920,98 @@ paths:
       description: |
         Discards the ring. Rule latches are untouched — a still-active alarm
         does not re-fire just because the list was wiped.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+
+  # ── Push Notifications ─────────────────────────────────────────────────────
+  /api/push:
+    get:
+      tags: [Push Notifications]
+      operationId: getPush
+      summary: Web Push status and stored subscriptions
+      description: |
+        Open like every other read: the response carries the installation's
+        VAPID **public** key and a per-subscription push-service host, never the
+        private key and never an endpoint URL. The public key is handed to the
+        bootstrap page as `?k=` so a second browser subscribes against the same
+        keypair instead of starting a rival one.
+      responses:
+        "200":
+          description: Current push configuration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PushStatus" }
+
+  /api/push/subscription:
+    post:
+      tags: [Push Notifications]
+      operationId: setPushSubscription
+      summary: Store a browser subscription (and the keypair it belongs to)
+      description: |
+        Posted by the SPA with what the bootstrap page handed back through the
+        URL fragment. A `publicKey` that differs from the stored one drops every
+        existing subscription — they were taken out against the old keypair and
+        would only ever answer 403. Re-posting a known `endpoint` refreshes it in
+        place; past `maxSubscriptions` the oldest entry is dropped rather than
+        the request refused.
+
+        Persisted to NVS, deliberately outside the backup bundle: an endpoint URL
+        is the only thing standing between a stranger and these notifications.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushSubscriptionBody" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON`, or `invalid subscription` when a field is missing or the endpoint is not https.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  /api/push/subscription/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Slot index as returned by `GET /api/push`.
+        schema: { type: integer, minimum: 0 }
+    delete:
+      tags: [Push Notifications]
+      operationId: deletePushSubscription
+      summary: Drop one subscription
+      description: |
+        Removing a slot compacts the list, so the ids of later entries shift —
+        re-read `GET /api/push` before deleting another.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/push/test:
+    post:
+      tags: [Push Notifications]
+      operationId: testPush
+      summary: Send a test notification to every subscription
+      description: |
+        Answers immediately; the send happens on the device's loop task a moment
+        later, so a failure surfaces in `lastError` of `GET /api/push` rather
+        than in this response. No-op when nothing is subscribed.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+
+  /api/push/reset:
+    post:
+      tags: [Push Notifications]
+      operationId: resetPush
+      summary: Forget the keypair and every subscription
+      description: |
+        The way out when two devices ended up on different keypairs: reset the
+        odd one out, then set it up again from a browser that already works.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
@@ -1791,6 +1889,70 @@ components:
         text/plain: { schema: { type: string, const: body too large } }
 
   schemas:
+    # ── Push Notifications ───────────────────────────────────────────────────
+    PushSubscriptionInfo:
+      type: object
+      required: [id, host, addedAt]
+      properties:
+        id:
+          type: integer
+          description: Slot index; also the path segment for DELETE.
+        host:
+          type: string
+          description: |
+            Host of the push service (`fcm.googleapis.com`,
+            `updates.push.services.mozilla.com`, …), so two browsers are
+            tellable apart without exposing the endpoint itself.
+          example: fcm.googleapis.com
+        addedAt:
+          type: integer
+          description: Unix seconds when it was stored; `0` if the clock was unset.
+
+    PushStatus:
+      type: object
+      required: [configured, publicKey, maxSubscriptions, lastError, subscriptions]
+      properties:
+        configured:
+          type: boolean
+          description: True once a keypair and at least one subscription are stored.
+        publicKey:
+          type: string
+          description: VAPID public key, unpadded base64url of the 65-byte P-256 point. Empty when unconfigured.
+        maxSubscriptions:
+          type: integer
+          description: Hard limit on stored subscriptions (NVS budget).
+          example: 4
+        lastError:
+          type: string
+          description: Last send or init failure, empty when none.
+        subscriptions:
+          type: array
+          items: { $ref: "#/components/schemas/PushSubscriptionInfo" }
+
+    PushSubscriptionBody:
+      type: object
+      required: [publicKey, privateKey, endpoint, p256dh, auth]
+      description: |
+        The keypair belongs to the installation, not to one device — every
+        device shares it so one browser subscription serves all of them.
+      properties:
+        publicKey:
+          type: string
+          description: VAPID public key, unpadded base64url (65-byte P-256 point).
+        privateKey:
+          type: string
+          description: VAPID private key, unpadded base64url (32-byte scalar). Never served back.
+        endpoint:
+          type: string
+          format: uri
+          description: Push service endpoint from `PushSubscription.endpoint`. Must be https.
+        p256dh:
+          type: string
+          description: Client public key from `PushSubscription.getKey('p256dh')`, base64url.
+        auth:
+          type: string
+          description: Client auth secret from `PushSubscription.getKey('auth')`, base64url.
+
     # ── Snapshot ─────────────────────────────────────────────────────────────
     ValueKind:
       type: string

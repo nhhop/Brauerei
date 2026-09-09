@@ -1,4 +1,4 @@
-import type { AuthStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -581,5 +581,35 @@ export function setDevicePassword(currentPassword: string, newPassword: string):
 
 export async function revokeAllSessions(): Promise<void> {
   const r = await fetch('/api/auth/revoke-all', { method: 'POST' });
+  if (!r.ok) await failed(r);
+}
+
+// ── Web Push ────────────────────────────────────────────────────────────────
+
+export async function getPush(): Promise<PushStatus> {
+  const r = await fetch('/api/push');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as PushStatus;
+}
+
+// Body is what the bootstrap page handed back through the URL fragment.
+export function setPushSubscription(sub: {
+  publicKey: string; privateKey: string; endpoint: string; p256dh: string; auth: string;
+}): Promise<void> {
+  return postJson('/api/push/subscription', sub);
+}
+
+export async function deletePushSubscription(id: number): Promise<void> {
+  const r = await fetch(`/api/push/subscription/${id}`, { method: 'DELETE' });
+  if (!r.ok) await failed(r);
+}
+
+export async function testPush(): Promise<void> {
+  const r = await fetch('/api/push/test', { method: 'POST' });
+  if (!r.ok) await failed(r);
+}
+
+export async function resetPush(): Promise<void> {
+  const r = await fetch('/api/push/reset', { method: 'POST' });
   if (!r.ok) await failed(r);
 }

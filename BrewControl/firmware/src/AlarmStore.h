@@ -28,6 +28,26 @@ namespace BrewControl {
 // sync carry ts == 0; debounce runs on millis() throughout.
 class AlarmStore {
  public:
+  enum Severity : uint8_t { SevInfo = 0, SevWarning = 1, SevCritical = 2 };
+
+  // Fixed-width POD so the ring is a deterministic ~5.8 KB in .bss instead of
+  // 40 heap allocations next to WiFi, AsyncTCP and the SD buffers. Public
+  // because PushService consumes alerts as structs rather than re-parsing the
+  // JSON that takePending() emits.
+  struct Alert {
+    uint32_t seq  = 0;
+    time_t   ts   = 0;
+    float    v    = 0.0f;
+    bool     hasV = false;
+    uint8_t  sev  = SevWarning;
+    bool     cleared = false;
+    char     kind[10]   = "";  // threshold | fault | program | autotune
+    char     src[40]    = "";  // sensor/<id> | actuator/<id> | controller/<id> | program/<id>
+    char     name[32]   = "";
+    char     rule[8]    = "";
+    char     detail[48] = "";
+  };
+
   AlarmStore();
 
   void loadFromSD(fs::FS& sd);
@@ -75,8 +95,12 @@ class AlarmStore {
   // raise_() stays allocation- and network-free on whichever task called it.
   bool takePending(String& out);
 
+  // Same outbox, second reader: PushService gets its own cursor so draining
+  // for SSE and draining for Web Push cannot steal alerts from each other.
+  // Also drained in WebUI::tick, on loopTask.
+  bool takePendingPush(Alert& out);
+
  private:
-  enum Severity : uint8_t { SevInfo = 0, SevWarning = 1, SevCritical = 2 };
 
   static constexpr size_t   kRing     = 40;
   static constexpr uint32_t kReArmMs  = 5000;   // per source, against flapping
@@ -98,22 +122,6 @@ class AlarmStore {
     time_t   since      = 0;      // epoch of the raise, 0 if pre-NTP
   };
 
-  // Fixed-width POD so the ring is a deterministic ~5.8 KB in .bss instead of
-  // 40 heap allocations next to WiFi, AsyncTCP and the SD buffers.
-  struct Alert {
-    uint32_t seq  = 0;
-    time_t   ts   = 0;
-    float    v    = 0.0f;
-    bool     hasV = false;
-    uint8_t  sev  = SevWarning;
-    bool     cleared = false;
-    char     kind[10]   = "";  // threshold | fault | program | autotune
-    char     src[40]    = "";  // sensor/<id> | actuator/<id> | controller/<id> | program/<id>
-    char     name[32]   = "";
-    char     rule[8]    = "";
-    char     detail[48] = "";
-  };
-
   // Edge-detection state for one live registry item, rebuilt each tick by a
   // mark-and-sweep so deleted items drop out without a DynamicItems observer.
   struct EdgeState {
@@ -131,6 +139,7 @@ class AlarmStore {
   size_t   ringHead_  = 0;   // next write slot
   uint32_t nextSeq_   = 1;
   uint32_t pushedSeq_ = 0;   // highest seq already handed to takePending
+  uint32_t pushedSeqPush_ = 0;  // ... and to takePendingPush, tracked apart
 
   // Guards rules_, edges_ and the ring. tick()/takePending() run on loopTask,
   // the REST handlers and onProgramStatus on the AsyncTCP task. Recursive so

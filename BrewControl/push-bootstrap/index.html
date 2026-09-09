@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BrewControl — Benachrichtigungen</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#0078d4">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f3f3f3;
+    --card: #ffffff;
+    --fg: #1b1b1b;
+    --muted: #5d5d5d;
+    --line: #e0e0e0;
+    --accent: #0078d4;
+    --ok: #0f7b3f;
+    --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #202020;
+      --card: #2b2b2b;
+      --fg: #f0f0f0;
+      --muted: #a8a8a8;
+      --line: #3d3d3d;
+      --accent: #4cc2ff;
+      --ok: #6ccb8e;
+      --err: #ff99a4;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.55 "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 27rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 28px;
+  }
+  h1 { margin: 0 0 4px; font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; }
+  .sub { margin: 0 0 20px; color: var(--muted); font-size: 0.9rem; }
+  .status { margin: 0 0 6px; font-weight: 600; }
+  .status.ok { color: var(--ok); }
+  .status.error { color: var(--err); }
+  .status.busy, .status.idle { color: var(--fg); }
+  .detail { margin: 0; color: var(--muted); font-size: 0.9rem; }
+  button {
+    margin-top: 20px;
+    width: 100%;
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  @media (prefers-color-scheme: dark) { button { color: #1b1b1b; } }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint {
+    margin-top: 20px;
+    padding: 12px 14px;
+    border-left: 3px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+  .hint b { color: var(--fg); }
+  footer { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Benachrichtigungen einrichten</h1>
+  <p class="sub">für deine BrewControl-Steuerung</p>
+
+  <p id="status" class="status idle">Wird geladen …</p>
+  <p id="detail" class="detail"></p>
+
+  <button id="go" type="button">Erlauben und zurück</button>
+
+  <div class="hint" id="ios-hint" hidden>
+    <b>Auf dem iPhone</b> liefert Safari Benachrichtigungen nur an Seiten, die auf dem
+    Home-Bildschirm liegen. Diese Seite über „Teilen → Zum Home-Bildschirm" hinzufügen,
+    von dort erneut öffnen und dann hier fortfahren.
+  </div>
+
+  <footer>
+    Diese Seite hält nur das Abo — der Browser verlangt dafür eine
+    verschlüsselte Verbindung, die deine Steuerung im Heimnetz nicht hat.
+    Gemeldet wird danach direkt vom Gerät, ohne Umweg hierüber.
+  </footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

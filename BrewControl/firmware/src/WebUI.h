@@ -17,6 +17,7 @@
 #include "MqttService.h"
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
+#include "PushService.h"
 #include "SdTarSink.h"
 #include "SettingsStore.h"
 #include "TarExtractor.h"
@@ -74,6 +75,11 @@ namespace BrewControl {
 //   DELETE /api/alarms/<id>                — remove alarm rule
 //   GET  /api/alerts[?since=<seq>]         — alert history (ascending seq)
 //   POST /api/alerts/clear                 — empty the alert history
+//   GET  /api/push                         — Web Push status + subscriptions
+//   POST /api/push/subscription            — store keypair + browser subscription
+//   DELETE /api/push/subscription/<id>     — drop one subscription
+//   POST /api/push/test                    — send a test notification
+//   POST /api/push/reset                   — forget keypair and subscriptions
 //   GET  /api/profiles                     — profile library {categories,profiles}
 //   POST /api/profiles                     — create profile
 //   POST /api/profiles/<id>                — update profile
@@ -106,7 +112,7 @@ class WebUI {
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
         LogStore& logs, ProgramRunner& programs, AlarmStore& alarms,
         ProfileStore& profiles, MqttService& mqtt, WebhookService& webhook,
-        EspNowPublishService& espnow, uint16_t port = 80);
+        EspNowPublishService& espnow, PushService& push, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -141,6 +147,7 @@ class WebUI {
   MqttService& mqtt_;
   WebhookService& webhook_;
   EspNowPublishService& espnow_;
+  PushService& push_;
   AuthService auth_;
   AsyncWebServer server_;
   AsyncEventSource events_;
