@@ -1392,3 +1392,25 @@ zweiter Browser (gleicher `publicKey`, leerer `privateKey`, neuer Endpoint) →
 private Hälfte → `400`; Test-Eintrag wieder entfernt → `204`. Redocly-Lint grün. Nach dem Merge
 vom Nutzer bestätigt: zwei echte Abos nebeneinander (Windows-Desktop und
 FCM/Handy), beide bekommen die Meldungen.
+## 2026-09-10 — esp32dev auf Stand gebracht, UI-Netzwerk-Deploy für LittleFS-Boards
+
+**Auslöser:** Das esp32dev-Testboard hing 70 Commits zurück (Stand `3213288`,
+LittleFS-Support vom 28.8.) — ohne Auth, Profile, Alarme und Push.
+
+Firmware per OTA (`POST /api/update/firmware`) war unkritisch. Die UI dagegen
+schien Handarbeit zu erfordern: `CLAUDE.md` schrieb dafür `pio run -t uploadfs`
+vor und schloss den Netzwerk-Upload aus — und genau dieses Board hat keinen
+zuverlässigen Auto-Reset, d.h. jemand muss den BOOT-Button halten.
+
+**Erkenntnis:** Der Netzwerk-Upload funktioniert dort sehr wohl, er scheiterte
+bisher nur am Paket. `pnpm build:sd` lässt die unkomprimierten Dateien neben den
+`.gz` liegen, das übliche `webui.tar` ist damit ~440 KB und passt nicht in die
+256-KB-Datenpartition. Ein Tar aus **nur den .gz-Dateien** ist ~100 KB — dieselbe
+Diät, die `firmware/data/www` ohnehin hält, weil ESPAsyncWebServer `.gz`
+transparent ausliefert. Upload in ~2 s, Swap sauber, `/www` danach byte-identisch
+zum lokalen Build. Der auf dem LOLIN S2 Mini dokumentierte Abbruch bei ~65 KB
+trat auf dem esp32dev nicht auf; für den LOLIN bleibt die Einschränkung bestehen.
+
+Regel in `CLAUDE.md` entsprechend präzisiert (statt pauschalem Ausschluss) und
+den Weg in `README.md` als eigenen Abschnitt ergänzt. Beide Boards laufen jetzt
+auf `97cfdb6` mit identischer UI.

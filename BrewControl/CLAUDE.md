@@ -57,7 +57,11 @@ pnpm typecheck
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
-  ESPAsyncWebServer serviert .gz transparent); Deploy über `pio run -t uploadfs`, nicht Netzwerk-Upload.
+  ESPAsyncWebServer serviert .gz transparent); Deploy über `pio run -t uploadfs` (USB) oder,
+  wenn kein serieller Zugriff möglich ist, über `POST /api/update/assets` mit einem Tar aus
+  **nur den .gz-Dateien** — das normale `webui.tar` (roh+gzip, ~440 KB) passt nicht in die
+  256-KB-Partition. Am esp32dev verifiziert; auf dem LOLIN S2 Mini bricht der Tar-Upload bei
+  ~65 KB ab (PLAN.md), dort bleibt nur `uploadfs`.
 - Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md`/`SESSION-archive.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).
 - Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum Root-SESSION.md-Eintrag im Root-`PLAN.md` → „Bugs & bekannte Einschränkungen" eintragen, statt nur im Session-Log zu vergraben.
 - Wird ein solcher Eintrag später gefixt: den Punkt **ersatzlos aus `PLAN.md` entfernen** (kein durchgestrichener „erledigt"-Eintrag, keine Pointer-Zeile) und stattdessen einen SESSION.md-Eintrag mit Root Cause / Umsetzung / Verifikation anlegen. `PLAN.md` führt nur Offenes.

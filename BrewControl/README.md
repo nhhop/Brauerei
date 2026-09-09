@@ -183,6 +183,29 @@ pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
 `data/` ist projektweit geteilt zwischen allen Envs — **nicht** gegen
 `lilygo_t_display_s3_amoled` ausführen (kein `littlefs`-Filesystem dort).
 
+### Ohne USB: UI über das Netzwerk aufspielen
+
+`uploadfs` braucht die serielle Verbindung — beim esp32dev-Testboard heißt das,
+den BOOT-Button von Hand zu halten (kein zuverlässiger Auto-Reset). Es geht auch
+über `POST /api/update/assets`, wenn man dem Tar dieselbe Diät verordnet wie
+`data/www`: **nur die `.gz`-Dateien**. Das übliche `webui.tar` aus dem
+SD-Abschnitt oben enthält roh + gzip (~440 KB) und sprengt die 256-KB-Partition,
+nur-gzip sind ~100 KB.
+
+```bash
+mkdir -p /tmp/gzonly/assets
+cp web/dist/index.html.gz /tmp/gzonly/
+cp web/dist/assets/*.gz   /tmp/gzonly/assets/
+tar -C /tmp/gzonly -cf /tmp/webui-gz.tar .
+curl -F "f=@/tmp/webui-gz.tar" http://<ip>/api/update/assets
+```
+
+Am esp32dev verifiziert (2026-09-10): Upload in ~2 s, Swap sauber, `/www`
+danach identisch zum lokalen Build. Auf dem LOLIN S2 Mini **nicht** benutzen —
+dort bricht `POST /api/update/assets` reproduzierbar bei ~65 KB ab (siehe
+PLAN.md), da bleibt nur `uploadfs`. Die Firmware selbst geht auf beiden Boards
+ohnehin per OTA über `POST /api/update/firmware`.
+
 ## Erstboot — WiFi-Setup-Portal
 
 Ohne gespeicherte Credentials startet der ESP32 einen Access-Point:
