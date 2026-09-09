@@ -246,11 +246,11 @@ WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
              AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
              WebhookService& webhook,
-             EspNowPublishService& espnow, uint16_t port)
+             EspNowPublishService& espnow, PushService& push, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
       updater_(updater), logs_(logs), programs_(programs), alarms_(alarms),
       profiles_(profiles), mqtt_(mqtt), webhook_(webhook), espnow_(espnow),
-      server_(port), events_("/api/events") {}
+      push_(push), server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -804,6 +804,57 @@ void WebUI::begin() {
         }
         programs_.saveToSD(fs_);
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
+  // ── Web Push ────────────────────────────────────────────────────────────────
+  // Setup runs through a hosted bootstrap page because subscribing needs a
+  // secure context (see PushService.h). Nothing here touches the registry.
+
+  // POST /api/push/test and /api/push/reset are registered before the bare
+  // /api/push GET, so BackwardCompatible matching can't swallow them. Both are
+  // body-less, so they need the auth gate by hand.
+  server_.on("/api/push/test", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    if (!requireAuth(req)) return;
+    push_.requestTest();  // actually sent from PushService::tick, off this task
+    req->send(204);
+  });
+
+  server_.on("/api/push/reset", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    if (!requireAuth(req)) return;
+    push_.reset();
+    req->send(204);
+  });
+
+  // GET /api/push — status, public key and the subscription list. Open like
+  // every other read: it carries no private key and no endpoint URL.
+  server_.on("/api/push", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", push_.serialize());
+  });
+
+  // DELETE /api/push/subscription/:id — id is the slot index from GET /api/push
+  server_.addHandler(new DeletePrefixHandler("/api/push/subscription/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/push/subscription/"));
+        if (!push_.removeSubscription(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // POST /api/push/subscription — {publicKey, privateKey, endpoint, p256dh, auth},
+  // handed over by the bootstrap page through the SPA.
+  server_.addHandler(new PostJsonHandler("/api/push/subscription",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        if (!push_.setSubscription(json.as<JsonObject>())) {
+          req->send(400, "text/plain", "invalid subscription");
+          return;
+        }
+        req->send(204);
       }));
 
   // ── Alarms & alerts ─────────────────────────────────────────────────────────
@@ -1462,6 +1513,10 @@ void WebUI::tick() {
   String alertJson;
   for (int i = 0; i < 4 && alarms_.takePending(alertJson); ++i)
     events_.send(alertJson.c_str(), "alert", millis());
+  // Same outbox, own cursor: Web Push reaches a phone with the dashboard
+  // closed, which is precisely when the SSE stream above has no listener.
+  AlarmStore::Alert alert;
+  for (int i = 0; i < 4 && alarms_.takePendingPush(alert); ++i) push_.send(alert);
   if (now - lastPushMs_ >= 1000) {
     lastPushMs_ = now;
     pushSnapshot_();

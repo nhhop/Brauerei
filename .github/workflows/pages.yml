@@ -1,0 +1,53 @@
+name: Pages
+
+# Publishes the Web Push bootstrap page to
+# https://nhhop.github.io/Brauerei/push/.
+#
+# It exists because pushManager.subscribe() needs a secure context and the
+# firmware serves plain http on the local network — see BrewControl/README.md.
+# The page is static: no build step, the folder is uploaded as-is under push/,
+# which also fixes the service-worker scope at /Brauerei/push/.
+#
+# One-time setup in the repository: Settings -> Pages -> Source = GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'BrewControl/push-bootstrap/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a running deploy halfway; just don't queue several of them.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The subdirectory is deliberate: the service worker's scope is the
+      # directory it is served from, and existing subscriptions are bound to
+      # that scope. Moving the page later would orphan every subscription.
+      - name: Stage site under push/
+        run: |
+          mkdir -p _site/push
+          cp -r BrewControl/push-bootstrap/. _site/push/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

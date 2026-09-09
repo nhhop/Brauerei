@@ -29,6 +29,7 @@
 #include "MqttService.h"
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
+#include "PushService.h"
 #include "SettingsStore.h"
 #include "WebUI.h"
 #include "WebhookService.h"
@@ -69,7 +70,8 @@ BrewControl::ProfileStore profileStore;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
 BrewControl::EspNowPublishService espNowPublishService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, alarmStore, profileStore, mqttService, webhookService, espNowPublishService);
+BrewControl::PushService pushService;
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, alarmStore, profileStore, mqttService, webhookService, espNowPublishService, pushService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -255,6 +257,7 @@ void setup() {
         alarmStore.onProgramStatus(id, name, status, time(nullptr), millis());
       });
 
+  pushService.begin(hostname_);  // no-op until a browser subscribed
   webUI.begin();
   firmwareUpdater.begin();
   Serial.println(F("BrewControl ready"));
@@ -283,6 +286,7 @@ void loop() {
   webhookService.tick();
   if (espNowTransport) espNowTransport->tick();
   espNowPublishService.tick();
+  pushService.tick();
   maintainWiFi();
   delay(5);
 }

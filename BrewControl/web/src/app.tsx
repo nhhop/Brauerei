@@ -25,6 +25,7 @@ import { ArchivePage } from './pages/ArchivePage';
 import { AlarmsPage } from './pages/AlarmsPage';
 import { FilesPage } from './pages/FilesPage';
 import { SecurityPage } from './pages/SecurityPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 
 const MAX_HISTORY = 60;
 
@@ -168,6 +169,7 @@ export function App() {
         <AlarmsPage path="/settings/alarms" snap={snap} />
         <FilesPage path="/settings/files" />
         <SecurityPage path="/settings/security" />
+        <NotificationsPage path="/settings/notifications" />
       </Router>
       <AlertCenter alerts={alerts} open={centerOpen}
         onOpen={() => setCenterOpen(true)} onClose={() => setCenterOpen(false)}
