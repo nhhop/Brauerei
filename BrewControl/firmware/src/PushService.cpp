@@ -234,6 +234,16 @@ String PushService::serialize() const {
   return out;
 }
 
+String PushService::serializeKeypair() const {
+  ScopedLock lk(mutex_);
+  JsonDocument doc;
+  doc["publicKey"]  = vapidPub_;
+  doc["privateKey"] = vapidPriv_;
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
 bool PushService::setSubscription(const JsonObject& j) {
   const char* pub      = j["publicKey"]  | "";
   const char* priv     = j["privateKey"] | "";

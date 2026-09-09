@@ -76,6 +76,7 @@ namespace BrewControl {
 //   GET  /api/alerts[?since=<seq>]         — alert history (ascending seq)
 //   POST /api/alerts/clear                 — empty the alert history
 //   GET  /api/push                         — Web Push status + subscriptions
+//   GET  /api/push/keypair                 — full VAPID pair (auth-gated)
 //   POST /api/push/subscription            — store keypair + browser subscription
 //   DELETE /api/push/subscription/<id>     — drop one subscription
 //   POST /api/push/test                    — send a test notification

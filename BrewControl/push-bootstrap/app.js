@@ -105,14 +105,18 @@ function storeKeypair(kp) {
 // pair instead would make the device drop every subscription it has, since a
 // changed key invalidates them all.
 //
-// This browser's stored pair is used when it is the same key (then we can pass
-// the private half along too, which costs nothing), and as the seed when the
-// device has no key at all.
-async function resolveKeypair(deviceKey) {
+// When the device also sends its private half (in the fragment, see below), we
+// store the pair. That is what keeps this browser's copy from going stale: with
+// it, the next device that has no key of its own gets the key the current
+// subscription actually runs on, instead of an outdated one that would force a
+// re-subscribe and silently strip every other device of its subscription.
+async function resolveKeypair(deviceKey, devicePriv) {
   const stored = loadStoredKeypair();
   if (deviceKey) {
     if (stored && stored.publicKey === deviceKey) return stored;
-    return { publicKey: deviceKey, privateKey: null };
+    const pair = { publicKey: deviceKey, privateKey: devicePriv || null };
+    if (pair.privateKey) storeKeypair(pair);
+    return pair;
   }
   if (stored) return stored;
   const fresh = await generateKeypair();
@@ -154,6 +158,12 @@ const params = new URLSearchParams(location.search);
 const back = validateBack(params.get('back') || '');
 const deviceKey = params.get('k') || null;
 
+// The private half rides in the fragment, never in the query: a fragment is
+// not sent to the server, so it stays out of GitHub's request logs. Dropped
+// from the address bar right away so it does not linger in history either.
+const devicePriv = new URLSearchParams(location.hash.replace(/^#/, '')).get('pk') || null;
+if (devicePriv) history.replaceState(null, '', location.pathname + location.search);
+
 // iOS only delivers push to a page installed on the home screen, and there is
 // no way to do that for the user — it has to be said out loud.
 const isIos = /iP(hone|ad|od)/.test(navigator.userAgent);
@@ -172,7 +182,7 @@ async function run() {
                       + 'für diese Seite wieder erlauben, dann erneut versuchen.');
     }
 
-    const keypair = await resolveKeypair(deviceKey);
+    const keypair = await resolveKeypair(deviceKey, devicePriv);
     const sub = await subscribe(keypair);
 
     const payload = {

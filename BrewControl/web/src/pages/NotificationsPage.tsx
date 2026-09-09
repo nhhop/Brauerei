@@ -1,7 +1,7 @@
 // BrewControl/web/src/pages/NotificationsPage.tsx
 import { useEffect, useState } from 'preact/hooks';
 import type { PushStatus } from '../types';
-import { getPush, setPushSubscription, deletePushSubscription, testPush, resetPush } from '../api';
+import { getPush, getPushKeypair, setPushSubscription, deletePushSubscription, testPush, resetPush } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
@@ -76,13 +76,29 @@ export function NotificationsPage(_: { path?: string }) {
       .finally(() => { setPending(false); reload(); });
   }, []);
 
-  function activate() {
+  async function activate() {
     const back = window.location.origin + window.location.pathname;
     const params = new URLSearchParams({ back });
     // Hand the device's key along so a second browser subscribes against the
     // same one instead of starting a rival keypair.
     if (status?.publicKey) params.set('k', status.publicKey);
-    window.location.href = BOOTSTRAP_URL + '?' + params.toString();
+
+    // The private half goes in the fragment, never the query — a fragment is
+    // not sent to the server, so it stays out of GitHub's logs. It lets the
+    // page refresh its stored pair; without that its copy goes stale, and the
+    // next device without a key of its own would drag everyone onto an old key
+    // and strip the other devices of their subscription.
+    let frag = '';
+    if (status?.publicKey) {
+      try {
+        const kp = await getPushKeypair();
+        if (kp.privateKey) frag = '#pk=' + encodeURIComponent(kp.privateKey);
+      } catch {
+        // Password set and no session, or an older firmware: the handover still
+        // works, the page just keeps whatever pair it already had.
+      }
+    }
+    window.location.href = BOOTSTRAP_URL + '?' + params.toString() + frag;
   }
 
   async function runTest() {

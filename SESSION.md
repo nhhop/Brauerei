@@ -1438,3 +1438,37 @@ auf einem nicht gestarteten Dienst in eine uninitialisierte Queue greifen.
 
 **Verifikation:** Am esp32dev geflasht — `POST /api/push/test` antwortet `204` in
 0,22 s, seriell 15 s lang keine Ausgabe (kein Crash), `lastError` leer.
+## 2026-09-10 — Fix: neues Gerät entzog den anderen ihr Push-Abo
+
+**Symptom:** Nach dem Einrichten des frisch geflashten esp32dev kamen auf dem PC
+keine Meldungen des S3 mehr an — und umgekehrt hätte ein erneutes Einrichten des
+S3 das esp32dev stillgelegt. Ping-Pong zwischen zwei Boards.
+
+**Root Cause:** Die Bootstrap-Seite speicherte ihr Keypair nur, wenn sie es
+*selbst erzeugt* hatte. Abonnierte sie mit einem per `?k=` gelieferten Gerätekey
+(seit dem Fix vom selben Tag der Normalfall), blieb im localStorage der alte
+Eintrag stehen. Kam danach ein Gerät **ohne** eigenen Key — frisch geflasht oder
+zurückgesetzt —, fiel die Seite auf diesen veralteten Key zurück; das bestehende
+Abo ist aber fest an den Key gebunden, mit dem es angelegt wurde, also musste sie
+ab- und neu anmelden. Damit war genau das Abo entwertet, das auf den anderen
+Geräten in NVS lag.
+
+Der Browser kann das nicht allein auflösen: Die private Hälfte existiert nur auf
+den Geräten, und die Seite kann beim Besuch von Gerät B nicht Gerät A fragen.
+
+**Umsetzung:** Das Gerät reicht sein vollständiges Keypair selbst weiter. Neu ist
+`GET /api/push/keypair` — die einzige Leseroute neben `GET /api/backup` mit
+`requireAuth()`, weil sie den privaten Schlüssel herausgibt. Die SPA hängt ihn
+beim Weiterleiten als **Fragment** (`#pk=…`) an die Bootstrap-URL, nie als
+Query-Parameter: Fragmente werden nicht an den Server geschickt, landen also
+nicht in GitHubs Logs. Die Seite liest ihn, entfernt ihn sofort per
+`history.replaceState` aus der Adressleiste und legt das vollständige Paar in
+ihren localStorage. Damit ist deren Kopie nie veraltet, und Reihenfolge wie
+Browserwahl beim Einrichten sind egal. Ein Key ohne private Hälfte wird bewusst
+**nicht** gespeichert — ein halbes Paar wäre schlimmer als keins.
+
+**Verifikation:** Beide Boards auf `a95de04-dirty` geflasht,
+`GET /api/push/keypair` liefert auf beiden 43 Zeichen base64url (32-Byte-Skalar).
+Bootstrap-Logik lokal gegen `http://localhost` geprüft: Fragment wird gelesen,
+verschwindet sofort aus der URL, das vollständige Paar landet im localStorage —
+und ein Gerätekey *ohne* private Hälfte wird korrekt nicht gespeichert.
