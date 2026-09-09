@@ -26,7 +26,6 @@ Jeder Punkt trägt am Ende eine Einschätzung *(Modell · Aufwand · Planmodus)*
 
 ## Hardware-Verifikation offen
 
-- **Push-Notifications auf einem zweiten Board** (offen seit 2026-09-10) — Zustellung ist am LilyGo S3 durch (siehe SESSION.md), aber nur dieses Board hat die Push-Firmware. Damit steht die Kernannahme des Ein-Keypair-pro-Installation-Designs noch ohne Beleg da: dass ein zweites Gerät mit *einem* Klick dasselbe Browser-Abo mitbenutzt (`?k=`-Pfad), ohne dem ersten die Abos zu entziehen. Dafür esp32dev oder LOLIN flashen und von einem bereits eingerichteten Browser aus aktivieren. *(Sonnet · klein · ohne Plan)*
 - **SSR-Heizung unter Last mit Oszilloskop** — TPO-Schaltflanken prüfen. *(Sonnet · klein · ohne Plan)*
 - **IDS-Induktionskocher E2E** mit echter Hardware. *(Sonnet · klein · ohne Plan)*
 - **Gärsteuerung Dual-Output-Regler E2E am Gerät** — DualStage/SplitRangePID anlegen, beide Ausgänge live, Anti-Short-Cycle der Kühlstufe, Kühl-Aktor-Löschen-Block. *(Sonnet · mittel · ohne Plan — mehrere Szenarien, aber reine Verifikation)*

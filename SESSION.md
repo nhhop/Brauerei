@@ -1472,3 +1472,12 @@ Browserwahl beim Einrichten sind egal. Ein Key ohne private Hälfte wird bewusst
 Bootstrap-Logik lokal gegen `http://localhost` geprüft: Fragment wird gelesen,
 verschwindet sofort aus der URL, das vollständige Paar landet im localStorage —
 und ein Gerätekey *ohne* private Hälfte wird korrekt nicht gespeichert.
+
+Nach dem Merge am Gerät bestätigt: beide Boards tragen denselben VAPID-Key und
+beide dieselben zwei Abos (Windows-Desktop und FCM/Handy), Meldungen kommen von
+beiden Geräten auf beiden Browsern an. Damit ist auch die Kernannahme des
+Ein-Keypair-pro-Installation-Designs belegt — ein Abo pro Browser bedient
+beliebig viele Geräte —, und der entsprechende Verifikationspunkt fällt aus
+PLAN.md heraus. Einmalig war dafür noch das Zurücksetzen beider Boards nötig,
+weil die divergierten Keys aus der Zeit vor dem Fix stammten; der Fix räumt
+Bestehendes nicht rückwirkend auf.
