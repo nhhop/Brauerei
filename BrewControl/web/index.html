@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BrewControl</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0078d4" />
+    <!-- Home-screen launch without browser UI. iOS honours the apple-* tags over
+         plain HTTP; on Chrome mobile-web-app-capable is the pre-manifest path,
+         since the manifest route to standalone requires a secure context. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BrewControl" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   </head>
   <body>
     <div id="app"></div>
