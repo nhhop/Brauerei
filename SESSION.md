@@ -1481,3 +1481,270 @@ beliebig viele Geräte —, und der entsprechende Verifikationspunkt fällt aus
 PLAN.md heraus. Einmalig war dafür noch das Zurücksetzen beider Boards nötig,
 weil die divergierten Keys aus der Zeit vor dem Fix stammten; der Fix räumt
 Bestehendes nicht rückwirkend auf.
+
+
+## 2026-09-10 — PWA-Grundgerüst: Home-Screen-Start ohne Adressleiste
+
+Ziel: das Dashboard am Kessel vom Home-Screen starten, ohne Browser-Adressleiste.
+
+**Randbedingung:** Die Firmware liefert Klartext-HTTP; `http://<ip>` bzw.
+`<host>.local` ist kein Secure Context. Der moderne Weg (Manifest +
+`display: standalone` → WebAPK auf Android) ist genau darauf gated, und ein
+Service Worker registriert sich dort ebenfalls nicht — dieselbe Wand wie beim
+Push (siehe PLAN.md, HTTPS-Support). iOS dagegen prüft für Home-Screen-Apps
+kein HTTPS: `apple-mobile-web-app-capable` plus Manifest genügen.
+
+**Umsetzung:** Neues `web/public/` (gab es bisher nicht) mit `manifest.json`
+und den vier Icons aus `push-bootstrap/` — kopiert, nicht verlinkt, weil das
+Gerät im Brau-Netz kein Internet hat. Bewusst `.json` statt `.webmanifest`:
+die MIME-Tabelle von ESPAsyncWebServer (`_setContentTypeFromPath`) kennt
+`.webmanifest` nicht und lieferte `application/octet-stream`. `index.html`
+bekommt Manifest-Link, `theme-color`, `mobile-web-app-capable`, die drei
+`apple-*`-Tags und die Icon-Links. `black-translucent` und
+`viewport-fit=cover` bewusst ausgelassen — beide schieben den Inhalt unter die
+Statusleiste und verlangen dann `env(safe-area-inset-*)`-Padding, das es in
+`styles.css` nirgends gibt. Keine Firmware-, keine API-Änderung.
+
+**Verifikation:** Manifest im Browser geladen und geparst
+(`Content-Type: application/json`, alle drei Icon-Einträge plus
+apple-touch-icon und SVG-Favicon mit 200). Build und gzip-Roundtrip geprüft,
+`firmware/data/www/` neu bestückt: 105,5 KB gz gegen 256 KB Partition, die
+Icons kosten davon ~8 KB. Der eigentliche Test steht am Handy aus und liegt als
+Verifikationspunkt in PLAN.md — offen ist vor allem, ob Chrome den Legacy-Pfad
+`mobile-web-app-capable` (Vorgänger des Manifests, Chrome 31–38, seither
+deprecated) heute noch bedient. Falls nicht, bliebe als Android-Weg ohne HTTPS
+ein Vollbild-Button über die Fullscreen-API: die braucht keinen Secure Context,
+aber eine transient activation, also einen echten Tap pro Sitzung.
+
+**Nachtrag — Android:** Am Gerät bestätigt, dass Chrome den Legacy-Pfad nicht
+mehr bedient: „Zum Startbildschirm hinzufügen" öffnet die SPA weiterhin mit
+sichtbarer Adressleiste, `mobile-web-app-capable` allein trägt also nicht mehr.
+Der Tag bleibt trotzdem drin — er kostet nichts und ist für Chromium-Forks noch
+relevant. Als Ersatz gibt es jetzt einen Vollbild-Schalter in `NavShell.tsx`,
+platziert in der ohnehin nur mobil sichtbaren Kopfleiste (`md:hidden`), rechts
+neben dem Hamburger. Er ruft `requestFullscreen()` auf dem Wurzelelement auf:
+kein Secure Context nötig, dafür eine transient activation — deshalb ein Button
+und kein Aufruf beim Laden. Ein `fullscreenchange`-Listener hält Icon und
+Tooltip synchron, auch wenn der Modus per Systemgeste verlassen wird.
+Gerendert wird der Schalter nur bei `document.fullscreenEnabled`; auf dem
+iPhone ist das `false` (Safari erlaubt Fullscreen dort nur für Video), dort
+bleibt der Home-Screen-Weg über die `apple-*`-Tags der richtige.
+
+**Verifikation Vollbild-Button:** Der Browser-Pane rendert die Seite in einem
+iframe ohne Fullscreen-Permission (`requestFullscreen()` → „Permissions check
+failed"), der echte Umschaltvorgang ließ sich dort also nicht auslösen. Geprüft
+wurde stattdessen alles drumherum: Der Schalter erscheint bei 375 px Breite und
+verschwindet bei 1280 px mit der Kopfleiste (`display: none`) — das Desktop-UI
+bleibt unangetastet. Der Zustandspfad wurde direkt getrieben (gefälschtes
+`fullscreenElement` plus `fullscreenchange`-Event): Tooltip wechselt
+„Vollbild" → „Vollbild verlassen", Icon `maximize` → `minimize` und beim
+Zurücksetzen wieder retour. `pnpm typecheck` sauber. Der Test am Handy steht
+noch aus (PLAN.md).
+
+**Nachtrag — Vollbild überlebt den Routenwechsel:** Am Handy fiel der Modus bei
+jeder Navigation heraus, in Chrome, Edge *und* Firefox. Ursache ist nicht das
+Frontend: gemessen im Dev-Server bleibt ein `window`-Marker über den Klick auf
+einen Nav-Link erhalten, `performance.getEntriesByType('navigation')` steht
+weiter bei einem Eintrag, `history.length` zählt hoch — es findet also keine
+Dokument-Navigation statt, die Vollbild spec-konform beenden dürfte. Die Engines
+steigen schlicht bei `history.pushState()` aus, und genau das ruft
+preact-router in `route()` auf. Für Chromium ist das als Bug 138324 seit Jahren
+offen dokumentiert („the fix for this is not trivial"), Gecko verhält sich
+praktisch genauso.
+
+Gegenmaßnahme ist die von Chrome selbst genannte: nach dem Routenwechsel neu
+anfordern. `NavShell` merkt sich die Absicht des Nutzers in einem Ref und
+stellt in einem `useEffect` auf `[path]` das Vollbild wieder her — das läuft
+Millisekunden nach dem auslösenden Tap, also innerhalb dessen transient
+activation. Wird der Request abgelehnt (Zurück-Taste, dahinter steckt keine
+Geste), räumt der `catch` die Absicht ab, statt es bei jeder weiteren
+Navigation erneut zu probieren. Gewolltes Verlassen — Wischgeste, Esc — wird
+ohne Zeitstempel oder Klick-Listener davon unterschieden: ein
+pushState-Austritt landet immer auf einer *neuen* URL, ein gewollter nicht. Der
+`fullscreenchange`-Handler löscht die Absicht deshalb nur, wenn
+`location.pathname` noch dem zuletzt gerenderten Pfad entspricht.
+
+**Verifikation:** Der Browser-Pane verbietet echtes Vollbild (iframe ohne
+Permission), also wurde die Engine gestellt — gefälschtes `fullscreenElement`
+plus funktionierendes request/exit, alles andere echte Komponente. Sechs
+Schritte durchgespielt: Schalter rein (Icon `minimize`), zweimal navigieren mit
+simuliertem Engine-Austritt → bleibt drin und der Pfad wandert korrekt mit,
+gewollt verlassen → Absicht fällt, danach navigieren → bleibt draußen.
+`pnpm typecheck` sauber. Der Beleg am Gerät steht aus (PLAN.md).
+
+Offen und bewusst nicht angefasst: die Streifen an Status- und Gestenleiste im
+Vollbild (Chrome/Edge oben schwarz, Chrome unten schmal weiß; Firefox nutzt den
+ganzen Schirm). Dafür bräuchte es `viewport-fit=cover` plus
+`env(safe-area-inset-*)`-Padding an Kopfleiste, Seitenleiste, Scroll-Bereich
+und FAB — eigener Change, siehe PLAN.md.
+
+**Nachtrag 2 — erster Fix trug nicht.** Am esp32dev geflasht, keine Änderung:
+Chrome, Edge und Firefox verlassen beim Navigieren weiterhin das Vollbild. Der
+Fehler lag in einer Annahme über die Reihenfolge. Der Fix hing an einem
+`useEffect` auf `[path]`, also am Re-Render, und setzte voraus, dass die
+Engine `fullscreenchange` *davor* feuert. Tut sie das nicht, greifen beide
+Zweige daneben: der Effekt sieht noch ein gesetztes `fullscreenElement` und
+kehrt früh zurück, und der danach eintreffende Handler sieht den bereits
+aktualisierten Pfad, hält den Austritt für gewollt und löscht die Absicht.
+
+**Neuer Ansatz, ohne Reihenfolgen-Annahme:** Ein Klick-Listener in der
+Capture-Phase hält den Zeitpunkt des letzten Taps fest. Der
+`fullscreenchange`-Handler reagiert auf den Austritt selbst — liegt ein Tap
+weniger als 1,5 s zurück, war es die Navigation, und das Vollbild wird per
+`setTimeout(…, 0)` neu angefordert (die Engine soll den Austritt erst
+abschließen); liegt kein Tap vor, war es Wischgeste, Esc oder Zurück-Taste, und
+die Absicht fällt. Damit ist egal, wann die Engine das Event feuert. Der
+`[path]`-Effekt und der Pfad-Vergleich sind entfallen.
+
+**Verifikation:** Wieder mit gestellter Engine (der Browser-Pane verbietet
+echtes Vollbild), diesmal beide Reihenfolgen durchgespielt — Austritt *vor* dem
+Re-Render und Austritt *danach*: in beiden Fällen bleibt das Vollbild erhalten
+und der Pfad wandert korrekt mit. Gewolltes Verlassen nach über 1,5 s ohne Tap
+löscht die Absicht, anschließende Navigation holt nicht zurück. Der
+Eintritts-Wechsel von `maximize` auf `minimize` passiert innerhalb von 50 ms.
+`pnpm typecheck` sauber.
+
+**Diagnoseseite `web/public/fstest.html`** (temporär, wieder entfernen, sobald
+das Thema durch ist): unter `/fstest.html` erreichbar, ohne Framework. Sie
+schaltet Vollbild ein, löst `history.pushState` aus und probiert den
+Wiedereintritt in drei Varianten — sofort im Handler, `setTimeout(0)`,
+`setTimeout(300)` —, protokolliert jedes `fullscreenchange` mit Zeitstempel,
+zeigt per Microtask, ob das Event vor oder nach dem Rendern kommt, und gibt bei
+Ablehnung Name und Meldung des Fehlers aus. Falls der neue Ansatz am Gerät
+ebenfalls nicht trägt, liefert die Seite die Antwort, statt weiter zu raten.
+
+**Nachtrag 3 — die Ursache ist nicht `pushState`.** Entscheidende Beobachtung
+vom Gerät: zwischen den *Settings-Unterseiten* bleibt das Vollbild erhalten, nur
+zwischen den drei Hauptbereichen (Dashboard / Profile / Einstellungen) bricht es
+weg. Beide Wege laufen über dieselbe Mechanik — `<a href>`, von preact-router
+abgefangen, `history.pushState`. Wäre pushState der Auslöser, müssten beide
+scheitern. Damit ist die bisherige Diagnose hinfällig, und der zweite Fix
+adressiert etwas, das gar nicht das Problem ist.
+
+Weiter eingegrenzt, beides ausgeschlossen:
+- **Bildschirmkante:** Das Vollbild überlebt das Antippen des Menü-Buttons oben
+  links und bricht erst beim Antippen des Ziels — die obere Kante ist es also
+  nicht.
+- **Echte Dokument-Navigation:** Der frühere Marker-Test lief mit geschlossener
+  Seitenleiste, also ohne das `setMobileOpen(false)` der Nav-Einträge.
+  Nachgeholt mit *offener* Leiste: der Klick wird weiterhin abgefangen
+  (`defaultPrevented === true`), der `window`-Marker überlebt,
+  `performance.getEntriesByType('navigation')` bleibt bei einem Eintrag. Es
+  lädt also nichts neu.
+
+Übrig bleibt als Unterschied, dass ein Nav-Eintrag zusätzlich
+`setMobileOpen(false)` auslöst und damit das Overlay-`div` aus dem DOM
+entfernt, während die Karten in den Einstellungen nichts am Zustand ändern. Ob
+das der Auslöser ist, lässt sich lokal nicht klären: der Browser-Pane rendert in
+einem iframe ohne Fullscreen-Permission, echtes Vollbild ist dort nicht
+auslösbar.
+
+**Deshalb Messung statt weiterer Vermutung:** `web/src/fsdebug.ts` (temporär,
+zusammen mit dem Aufruf in `main.tsx` wieder zu entfernen) schneidet Ereignisse
+mit Zeitstempel mit — Klicks samt Ziel, `history.pushState` inklusive des
+Zustands davor/danach/im Microtask, `fullscreenchange`, `fullscreenerror`,
+`popstate`, `resize`, `visibilitychange`, `pagehide`. Anzeige in einem
+eingeblendeten Panel mit Kopier-Knopf. Aktiv nur bei `?fsdebug=1` in der URL,
+der Normalbetrieb bleibt unberührt. Lokal verifiziert: Klick-, pushState- und
+Microtask-Zeilen erscheinen in der erwarteten Reihenfolge.
+
+**Nachtrag 4 — Verdacht auf echten Dokument-Load.** Nächste Eingrenzung am
+Gerät: vom Dashboard *weg* (zu Profilen, zu den Einstellungen) hält das
+Vollbild, nur *zum* Dashboard hin bricht es — und dabei verschwindet auch die
+Debug-Ausgabe. Das ist der eigentliche Hinweis: Das Panel hängt direkt an
+`document.body`, außerhalb von `#app`; preact rendert nur in `#app` und kann
+es gar nicht entfernen. Ist es weg, wurde das Dokument neu geladen — und beim
+Neuladen von `/` fällt `?fsdebug=1` aus der URL, weshalb es sich nicht wieder
+installiert. Ein echter Dokument-Load beendet Vollbild spec-konform, in jeder
+Engine, und erklärt damit alle drei Browser auf einen Schlag.
+
+Lokal ist das **nicht** reproduzierbar: mit offener Seitenleiste geprüft, sowohl
+`href="/profiles"` als auch `href="/"` werden abgefangen
+(`defaultPrevented === true`), Marker überlebt, ein Navigation-Entry. Das Gerät
+verhält sich hier also anders als der Dev-Server, und die Ursache dafür ist noch
+offen.
+
+**Mitschnitt reload-fest gemacht:** `fsdebug.ts` wird jetzt über `?fsdebug=1`
+scharf geschaltet und merkt sich das plus das Protokoll in `localStorage`
+(`?fsdebug=0` schaltet ab und räumt auf). Nach einem Neuladen kommt das Panel
+mit der bisherigen Historie zurück und schreibt eine Zeile
+`=== DOKUMENT-START <url> typ=<navigate|reload|back_forward> ===`; dazu
+kommen `beforeunload`/`pagehide` und eine Prüfung, ob das Panel aus dem DOM
+entfernt wurde (unterscheidet DOM-Entfernung von Neuladen). Lokal verifiziert:
+nach einem erzwungenen Load steht genau die Abfolge
+`!! beforeunload` → `!! pagehide` → `=== DOKUMENT-START / typ=navigate ===`
+im Protokoll.
+
+**Nachtrag 5 — es war nie ein Fullscreen-Problem, sondern die Klick-Delegation.**
+Der Mitschnitt vom Gerät zeigt beim Dashboard-Link genau das, was fehlt:
+
+```
+73598  CLICK  a href=/        fs=html
+73603  !! beforeunload — Dokument wird verlassen
+73643  !! pagehide
+     0  === DOKUMENT-START  /  typ=navigate ===
+```
+
+Bei `/settings` und `/settings/security` steht dazwischen jeweils eine
+`pushState`-Zeile, beim Dashboard-Link nicht. preact-router hat den Klick also
+nicht genommen, der Browser hat den Link normal ausgeführt — echter
+Dokument-Load, SPA neu gestartet, Vollbild spec-konform beendet. Das erklärt
+alle drei Engines und auch, warum das Debug-Panel verschwand: es hängt an
+`document.body` und war nach dem Load schlicht neu, ohne `?fsdebug=1` in der
+URL gar nicht mehr aktiv.
+
+preact-router nimmt Links über einen delegierten Click-Listener auf
+`document`. Warum der auf dem Gerät ausgerechnet `href="/"` durchrutschen
+ließ, ist offen — lokal ist es nicht reproduzierbar, dort wird derselbe Link
+abgefangen und `exec('/', '/', {})` liefert einen Treffer. Statt weiter nach
+dem Warum zu suchen, nimmt die Seitenleiste die Abhängigkeit jetzt heraus: der
+`onClick` der Nav-Einträge ruft selbst `route(href)` auf, mit
+`preventDefault()` und `stopPropagation()` — Letzteres, weil sonst die
+Delegation zusätzlich greift und ein zweiter, identischer History-Eintrag
+entsteht (im Protokoll als doppelte `pushState`-Zeile aufgefallen, bevor es
+gefixt war). Modifier-Klicks und Mittelklick bleiben unangetastet, damit
+„in neuem Tab öffnen" weiter funktioniert.
+
+**Verifikation:** Drei Sprünge über die Seitenleiste (Dashboard → Profile →
+Einstellungen) bei geöffneter mobiler Leiste: `history.length` wächst um genau
+3, also ein Eintrag pro Sprung und keine Dubletten; `window`-Marker überlebt,
+`performance.getEntriesByType('navigation')` bleibt bei einem Eintrag, im
+Protokoll steht je Sprung genau eine `pushState`-Zeile und `abgefangen=JA`.
+`pnpm typecheck` sauber.
+
+Zwei Korrekturen an der Messung selbst, die dabei nötig waren: Der
+Kopier-Knopf funktionierte am Gerät nicht, weil `navigator.clipboard` nur im
+Secure Context existiert — jetzt mit `execCommand`-Fallback. Und die Zeile
+`abgefangen=` kam aus einem zweiten Listener auf `document`, den
+preact-router per `stopImmediatePropagation()` gerade dann verschluckt, wenn
+es den Klick nimmt; sie wird jetzt verzögert aus dem Capture-Handler gelesen.
+
+**Bestätigt und aufgeräumt.** Am Gerät geprüft: Vollbild bleibt beim Wechsel
+zwischen Dashboard, Profilen und Einstellungen erhalten. Damit ist der
+Dokument-Load weg und die Seitenleiste routet zuverlässig selbst.
+
+Wieder entfernt: `src/fsdebug.ts` samt Aufruf in `main.tsx` und
+`public/fstest.html`.
+
+Ebenfalls entfernt — und das ist die eigentliche Lehre aus der Runde: die
+Wiedereintritts-Mechanik im Vollbild-Schalter (Tap-Zeitstempel, 1,5-s-Fenster,
+erneutes `requestFullscreen()` nach dem Austritt). Sie war für die falsche
+Ursache gebaut. Der Mitschnitt belegt bei `/settings → /settings/security`
+`pushState` mit durchgehend `fs=html`: client-seitiges Routing beendet das
+Vollbild in keiner der drei Engines. Die Mechanik hat also nie etwas bewirkt und
+hätte nur so ausgesehen, als sei sie nötig. Zurück bleibt der schlichte
+Schalter plus ein `fullscreenchange`-Listener, der Icon und Tooltip führt.
+
+Rückblickend gingen zwei Fix-Runden für eine Ursache drauf, die aus einer
+plausiblen, aber ungeprüften Annahme stammte (Chromium-Bug 138324, „pushState
+beendet Vollbild"). Widerlegt hat sie erst eine Beobachtung vom Gerät — dass
+Settings-Unterseiten den Modus halten, obwohl sie denselben Mechanismus nutzen.
+Der Weg dorthin war jedes Mal Messung statt Argument: Marker-Test gegen
+Dokument-Load, Ereignis-Mitschnitt mit Zeitstempeln, `exec()` des Routers
+direkt befragt.
+
+**Verifikation nach dem Aufräumen:** Kein Debug-Panel mehr im DOM, Schalter
+kippt in beide Richtungen (`maximize` ↔ `minimize`), drei Sprünge über die
+Seitenleiste ergeben genau drei History-Einträge, Marker überlebt, ein
+Navigation-Entry. `pnpm typecheck` sauber. Auslieferung: 105,8 KB gz gegen
+256 KB Partition.

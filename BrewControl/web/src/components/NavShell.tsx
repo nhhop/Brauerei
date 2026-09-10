@@ -1,12 +1,22 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { useRouter } from 'preact-router';
-import { LayoutDashboard, ListChecks, Settings, Menu, Bell, type LucideIcon } from 'lucide-preact';
+import { route, useRouter } from 'preact-router';
+import { LayoutDashboard, ListChecks, Settings, Menu, Bell, Maximize, Minimize, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
 function loadExpanded(): boolean {
   try { return localStorage.getItem(STORAGE_KEY) === '1'; } catch { return false; }
+}
+
+// The device serves plain HTTP, so it can never be installed as a PWA — Chrome
+// keeps its address bar on a home-screen shortcut. The Fullscreen API needs no
+// secure context and is the only way to reclaim that strip on Android. It does
+// need a real tap, hence a button rather than a call on load. iOS Safari on
+// iPhone reports false here and the button stays hidden; there the apple-*
+// meta tags in index.html already give a chrome-less home-screen app.
+function fullscreenAvailable(): boolean {
+  return typeof document !== 'undefined' && document.fullscreenEnabled;
 }
 
 interface NavItem {
@@ -33,9 +43,38 @@ export function NavShell({ children, alertCount = 0, onBell }: {
 }) {
   const [expanded, setExpanded] = useState(loadExpanded);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [canFullscreen] = useState(fullscreenAvailable);
   const [{ url }] = useRouter();
   const path = (url ?? '/').split('?')[0];
   const showLabels = expanded || mobileOpen;
+
+  // Also fires when the user leaves fullscreen by gesture, not just via the button.
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement !== null);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+
+  function toggleFullscreen() {
+    const req = document.fullscreenElement
+      ? document.exitFullscreen()
+      : document.documentElement.requestFullscreen();
+    req.catch(() => { /* denied by the browser — nothing to recover */ });
+  }
+
+  // preact-router normally picks links up through a delegated click listener on
+  // document. On the device that delegation did not take the "/" link: no
+  // pushState, the browser performed a real document load instead, which reset
+  // the SPA and dropped fullscreen with it. Routing here removes that dependency.
+  function navigate(e: MouseEvent, href: string) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button) return;
+    e.preventDefault();
+    // Keep it away from document, or preact-router routes a second time and
+    // pushes a duplicate history entry.
+    e.stopPropagation();
+    route(href);
+  }
 
   function toggle() {
     if (mobileOpen) { setMobileOpen(false); return; }
@@ -51,7 +90,7 @@ export function NavShell({ children, alertCount = 0, onBell }: {
     const Icon = item.icon;
     return (
       <a key={item.href} href={item.href} title={item.label}
-        onClick={() => setMobileOpen(false)}
+        onClick={(e) => { setMobileOpen(false); navigate(e, item.href); }}
         class={`relative flex items-center gap-3 rounded px-3 py-2 text-sm transition-colors active:bg-subtle-pressed ${
           active ? 'bg-subtle-hover font-medium text-fg' : 'text-muted hover:bg-subtle-hover hover:text-fg'
         }`}>
@@ -106,6 +145,13 @@ export function NavShell({ children, alertCount = 0, onBell }: {
             class="flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
             <Menu size={20} />
           </button>
+          {canFullscreen && (
+            <button type="button" onClick={toggleFullscreen}
+              title={fullscreen ? 'Vollbild verlassen' : 'Vollbild'}
+              class="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
+              {fullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+            </button>
+          )}
         </div>
         {children}
       </main>
