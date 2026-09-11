@@ -13,7 +13,8 @@ export function refGroups(snap: Snapshot | null) {
   ];
 }
 
-// Unit of the referenced channel, for field suffixes. "" when unknown.
+// Unit of the referenced channel, for field suffixes. "" when unknown. A
+// controller has no unit of its own; its setpoint is in its sensor's unit.
 export function unitOf(snap: Snapshot | null, ref: string): string {
   if (!snap) return '';
   const slash = ref.indexOf('/');
@@ -22,5 +23,9 @@ export function unitOf(snap: Snapshot | null, ref: string): string {
   const id = ref.slice(slash + 1);
   if (role === 'sensor') return snap.sensors.find((s) => s.id === id)?.meta.unit ?? '';
   if (role === 'actuator') return snap.actuators.find((a) => a.id === id)?.meta.unit ?? '';
+  if (role === 'controller') {
+    const sensor = snap.controllers.find((c) => c.id === id)?.params?.sensor;
+    return sensor ? unitOf(snap, `sensor/${sensor}`) : '';
+  }
   return '';
 }

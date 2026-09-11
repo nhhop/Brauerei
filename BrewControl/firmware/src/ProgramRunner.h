@@ -7,7 +7,7 @@
 #include <freertos/semphr.h>
 #include <time.h>
 
-#include "Condition.h"
+#include "ProgramSteps.h"
 
 #include <functional>
 #include <string>
@@ -15,13 +15,23 @@
 
 namespace BrewControl {
 
-// Runs setpoint programs ("mash profiles") on top of the library's controllers.
-// A program is a named list of steps { name?, setpoint, holdSec, confirm, end,
-// cond }; the runner walks the steps and drives the bound controller's setpoint.
-// No ramping: the setpoint jumps to each step's target. A step ends either when
-// its hold timer elapses (end "hold", default) or when a threshold on a sensor
-// ref is met (end "sensor"); an orthogonal `confirm` flag makes it wait for a
-// manual "next" once that trigger fires instead of advancing automatically.
+// Runs setpoint programs ("mash profiles", fermentation schedules) on top of the
+// library's controllers and actuators. A program is a named list of steps
+// { name?, targets, holdSec, confirm, end, cond } (see ProgramSteps.h). Each
+// step's targets map names only the controllers/actuators it touches and, per
+// id, only the fields it sets ({v?, enabled?, interval?}); everything else is
+// left as it is. No ramping: values jump when the step begins. A step ends
+// either when its hold timer elapses (end "hold", default) or when a threshold
+// on a sensor ref is met (end "sensor"); an orthogonal `confirm` flag makes it
+// wait for a manual "next" once that trigger fires instead of advancing.
+//
+// Entering a step forward (start, next, auto-advance) applies that step's own
+// commands. After a reboot or a "prev" that is not enough — later steps may
+// have changed things this one doesn't mention — so there the runner replays
+// the state built up by steps 0..current instead (effectiveTargets). Pulse
+// actuators are the exception: their v queues pulses rather than setting a
+// level, so it fires only on the first forward entry into its step per run
+// (tracked by reachedStep) and is never replayed.
 //
 // Timing uses the wall clock (time(nullptr)), persisted as an absolute epoch per
 // step, so a running program survives a reboot and resumes at the right place.
@@ -40,10 +50,10 @@ class ProgramRunner {
   // JSON array of all programs (config + derived live status). GET /api/programs.
   String serialize() const;
 
-  // Create from cfg {name, controller,
-  // steps:[{name?,setpoint,holdSec,confirm?,end?,cond?}]}. Returns the generated
-  // id, or "" if the config is invalid (no controller, no valid steps, or an
-  // "end":"sensor" step with a malformed "cond").
+  // Create from cfg {name, steps:[{name?,targets,holdSec,confirm?,end?,cond?}]}
+  // (legacy {controller, steps:[{setpoint,…}]} is read too). Returns the
+  // generated id, or "" if the config is invalid (no steps, a broken interval,
+  // an "end":"sensor" step with a malformed "cond", or an empty target id).
   String add(const JsonObject& cfg);
 
   // Replace an existing program's definition (resets it to idle). Returns false
@@ -54,13 +64,13 @@ class ProgramRunner {
   bool remove(const char* id);
 
   // Apply a control action: "start" | "pause" | "resume" | "stop" | "next" |
-  // "prev". Applies the resulting setpoint to the bound controller immediately.
+  // "prev". Applies the resulting targets immediately.
   // Returns {false,reason} for unknown id (404), unknown action or an action
   // invalid for the current state (400).
   Result control(const char* id, const char* action, SensActCtrl::Registry& reg);
 
-  // Advance running programs whose hold time has elapsed, apply setpoints, and
-  // persist on transitions. nowEpoch is the wall-clock time (Unix s). No-op
+  // Advance running programs whose step has ended, apply targets, and persist
+  // on transitions. nowEpoch is the wall-clock time (Unix s). No-op
   // until nowEpoch is a real (post-2000) time.
   void tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch);
 
@@ -77,36 +87,29 @@ class ProgramRunner {
  private:
   enum class Status { Idle, Running, Awaiting, Paused, Done };
 
-  enum class EndMode { Hold, Sensor };
-
-  struct Step {
-    std::string name;          // optional, cosmetic
-    float       setpoint = 0;
-    uint32_t    holdSec  = 0;
-    bool        confirm  = false;
-    EndMode     end      = EndMode::Hold;
-    Condition   cond;          // only meaningful when end == Sensor
-    // Runtime, not persisted: hysteresis latch for the sensor condition,
-    // mirrors AlarmStore::Rule::active. Reset on every step transition.
-    bool        condActive = false;
-  };
-
   struct Program {
     std::string id;
     std::string name;
-    std::string controller;    // bound controller id
-    std::vector<Step> steps;
+    std::vector<ProgramStep> steps;
     // Runtime state (persisted for reboot-resume):
     Status   status            = Status::Idle;
     int      currentStep       = 0;
     time_t   stepStartedEpoch  = 0;  // wall-clock start of the active step
     uint32_t elapsedAtPauseSec = 0;  // frozen elapsed while paused
+    // Highest step entered forward in this run; -1 before start. A step's pulse
+    // commands fire only when entering it pushes this up, so "prev" followed by
+    // "next", or a reboot, never fires them twice.
+    int      reachedStep       = -1;
+    // Runtime, not persisted: hysteresis latch for the current step's sensor
+    // condition, mirrors AlarmStore::Rule::active. Reset on every step
+    // transition so a re-entered step re-evaluates from scratch.
+    bool     condActive        = false;
   };
 
   std::vector<Program> programs_;
 
-  // After loadFromSD, the first tick (once the clock is valid) re-applies the
-  // active step's setpoint to the freshly-constructed controller.
+  // After loadFromSD, the first tick (once the clock is valid) replays the
+  // active step's state onto the freshly-constructed controllers/actuators.
   bool needsResume_ = true;
 
   // Guards programs_ against concurrent access from the AsyncTCP task (REST
@@ -122,17 +125,28 @@ class ProgramRunner {
   // real transition, notifies onStatusChanged_.
   void setStatus_(Program& p, Status s);
 
-  // Apply the current step's setpoint to the bound controller; enable it too
-  // when `enable` is set. No-op if the controller no longer exists.
-  void applyStep_(Program& p, SensActCtrl::Registry& reg, bool enable) const;
+  // Apply one command to the controller or actuator it names; no-op if the id
+  // no longer resolves. A pulse actuator's v is written only when withImpulse
+  // is set (see the class comment).
+  static void applyCmd_(SensActCtrl::Registry& reg, const TargetCmd& c,
+                        bool withImpulse);
 
-  // Move to the next step (or finish). Applies the new setpoint and restarts the
-  // timer at nowEpoch.
+  // Apply the current step's own commands.
+  static void applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
+                                bool withImpulse);
+
+  // Replay the state built up by steps 0..currentStep, pulses excluded.
+  static void applyState_(Program& p, SensActCtrl::Registry& reg);
+
+  // Enter step idx forward: restart the timer, set Running, apply the step's
+  // commands — its pulses too if idx is past reachedStep.
+  void enterStep_(Program& p, SensActCtrl::Registry& reg, int idx, time_t now);
+
+  // Move to the next step (or finish).
   void advance_(Program& p, SensActCtrl::Registry& reg, time_t nowEpoch);
 
-  // Clear every step's sensor-condition latch. Called on any step transition so
-  // a re-entered step re-evaluates its condition from scratch.
-  static void resetLatches_(Program& p);
+  // False if any step's target id no longer resolves to a controller/actuator.
+  static bool targetsResolvable_(const Program& p, SensActCtrl::Registry& reg);
 
   static String generateId();
   static bool   fillFromJson(Program& p, const JsonObject& cfg);

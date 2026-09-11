@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ProgramConfig, ProgramAction, ProgramStep, Condition, Snapshot } from '../types';
+import type { ProgramConfig, ProgramAction, ProgramStep, StepTarget, Condition, Snapshot } from '../types';
 import { controlProgram, resolveRef } from '../api';
 import { badge, badgeAccent, badgeCaution, badgeSuccess } from '../ui';
+import { effectiveTargets, fmtTarget, programIds, targetKind } from '../program';
 import {
   Check, ChevronDown, ChevronUp, FileText, Pause, Pencil, Play,
-  SkipBack, SkipForward, Square, Thermometer, Trash2, type LucideIcon,
+  SkipBack, SkipForward, Square, Timer, Trash2, type LucideIcon,
 } from 'lucide-preact';
 
 interface Props {
   program: ProgramConfig;
   snap: Snapshot | null;
-  controllerExists: boolean;
   onChanged: () => void;   // re-fetch programs after a control action
   onEdit?: () => void;
   onDelete?: () => void;
@@ -18,12 +18,16 @@ interface Props {
   onSheetHeight?: (px: number) => void;  // mobile bottom-sheet height, for the list spacer
 }
 
+// "4:05", "1:30:00", and from a day on "5 d 03:00" — seconds stop mattering
+// once a step runs for days.
 export function fmtDuration(sec: number): string {
   if (!isFinite(sec) || sec < 0) sec = 0;
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
   const pad = (n: number) => String(n).padStart(2, '0');
+  const d = Math.floor(sec / 86400);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d} d ${pad(Math.floor((sec % 86400) / 3600))}:${pad(m)}`;
+  const h = Math.floor(sec / 3600);
+  const s = Math.floor(sec % 60);
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
@@ -53,8 +57,12 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
-export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit, onDelete, fill, onSheetHeight }: Props) {
-  const { name, controller, steps, status, currentStep } = program;
+export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, onSheetHeight }: Props) {
+  const { name, steps, status, currentStep, reachedStep } = program;
+  // Everything the program drives; controls stay disabled while any of it is
+  // gone — the runner holds the program at that point anyway.
+  const ids = programIds(steps);
+  const missing = ids.filter((id) => targetKind(snap, id) === 'missing');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // Mobile-only accordion: collapsed by default; desktop always shows the list.
@@ -132,6 +140,28 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
   const elapsedSec = Math.min(totalSec, elapsedBeforeCur + curElapsed);
   const progressPct = totalSec > 0 ? elapsedSec / totalSec : 0;
 
+  // A pulse only fires on the first forward entry into its step per run, so
+  // "has it fired" is: this run got at least that far.
+  const ran = active || status === 'done';
+  const isPulse = (id: string, t: StepTarget) => t.v !== undefined && targetKind(snap, id) === 'impulse';
+  const fired = (i: number) => ran && i <= reachedStep;
+
+  // "gaer_temp 10 °C · hopfen_dropper 1× ✓" — what step i itself sets.
+  function stepTargetsText(i: number): string {
+    return Object.entries(steps[i].targets)
+      .map(([id, t]) => `${id} ${fmtTarget(snap, id, t)}${isPulse(id, t) && fired(i) ? ' ✓' : ''}`)
+      .join(' · ');
+  }
+
+  // The state the program has built up by the current step — a step names only
+  // what it changes, so its own map alone would hide e.g. a temperature set two
+  // steps earlier. Pulses aren't state; the current step's own ones are listed
+  // separately.
+  const curState = active && cur
+    ? Object.entries(effectiveTargets(steps, currentStep, snap)).filter(([id]) => targetKind(snap, id) !== 'impulse')
+    : [];
+  const curPulses = active && cur ? Object.entries(cur.targets).filter(([id, t]) => isPulse(id, t)) : [];
+
   // One-line summary shown on mobile when the list is collapsed.
   function compactSummary(): string {
     if (active && cur) {
@@ -139,7 +169,8 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
         : status === 'paused' ? 'pausiert'
         : isSensorStep(cur) ? `⤳ ${condShort(cur.cond)}`
         : `noch ${fmtDuration(remaining ?? 0)}`;
-      return `${cur.name || `Schritt ${currentStep + 1}`} · ${cur.setpoint}° · ${tail}`;
+      return [cur.name || `Schritt ${currentStep + 1}`, stepTargetsText(currentStep), tail]
+        .filter(Boolean).join(' · ');
     }
     return `${steps.length} Schritte`;
   }
@@ -149,7 +180,7 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
     primary?: boolean; title?: string;
   }) {
     return (
-      <button type="button" disabled={busy || !controllerExists} title={title}
+      <button type="button" disabled={busy || missing.length > 0} title={title}
         onClick={() => act(action)}
         class={`flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors disabled:opacity-40 ` +
           `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-bg ` +
@@ -186,8 +217,14 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
           <div class="min-w-0">
             <h3 class="truncate font-semibold text-fg">{name}</h3>
             <div class="truncate text-xs text-muted">
-              Regler: <span class="font-mono text-fg">{controller}</span>
-              {!controllerExists && <span class="ml-1 text-critical">(fehlt)</span>}
+              Steuert:{' '}
+              {ids.length === 0 ? '—' : ids.map((id, i) => (
+                <span key={id}>
+                  {i > 0 && ' · '}
+                  <span class={`font-mono ${missing.includes(id) ? 'text-critical' : 'text-fg'}`}>{id}</span>
+                  {missing.includes(id) && <span class="text-critical"> (fehlt)</span>}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -235,11 +272,27 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
               </div>
             )}
           </div>
-          <p class="mt-1 flex items-center gap-1.5 text-sm text-muted">
-            <Thermometer size={14} aria-hidden class="shrink-0 text-faint" />
+          {(curState.length > 0 || curPulses.length > 0) && (
+            <div class="mt-1.5 flex flex-wrap gap-1.5">
+              {curState.map(([id, t]) => (
+                <span key={id} title={id in cur.targets ? 'in diesem Schritt gesetzt' : 'aus einem früheren Schritt'}
+                  class={`rounded px-1.5 py-0.5 text-xs ${id in cur.targets ? 'bg-accent/10 text-fg' : 'bg-fg/5 text-muted'}`}>
+                  <span class="font-mono">{id}</span> {fmtTarget(snap, id, t)}
+                </span>
+              ))}
+              {curPulses.map(([id, t]) => (
+                <span key={`pulse-${id}`} title="Impulse bei Schrittbeginn"
+                  class="rounded bg-accent/10 px-1.5 py-0.5 text-xs text-fg">
+                  <span class="font-mono">{id}</span> {fmtTarget(snap, id, t)}{fired(currentStep) && ' ✓'}
+                </span>
+              ))}
+            </div>
+          )}
+          <p class="mt-1.5 flex items-center gap-1.5 text-sm text-muted">
+            <Timer size={14} aria-hidden class="shrink-0 text-faint" />
             {curIsSensor && cur.cond
-              ? <>{cur.setpoint}° Ziel · warten auf {condShort(cur.cond)}</>
-              : <>{cur.setpoint}° Ziel · {fmtDuration(cur.holdSec)} Rastzeit</>}
+              ? <>warten auf {condShort(cur.cond)}</>
+              : <>{fmtDuration(cur.holdSec)} Dauer</>}
           </p>
           {!curIsSensor && (
             <>
@@ -279,6 +332,7 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
         {steps.map((s, i) => {
           const done = active && i < currentStep;
           const isCur = active && i === currentStep;
+          const what = stepTargetsText(i);
           return (
             <li key={i} class={`flex items-center gap-2 rounded px-2 py-1.5 text-sm ${
               isCur ? 'border-l-2 border-accent bg-accent/10 font-medium text-fg'
@@ -292,12 +346,15 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
               }`}>
                 {done ? <Check size={12} /> : i + 1}
               </span>
-              <span class={`min-w-0 flex-1 truncate ${done ? 'line-through' : ''}`}>
-                {s.name || `Schritt ${i + 1}`}
-                {s.confirm && <span class="ml-1 text-[10px] text-caution" title="Freigabe abwarten">✋</span>}
+              <span class="min-w-0 flex-1">
+                <span class={`block truncate ${done ? 'line-through' : ''}`}>
+                  {s.name || `Schritt ${i + 1}`}
+                  {s.confirm && <span class="ml-1 text-[10px] text-caution" title="Freigabe abwarten">✋</span>}
+                </span>
+                {what && <span class="block truncate text-[11px] font-normal text-faint">{what}</span>}
               </span>
               <span class="shrink-0 font-mono text-xs">
-                {isSensorStep(s) ? `${s.setpoint}° · ${condShort(s.cond)}` : `${s.setpoint}° · ${fmtDuration(s.holdSec)}`}
+                {isSensorStep(s) ? condShort(s.cond) : fmtDuration(s.holdSec)}
                 {isCur && !isSensorStep(s) && remaining != null && status === 'running' && (
                   <span class="ml-2 text-accent">noch {fmtDuration(remaining)}</span>
                 )}
@@ -333,8 +390,10 @@ export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit
         {active && <Btn action="stop" label="Stop" icon={Square} />}
       </div>
 
-      {!controllerExists && (
-        <p class="mt-2 text-xs text-critical">Regler „{controller}" existiert nicht — Steuerung deaktiviert.</p>
+      {missing.length > 0 && (
+        <p class="mt-2 text-xs text-critical">
+          Fehlt: {missing.map((id) => id || '(nicht zugeordnet)').join(', ')} — Steuerung deaktiviert.
+        </p>
       )}
       {err && <p class="mt-2 text-xs text-critical">{err}</p>}
     </div>

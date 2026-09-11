@@ -318,7 +318,7 @@ export function resolveRef(snap: Snapshot, ref: string): number | null {
 
 // ── Setpoint programs ────────────────────────────────────────────────────────
 
-type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
+type ProgramSave = Pick<ProgramConfig, 'name' | 'steps'>;
 
 export async function getPrograms(): Promise<ProgramConfig[]> {
   const r = await fetch('/api/programs');

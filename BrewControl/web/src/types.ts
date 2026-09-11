@@ -137,16 +137,29 @@ export interface DashboardConfig {
 }
 
 // ── Setpoint programs (mash profiles) ────────────────────────────────────────
-// Wire format of GET /api/programs. A program drives a controller's setpoint
-// through a list of timed steps. Mirrors ProgramRunner in the firmware.
+// Wire format of GET /api/programs. A program drives controllers and actuators
+// through a list of steps. Mirrors ProgramRunner in the firmware.
 
 export type ProgramStatus = 'idle' | 'running' | 'awaiting' | 'paused' | 'done';
 
 export type ProgramAction = 'start' | 'pause' | 'resume' | 'stop' | 'next' | 'prev';
 
+// What a step does to one controller or actuator — the same body as
+// POST /api/actuators/<id>. Every field is optional; one left out keeps its
+// value, and nothing is enabled implicitly. On a controller v is the setpoint.
+// On a pulse actuator (meta.kind 'Discrete') v queues that many pulses, fired
+// once on the first forward entry into the step per run (see reachedStep).
+export interface StepTarget {
+  v?: number;
+  enabled?: boolean;
+  interval?: { onSec: number; periodSec: number };
+}
+
 export interface ProgramStep {
   name?: string;          // optional, cosmetic
-  setpoint: number;
+  // Keyed by controller/actuator id. Only what this step changes — an id left
+  // out keeps its value. Always present, {} for a step that changes nothing.
+  targets: Record<string, StepTarget>;
   holdSec: number;
   // Step-end trigger. Absent = 'hold' (ends when holdSec elapses). 'sensor'
   // ends the step once `cond` is met (holdSec ignored).
@@ -158,16 +171,15 @@ export interface ProgramStep {
 export interface ProgramConfig {
   id: string;
   name: string;
-  controller: string;     // bound controller id
   steps: ProgramStep[];
   // Runtime state (always present, persisted across reboots):
   status: ProgramStatus;
   currentStep: number;
+  reachedStep: number;        // highest step entered forward this run, -1 before start; its pulses have fired
   stepStartedEpoch: number;   // epoch (s) the current step started; 0 while idle
   elapsedAtPauseSec: number;  // seconds already elapsed in the step when paused; 0 otherwise
   // Derived live fields (read-only, present in GET /api/programs):
   stepRemainingSec?: number;
-  currentSetpoint?: number;
 }
 
 // ── Alarme & Meldungen ───────────────────────────────────────────────────────
@@ -223,8 +235,10 @@ export interface Alert {
 
 // ── Profile library ──────────────────────────────────────────────────────────
 // Wire format of GET /api/profiles. Reusable step templates, grouped into
-// user-defined categories. Steps are ProgramStep — applying a profile copies
-// them into a program. Mirrors ProfileStore in the firmware.
+// user-defined categories. Steps are ProgramStep, target ids included —
+// applying a profile copies them into a program. A profile from before
+// multi-target steps carries the unbound id "" until the user binds it.
+// Mirrors ProfileStore in the firmware.
 
 export interface ProfileCategory {
   id: string;

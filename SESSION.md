@@ -1846,3 +1846,105 @@ Live-`Snapshot` und reicht ihn an `Dashboard`/`DevicesPage`/`LogsPage`/
 `brewcontrol.local` (`VITE_ESP_HOST` braucht das Schema, `http://…`, sonst
 `ENOTFOUND base.invalid`) verifiziert: Profil-Editor zeigt jetzt dasselbe
 Dropdown wie der Programm-Editor.
+
+## 2026-09-11 — Multi-Regler-Programme
+
+Backlog-Punkt aus PLAN.md: ein Programmschritt steuert jetzt beliebig viele
+Regler und Aktoren statt genau eines Reglers. Das Datenmodell ist in mehreren
+Runden mit dem User entstanden (erst feste Spalten, dann Aktoren als Spalten,
+am Ende die Map pro Schritt): `targets: {id: befehl}` nennt nur, was der
+Schritt ändert, alles andere bleibt unverändert. Der Befehl ist **pro Feld**
+`{v?, enabled?, interval?}` — dieselben Felder wie `POST /api/actuators/<id>`;
+Anlass war ein Gärtank-Rührer, bei dem ein Programm Schalter, Drehzahl und
+Intervall einzeln verstellen können soll. Weitere Entscheidungen: Aktoren
+wirken nur bei Schrittbeginn (eine Hopfengabe bei Minute 30 heißt Schritt
+teilen), kein implizites Einschalten mehr (der Editor setzt „Ein" beim ersten
+Wert in einer leeren Zelle vor), Profile sind eine komplette Vorlage inklusive
+Ids (kehrt die Entscheidung vom 04.09. um), Haltezeit wählbar in min/h/d. Ids
+sind geräteweit eindeutig (`DynamicItems.cpp:44`), deshalb braucht es keinen
+Rollen-Präfix; der Runner löst per `findController`, sonst `findActuator` auf.
+
+**Laufzeit.** Vorwärts (`start`, `next`, Auto-Advance durch Zeit oder Sensor)
+setzt nur die eigene Map des Schritts. `prev` und Boot-Resume dagegen stellen
+den **zusammengesetzten Stand** der Schritte 0…k her — pro Id und pro Feld der
+letzte Wert —, sonst bliebe nach „Zurück" stehen, was der spätere Schritt
+geändert hat. Grenze: Werte, die das Programm erst später setzt, kann `prev`
+nicht auf den Stand vor dem Programm zurückholen. Ausnahme Pulse-Aktoren
+(`ValueKind::Discrete`, `write(N)` hängt N Impulse an): deren `v` ist ein
+Ereignis, feuert nur beim ersten Vorwärts-Eintritt pro Lauf (`reachedStep`,
+persistiert) und wird nie wiederholt — Hopfen lässt sich nicht zurückholen.
+Fehlt eine Id, wartet das Programm wie bisher beim fehlenden Regler; der Scan
+über alle Ziele läuft aber erst, wenn ein Schritt fällig ist, weil `tick()` in
+jeder Loop-Runde aufgerufen wird.
+
+**Firmware.** Neu `ProgramTargets.h` (header-only, nur ArduinoJson + std,
+damit nativ testbar: `readTargets` inkl. Legacy-`setpoint`, `writeTargets`,
+`effectiveTargets`) und `ProgramSteps.h/.cpp` (der geteilte Step für
+`ProgramRunner` und `ProfileStore` inkl. `end`/`cond`). `ProgramRunner`:
+`controller`, `EndMode` und `currentSetpoint` raus, `reachedStep` und
+`condActive` rein — der Sensor-Latch aus PR #35 zieht vom Step ans Programm,
+weil der Step-Struct jetzt geteilt ist und ohnehin nur der aktuelle Schritt
+ausgewertet wird. Neue Pfade `applyCmd_` (Feldreihenfolge des
+Actuator-Endpoints: `enabled`, `interval`, `v`; bei Reglern wie bisher erst
+Sollwert, dann Schalter), `enterStep_`, `applyState_`. Legacy wird gelesen,
+geschrieben wird nur das neue Format: `controller` + `setpoint` →
+`{x: {v, enabled: true}}` (genau das alte Verhalten, `start` schaltete den
+Regler immer ein), alte Profile ohne Regler → Id `""`, im Programm abgelehnt,
+im Profil erlaubt.
+
+**Dabei gefunden und mitbehoben (aus PR #35):** `ProfileStore` kannte
+`end`/`cond` nicht und verwarf sie. Ein Sensor-Schritt kam deshalb aus der
+Bibliothek als Zeit-Schritt mit `holdSec` 0 zurück und hätte in einem
+Programm sofort weitergeschaltet. Root Cause: zwei getrennte Step-Structs,
+PR #35 hatte nur den im Runner erweitert. Mit dem geteilten Step ist das
+strukturell ausgeschlossen.
+
+**API/Doku.** `openapi.yaml`: neues Schema `StepTarget` (verweist auf
+`ActuatorWrite`), `ProgramStep.targets`, `Program.reachedStep`,
+`ProgramInput` ohne `controller`, Legacy-Toleranz dokumentiert. Nebenbei die
+Doku-Drift aus PLAN.md behoben: eigener Pfad-Parameter `ProgramId`
+(`^p_[0-9a-f]{5}$`) statt `HexId` für `/api/programs/{id}` und `/control`,
+Create-Response und `Program.id` angeglichen, `currentStep` „0 while idle".
+
+**Frontend.** Neu `src/program.ts` (`targetKind`, `effectiveTargets` als
+Spiegel der Firmware-Regel, `fmtTarget`, `HoldUnit` nach dem Muster von
+`intervalUnit.ts`) und `components/ProgramStepsEditor.tsx`, der die zwei
+duplizierten Schritt-Editoren aus Programm- und Profil-Dialog ersetzt (inkl.
+Zeit/Sensor aus PR #35): Spaltenkopf „Steuert" mit Reglern und Aktoren —
+Aktoren, die ein Regler als `actuator`/`heatActuator`/`coolActuator` treibt,
+werden nicht angeboten —, pro Zelle Schalter „—/Ein/Aus", Wert mit Einheit
+(Binary ohne, Pulse als „Impulse") und bei Intervall-Aktoren „an … von …".
+`draftProblem()` sagt im Dialog, warum Speichern gesperrt ist. `ProgramCard`
+zeigt statt `setpoint°` den zusammengesetzten Stand als Chips (vom Schritt
+selbst gesetzt hervorgehoben, geerbt neutral), Impulse mit ✓ sobald gefeuert,
+im Kopf „Steuert: …" mit fehlenden Ids. `fmtDuration` ab 24 h als „5 d 03:00",
+das trifft auch die Summen auf der Profilseite. `refs.ts` `unitOf` löst jetzt
+auch `controller/<id>` über den Sensor des Reglers auf.
+
+**Verifikation.** `pio test -e native` 30/30 (14 neue in
+`test_program_targets`: Befehle mit einzelnen/allen Feldern, Reihenfolge,
+Legacy mit/ohne Controller, verworfene Werte, kaputtes Intervall,
+Round-Trip, zusammengesetzter Stand pro Feld inkl. Impuls-Ausnahme); dafür
+bekam `[env:native]` ArduinoJson. `pio run` für `esp32dev` und
+`lilygo_t_display_s3_amoled` grün, ohne Warnungen in den geänderten Dateien.
+Redocly valide (nur die bekannte `license`-Warnung), `pnpm typecheck` und
+`pnpm build` grün. UI im Dev-Server gegen In-Page-Stubs für Snapshot,
+Programme und Profile (Gärtank-Szenario mit zwei Reglern, Rührer mit
+Intervall, Pulse-Dropper, Binary-Ventil und einer an einen Regler gebundenen
+Heizung; nichts ans Board geschrieben): Karte zeigt pro Feld korrekt
+zusammengesetzt (Drehzahl aus Schritt 1, Intervall aus Schritt 2), Spalten-
+Select blendet belegte Ids und die gebundene Heizung aus, Vorbelegung „Ein"
+greift, leere Spalte sperrt Speichern mit Hinweis, gesendeter Body enthält nur
+gesetzte Felder und rechnet Tage in Sekunden um, Legacy-Profil erscheint als
+ungebundene Spalte (Programm- und Profil-Dialog), „Als Profil speichern"
+trägt Spalten und Sensor-Schritt mit, Start/Weiter/Zurück setzen die Chips und
+das ✓ wie erwartet; Desktop und 375 px geprüft. Dabei aufgefallen:
+`` `${inp} w-NN` `` greift projektweit nicht (`w-full` gewinnt), der neue
+Editor nutzt `w-20!` — in PLAN.md eingetragen. HW-E2E am Board steht aus
+(PLAN.md → Hardware-Verifikation).
+
+**Bekannte Grenzen.** Nach einem Downgrade liest alte Firmware das neue
+`programs.json` nicht, die Programme fallen weg. Beim Update erst die Firmware,
+dann die UI einspielen: die neue UI wirft beim Rendern eines Programms im alten
+Format (`step.targets` fehlt) — im Test mit dem Alt-Programm des LilyGo
+gesehen, bevor die Stubs aktiv waren; die neue Firmware migriert beim Laden.
