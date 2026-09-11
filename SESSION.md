@@ -1940,8 +1940,36 @@ ungebundene Spalte (Programm- und Profil-Dialog), „Als Profil speichern"
 trägt Spalten und Sensor-Schritt mit, Start/Weiter/Zurück setzen die Chips und
 das ✓ wie erwartet; Desktop und 375 px geprüft. Dabei aufgefallen:
 `` `${inp} w-NN` `` greift projektweit nicht (`w-full` gewinnt), der neue
-Editor nutzt `w-20!` — in PLAN.md eingetragen. HW-E2E am Board steht aus
-(PLAN.md → Hardware-Verifikation).
+Editor nutzt `w-20!` — in PLAN.md eingetragen.
+
+**HW-E2E** am LilyGo (`brewcontrol.local`, 192.168.178.87), Firmware `df07d50`
+und UI-Paket per OTA (`/api/update/firmware` 200 in 12 s, `/api/update/assets`
+200 in 6 s), Board-Stand vorher in den Scratchpad gesichert. **Migration:** das
+echte Alt-Programm „Hermann-Weizen" (7 Schritte, Regler `mash`) kam direkt nach
+dem Boot als `targets: {"mash": {"enabled": true, "v": …}}` zurück, Umlaute,
+`confirm` und `done`-Status erhalten, `reachedStep` = `currentStep`; die zwei
+Alt-Profile als `""`-Spalte. Test-Items ohne GPIO als MQTT-Aktoren am
+eingebetteten Broker (Relais Binary, Rührer Continuous mit Intervall 10/20 s,
+`TwoPoint`-Regler auf `mlt` mit eigenem MQTT-Heizaktor). Abgelehnt mit
+`400 invalid program`: leere Target-Id, Intervall `onSec > periodSec`. Lauf:
+Start schaltet Regler/Relais/Rührer ein und setzt 30 bzw. 40 % + 10/20 s;
+manuell Sollwert 33, Weiter in den Intervall-Schritt → 33 bleibt, Rührer nur
+20/20, Drehzahl und Schalter unverändert; Zurück → 30 und 10/20 wieder da;
+Weiter → wieder 20/20, 30 bleibt. **Reboot** mitten im Schritt (manuell vorher
+33): danach Regler 30 (Config hätte 20), Relais an (Binary startet sonst aus),
+Rührer 40 % + 20/20 (Config 10/20), Restzeit läuft auf der Wanduhr weiter.
+Sensor-Schritt (`controller/test_regler > 40`) setzt beim Eintritt 35 und
+wartet ohne Countdown, Sollwert 45 → schaltet weiter, der End-Schritt schaltet
+Relais und Rührer aus und lässt Drehzahl/Intervall stehen, nach 60 s `done`.
+**PR-#35-Fix:** Profil mit Sensor-Schritt (`hyst` 0.002) gespeichert und
+zurückgelesen — `end`/`cond` vollständig da, auch nach einem zweiten Reboot,
+ebenso die neu geschriebenen `""`-Profile. Die vom Board ausgelieferte UI zeigt
+das migrierte Programm („Steuert: mash", „mash 35 °C" pro Schritt), keine
+Konsolenfehler. Testartefakte (Programm, Profil, Regler, drei Aktoren) danach
+gelöscht; die migrierten echten Daten bleiben. **Nicht am Gerät prüfbar:** der
+Impuls-Pfad — `PulseOutput` ist kein dynamischer Aktor-Typ, ein Hopfen-Dropper
+lässt sich also bisher gar nicht anlegen (PLAN.md → Backlog). Nach einem Reboot
+wird ein `done`-Programm wie bisher nicht erneut angewandt.
 
 **Bekannte Grenzen.** Nach einem Downgrade liest alte Firmware das neue
 `programs.json` nicht, die Programme fallen weg. Beim Update erst die Firmware,
