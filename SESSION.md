@@ -1992,4 +1992,17 @@ nur, solange <Regler> aus ist", bei Heiz-/Kühlausgängen entfällt das Wertfeld
 denselben Satz ergänzt. Verifiziert per `pnpm dev` gegen das S3 (neue Firmware,
 echte Daten, nichts gespeichert): Auswahl zeigt `kettle (mash)` und
 `dfsdfdf (testpid)`, die `dfsdfdf`-Zelle Schalter, PWM-Wert, Intervall und den
-Hinweis; `pnpm typecheck` grün, Redocly valide.
+Hinweis; `pnpm typecheck` grün, Redocly valide. Danach als UI-Paket aufs S3
+geladen (`/api/update/assets` 200), Board serviert den neuen Build, Auswahl
+und Hinweis am Gerät bestätigt.
+
+**Nachtrag 2026-09-12 — Ablaufsteuerung stand einmal still.** Am Gerät blieb ein
+laufendes Programm auf Schritt 1 stehen (60 s Haltezeit, Freigabe eingestellt):
+nach 3021 s weiter `running`, kein Schrittwechsel, kein `awaiting`. Nach einem
+Reboot lief dasselbe Programm sauber durch alle sieben Schritte und wartete am
+Ende korrekt auf die Freigabe. Die Auswertung spricht gegen die Programmlogik
+und für einen stehenden loopTask — `stepRemainingSec: 0` zeigt eine gültige Uhr
+und abgelaufene Haltezeit, und `GET /api/programs` antwortete sofort, obwohl es
+denselben Mutex nimmt wie `tick()`. Details, Verdächtige und die Messung, die
+beim nächsten Auftreten **vor** dem Reboot zu machen ist, stehen in PLAN.md →
+„Bugs & bekannte Einschränkungen". Auf Wunsch des Users nicht weiterverfolgt.
