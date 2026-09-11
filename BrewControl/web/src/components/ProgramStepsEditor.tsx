@@ -175,13 +175,18 @@ interface Props {
 export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: Props) {
   const { cols, rows } = draft;
 
-  // Actuators a controller drives would be overwritten on its next tick, so
-  // they aren't offered as targets.
-  const bound = new Set<string>();
+  // Actuators a controller drives. The controller writes its output into them
+  // every tick, so a program's value only sticks where that stops: PID and
+  // TwoPoint leave their actuator alone while disabled, DualStage and
+  // SplitRangePID force their heat/cool outputs to 0 even then (always). A
+  // controller never touches the switch or the interval, so those always work.
+  const drivenBy = new Map<string, { ctrl: string; always: boolean }>();
   for (const c of snap?.controllers ?? []) {
-    for (const k of ['actuator', 'heatActuator', 'coolActuator'] as const) {
-      const a = c.params?.[k];
-      if (typeof a === 'string' && a) bound.add(a);
+    const a = c.params?.actuator;
+    if (typeof a === 'string' && a) drivenBy.set(a, { ctrl: c.id, always: false });
+    for (const k of ['heatActuator', 'coolActuator'] as const) {
+      const out = c.params?.[k];
+      if (typeof out === 'string' && out) drivenBy.set(out, { ctrl: c.id, always: true });
     }
   }
 
@@ -242,8 +247,10 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
     const cur = cols[i];
     const used = new Set(cols.filter((_, j) => j !== i));
     const controllers = (snap?.controllers ?? []).map((c) => c.id).filter((id) => !used.has(id));
-    const actuators = (snap?.actuators ?? []).map((a) => a.id).filter((id) => !used.has(id) && !bound.has(id));
-    const listed = cur === '' || controllers.includes(cur) || actuators.includes(cur);
+    const allActuators = (snap?.actuators ?? []).map((a) => a.id).filter((id) => !used.has(id));
+    const actuators = allActuators.filter((id) => !drivenBy.has(id));
+    const driven = allActuators.filter((id) => drivenBy.has(id));
+    const listed = cur === '' || controllers.includes(cur) || allActuators.includes(cur);
     return (
       <div key={i} class="flex items-center gap-1">
         <select class={`${inp} w-44!`} value={cur} title="Regler oder Aktor"
@@ -262,6 +269,11 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
               {actuators.map((id) => <option key={id} value={id}>{id}</option>)}
             </optgroup>
           )}
+          {driven.length > 0 && (
+            <optgroup label="Aktoren (von Regler gesteuert)">
+              {driven.map((id) => <option key={id} value={id}>{id} ({drivenBy.get(id)!.ctrl})</option>)}
+            </optgroup>
+          )}
         </select>
         <button type="button" onClick={() => removeCol(i)} title="Spalte entfernen"
           class="shrink-0 px-1 leading-none text-faint hover:text-critical">×</button>
@@ -274,8 +286,10 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
     const cell = rows[ri].cells[ci];
     const kind = targetKind(snap, id);
     const unit = targetUnit(snap, id);
-    // An interval already stored stays visible even if the actuator lost its
-    // schedule, so editing never hides (and silently keeps) a value.
+    const driver = drivenBy.get(id);
+    // A value or interval already stored stays visible even where it can't
+    // take effect, so editing never hides (and silently keeps) it.
+    const showValue = kind !== 'binary' && (!driver?.always || cell.v !== '');
     const showInterval = hasInterval(snap, id) || cell.on !== '' || cell.period !== '';
     return (
       <div key={ci} class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -289,7 +303,7 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
           <option value="on">Ein</option>
           <option value="off">Aus</option>
         </select>
-        {kind !== 'binary' && (
+        {showValue && (
           <label class="flex items-center gap-1 text-xs text-muted"
             title={kind === 'impulse' ? 'Impulse bei Schrittbeginn — einmal pro Lauf' : 'Leer lässt den Wert unverändert'}>
             <input type="text" inputMode="decimal" placeholder="—"
@@ -318,6 +332,13 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
               <option value="h">h</option>
             </select>
           </span>
+        )}
+        {driver && (
+          <p class="basis-full text-[11px] text-muted sm:pl-[7.75rem]">
+            {driver.always
+              ? `Den Wert setzt immer ${driver.ctrl} — Schalter und Intervall wirken trotzdem.`
+              : `Von ${driver.ctrl} gesteuert: der Wert wirkt nur, solange ${driver.ctrl} aus ist. Schalter und Intervall wirken immer.`}
+          </p>
         )}
       </div>
     );

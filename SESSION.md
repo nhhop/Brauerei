@@ -1912,7 +1912,7 @@ Spiegel der Firmware-Regel, `fmtTarget`, `HoldUnit` nach dem Muster von
 duplizierten Schritt-Editoren aus Programm- und Profil-Dialog ersetzt (inkl.
 Zeit/Sensor aus PR #35): Spaltenkopf „Steuert" mit Reglern und Aktoren —
 Aktoren, die ein Regler als `actuator`/`heatActuator`/`coolActuator` treibt,
-werden nicht angeboten —, pro Zelle Schalter „—/Ein/Aus", Wert mit Einheit
+waren zunächst ausgeblendet (siehe Nachtrag) —, pro Zelle Schalter „—/Ein/Aus", Wert mit Einheit
 (Binary ohne, Pulse als „Impulse") und bei Intervall-Aktoren „an … von …".
 `draftProblem()` sagt im Dialog, warum Speichern gesperrt ist. `ProgramCard`
 zeigt statt `setpoint°` den zusammengesetzten Stand als Chips (vom Schritt
@@ -1976,3 +1976,20 @@ wird ein `done`-Programm wie bisher nicht erneut angewandt.
 dann die UI einspielen: die neue UI wirft beim Rendern eines Programms im alten
 Format (`step.targets` fehlt) — im Test mit dem Alt-Programm des LilyGo
 gesehen, bevor die Stubs aktiv waren; die neue Firmware migriert beim Laden.
+
+**Nachtrag (Nutzer-Feedback):** `dfsdfdf` auf dem S3 (AnalogOutput/PWM mit
+Intervall) tauchte in der Spaltenauswahl nicht auf — der Editor blendete jeden
+Aktor aus, den ein Regler treibt (`testpid` hat `actuator: dfsdfdf`), weil der
+Regler den Wert sonst überschreibt. Das war zu grob: ein Regler schreibt nur
+den Wert, Schalter und Intervall fasst er nie an. Nachgelesen in der Library:
+PID und TwoPoint lassen ihren Aktor in Ruhe, solange sie aus sind
+(`if (!enabled()) return;`), DualStage und SplitRangePID ziehen Heiz-/Kühlausgang
+auch ausgeschaltet jede Runde auf 0 (`writeOff()`). Jetzt bietet der Editor alle
+Aktoren an, gesteuerte in einer eigenen Gruppe „Aktoren (von Regler gesteuert)"
+mit dem Reglernamen; die Zelle sagt es dazu — bei PID/TwoPoint „der Wert wirkt
+nur, solange <Regler> aus ist", bei Heiz-/Kühlausgängen entfällt das Wertfeld
+(ein schon gespeicherter Wert bleibt sichtbar). `StepTarget` in der OpenAPI um
+denselben Satz ergänzt. Verifiziert per `pnpm dev` gegen das S3 (neue Firmware,
+echte Daten, nichts gespeichert): Auswahl zeigt `kettle (mash)` und
+`dfsdfdf (testpid)`, die `dfsdfdf`-Zelle Schalter, PWM-Wert, Intervall und den
+Hinweis; `pnpm typecheck` grün, Redocly valide.

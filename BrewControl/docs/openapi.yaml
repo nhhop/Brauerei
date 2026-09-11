@@ -2452,6 +2452,12 @@ components:
         implicitly: a step that sets `v` on a disabled item leaves it disabled
         unless it also says `enabled: true`.
 
+        An actuator a controller drives can be a target too, but the
+        controller writes its output into it every tick: `v` only sticks while
+        a PID/TwoPoint controller is disabled, and never on a DualStage or
+        SplitRangePID heat/cool output (those are forced to 0 even when
+        disabled). `enabled` and `interval` are never touched by a controller.
+
         Pulse actuators (kind `Discrete`, e.g. a hop dropper) are the one
         exception to "a step sets state": their `v` queues that many pulses, so
         it fires only on the first forward entry into the step per run and is
