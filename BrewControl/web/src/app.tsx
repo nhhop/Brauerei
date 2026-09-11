@@ -152,7 +152,7 @@ export function App() {
     <NavShell alertCount={activeCount} onBell={() => setCenterOpen(true)}>
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
-        <ProfilesPage path="/profiles" />
+        <ProfilesPage path="/profiles" snap={snap} />
         <SettingsIndex path="/settings" />
         <AppearancePage path="/settings/appearance" />
         <DevicesPage path="/settings/devices" snap={snap} />

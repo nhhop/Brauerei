@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, ProgramConfig, ProgramStep, ProfileLibrary } from '../types';
+import type { Snapshot, ProgramConfig, ProgramStep, ProfileLibrary, CondOp } from '../types';
 import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
 import { ConfirmModal } from './ConfirmModal';
+import { ConditionFields } from './ConditionFields';
+import { Segmented } from './Segmented';
 
 type SaveCfg = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
 
@@ -27,6 +29,12 @@ interface Row {
   setpoint: string;
   holdMin: string;
   confirm: boolean;
+  end: 'hold' | 'sensor';
+  // Sensor-trigger condition, kept as strings like the other row fields.
+  ref: string;
+  op: CondOp;
+  value: string;
+  hyst: string;
 }
 
 function toRow(s: ProgramStep): Row {
@@ -35,11 +43,17 @@ function toRow(s: ProgramStep): Row {
     setpoint: String(s.setpoint),
     holdMin: String(s.holdSec / 60),
     confirm: s.confirm ?? false,
+    end: s.end ?? 'hold',
+    ref: s.cond?.ref ?? '',
+    op: s.cond?.op ?? 'gt',
+    value: s.cond ? String(s.cond.value) : '',
+    hyst: s.cond ? String(s.cond.hyst) : '0',
   };
 }
 
 function emptyRow(): Row {
-  return { name: '', setpoint: '', holdMin: '', confirm: false };
+  return { name: '', setpoint: '', holdMin: '', confirm: false,
+    end: 'hold', ref: '', op: 'gt', value: '', hyst: '0' };
 }
 
 export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfile, onSave, onDelete, onClose }: Props) {
@@ -92,17 +106,30 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
     else applyProfile(id);
   }
 
-  const steps: ProgramStep[] = rows
-    .map((r) => ({
-      name: r.name.trim(),
-      setpoint: parseFloat(r.setpoint.replace(',', '.')),
-      holdSec: Math.max(0, Math.round((parseFloat(r.holdMin.replace(',', '.')) || 0) * 60)),
-      confirm: r.confirm,
-    }))
-    .filter((s) => isFinite(s.setpoint))
-    .map((s) => (s.name ? s : { ...s, name: undefined }));
+  const num = (s: string) => parseFloat(s.replace(',', '.'));
 
-  const valid = name.trim() !== '' && controller !== '' && steps.length > 0;
+  const steps: ProgramStep[] = rows
+    .filter((r) => isFinite(num(r.setpoint)))
+    .map((r) => {
+      const step: ProgramStep = {
+        name: r.name.trim() || undefined,
+        setpoint: num(r.setpoint),
+        holdSec: Math.max(0, Math.round((num(r.holdMin) || 0) * 60)),
+        confirm: r.confirm,
+      };
+      if (r.end === 'sensor') {
+        step.end = 'sensor';
+        step.cond = { ref: r.ref, op: r.op, value: num(r.value), hyst: Math.max(0, num(r.hyst) || 0) };
+      }
+      return step;
+    });
+
+  // A sensor step needs a picked ref and a finite threshold.
+  const stepsValid = rows
+    .filter((r) => isFinite(num(r.setpoint)) && r.end === 'sensor')
+    .every((r) => r.ref !== '' && Number.isFinite(num(r.value)));
+
+  const valid = name.trim() !== '' && controller !== '' && steps.length > 0 && stepsValid;
 
   function handleSubmit(e: Event) {
     e.preventDefault();
@@ -178,21 +205,37 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
                 <button type="button" onClick={() => removeRow(i)} disabled={rows.length === 1}
                   class="shrink-0 leading-none text-faint hover:text-critical disabled:opacity-30" title="Schritt entfernen">×</button>
               </div>
-              <div class="mt-2 flex flex-wrap items-center gap-3 pl-7">
-                <label class="flex items-center gap-1 text-xs text-muted">
-                  Sollwert
-                  <input type="text" inputMode="decimal"
-                    class={`${inp} w-20 text-right`}
-                    value={r.setpoint}
-                    onInput={(e) => patchRow(i, { setpoint: (e.target as HTMLInputElement).value })} />
-                </label>
-                <label class="flex items-center gap-1 text-xs text-muted">
-                  Haltezeit (min)
-                  <input type="text" inputMode="decimal"
-                    class={`${inp} w-20 text-right`}
-                    value={r.holdMin}
-                    onInput={(e) => patchRow(i, { holdMin: (e.target as HTMLInputElement).value })} />
-                </label>
+              <div class="mt-2 space-y-2 pl-7">
+                <div class="flex flex-wrap items-center gap-3">
+                  <label class="flex items-center gap-1 text-xs text-muted">
+                    Sollwert
+                    <input type="text" inputMode="decimal"
+                      class={`${inp} w-20 text-right`}
+                      value={r.setpoint}
+                      onInput={(e) => patchRow(i, { setpoint: (e.target as HTMLInputElement).value })} />
+                  </label>
+                  <Segmented value={r.end}
+                    options={[{ value: 'hold', label: 'Zeit' }, { value: 'sensor', label: 'Sensor' }]}
+                    onChange={(v) => patchRow(i, { end: v })} />
+                  {r.end === 'hold' && (
+                    <label class="flex items-center gap-1 text-xs text-muted">
+                      Haltezeit (min)
+                      <input type="text" inputMode="decimal"
+                        class={`${inp} w-20 text-right`}
+                        value={r.holdMin}
+                        onInput={(e) => patchRow(i, { holdMin: (e.target as HTMLInputElement).value })} />
+                    </label>
+                  )}
+                </div>
+                {r.end === 'sensor' && (
+                  <ConditionFields snap={snap} refValue={r.ref} op={r.op} value={r.value} hyst={r.hyst}
+                    onChange={(p) => patchRow(i, {
+                      ...(p.refValue !== undefined && { ref: p.refValue }),
+                      ...(p.op !== undefined && { op: p.op }),
+                      ...(p.value !== undefined && { value: p.value }),
+                      ...(p.hyst !== undefined && { hyst: p.hyst }),
+                    })} />
+                )}
                 <label class="flex cursor-pointer items-center gap-1.5 text-xs text-fg">
                   <input type="checkbox" class="accent-accent"
                     checked={r.confirm}

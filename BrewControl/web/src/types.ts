@@ -148,7 +148,11 @@ export interface ProgramStep {
   name?: string;          // optional, cosmetic
   setpoint: number;
   holdSec: number;
-  confirm?: boolean;      // true → wait for manual "next" after the hold elapses
+  // Step-end trigger. Absent = 'hold' (ends when holdSec elapses). 'sensor'
+  // ends the step once `cond` is met (holdSec ignored).
+  end?: 'hold' | 'sensor';
+  cond?: Condition;       // present only when end === 'sensor'
+  confirm?: boolean;      // true → wait for a manual "next" once the trigger fires
 }
 
 export interface ProgramConfig {

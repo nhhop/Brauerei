@@ -45,7 +45,8 @@ export const toastFrame =
 // Slide-in panel (WinUI flyout) — full height on the right, full width on
 // mobile. Pairs with a `fixed inset-0 z-40 bg-black/40` scrim.
 export const panelFrame =
-  'fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col bg-surface shadow-elev-64';
+  'fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col bg-surface shadow-elev-64 ' +
+  'pt-[var(--safe-t)] pb-[var(--safe-b)] pr-[var(--safe-r)]';
 
 // Dialog frame — ContentDialog-style corner radius + elevation. A flex column
 // of content zone (scrolls when capped by max-h) + footer strip; padding lives

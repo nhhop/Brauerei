@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, LogConfig, CompAlgo } from '../types';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
+import { refGroups } from '../refs';
 
 type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 
@@ -17,16 +18,6 @@ const ALGOS: { value: CompAlgo; label: string }[] = [
   { value: 'linear', label: 'Linear-Interpolation' },
   { value: 'swingingdoor', label: 'Swinging Door' },
 ];
-
-// Builds the selectable series refs from the current snapshot, grouped by role.
-// Sensor ids already carry the sub-channel suffix (e.g. "bme280.temp").
-function refGroups(snap: Snapshot | null) {
-  return [
-    { legend: 'Sensoren', refs: (snap?.sensors ?? []).map((s) => `sensor/${s.id}`) },
-    { legend: 'Aktoren', refs: (snap?.actuators ?? []).map((a) => `actuator/${a.id}`) },
-    { legend: 'Regler (Sollwert)', refs: (snap?.controllers ?? []).map((c) => `controller/${c.id}`) },
-  ];
-}
 
 export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) {
   const [name, setName] = useState('');

@@ -1748,3 +1748,101 @@ kippt in beide Richtungen (`maximize` ↔ `minimize`), drei Sprünge über die
 Seitenleiste ergeben genau drei History-Einträge, Marker überlebt, ein
 Navigation-Entry. `pnpm typecheck` sauber. Auslieferung: 105,8 KB gz gegen
 256 KB Partition.
+
+## 2026-09-10 — Safe-Area-Padding: Vollbild ohne Rand-Streifen
+
+Nachdem der Vollbild-Schalter am Gerät trug, blieb der kosmetische Rest aus
+PLAN.md: unter Chrome und Edge stand oben der Bereich der Statusleiste schwarz,
+unter Chrome zusätzlich unten ein schmaler weißer Balken. Ursache ist kein
+Fehler im Layout, sondern eine fehlende Erlaubnis — ohne `viewport-fit=cover`
+schneidet die Engine das Layout-Viewport an den Systemleisten ab und füllt den
+Rest selbst. Die Meta-Angabe in `index.html` ist jetzt gesetzt; damit reicht die
+Seite unter die Leisten und muss ihre Inhalte selbst davon freihalten.
+
+Die vier Insets liegen als `--safe-t/-r/-b/-l` in `styles.css` statt als
+`env()` direkt an den Utilities. Das kostet eine Indirektion, kauft aber genau
+das, woran die Vollbild-Runde davor gescheitert war: die Randfälle sind ohne
+Gerät mit Kerbe messbar, indem man die Variablen überschreibt. Dazu `html {
+background: var(--bg) }` — mit `viewport-fit=cover` endet das Layout nicht mehr
+an der Gestenleiste, und ohne gestrichene Fläche bleibt der Streifen darunter
+weiß.
+
+Gepolstert wird nur, was an einer Bildschirmkante klebt, und jede Kante genau
+einmal. Die Seitenleiste trägt alle drei Kanten selbst (als überlagernde
+Schublade wie als statische Leiste ist sie das äußerste Element). Der
+Scroll-Bereich bekommt unten und rechts, links dagegen nur unterhalb von `md:` —
+darüber liegt die Leiste links von ihm und hat den Rand schon abgedeckt. Die
+Kopfleiste wächst um den oberen Inset (`h-[calc(3rem+var(--safe-t))]` plus
+`pt`), bleibt also randlos unter der Statusleiste liegen, während ihre Icons
+darunter rutschen. Dazu die vier freistehenden Overlays, die keine Polsterung
+von außen sehen können: FAB und Speed-Dial, der Toast-Stapel, das
+Meldungs-Panel und das mobile Programm-Bottom-Sheet.
+
+Bewusst ausgelassen: die Dialoge (`fixed inset-0` mit zentriertem Inhalt und
+`p-4`) — zentrierter Inhalt gerät nicht unter eine Systemleiste.
+
+**Verifikation** mit gefälschten Insets im Browser (48 px oben, 24 px unten):
+Kopfleiste 96 px hoch bei 48 px `padding-top`, das Menü-Icon beginnt bei y=54 —
+also sauber mittig im 48-px-Streifen darunter. Seitenleiste offen: oberster
+Eintrag bei y=56, unterster mit 32 px Luft nach unten. Scroll-Bereich ganz nach
+unten gefahren: 24 px zwischen Inhaltsende und Viewport-Unterkante, Chrome
+rechnet die Polsterung des Scroll-Containers also mit. Quer (812×375, 44 px
+seitlich): Leiste links um 44 px eingerückt, Scroll-Bereich links bei 0 und
+rechts um 44 px — kein doppelter Rand. Die vier Overlay-Klassen einzeln
+gemessen: FAB `bottom: 44px` / `right: 36px`, Toast 40/32, Panel `pt 48 / pb 24
+/ pr 16`, Sheet `pb 40`.
+
+Der wichtigste Beleg ist der Gegentest: mit echtem `env()` im normalen Tab
+lösen alle vier Variablen zu `0px` auf, sämtliche Polsterungen stehen auf 0 und
+die Kopfleiste ist wieder 48 px hoch. Außerhalb von Vollbild und
+Home-Screen-Fenster ändert sich nichts. `pnpm typecheck` sauber, `pnpm build`
+durch, die erzeugten Regeln stehen im gebauten CSS (Tailwind normalisiert
+`calc(1.25rem+…)` selbst auf gültige Abstände). Der Beleg am Gerät steht aus
+(PLAN.md).
+
+## 2026-09-10 — Sensorgetriggerte Programm-Schritte
+
+Backlog-Punkt aus PLAN.md: ein Schritt endete bisher nur über `holdSec` (Zeit).
+Jetzt trägt jeder Schritt einen wählbaren Auslöser — `end: "hold"` (Default,
+weggelassen) oder `end: "sensor"` mit einer `Condition` `{ref, op, value, hyst}`
+aus `Condition.h` (unverändert von `AlarmStore`/`LogStore` übernommen: gleiche
+`conditionFromJson`/`conditionToJson`/`evalCondition` mit Hysterese-Latch). Bei
+`sensor` schaltet der Schritt automatisch weiter, sobald der Latch steigt;
+`holdSec` wird dann ignoriert. Der Latch (`Step::condActive`) ist Laufzeit, nicht
+persistiert, und wird bei jedem Schrittwechsel zurückgesetzt (`resetLatches_`).
+
+Die „Freigabe abwarten"-Checkbox (`confirm`) bleibt unverändert und orthogonal:
+sie greift nach dem Auslösen beider Trigger — `hold` + `confirm` ist exakt das
+alte Verhalten, `sensor` + `confirm` wartet nach Erreichen der Bedingung auf
+`next`. Kein Sicherheits-Timeout für Sensor-Schritte (unbegrenztes Warten,
+`next`/`stop` bleiben verfügbar). Keine Migration: `end` fehlt in Altdateien →
+`hold`; ältere Firmware auf einer neuen `programs.json` behandelt
+`sensor`-Schritte als `hold`.
+
+`ProgramRunner::tick` verzweigt die „Schritt fertig?"-Prüfung nach `end`, sonst
+Struktur gleich. Frontend: neue `ProgramStep.end`/`cond`-Felder; die
+`{ref, op, value, hyst}`-Form ist als `components/ConditionFields.tsx` aus dem
+Alarm-Editor herausgezogen (`refGroups`/`unitOf` nun in `src/refs.ts`, auch vom
+Log-Editor genutzt), fällt ohne Snapshot auf ein Freitext-Ref zurück (Profil-
+Bibliothek hat keinen SSE-Feed). Programm- und Profil-Schritt-Editor bekommen je
+ein Segmented „Zeit / Sensor"; `ProgramCard` zeigt für den aktiven Sensor-Schritt
+Ziel + Bedingung + Live-Istwert (`resolveRef`) statt Countdown und lässt
+Sensor-Schritte aus der Fortschrittsbalken-Rechnung.
+
+**Verifikation:** `pio run -e esp32dev` grün, `redocly lint` ohne neue Fehler,
+`pnpm typecheck`/`pnpm build` grün. E2E am echten Gärlauf steht aus (PLAN.md →
+Hardware-Verifikation).
+
+**Nachtrag (Nutzer-Feedback):** Firmware + UI auf `brewcontrol.local`
+(LilyGo-S3, COM9) geflasht — bestehendes Programm lädt unverändert (Back-Compat
+bestätigt), Programm-Editor zeigt das Sensor-Dropdown live. Danach auffiel:
+die Profil-Seite (`/profiles`) zeigte für dieselbe `ConditionFields`-Komponente
+nur ein Freitext-Ref-Feld statt des Dropdowns. Ursache war kein Komponenten-
+Unterschied, sondern fehlende Prop-Weitergabe — `App()` (`app.tsx`) hält den
+Live-`Snapshot` und reicht ihn an `Dashboard`/`DevicesPage`/`LogsPage`/
+`AlarmsPage` durch, `ProfilesPage` fehlte dabei. Ergänzt (`app.tsx`,
+`ProfilesPage.tsx`); `ProfileEditorModal`/`ConditionFields` brauchten keine
+Änderung. `pnpm typecheck`/`pnpm build` grün, per `pnpm dev` gegen
+`brewcontrol.local` (`VITE_ESP_HOST` braucht das Schema, `http://…`, sonst
+`ENOTFOUND base.invalid`) verifiziert: Profil-Editor zeigt jetzt dasselbe
+Dropdown wie der Programm-Editor.

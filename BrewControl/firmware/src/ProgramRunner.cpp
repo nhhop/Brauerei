@@ -61,6 +61,10 @@ bool ProgramRunner::fillFromJson(Program& p, const JsonObject& cfg) {
     st.setpoint = sp;
     st.holdSec  = s["holdSec"] | 0;
     st.confirm  = s["confirm"] | false;
+    if (strcmp(s["end"] | "hold", "sensor") == 0) {
+      st.end = EndMode::Sensor;
+      if (!conditionFromJson(st.cond, s["cond"].as<JsonObjectConst>())) return false;
+    }
     p.steps.push_back(std::move(st));
   }
   return !p.controller.empty() && !p.steps.empty();
@@ -88,6 +92,7 @@ void ProgramRunner::loadFromSD(fs::FS& sd) {
     p.elapsedAtPauseSec = obj["elapsedAtPauseSec"] | 0;
     if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size())
       p.currentStep = 0;
+    resetLatches_(p);
     programs_.push_back(std::move(p));
   }
   needsResume_ = true;
@@ -122,6 +127,10 @@ String ProgramRunner::serialize() const {
       so["setpoint"] = s.setpoint;
       so["holdSec"]  = s.holdSec;
       if (s.confirm) so["confirm"] = true;
+      if (s.end == EndMode::Sensor) {
+        so["end"] = "sensor";
+        conditionToJson(s.cond, so["cond"].to<JsonObject>());
+      }
     }
     obj["status"]            = statusToStr(p.status);
     obj["currentStep"]       = p.currentStep;
@@ -133,7 +142,9 @@ String ProgramRunner::serialize() const {
       const Step& cur = p.steps[p.currentStep];
       obj["currentSetpoint"] = cur.setpoint;
       long remaining = (long)cur.holdSec;
-      if (p.status == Status::Running && now > 946684800L) {
+      if (cur.end == EndMode::Sensor) {
+        remaining = 0;  // sensor-triggered: no countdown
+      } else if (p.status == Status::Running && now > 946684800L) {
         remaining = (long)cur.holdSec - (long)(now - p.stepStartedEpoch);
       } else if (p.status == Status::Paused) {
         remaining = (long)cur.holdSec - (long)p.elapsedAtPauseSec;
@@ -189,6 +200,7 @@ bool ProgramRunner::update(const char* id, const JsonObject& cfg) {
   p->name             = std::move(tmp.name);
   p->controller       = std::move(tmp.controller);
   p->steps            = std::move(tmp.steps);
+  resetLatches_(*p);
   setStatus_(*p, Status::Idle);
   p->currentStep      = 0;
   p->stepStartedEpoch = 0;
@@ -215,8 +227,13 @@ void ProgramRunner::applyStep_(Program& p, SensActCtrl::Registry& reg,
   if (enable) c->setEnabled(true);
 }
 
+void ProgramRunner::resetLatches_(Program& p) {
+  for (auto& s : p.steps) s.condActive = false;
+}
+
 void ProgramRunner::advance_(Program& p, SensActCtrl::Registry& reg,
                              time_t nowEpoch) {
+  resetLatches_(p);
   if (p.currentStep + 1 >= (int)p.steps.size()) {
     setStatus_(p, Status::Done);  // last setpoint stays applied
     return;
@@ -243,6 +260,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     if (st != Status::Idle && st != Status::Done)
       return {false, "invalid action for state"};
     if (p->steps.empty()) return {false, "no steps"};
+    resetLatches_(*p);
     p->currentStep       = 0;
     setStatus_(*p, Status::Running);
     p->stepStartedEpoch  = now;
@@ -268,6 +286,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
 
   if (strcmp(action, "resume") == 0) {
     if (st != Status::Paused) return {false, "invalid action for state"};
+    resetLatches_(*p);
     p->stepStartedEpoch = now - (time_t)p->elapsedAtPauseSec;
     setStatus_(*p, Status::Running);
     applyStep_(*p, reg, /*enable=*/true);
@@ -292,6 +311,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
   if (strcmp(action, "prev") == 0) {
     if (st != Status::Running && st != Status::Paused && st != Status::Awaiting)
       return {false, "invalid action for state"};
+    resetLatches_(*p);
     if (p->currentStep > 0) p->currentStep--;
     setStatus_(*p, Status::Running);
     p->stepStartedEpoch  = now;
@@ -329,9 +349,16 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
     if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) continue;
     if (!reg.findController(p.controller.c_str())) continue;  // orphaned → wait
 
-    const Step& cur = p.steps[p.currentStep];
-    long elapsed = (long)(nowEpoch - p.stepStartedEpoch);
-    if (elapsed < (long)cur.holdSec) continue;
+    Step& cur = p.steps[p.currentStep];
+    bool fired;
+    if (cur.end == EndMode::Sensor) {
+      // evalCondition returns false (and leaves the latch untouched) while the
+      // ref cannot be resolved — the step then just keeps waiting.
+      fired = evalCondition(reg, cur.cond, cur.condActive) && cur.condActive;
+    } else {
+      fired = (long)(nowEpoch - p.stepStartedEpoch) >= (long)cur.holdSec;
+    }
+    if (!fired) continue;
 
     if (cur.confirm) {
       setStatus_(p, Status::Awaiting);  // wait for manual "next"
