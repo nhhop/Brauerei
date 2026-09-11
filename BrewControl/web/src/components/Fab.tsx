@@ -15,7 +15,7 @@ export function Fab({ icon: Icon, label, onClick, disabled }: {
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} title={label}
-      class={`${fabBase} fixed bottom-5 right-5 z-30 h-14 w-14 md:hidden`}>
+      class={`${fabBase} fixed bottom-[calc(1.25rem+var(--safe-b))] right-[calc(1.25rem+var(--safe-r))] z-30 h-14 w-14 md:hidden`}>
       <Icon size={24} />
     </button>
   );
@@ -36,7 +36,7 @@ export function SpeedDialFab({ icon: Icon, actions }: { icon: LucideIcon; action
       {open && (
         <div class="fixed inset-0 z-20" onClick={() => setOpen(false)} />
       )}
-      <div class="fixed bottom-5 right-5 z-30 flex flex-col items-end gap-3">
+      <div class="fixed bottom-[calc(1.25rem+var(--safe-b))] right-[calc(1.25rem+var(--safe-r))] z-30 flex flex-col items-end gap-3">
         {open && actions.map((a) => (
           <div key={a.label} class="flex items-center gap-2">
             <span class="rounded-md bg-surface px-2.5 py-1 text-sm text-fg shadow-elev-64">

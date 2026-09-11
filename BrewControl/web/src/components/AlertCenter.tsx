@@ -146,7 +146,7 @@ export function AlertCenter({ alerts, open, onOpen, onClose, onClear, toasts, on
     <>
       {/* Toast stack — newest at the bottom, capped so a burst can't fill the screen. */}
       {toasts.length > 0 && (
-        <div class="fixed bottom-4 right-4 z-40 flex flex-col-reverse gap-2">
+        <div class="fixed bottom-[calc(1rem+var(--safe-b))] right-[calc(1rem+var(--safe-r))] z-40 flex flex-col-reverse gap-2">
           {toasts.slice(0, 3).map((a) => (
             <Toast key={a.seq} alert={a}
               onOpen={() => { onToastDone(a.seq); onOpen(); }}

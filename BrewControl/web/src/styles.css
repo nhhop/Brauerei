@@ -78,6 +78,24 @@
   :root:not([data-theme])[data-tint="cool"] { --bg: #1d2023; }
 }
 
+/* ── Safe areas (display cutouts, status and gesture bars) ───────────────── */
+
+/* Non-zero only where the page is allowed under the system bars — fullscreen on
+   Android and the iOS home-screen window, both via viewport-fit=cover in
+   index.html. Zero in a normal browser tab and on desktop, so every utility
+   built on them is inert there. Named as variables so the edge cases stay
+   testable without a notched device: override them to fake an inset. */
+:root {
+  --safe-t: env(safe-area-inset-top);
+  --safe-r: env(safe-area-inset-right);
+  --safe-b: env(safe-area-inset-bottom);
+  --safe-l: env(safe-area-inset-left);
+}
+
+/* With viewport-fit=cover the layout no longer ends at the gesture bar; without
+   a painted canvas Chrome leaves the strip below it white. */
+html { background: var(--bg); }
+
 /* ── Fluent elevation + surface tokens ───────────────────────────────────── */
 
 :root {
