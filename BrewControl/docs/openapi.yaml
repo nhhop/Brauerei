@@ -2431,12 +2431,24 @@ components:
         name: { type: string, description: Omitted when empty. }
         setpoint: { type: number }
         holdSec: { type: integer, description: How long to hold this setpoint. }
+        end:
+          type: string
+          enum: [hold, sensor]
+          description: |
+            Step-end trigger. Omitted when `hold` (the default, time-based:
+            the step ends once `holdSec` has elapsed). `sensor` ends the step
+            once `cond` is met; `holdSec` is then ignored.
+        cond:
+          allOf: [{ $ref: "#/components/schemas/Condition" }]
+          description: Present only when `end` is `sensor`.
         confirm:
           type: boolean
           const: true
           description: |
             Present only when the step requires manual confirmation before
-            advancing. Omitted otherwise.
+            advancing. Applies on top of either `end` trigger: once the trigger
+            fires the step waits for a manual `next` instead of advancing.
+            Omitted otherwise.
 
     ProgramInput:
       type: object

@@ -290,6 +290,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
       <ProfileEditorModal
         open={profileDraft !== null}
         categories={library?.categories ?? []}
+        snap={snap}
         initial={profileDraft ?? undefined}
         onSave={async (cfg) => {
           await createProfile(cfg);
@@ -337,6 +338,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
               const ctrlExists = (snap?.controllers ?? []).some((c) => c.id === prog.controller);
               return (
                 <ProgramCard key={pid} program={prog}
+                  snap={snap}
                   controllerExists={ctrlExists}
                   onChanged={refreshPrograms}
                   onEdit={editMode ? () => openEditProgram(prog) : undefined}

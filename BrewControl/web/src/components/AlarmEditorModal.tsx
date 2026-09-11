@@ -2,6 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, AlarmConfig, CondOp, Severity } from '../types';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp, linkDanger } from '../ui';
 import { Segmented } from './Segmented';
+import { ConditionFields } from './ConditionFields';
 
 type SaveCfg = Pick<AlarmConfig, 'name' | 'enabled' | 'severity' | 'forSec' | 'cond'>;
 
@@ -19,29 +20,6 @@ const SEVERITIES: { value: Severity; label: string }[] = [
   { value: 'warning', label: 'Warnung' },
   { value: 'critical', label: 'Kritisch' },
 ];
-
-// Same grouping the log editor uses. Sensor ids already carry the sub-channel
-// suffix (e.g. "bme280.temp"); a controller resolves to its setpoint, not to a
-// process value, which the legend says out loud so nobody expects otherwise.
-function refGroups(snap: Snapshot | null) {
-  return [
-    { legend: 'Sensoren', refs: (snap?.sensors ?? []).map((s) => `sensor/${s.id}`) },
-    { legend: 'Aktoren', refs: (snap?.actuators ?? []).map((a) => `actuator/${a.id}`) },
-    { legend: 'Regler (Sollwert)', refs: (snap?.controllers ?? []).map((c) => `controller/${c.id}`) },
-  ];
-}
-
-// Unit of the referenced channel, for the field suffixes. "" when unknown.
-function unitOf(snap: Snapshot | null, ref: string): string {
-  if (!snap) return '';
-  const slash = ref.indexOf('/');
-  if (slash < 0) return '';
-  const role = ref.slice(0, slash);
-  const id = ref.slice(slash + 1);
-  if (role === 'sensor') return snap.sensors.find((s) => s.id === id)?.meta.unit ?? '';
-  if (role === 'actuator') return snap.actuators.find((a) => a.id === id)?.meta.unit ?? '';
-  return '';
-}
 
 export function AlarmEditorModal({ open, snap, initial, onSave, onDelete, onClose }: Props) {
   const [name, setName] = useState('');
@@ -69,11 +47,6 @@ export function AlarmEditorModal({ open, snap, initial, onSave, onDelete, onClos
 
   const num = (s: string) => parseFloat(s.replace(',', '.'));
   const valid = name.trim() !== '' && ref !== '' && Number.isFinite(num(value));
-  const groups = refGroups(snap);
-  const unit = unitOf(snap, ref);
-  // A ref saved earlier whose item is gone won't be in the snapshot — keep it
-  // selectable so editing the rule doesn't silently retarget it.
-  const refMissing = ref !== '' && !groups.some((g) => g.refs.includes(ref));
 
   function handleSubmit(e: Event) {
     e.preventDefault();
@@ -107,49 +80,21 @@ export function AlarmEditorModal({ open, snap, initial, onSave, onDelete, onClos
               placeholder="z.B. Sudpfanne zu heiß" />
           </label>
 
-          <label class="mb-4 block">
-            <span class="text-xs text-muted">Überwachter Wert</span>
-            <select class={`mt-1 ${inp}`} value={ref}
-              onChange={(e) => setRef((e.target as HTMLSelectElement).value)}>
-              <option value="">— bitte wählen —</option>
-              {refMissing && <option value={ref}>{ref} (nicht vorhanden)</option>}
-              {groups.map((g) => (
-                <optgroup key={g.legend} label={g.legend}>
-                  {g.refs.map((r) => <option key={r} value={r}>{r}</option>)}
-                </optgroup>
-              ))}
-            </select>
+          <div class="mb-4">
+            <ConditionFields snap={snap} refValue={ref} op={op} value={value} hyst={hyst}
+              onChange={(p) => {
+                if (p.refValue !== undefined) setRef(p.refValue);
+                if (p.op !== undefined) setOp(p.op);
+                if (p.value !== undefined) setValue(p.value);
+                if (p.hyst !== undefined) setHyst(p.hyst);
+              }} />
+          </div>
+
+          <label class="mb-4 block w-36">
+            <span class="text-xs text-muted">Mindestdauer (s)</span>
+            <input class={`mt-1 ${inp}`} value={forSec} inputMode="numeric"
+              onInput={(e) => setForSec((e.target as HTMLInputElement).value)} />
           </label>
-
-          <div class="mb-4 flex gap-3">
-            <label class="block w-36">
-              <span class="text-xs text-muted">Bedingung</span>
-              <select class={`mt-1 ${inp}`} value={op}
-                onChange={(e) => setOp((e.target as HTMLSelectElement).value as CondOp)}>
-                <option value="gt">größer als</option>
-                <option value="lt">kleiner als</option>
-              </select>
-            </label>
-            <label class="block flex-1">
-              <span class="text-xs text-muted">Grenzwert{unit && ` (${unit})`}</span>
-              <input class={`mt-1 ${inp}`} value={value} inputMode="decimal"
-                onInput={(e) => setValue((e.target as HTMLInputElement).value)}
-                placeholder="78" />
-            </label>
-          </div>
-
-          <div class="mb-4 flex gap-3">
-            <label class="block flex-1">
-              <span class="text-xs text-muted">Hysterese{unit && ` (${unit})`}</span>
-              <input class={`mt-1 ${inp}`} value={hyst} inputMode="decimal"
-                onInput={(e) => setHyst((e.target as HTMLInputElement).value)} />
-            </label>
-            <label class="block flex-1">
-              <span class="text-xs text-muted">Mindestdauer (s)</span>
-              <input class={`mt-1 ${inp}`} value={forSec} inputMode="numeric"
-                onInput={(e) => setForSec((e.target as HTMLInputElement).value)} />
-            </label>
-          </div>
           <p class="mb-4 text-xs text-muted">
             Die Hysterese ist das Rückfallband: der Alarm endet erst
             {op === 'gt' ? ' unterhalb' : ' oberhalb'} von Grenzwert

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ProgramConfig, ProgramAction } from '../types';
-import { controlProgram } from '../api';
+import type { ProgramConfig, ProgramAction, ProgramStep, Condition, Snapshot } from '../types';
+import { controlProgram, resolveRef } from '../api';
 import { badge, badgeAccent, badgeCaution, badgeSuccess } from '../ui';
 import {
   Check, ChevronDown, ChevronUp, FileText, Pause, Pencil, Play,
@@ -9,6 +9,7 @@ import {
 
 interface Props {
   program: ProgramConfig;
+  snap: Snapshot | null;
   controllerExists: boolean;
   onChanged: () => void;   // re-fetch programs after a control action
   onEdit?: () => void;
@@ -26,6 +27,17 @@ export function fmtDuration(sec: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+// "gravity < 1.010" — the trailing segment of the ref plus the comparison.
+function condShort(c: Condition): string {
+  const slash = c.ref.indexOf('/');
+  const who = slash < 0 ? c.ref : c.ref.slice(slash + 1);
+  return `${who} ${c.op === 'lt' ? '<' : '>'} ${c.value}`;
+}
+
+function isSensorStep(s: ProgramStep): s is ProgramStep & { cond: Condition } {
+  return s.end === 'sensor' && s.cond != null;
+}
+
 const STATUS_LABEL: Record<string, string> = {
   idle: 'Bereit',
   running: 'Läuft',
@@ -41,7 +53,7 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
-export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDelete, fill, onSheetHeight }: Props) {
+export function ProgramCard({ program, snap, controllerExists, onChanged, onEdit, onDelete, fill, onSheetHeight }: Props) {
   const { name, controller, steps, status, currentStep } = program;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -106,20 +118,27 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
   const active = status === 'running' || status === 'awaiting' || status === 'paused';
   const remaining = program.stepRemainingSec;
   const cur = steps[currentStep];
+  const curIsSensor = active && cur ? isSensorStep(cur) : false;
+  // Live reading behind the current sensor step's ref, "—" when unavailable.
+  const curLiveValue = curIsSensor && snap && cur ? resolveRef(snap, cur.cond!.ref) : null;
 
   // Total/elapsed program time for the progress bar — approximate: a step
   // skipped early via "Weiter" still counts its full holdSec as elapsed.
-  const totalSec = steps.reduce((sum, s) => sum + s.holdSec, 0);
-  const elapsedBeforeCur = steps.slice(0, currentStep).reduce((sum, s) => sum + s.holdSec, 0);
-  const curElapsed = active && cur ? Math.max(0, cur.holdSec - (remaining ?? cur.holdSec)) : 0;
+  // Sensor-triggered steps have no known duration and are left out.
+  const holdOf = (s: ProgramStep) => (s.end === 'sensor' ? 0 : s.holdSec);
+  const totalSec = steps.reduce((sum, s) => sum + holdOf(s), 0);
+  const elapsedBeforeCur = steps.slice(0, currentStep).reduce((sum, s) => sum + holdOf(s), 0);
+  const curElapsed = active && cur ? Math.max(0, holdOf(cur) - (remaining ?? holdOf(cur))) : 0;
   const elapsedSec = Math.min(totalSec, elapsedBeforeCur + curElapsed);
   const progressPct = totalSec > 0 ? elapsedSec / totalSec : 0;
 
   // One-line summary shown on mobile when the list is collapsed.
   function compactSummary(): string {
     if (active && cur) {
-      const tail = status === 'running' ? `noch ${fmtDuration(remaining ?? 0)}`
-        : status === 'awaiting' ? 'Freigabe' : 'pausiert';
+      const tail = status === 'awaiting' ? 'Freigabe'
+        : status === 'paused' ? 'pausiert'
+        : isSensorStep(cur) ? `⤳ ${condShort(cur.cond)}`
+        : `noch ${fmtDuration(remaining ?? 0)}`;
       return `${cur.name || `Schritt ${currentStep + 1}`} · ${cur.setpoint}° · ${tail}`;
     }
     return `${steps.length} Schritte`;
@@ -146,6 +165,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
   return (
     <div ref={rootRef} class={`rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
       ${fill ? 'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-30 max-lg:m-0 ' +
+        'max-lg:pb-[calc(1rem+var(--safe-b))] ' +
         'max-lg:rounded-t-lg max-lg:rounded-b-none max-lg:border-x-0 max-lg:border-b-0 max-lg:border-t max-lg:border-border ' +
         'max-lg:bg-surface-acrylic max-lg:backdrop-blur-md max-lg:shadow-elev-64 ' +
         'lg:flex lg:h-full lg:flex-col lg:overflow-hidden' : ''}`}>
@@ -198,7 +218,7 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
             <h4 class="min-w-0 truncate text-lg font-semibold text-fg sm:text-xl">
               {cur.name || `Schritt ${currentStep + 1}`}
             </h4>
-            {status === 'running' && remaining != null && (
+            {status === 'running' && !curIsSensor && remaining != null && (
               <div class="shrink-0 text-right">
                 <div class="font-mono text-2xl font-bold leading-none tabular-nums text-accent sm:text-3xl">
                   {fmtDuration(remaining)}
@@ -206,16 +226,30 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
                 <div class="mt-0.5 text-[10px] uppercase tracking-wide text-faint">Verbleibend</div>
               </div>
             )}
+            {status === 'running' && curIsSensor && cur.cond && (
+              <div class="shrink-0 text-right">
+                <div class="font-mono text-2xl font-bold leading-none tabular-nums text-accent sm:text-3xl">
+                  {curLiveValue != null ? curLiveValue : '—'}
+                </div>
+                <div class="mt-0.5 text-[10px] uppercase tracking-wide text-faint">Istwert</div>
+              </div>
+            )}
           </div>
           <p class="mt-1 flex items-center gap-1.5 text-sm text-muted">
             <Thermometer size={14} aria-hidden class="shrink-0 text-faint" />
-            {cur.setpoint}° Ziel · {fmtDuration(cur.holdSec)} Rastzeit
+            {curIsSensor && cur.cond
+              ? <>{cur.setpoint}° Ziel · warten auf {condShort(cur.cond)}</>
+              : <>{cur.setpoint}° Ziel · {fmtDuration(cur.holdSec)} Rastzeit</>}
           </p>
-          <div class="mt-2.5 h-1 overflow-hidden rounded-full bg-fg/10">
-            <div class="h-full rounded-full bg-accent transition-[width] duration-300"
-              style={{ width: `${Math.round(progressPct * 100)}%` }} />
-          </div>
-          <p class="mt-1 text-xs text-muted">{fmtDuration(elapsedSec)} / {fmtDuration(totalSec)}</p>
+          {!curIsSensor && (
+            <>
+              <div class="mt-2.5 h-1 overflow-hidden rounded-full bg-fg/10">
+                <div class="h-full rounded-full bg-accent transition-[width] duration-300"
+                  style={{ width: `${Math.round(progressPct * 100)}%` }} />
+              </div>
+              <p class="mt-1 text-xs text-muted">{fmtDuration(elapsedSec)} / {fmtDuration(totalSec)}</p>
+            </>
+          )}
         </div>
       )}
 
@@ -263,9 +297,14 @@ export function ProgramCard({ program, controllerExists, onChanged, onEdit, onDe
                 {s.confirm && <span class="ml-1 text-[10px] text-caution" title="Freigabe abwarten">✋</span>}
               </span>
               <span class="shrink-0 font-mono text-xs">
-                {s.setpoint}° · {fmtDuration(s.holdSec)}
-                {isCur && remaining != null && status === 'running' && (
+                {isSensorStep(s) ? `${s.setpoint}° · ${condShort(s.cond)}` : `${s.setpoint}° · ${fmtDuration(s.holdSec)}`}
+                {isCur && !isSensorStep(s) && remaining != null && status === 'running' && (
                   <span class="ml-2 text-accent">noch {fmtDuration(remaining)}</span>
+                )}
+                {isCur && isSensorStep(s) && status === 'running' && (
+                  <span class="ml-2 text-accent">
+                    Ist {snap ? (resolveRef(snap, s.cond.ref) ?? '—') : '—'}
+                  </span>
                 )}
                 {isCur && status === 'awaiting' && (
                   <span class="ml-2 text-caution">↳ Freigabe</span>

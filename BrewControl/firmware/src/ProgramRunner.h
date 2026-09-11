@@ -7,17 +7,21 @@
 #include <freertos/semphr.h>
 #include <time.h>
 
+#include "Condition.h"
+
 #include <functional>
 #include <string>
 #include <vector>
 
 namespace BrewControl {
 
-// Runs time-driven setpoint programs ("mash profiles") on top of the library's
-// controllers. A program is a named list of steps { name?, setpoint, holdSec,
-// confirm }; the runner walks the steps and drives the bound controller's
-// setpoint over time. No sensor feedback and no ramping: the setpoint jumps to
-// each step's target and the hold timer counts from the moment the step begins.
+// Runs setpoint programs ("mash profiles") on top of the library's controllers.
+// A program is a named list of steps { name?, setpoint, holdSec, confirm, end,
+// cond }; the runner walks the steps and drives the bound controller's setpoint.
+// No ramping: the setpoint jumps to each step's target. A step ends either when
+// its hold timer elapses (end "hold", default) or when a threshold on a sensor
+// ref is met (end "sensor"); an orthogonal `confirm` flag makes it wait for a
+// manual "next" once that trigger fires instead of advancing automatically.
 //
 // Timing uses the wall clock (time(nullptr)), persisted as an absolute epoch per
 // step, so a running program survives a reboot and resumes at the right place.
@@ -36,9 +40,10 @@ class ProgramRunner {
   // JSON array of all programs (config + derived live status). GET /api/programs.
   String serialize() const;
 
-  // Create from cfg {name, controller, steps:[{name?,setpoint,holdSec,confirm?}]}.
-  // Returns the generated id, or "" if the config is invalid (no controller or
-  // no valid steps).
+  // Create from cfg {name, controller,
+  // steps:[{name?,setpoint,holdSec,confirm?,end?,cond?}]}. Returns the generated
+  // id, or "" if the config is invalid (no controller, no valid steps, or an
+  // "end":"sensor" step with a malformed "cond").
   String add(const JsonObject& cfg);
 
   // Replace an existing program's definition (resets it to idle). Returns false
@@ -72,11 +77,18 @@ class ProgramRunner {
  private:
   enum class Status { Idle, Running, Awaiting, Paused, Done };
 
+  enum class EndMode { Hold, Sensor };
+
   struct Step {
     std::string name;          // optional, cosmetic
     float       setpoint = 0;
     uint32_t    holdSec  = 0;
     bool        confirm  = false;
+    EndMode     end      = EndMode::Hold;
+    Condition   cond;          // only meaningful when end == Sensor
+    // Runtime, not persisted: hysteresis latch for the sensor condition,
+    // mirrors AlarmStore::Rule::active. Reset on every step transition.
+    bool        condActive = false;
   };
 
   struct Program {
@@ -117,6 +129,10 @@ class ProgramRunner {
   // Move to the next step (or finish). Applies the new setpoint and restarts the
   // timer at nowEpoch.
   void advance_(Program& p, SensActCtrl::Registry& reg, time_t nowEpoch);
+
+  // Clear every step's sensor-condition latch. Called on any step transition so
+  // a re-entered step re-evaluates its condition from scratch.
+  static void resetLatches_(Program& p);
 
   static String generateId();
   static bool   fillFromJson(Program& p, const JsonObject& cfg);

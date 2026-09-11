@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import type { ProfileCategory, ProfileConfig } from '../types';
+import type { ProfileCategory, ProfileConfig, Snapshot } from '../types';
 import {
   getProfiles, createProfile, updateProfile, deleteProfile,
   createProfileCategory, updateProfileCategory, deleteProfileCategory,
@@ -20,7 +20,7 @@ type SaveCfg = Pick<ProfileConfig, 'name' | 'category' | 'steps'>;
 // Profile library: reusable step templates, grouped into categories. The
 // categories are the tab strip (same mechanic as the dashboard tabs) — a
 // profile always belongs to exactly one.
-export function ProfilesPage(_props: { path?: string }) {
+export function ProfilesPage({ snap }: { path?: string; snap: Snapshot | null }) {
   const [categories, setCategories] = useState<ProfileCategory[]>([]);
   const [profiles, setProfiles] = useState<ProfileConfig[]>([]);
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -216,6 +216,7 @@ export function ProfilesPage(_props: { path?: string }) {
       <ProfileEditorModal
         open={editorOpen}
         categories={categories}
+        snap={snap}
         initial={editorInitial}
         editing={editing !== null}
         onSave={saveProfile}
