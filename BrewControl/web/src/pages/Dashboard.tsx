@@ -22,7 +22,7 @@ import { ProgramEditorModal } from '../components/ProgramEditorModal';
 import { ProfileEditorModal } from '../components/ProfileEditorModal';
 import { Pencil, Check, Plus, X } from 'lucide-preact';
 
-type ProgramSave = Pick<ProgramConfig, 'name' | 'controller' | 'steps'>;
+type ProgramSave = Pick<ProgramConfig, 'name' | 'steps'>;
 
 type Role = 'sensor' | 'actuator' | 'controller';
 type Tab = { kind: 'dashboard'; id: string };
@@ -335,11 +335,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
             {activeDash.programs!.map((pid) => {
               const prog = programs.find((p) => p.id === pid);
               if (!prog) return null;
-              const ctrlExists = (snap?.controllers ?? []).some((c) => c.id === prog.controller);
               return (
                 <ProgramCard key={pid} program={prog}
                   snap={snap}
-                  controllerExists={ctrlExists}
                   onChanged={refreshPrograms}
                   onEdit={editMode ? () => openEditProgram(prog) : undefined}
                   onDelete={editMode ? () => removeProgramRef(pid) : undefined}

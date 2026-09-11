@@ -86,7 +86,7 @@ tags:
   - name: Data Logs
     description: Time-series logging of sensor/actuator values to CSV sessions.
   - name: Setpoint Programs
-    description: Multi-step setpoint schedules driving a controller.
+    description: Multi-step schedules driving controllers and actuators.
   - name: Alarms
     description: |
       Threshold rules on sensor/actuator/controller values, plus the alert
@@ -95,8 +95,8 @@ tags:
   - name: Profiles
     description: |
       Reusable step templates ("Maischeplan", "Gaerverlauf") grouped into
-      user-defined categories. Applying a profile copies its steps into a
-      program; nothing here references a controller or runs.
+      user-defined categories. Applying a profile copies its steps — target
+      ids included — into a program; nothing here runs.
   - name: Settings
     description: Theme, time, firmware channel and remote-transport settings.
   - name: Network
@@ -713,9 +713,9 @@ paths:
       operationId: createProgram
       summary: Create a program
       description: |
-        Requires `Content-Type: application/json`. Needs a non-empty
-        `controller` and at least one step with a finite `setpoint`; steps
-        without a valid `setpoint` are silently skipped.
+        Requires `Content-Type: application/json`. Needs at least one step.
+        Rejected (`invalid program`) when a step has an invalid `interval`, a
+        `sensor` step has a malformed `cond`, or a target id is empty.
       requestBody:
         required: true
         content:
@@ -723,14 +723,22 @@ paths:
             schema: { $ref: "#/components/schemas/ProgramInput" }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "201": { $ref: "#/components/responses/Created" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string, pattern: "^p_[0-9a-f]{5}$" }
         "400":
           description: Body is `invalid program`.
           content:
             text/plain: { schema: { type: string, const: invalid program } }
 
   /api/programs/{id}:
-    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    parameters: [{ $ref: "#/components/parameters/ProgramId" }]
     post:
       tags: [Setpoint Programs]
       operationId: updateProgram
@@ -760,7 +768,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   /api/programs/{id}/control:
-    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    parameters: [{ $ref: "#/components/parameters/ProgramId" }]
     post:
       tags: [Setpoint Programs]
       operationId: controlProgram
@@ -768,7 +776,9 @@ paths:
       description: |
         `next`/`prev` step through the program manually; `start` from `idle`,
         `resume` from `paused`. A successful action pushes a snapshot, since the
-        controller setpoint changes.
+        program's targets change. `start`, `next` and a step ending on its own
+        apply that step's own `targets`; `prev` re-establishes the state built
+        up by all steps up to the new one (see `ProgramStep.targets`).
       requestBody:
         required: true
         content:
@@ -1850,6 +1860,14 @@ components:
       description: Six-character lowercase hex id assigned at creation.
       example: 3f9ac1
 
+    ProgramId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^p_[0-9a-f]{5}$" }
+      description: Program id assigned at creation — `p_` plus five lowercase hex digits.
+      example: p_1a2b3
+
     SessionQuery:
       name: session
       in: query
@@ -2424,13 +2442,51 @@ components:
       type: string
       enum: [start, pause, resume, stop, next, prev]
 
+    StepTarget:
+      allOf: [{ $ref: "#/components/schemas/ActuatorWrite" }]
+      description: |
+        What a step does to one controller or actuator — the same body as
+        `POST /api/actuators/{id}`, with the same `interval` check. On a
+        controller `v` is the setpoint and `interval` is ignored. Every field
+        is optional; one left out keeps its current value. Nothing is enabled
+        implicitly: a step that sets `v` on a disabled item leaves it disabled
+        unless it also says `enabled: true`.
+
+        An actuator a controller drives can be a target too, but the
+        controller writes its output into it every tick: `v` only sticks while
+        a PID/TwoPoint controller is disabled, and never on a DualStage or
+        SplitRangePID heat/cool output (those are forced to 0 even when
+        disabled). `enabled` and `interval` are never touched by a controller.
+
+        Pulse actuators (kind `Discrete`, e.g. a hop dropper) are the one
+        exception to "a step sets state": their `v` queues that many pulses, so
+        it fires only on the first forward entry into the step per run and is
+        never replayed by `prev` or after a reboot. Their `enabled` and
+        `interval` behave like everyone else's.
+
     ProgramStep:
       type: object
-      required: [setpoint, holdSec]
+      required: [targets, holdSec]
       properties:
         name: { type: string, description: Omitted when empty. }
-        setpoint: { type: number }
-        holdSec: { type: integer, description: How long to hold this setpoint. }
+        targets:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/StepTarget" }
+          description: |
+            Keyed by controller or actuator id (ids are unique across roles).
+            Names only what this step changes — an id it leaves out keeps its
+            value. Always present, `{}` for a step that changes nothing (e.g. a
+            pure wait or confirmation step). Entries with no usable field are
+            dropped.
+
+            Moving forward (`start`, `next`, the step ending on its own)
+            applies exactly this map. `prev` and resuming after a reboot
+            instead re-establish the state built up by all steps up to the
+            current one: per id and per field, the last value any of them set.
+          example:
+            gaer_temp: { enabled: true, v: 10 }
+            ruehrer: { v: 30, interval: { onSec: 30, periodSec: 60 } }
+        holdSec: { type: integer, description: How long this step lasts. }
         end:
           type: string
           enum: [hold, sensor]
@@ -2452,28 +2508,34 @@ components:
 
     ProgramInput:
       type: object
-      required: [controller, steps]
+      required: [steps]
       properties:
         name: { type: string, default: Programm }
-        controller: { type: string, description: Id of the controller to drive. }
         steps:
           type: array
           minItems: 1
           items: { $ref: "#/components/schemas/ProgramStep" }
-          description: Steps without a finite `setpoint` are silently skipped.
+          description: |
+            The pre-multi-target shape is still read: a top-level `controller`
+            plus a step `setpoint` become `targets: {<controller>: {v:
+            <setpoint>, enabled: true}}`.
 
     Program:
       type: object
       required:
-        [id, name, controller, steps, status, currentStep, stepStartedEpoch,
+        [id, name, steps, status, currentStep, reachedStep, stepStartedEpoch,
          elapsedAtPauseSec]
       properties:
-        id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        id: { type: string, pattern: "^p_[0-9a-f]{5}$" }
         name: { type: string }
-        controller: { type: string }
         steps: { type: array, items: { $ref: "#/components/schemas/ProgramStep" } }
         status: { $ref: "#/components/schemas/ProgramStatus" }
-        currentStep: { type: integer, description: "-1 while idle." }
+        currentStep: { type: integer, description: "0 while idle." }
+        reachedStep:
+          type: integer
+          description: |
+            Highest step entered moving forward in the current run, `-1` before
+            the first `start`. Pulse commands of steps up to here have fired.
         stepStartedEpoch:
           type: integer
           format: int64
@@ -2482,10 +2544,6 @@ components:
           type: integer
           format: int64
           description: Seconds already elapsed in the current step when it was paused.
-        currentSetpoint:
-          type: number
-          description: |
-            Derived. Present only while `currentStep` addresses a real step.
         stepRemainingSec:
           type: integer
           format: int64
@@ -2656,9 +2714,12 @@ components:
           minItems: 1
           items: { $ref: "#/components/schemas/ProgramStep" }
           description: |
-            Same step shape as a program's — applying a profile copies these
-            into a program. Steps without a finite `setpoint` are silently
-            skipped.
+            Same step shape as a program's, target ids included — applying a
+            profile copies these into a program. Unlike a program, a profile
+            may keep the empty target id `""`: that is what a profile from
+            before multi-target steps becomes (its step `setpoint` is read as
+            `targets: {"": {v: <setpoint>, enabled: true}}`), and the editor
+            has it bound before the steps can be saved into a program.
 
     Profile:
       type: object

@@ -1,7 +1,5 @@
 #include "ProfileStore.h"
 
-#include <math.h>
-
 #include "SdLock.h"
 
 namespace BrewControl {
@@ -59,14 +57,7 @@ String ProfileStore::serialize() const {
     obj["id"]       = p.id.c_str();
     obj["name"]     = p.name.c_str();
     obj["category"] = p.category.c_str();
-    JsonArray steps = obj["steps"].to<JsonArray>();
-    for (const auto& s : p.steps) {
-      JsonObject so = steps.add<JsonObject>();
-      if (!s.name.empty()) so["name"] = s.name.c_str();
-      so["setpoint"] = s.setpoint;
-      so["holdSec"]  = s.holdSec;
-      if (s.confirm) so["confirm"] = true;
-    }
+    writeSteps(obj, p.steps);
   }
   String out;
   serializeJson(doc, out);
@@ -91,18 +82,7 @@ bool ProfileStore::hasCategory_(const char* id) const {
 bool ProfileStore::fillFromJson(Profile& p, const JsonObject& cfg) const {
   p.name     = cfg["name"]     | "";
   p.category = cfg["category"] | "";
-  p.steps.clear();
-  for (JsonObject s : cfg["steps"].as<JsonArray>()) {
-    if (!s["setpoint"].is<float>()) continue;
-    const float sp = s["setpoint"].as<float>();
-    if (!isfinite(sp)) continue;
-    Step st;
-    st.name     = s["name"]    | "";
-    st.setpoint = sp;
-    st.holdSec  = s["holdSec"] | 0;
-    st.confirm  = s["confirm"] | false;
-    p.steps.push_back(std::move(st));
-  }
+  if (!readSteps(cfg, p.steps)) return false;
   return !p.name.empty() && hasCategory_(p.category.c_str()) && !p.steps.empty();
 }
 

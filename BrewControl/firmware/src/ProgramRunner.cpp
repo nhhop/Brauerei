@@ -1,7 +1,6 @@
 #include "ProgramRunner.h"
 
 #include <Arduino.h>
-#include <math.h>
 #include <string.h>
 
 #include "SdLock.h"
@@ -49,25 +48,10 @@ ProgramRunner::Status ProgramRunner::statusFromStr(const char* s) {
 // ── Parsing ─────────────────────────────────────────────────────────────────────
 
 bool ProgramRunner::fillFromJson(Program& p, const JsonObject& cfg) {
-  p.name       = cfg["name"]       | "Programm";
-  p.controller = cfg["controller"] | "";
-  p.steps.clear();
-  for (JsonObject s : cfg["steps"].as<JsonArray>()) {
-    if (!s["setpoint"].is<float>()) continue;
-    const float sp = s["setpoint"].as<float>();
-    if (!isfinite(sp)) continue;
-    Step st;
-    st.name     = s["name"]    | "";
-    st.setpoint = sp;
-    st.holdSec  = s["holdSec"] | 0;
-    st.confirm  = s["confirm"] | false;
-    if (strcmp(s["end"] | "hold", "sensor") == 0) {
-      st.end = EndMode::Sensor;
-      if (!conditionFromJson(st.cond, s["cond"].as<JsonObjectConst>())) return false;
-    }
-    p.steps.push_back(std::move(st));
-  }
-  return !p.controller.empty() && !p.steps.empty();
+  p.name = cfg["name"] | "Programm";
+  if (!readSteps(cfg, p.steps)) return false;
+  // "" only comes from a migrated profile — a program must name a real item.
+  return !p.steps.empty() && !hasUnboundTarget(p.steps);
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
@@ -92,7 +76,9 @@ void ProgramRunner::loadFromSD(fs::FS& sd) {
     p.elapsedAtPauseSec = obj["elapsedAtPauseSec"] | 0;
     if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size())
       p.currentStep = 0;
-    resetLatches_(p);
+    // Files from before multi-target steps have no reachedStep; they had no
+    // pulses either, so treating the current step as reached is exact.
+    p.reachedStep = obj["reachedStep"] | p.currentStep;
     programs_.push_back(std::move(p));
   }
   needsResume_ = true;
@@ -117,32 +103,20 @@ String ProgramRunner::serialize() const {
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& p : programs_) {
     JsonObject obj = arr.add<JsonObject>();
-    obj["id"]         = p.id.c_str();
-    obj["name"]       = p.name.c_str();
-    obj["controller"] = p.controller.c_str();
-    JsonArray sarr = obj["steps"].to<JsonArray>();
-    for (const auto& s : p.steps) {
-      JsonObject so = sarr.add<JsonObject>();
-      if (!s.name.empty()) so["name"] = s.name.c_str();
-      so["setpoint"] = s.setpoint;
-      so["holdSec"]  = s.holdSec;
-      if (s.confirm) so["confirm"] = true;
-      if (s.end == EndMode::Sensor) {
-        so["end"] = "sensor";
-        conditionToJson(s.cond, so["cond"].to<JsonObject>());
-      }
-    }
+    obj["id"]   = p.id.c_str();
+    obj["name"] = p.name.c_str();
+    writeSteps(obj, p.steps);
     obj["status"]            = statusToStr(p.status);
     obj["currentStep"]       = p.currentStep;
+    obj["reachedStep"]       = p.reachedStep;
     obj["stepStartedEpoch"]  = (long)p.stepStartedEpoch;
     obj["elapsedAtPauseSec"] = p.elapsedAtPauseSec;
 
     // Derived live status for the frontend (not load-bearing on read-back).
     if (p.currentStep >= 0 && p.currentStep < (int)p.steps.size()) {
-      const Step& cur = p.steps[p.currentStep];
-      obj["currentSetpoint"] = cur.setpoint;
+      const ProgramStep& cur = p.steps[p.currentStep];
       long remaining = (long)cur.holdSec;
-      if (cur.end == EndMode::Sensor) {
+      if (cur.end == StepEnd::Sensor) {
         remaining = 0;  // sensor-triggered: no countdown
       } else if (p.status == Status::Running && now > 946684800L) {
         remaining = (long)cur.holdSec - (long)(now - p.stepStartedEpoch);
@@ -198,11 +172,11 @@ bool ProgramRunner::update(const char* id, const JsonObject& cfg) {
   if (!fillFromJson(tmp, cfg)) return false;
   // Editing the definition resets the run to idle (step set / timing changed).
   p->name             = std::move(tmp.name);
-  p->controller       = std::move(tmp.controller);
   p->steps            = std::move(tmp.steps);
-  resetLatches_(*p);
+  p->condActive       = false;
   setStatus_(*p, Status::Idle);
   p->currentStep      = 0;
+  p->reachedStep      = -1;
   p->stepStartedEpoch = 0;
   p->elapsedAtPauseSec = 0;
   return true;
@@ -218,31 +192,83 @@ bool ProgramRunner::remove(const char* id) {
 
 // ── Step application ────────────────────────────────────────────────────────────
 
-void ProgramRunner::applyStep_(Program& p, SensActCtrl::Registry& reg,
-                               bool enable) const {
-  if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) return;
-  SensActCtrl::Controller* c = reg.findController(p.controller.c_str());
-  if (!c) return;
-  c->setSetpoint(p.steps[p.currentStep].setpoint);
-  if (enable) c->setEnabled(true);
+namespace {
+
+// Pulse actuators report ValueKind::Discrete (PulseOutputActuator, or a
+// RemoteActuator mirroring one): write(N) queues N more pulses instead of
+// setting a level, so writing it again would e.g. drop the hops twice.
+bool isImpulse(const SensActCtrl::Actuator& a) {
+  return a.meta().kind == SensActCtrl::ValueKind::Discrete;
 }
 
-void ProgramRunner::resetLatches_(Program& p) {
-  for (auto& s : p.steps) s.condActive = false;
+}  // namespace
+
+void ProgramRunner::applyCmd_(SensActCtrl::Registry& reg, const TargetCmd& c,
+                              bool withImpulse) {
+  if (SensActCtrl::Controller* ctl = reg.findController(c.id.c_str())) {
+    // Setpoint before enable, the order the runner has always used.
+    if (c.hasV) ctl->setSetpoint(c.v);
+    if (c.hasEnabled) ctl->setEnabled(c.enabled);
+    return;
+  }
+  SensActCtrl::Actuator* a = reg.findActuator(c.id.c_str());
+  if (!a) return;
+  // Same field order as POST /api/actuators/<id>: enabled, interval, v.
+  if (c.hasEnabled) a->setEnabled(c.enabled);
+  if (c.hasInterval) a->setInterval(c.onSec, c.periodSec);
+  if (!c.hasV) return;
+  if (isImpulse(*a)) {
+    if (!withImpulse || c.v <= 0) return;
+    Serial.printf("Program: %s — %.0f pulse(s)\n", c.id.c_str(), c.v);
+  }
+  a->write(c.v);
+}
+
+void ProgramRunner::applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
+                                      bool withImpulse) {
+  if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) return;
+  for (const TargetCmd& c : p.steps[p.currentStep].targets)
+    applyCmd_(reg, c, withImpulse);
+}
+
+void ProgramRunner::applyState_(Program& p, SensActCtrl::Registry& reg) {
+  auto impulse = [&reg](const std::string& id) {
+    SensActCtrl::Actuator* a = reg.findActuator(id.c_str());
+    return a && isImpulse(*a);
+  };
+  for (const TargetCmd& c : effectiveTargets(p.steps, p.currentStep, impulse))
+    applyCmd_(reg, c, /*withImpulse=*/false);
+}
+
+void ProgramRunner::enterStep_(Program& p, SensActCtrl::Registry& reg, int idx,
+                               time_t now) {
+  p.currentStep       = idx;
+  p.stepStartedEpoch  = now;
+  p.elapsedAtPauseSec = 0;
+  p.condActive        = false;
+  setStatus_(p, Status::Running);
+  const bool firstEntry = idx > p.reachedStep;
+  if (firstEntry) p.reachedStep = idx;
+  applyStepTargets_(p, reg, /*withImpulse=*/firstEntry);
 }
 
 void ProgramRunner::advance_(Program& p, SensActCtrl::Registry& reg,
                              time_t nowEpoch) {
-  resetLatches_(p);
+  p.condActive = false;
   if (p.currentStep + 1 >= (int)p.steps.size()) {
-    setStatus_(p, Status::Done);  // last setpoint stays applied
+    setStatus_(p, Status::Done);  // everything the program set stays applied
     return;
   }
-  p.currentStep++;
-  setStatus_(p, Status::Running);
-  p.stepStartedEpoch  = nowEpoch;
-  p.elapsedAtPauseSec = 0;
-  applyStep_(p, reg, /*enable=*/true);
+  enterStep_(p, reg, p.currentStep + 1, nowEpoch);
+}
+
+bool ProgramRunner::targetsResolvable_(const Program& p,
+                                       SensActCtrl::Registry& reg) {
+  for (const auto& s : p.steps)
+    for (const auto& c : s.targets)
+      if (!reg.findController(c.id.c_str()) && !reg.findActuator(c.id.c_str()))
+        return false;
+  return true;
 }
 
 // ── Control ─────────────────────────────────────────────────────────────────────
@@ -260,12 +286,8 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     if (st != Status::Idle && st != Status::Done)
       return {false, "invalid action for state"};
     if (p->steps.empty()) return {false, "no steps"};
-    resetLatches_(*p);
-    p->currentStep       = 0;
-    setStatus_(*p, Status::Running);
-    p->stepStartedEpoch  = now;
-    p->elapsedAtPauseSec = 0;
-    applyStep_(*p, reg, /*enable=*/true);
+    p->reachedStep = -1;  // a new run: every step's pulses are due again
+    enterStep_(*p, reg, 0, now);
     return {true};
   }
 
@@ -275,7 +297,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
       if (elapsed < 0) elapsed = 0;
       p->elapsedAtPauseSec = (uint32_t)elapsed;
     } else if (st == Status::Awaiting) {
-      const Step& cur = p->steps[p->currentStep];
+      const ProgramStep& cur = p->steps[p->currentStep];
       p->elapsedAtPauseSec = cur.holdSec;
     } else {
       return {false, "invalid action for state"};
@@ -286,10 +308,10 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
 
   if (strcmp(action, "resume") == 0) {
     if (st != Status::Paused) return {false, "invalid action for state"};
-    resetLatches_(*p);
+    p->condActive = false;
     p->stepStartedEpoch = now - (time_t)p->elapsedAtPauseSec;
     setStatus_(*p, Status::Running);
-    applyStep_(*p, reg, /*enable=*/true);
+    applyStepTargets_(*p, reg, /*withImpulse=*/false);
     return {true};
   }
 
@@ -298,7 +320,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     setStatus_(*p, Status::Idle);
     p->currentStep       = 0;
     p->elapsedAtPauseSec = 0;
-    return {true};  // controller setpoint/enable left as-is
+    return {true};  // everything the program set is left as-is
   }
 
   if (strcmp(action, "next") == 0) {
@@ -311,12 +333,14 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
   if (strcmp(action, "prev") == 0) {
     if (st != Status::Running && st != Status::Paused && st != Status::Awaiting)
       return {false, "invalid action for state"};
-    resetLatches_(*p);
+    p->condActive = false;
     if (p->currentStep > 0) p->currentStep--;
     setStatus_(*p, Status::Running);
     p->stepStartedEpoch  = now;
     p->elapsedAtPauseSec = 0;
-    applyStep_(*p, reg, /*enable=*/true);
+    // Replaying only the earlier step would leave whatever the later one
+    // changed; rebuild the state up to here instead. Never re-fires pulses.
+    applyState_(*p, reg);
     return {true};
   }
 
@@ -331,14 +355,16 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
 
   ScopedLock lk(mutex_);
 
-  // First valid-clock tick after boot: re-apply the active step's setpoint to
-  // the freshly-constructed controllers so a resumed program keeps driving.
+  // First valid-clock tick after boot: replay the active step's state onto the
+  // freshly-constructed controllers/actuators so a resumed program keeps
+  // driving. The whole state, not just the current step's commands — and no
+  // pulses, reachedStep already counts this step as fired.
   if (needsResume_) {
     needsResume_ = false;
     for (auto& p : programs_) {
       if (p.status == Status::Running || p.status == Status::Awaiting ||
           p.status == Status::Paused) {
-        applyStep_(p, reg, /*enable=*/true);
+        applyState_(p, reg);
       }
     }
   }
@@ -347,18 +373,21 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
   for (auto& p : programs_) {
     if (p.status != Status::Running) continue;
     if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) continue;
-    if (!reg.findController(p.controller.c_str())) continue;  // orphaned → wait
 
-    Step& cur = p.steps[p.currentStep];
+    const ProgramStep& cur = p.steps[p.currentStep];
     bool fired;
-    if (cur.end == EndMode::Sensor) {
+    if (cur.end == StepEnd::Sensor) {
       // evalCondition returns false (and leaves the latch untouched) while the
       // ref cannot be resolved — the step then just keeps waiting.
-      fired = evalCondition(reg, cur.cond, cur.condActive) && cur.condActive;
+      fired = evalCondition(reg, cur.cond, p.condActive) && p.condActive;
     } else {
       fired = (long)(nowEpoch - p.stepStartedEpoch) >= (long)cur.holdSec;
     }
     if (!fired) continue;
+    // A target that no longer exists holds the program here instead of letting
+    // it run on without it. Checked only once the step is due: tick() runs on
+    // every loop pass, the scan over all steps' targets doesn't need to.
+    if (!targetsResolvable_(p, reg)) continue;
 
     if (cur.confirm) {
       setStatus_(p, Status::Awaiting);  // wait for manual "next"
