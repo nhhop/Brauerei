@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X } from 'lucide-preact';
 import type { Controller, Sensor, Actuator } from '../types';
 import { setControllerSetpoint, enableController, writeActuator } from '../api';
@@ -17,6 +17,7 @@ interface Props {
 export function ControllerCard({ controller, sensors, actuators, onDelete, onEdit }: Props) {
   const { id, setpoint, enabled, params } = controller;
   const [sp, setSp] = useState(setpoint.toString());
+  useEffect(() => { setSp(setpoint.toString()); }, [setpoint]);
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 

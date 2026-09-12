@@ -75,7 +75,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   function refreshPrograms() { getPrograms().then(setPrograms).catch(() => {}); }
   useEffect(() => {
     refreshPrograms();
-    const t = setInterval(refreshPrograms, 2000);
+    const t = setInterval(refreshPrograms, 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -118,6 +118,23 @@ export function Dashboard({ snap, err, alarmByRef }: {
     if (!activeDash) return;
     const key = role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers';
     await patchActiveDash({ [key]: activeDash[key].filter(x => x !== id) } as Partial<DashboardConfig>);
+  }
+
+  // Renaming an item (delete+recreate under a new id) would otherwise silently
+  // drop it from every dashboard that referenced the old id.
+  async function handleRenamed(role: Role, oldId: string, newId: string) {
+    const key = role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers';
+    for (const d of dashboards) {
+      if (!d[key].includes(oldId)) continue;
+      const updated = {
+        name: d.name,
+        sensors: d.sensors, actuators: d.actuators, controllers: d.controllers,
+        charts: d.charts ?? [], programs: d.programs ?? [],
+        [key]: d[key].map(x => x === oldId ? newId : x),
+      };
+      await updateDashboard(d.id, updated);
+      setDashboards(ds => ds.map(x => x.id === d.id ? { ...x, ...updated } : x));
+    }
   }
 
   async function removeProgramRef(id: string) {
@@ -243,6 +260,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
         onClose={() => { setAddOpen(false); setEditItem(null); }}
         editConfig={editItem?.cfg}
         editRole={editItem?.role}
+        onRenamed={handleRenamed}
       />
 
       <NameModal
@@ -329,9 +347,11 @@ export function Dashboard({ snap, err, alarmByRef }: {
           Bearbeiten-Modus aktiv — Karten mit dem Stift konfigurieren, mit × entfernen. Inhalte über „Hinzufügen“; Name & Löschen über den Stift am Tab.
         </p>
       )}
-      <div class="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
+      <div class={`flex flex-col gap-4 lg:min-h-0 lg:grid lg:items-stretch ${
+        activeDash && (activeDash.programs?.length ?? 0) > 0 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+      }`}>
         {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
-          <div class="max-lg:contents lg:h-full lg:w-80 lg:shrink-0 lg:space-y-4 lg:overflow-y-auto lg:pt-4 lg:pb-6">
+          <div class="max-lg:contents lg:h-full lg:space-y-4 lg:overflow-y-auto lg:pt-4 lg:pb-6">
             {activeDash.programs!.map((pid) => {
               const prog = programs.find((p) => p.id === pid);
               if (!prog) return null;
@@ -348,7 +368,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
             })}
           </div>
         )}
-        <div class="min-w-0 flex-1 space-y-4 lg:-mr-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pt-4 lg:pr-6">
+        <div class="min-w-0 space-y-4 lg:col-span-3 lg:-mr-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pt-4 lg:pr-6">
           {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
             <div class="space-y-4">
               {activeDash.charts!.map((cid) => {

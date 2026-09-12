@@ -2069,3 +2069,27 @@ LilyGo (nur GET-Requests, keine Schreibzugriffe) `TimePage` (Zeitzone/NTP-Server
 jetzt kompakt statt zeilenfüllend), `NetworkPage` (mDNS-Hostname kompakt),
 `LogEditorModal` und `ProfileEditorModal`/Programm-Editor (weiterhin
 volle Breite, keine Regression) geprüft.
+
+## 2026-09-12 — Dashboard-UI: vier kleine Fixes
+
+Vier Punkte aus PLAN.md „Bugs & bekannte Einschränkungen" und Backlog in einer
+Session erledigt: (1) Programm-Poll in `Dashboard.tsx` von 2000ms auf 1000ms
+(Countdown/Slider springen jetzt sekündlich statt im 2s-Takt). (2)
+`ControllerCard.tsx` hielt den Setpoint-Input als lokalen State, der nur beim
+Mount initialisiert wurde — externe Änderungen (Programm-Schritt setzt neuen
+Setpoint, alle 1s per SSE-Snapshot gepusht) kamen nie an, erst ein Seiten-Reload
+zeigte den neuen Wert. Fix: `useEffect(() => setSp(setpoint.toString()),
+[setpoint])`, analog zum bestehenden Muster in `ActuatorCard.tsx`. (3)
+Umbenennen einer Karte (Sensor/Aktor/Regler) läuft in `AddItemModal.tsx` als
+Delete+Recreate unter neuer ID — Dashboards referenzieren Mitgliedschaft aber
+über die alte ID-Liste, die Karte verschwand dadurch aus allen Dashboards.
+`AddItemModal` meldet jetzt bei ID-Änderung `onRenamed(role, oldId, newId)`;
+`Dashboard.tsx` ersetzt die alte ID in jedem Dashboard, das sie referenziert,
+und persistiert das per `updateDashboard`. (4) Programm-Widget-Spalte war
+schmaler als Sensoren/Regler/Aktoren-Spalten (fixe `w-80` neben einem
+`flex-1`-Bereich, der selbst nochmal in 3 Spalten geteilt wurde). Äußerer
+Container von Flex-Row auf CSS-Grid umgestellt (`lg:grid-cols-4` mit Programm,
+sonst `lg:grid-cols-3`; Inhalt nimmt `lg:col-span-3`) — die verschachtelte
+3-Spalten-Grid darin ist jetzt exakt so breit wie die Programm-Spalte.
+Verifiziert: `pnpm typecheck` grün nach jeder Änderung; (2)-(4) nicht live am
+Gerät getestet (kein Dev-Server mit echten Snapshot-Daten in der Session).
