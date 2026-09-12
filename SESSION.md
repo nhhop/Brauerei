@@ -2134,3 +2134,63 @@ Links/Rechts-Stellung ohne Dialog.
 **Nachtrag (Nutzer-Feedback):** der Extra-Button-Text ("Aktor schalten und
 Regler deaktivieren") umbricht in der 3-Spalten-Gleichbreite des
 `ConfirmModal`-Footers zu oft — Fix noch offen, siehe PLAN.md.
+
+## 2026-09-12 — Dashboard: Regler über Programm-Widget, Grid-Reflow, größerer Chart
+
+Backlog-Punkt „Sensor-/Aktor-/Controller-Grid: Anordnung überarbeiten" umgesetzt,
+ausgelöst durch Nutzer-Feedback: ein einem Programm zugeordneter Regler (z. B.
+`mash`, Ziel von „Hermann-Weizen") stand bisher getrennt vom Programm-Widget
+unten im Regler-Grid, obwohl beide zusammengehören.
+
+**`Dashboard.tsx`:** pro Programm wird jetzt der erste Regler, den es
+referenziert (`programIds()`-Reihenfolge, wiederverwendet aus `program.ts`),
+über statt neben dem zugehörigen `ProgramCard` gerendert — unabhängig vom
+Laufstatus (auch idle/done), nur einmal vergeben falls mehrere Programme
+denselben Regler referenzieren. Die bisherige `Column`-Gruppierung
+(Sensoren/Regler/Aktoren als drei betitelte Spalten) ist aufgelöst: ein
+einziges Grid rendert alle verbleibenden Karten (Sensoren → restliche Regler →
+Aktoren) ohne Kategorie-Überschriften/Zähler und füllt Zeilen horizontal.
+
+**Chart nutzt den Platz, den das aufgelöste Grid freigibt:** der
+Hauptinhaltsbereich ist auf Desktop (`lg:`) eine Flex-Column mit voller Höhe;
+der Chart-Bereich wächst per `flex-1`, das Karten-Grid bleibt `shrink-0` und
+landet dadurch automatisch am unteren Rand. `ChartCard` bekommt eine neue
+`fill`-Prop: ein `ResizeObserver` misst die vom Flex-Layout zugewiesene Höhe
+und ruft darüber `setSize()` (kein Re-Fetch der Log-Daten bei reinem Resize).
+Nur auf Desktop aktiv (`matchMedia('(min-width: 1024px)')`, dieselbe
+Bedingung, die `ProgramCard` schon für den mobilen Fixed-Sheet-Check nutzt) —
+mobil bleibt der Chart bei fester Höhe (240px) im normalen Dokumentfluss.
+`LogsPage`/`ArchivePage` übergeben `fill` nicht und bleiben unverändert.
+
+**Debugging-Fund unterwegs:** die erste Fassung ließ den Chart auf ~10.000px
+wachsen — ein Resize-Feedback-Loop, weil dem Chart-Karten-`div` selbst
+`lg:min-h-0` fehlte (Default `min-height:auto` verhindert das Schrumpfen auf
+den vom Flex-Elternteil zugewiesenen Platz). Zweiter Fund: die „Kochen"-
+Dashboard-Config referenziert einen längst gelöschten Log (`charts: ["42b70a"]`,
+keine passende `logs`-Eintrag) — vorher harmlos (leere `space-y-4`-Box), nach
+der Umstellung riss das dieselbe `min-h-[240px]`+`flex-1`-Fläche auf. Fix:
+`Dashboard.tsx` filtert `activeDash.charts` jetzt zuerst gegen `logs` auf
+tatsächlich vorhandene Einträge (`chartLogs`) und rendert den Chart-Bereich nur
+dann, wenn davon mindestens einer übrig bleibt.
+
+**Verifikation:** `pnpm typecheck` grün. Live gegen `brewcontrol.local` im
+Browser-Pane geprüft: „Maischen" (Programm `awaiting`, Regler `mash` oben,
+größerer Chart, Rest-Grid darunter), „Gärung" (Programm `idle`/„Bereit", Regler
+`testpid` steht trotzdem oben — bestätigt „immer", nicht nur bei aktivem
+Programm), „Kochen" (kein Programm, dangling Chart-Referenz — Grid oben ohne
+Lücke). Fenstergröße 900px hoch vs. Standard: Chart-Höhe wuchs messbar mit
+(229px → 361px). Mobile (375×812): Regler-Karte im normalen Fluss oben, Chart
+feste Höhe, Programm-Karte weiterhin als Fixed-Bottom-Sheet, Rest-Grid
+einspaltig — keine Regression. `LogsPage` (`/settings/logs`) unverändert mit
+fester Chart-Höhe geprüft.
+
+**Nachtrag (Nutzer-Feedback):** die uPlot-Legende ragte im Fill-Modus über den
+unteren Kartenrand hinaus — `height` ist bei uPlot nur die Plot-/Achsenfläche,
+die Legende kommt als eigene Zeile obendrauf, `el` hat im Fill-Modus aber eine
+fixe CSS-Höhe (`h-full`), die beides fassen muss. Fix in `ChartCard.tsx`: die
+tatsächlich gerenderte `.u-legend`-Höhe wird vor jedem `setSize()` gemessen und
+von der Zielhöhe abgezogen (`fillHeight()`); da die Legende beim allerersten
+Erstellen noch nicht existiert, folgt direkt nach `new uPlot(...)` ein
+einmaliger Korrektur-Resize. Verifiziert bei zwei Fensterhöhen (900px und
+700px) — Legende endet jeweils exakt an der Karten-Innenpadding-Kante, kein
+Überstand mehr.

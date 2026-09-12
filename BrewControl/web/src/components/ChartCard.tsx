@@ -49,19 +49,24 @@ interface Props {
   log: LogConfig;
   snap: Snapshot | null;
   height?: number;
+  fill?: boolean;   // stretch to the parent's rendered height instead of a fixed `height`
   session?: number;   // when set, render that archived session read-only (no live)
 }
 
 // Renders one log session as a uPlot line chart. Without `session` it shows the
 // current session live (hydrate from CSV, then append a point per snapshot);
 // with `session` it shows that archived session read-only.
-export function ChartCard({ log, snap, height = 240, session }: Props) {
+export function ChartCard({ log, snap, height = 240, fill, session }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const uRef = useRef<uPlot | null>(null);
   const dataRef = useRef<(number | null)[][]>([[]]);
   const refsRef = useRef<string[]>([]);
   const lastTsRef = useRef<number>(0);
   const enabledRef = useRef<boolean>(log.enabled);
+  // In fill mode the actual height comes from the parent's flex layout, read
+  // via ResizeObserver — kept in a ref (not state) so a resize just calls
+  // uPlot's setSize instead of re-running the data-fetching effect below.
+  const heightRef = useRef(height);
 
   // Rebuild the plot whenever the log identity or its series set changes.
   const seriesKey = log.series.map((s) => s.ref).join(',');
@@ -69,13 +74,23 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
     let alive = true;
     const el = elRef.current;
     if (!el) return;
+    heightRef.current = fill ? (el.clientHeight || height) : height;
+
+    // uPlot's `height` option only covers the plot/axes; the legend table
+    // below it adds its own rendered height on top. In fill mode `el` has a
+    // fixed CSS height, so that legend row must be subtracted from it —
+    // otherwise it overflows past the card's bottom edge.
+    function fillHeight(): number {
+      const legendH = el!.querySelector('.u-legend')?.getBoundingClientRect().height ?? 0;
+      return Math.max(Math.round(el!.clientHeight - legendH), 0);
+    }
 
     function makeOpts(refs: string[], tset: TimeSettings): uPlot.Options {
       const axisColor = cssVar('--fg', '#888');
       const gridColor = cssVar('--border', 'rgba(128,128,128,0.2)');
       return {
         width: el!.clientWidth || 600,
-        height,
+        height: heightRef.current,
         series: [
           // Legend "Time" shows the full date+time (with seconds) at the cursor.
           { value: (u) => { const cx = cursorX(u); return cx == null ? '--' : formatDateTime(Math.round(cx), tset); } },
@@ -113,19 +128,33 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
       lastTsRef.current = xs.length ? (xs[xs.length - 1] as number) : 0;
       uRef.current?.destroy();
       uRef.current = new uPlot(makeOpts(refs, tset), data as uPlot.AlignedData, el);
+      // The legend didn't exist yet for the estimate above (used as the
+      // initial `height`) — now that uPlot has rendered it, correct once.
+      if (fill) onResize();
     }).catch(() => {});
 
     const onResize = () => {
-      if (uRef.current && el) uRef.current.setSize({ width: el.clientWidth || 600, height });
+      if (!uRef.current || !el) return;
+      if (fill) heightRef.current = fillHeight();
+      uRef.current.setSize({ width: el.clientWidth || 600, height: heightRef.current });
     };
     window.addEventListener('resize', onResize);
+
+    // Fill mode: the flex parent (not window resize) drives the height.
+    let ro: ResizeObserver | undefined;
+    if (fill) {
+      ro = new ResizeObserver(() => onResize());
+      ro.observe(el);
+    }
+
     return () => {
       alive = false;
       window.removeEventListener('resize', onResize);
+      ro?.disconnect();
       uRef.current?.destroy();
       uRef.current = null;
     };
-  }, [log.id, seriesKey, height, session]);
+  }, [log.id, seriesKey, height, fill, session]);
 
   // Append a live point per snapshot (server timestamp drives the x value).
   // Skipped for archived sessions, which are read-only.
@@ -155,5 +184,5 @@ export function ChartCard({ log, snap, height = 240, session }: Props) {
     uRef.current.setData(data as uPlot.AlignedData);
   }, [snap]);
 
-  return <div ref={elRef} class="w-full" />;
+  return <div ref={elRef} class={fill ? 'h-full w-full' : 'w-full'} />;
 }

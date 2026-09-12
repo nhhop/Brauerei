@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { ComponentChildren } from 'preact';
 import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, ProfileLibrary, Severity } from '../types';
 import {
   resetSensor, getConfig,
@@ -14,6 +13,7 @@ import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
 import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
+import { programIds } from '../program';
 import { AddItemModal } from '../components/AddItemModal';
 import { NameModal } from '../components/NameModal';
 import { TabBtn } from '../components/TabBtn';
@@ -61,6 +61,16 @@ export function Dashboard({ snap, err, alarmByRef }: {
   // Live height (px) of the fixed mobile program bottom sheet — drives the
   // spacer that keeps the list's last row reachable above it.
   const [sheetH, setSheetH] = useState(0);
+  // Same breakpoint ProgramCard's own sheet check uses — the chart only fills
+  // the remaining column height in the fixed-height desktop layout; on mobile
+  // the page scrolls naturally and the chart keeps its default fixed height.
+  const [isDesktop, setIsDesktop] = useState(() => matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsDesktop(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     getDashboards().then(ds => {
@@ -190,6 +200,23 @@ export function Dashboard({ snap, err, alarmByRef }: {
     ? (dashboards.find(d => d.id === activeTab.id) ?? null)
     : null;
   const displaySnap = snap && activeDash ? filterSnap(snap, activeDash) : snap;
+
+  // Pro Programm: der erste Regler, den es referenziert (programIds-Reihenfolge),
+  // sofern er Teil dieses Dashboards ist — wird über statt neben dem
+  // Programm-Widget gezeigt. Nur einmal vergeben, falls mehrere Programme
+  // denselben Regler referenzieren.
+  const claimedControllerIds = new Set<string>();
+  const featuredControllerId = new Map<string, string>(); // programId -> controllerId
+  if (displaySnap && activeDash) {
+    for (const pid of activeDash.programs ?? []) {
+      const prog = programs.find((p) => p.id === pid);
+      if (!prog) continue;
+      const id = programIds(prog.steps).find(
+        (cid) => !claimedControllerIds.has(cid) && displaySnap.controllers.some((c) => c.id === cid)
+      );
+      if (id) { featuredControllerId.set(pid, id); claimedControllerIds.add(id); }
+    }
+  }
 
   // ── Header ────────────────────────────────────────────────────────────────
   const header = (
@@ -337,6 +364,11 @@ export function Dashboard({ snap, err, alarmByRef }: {
   );
 
   const hasProgramSheet = (activeDash?.programs?.length ?? 0) === 1;
+  // Resolved, not just referenced — a dangling chart id (deleted log) must not
+  // reserve chart space (the fixed min-height + flex-1 below).
+  const chartLogs = (activeDash?.charts ?? [])
+    .map((cid) => logs.find((l) => l.id === cid))
+    .filter((l): l is LogConfig => l != null);
 
   return (
     <div class="min-h-full bg-bg p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
@@ -355,100 +387,91 @@ export function Dashboard({ snap, err, alarmByRef }: {
             {activeDash.programs!.map((pid) => {
               const prog = programs.find((p) => p.id === pid);
               if (!prog) return null;
+              const featured = displaySnap.controllers.find((c) => c.id === featuredControllerId.get(pid));
+              const soleProgram = activeDash.programs!.length === 1;
               return (
-                <ProgramCard key={pid} program={prog}
-                  snap={snap}
-                  onChanged={refreshPrograms}
-                  onEdit={editMode ? () => openEditProgram(prog) : undefined}
-                  onDelete={editMode ? () => removeProgramRef(pid) : undefined}
-                  fill={activeDash.programs!.length === 1}
-                  onSheetHeight={setSheetH}
-                />
+                <div key={pid}
+                  class={`space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-4 ${soleProgram ? 'lg:h-full' : ''}`}>
+                  {featured && (
+                    <div class="lg:shrink-0">
+                      <ControllerCard controller={featured}
+                        sensors={displaySnap.sensors}
+                        actuators={displaySnap.actuators}
+                        programs={programs}
+                        onEdit={editMode ? () => startEdit('controller', featured.id) : undefined}
+                        onDelete={editMode ? () => removeFromDashboard('controller', featured.id) : undefined}
+                      />
+                    </div>
+                  )}
+                  <ProgramCard program={prog}
+                    snap={snap}
+                    onChanged={refreshPrograms}
+                    onEdit={editMode ? () => openEditProgram(prog) : undefined}
+                    onDelete={editMode ? () => removeProgramRef(pid) : undefined}
+                    fill={soleProgram}
+                    onSheetHeight={setSheetH}
+                  />
+                </div>
               );
             })}
           </div>
         )}
-        <div class="min-w-0 space-y-4 lg:col-span-3 lg:-mr-6 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pt-4 lg:pr-6">
-          {activeDash && (activeDash.charts?.length ?? 0) > 0 && (
-            <div class="space-y-4">
-              {activeDash.charts!.map((cid) => {
-                const log = logs.find((l) => l.id === cid);
-                if (!log) return null;
-                return (
-                  <div key={cid} class="rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
-                    <div class="mb-2 flex items-center justify-between gap-2">
-                      <span class="text-sm font-medium">{log.name}</span>
-                      {editMode && (
-                        <button type="button" onClick={() => removeChartRef(cid)}
-                          title="Aus Dashboard entfernen"
-                          class="text-faint hover:text-critical"><X size={16} /></button>
-                      )}
-                    </div>
-                    <ChartCard log={log} snap={snap} />
+        <div class="min-w-0 space-y-4 lg:col-span-3 lg:-mr-6 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-y-auto lg:pt-4 lg:pr-6">
+          {chartLogs.length > 0 && (
+            <div class="flex flex-col gap-4 lg:min-h-[240px] lg:flex-1">
+              {chartLogs.map((log) => (
+                <div key={log.id} class="flex flex-col rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8 lg:min-h-0 lg:flex-1">
+                  <div class="mb-2 flex shrink-0 items-center justify-between gap-2">
+                    <span class="text-sm font-medium">{log.name}</span>
+                    {editMode && (
+                      <button type="button" onClick={() => removeChartRef(log.id)}
+                        title="Aus Dashboard entfernen"
+                        class="text-faint hover:text-critical"><X size={16} /></button>
+                    )}
                   </div>
-                );
-              })}
+                  <div class="lg:min-h-0 lg:flex-1">
+                    <ChartCard log={log} snap={snap} fill={isDesktop} />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Column title="Sensoren" count={displaySnap.sensors.length}>
-              {displaySnap.sensors.map((s) => {
-                const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-                return (
-                  <SensorCard key={s.id} sensor={s}
-                    alarm={alarmByRef?.get(`sensor/${s.id}`)}
-                    onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
-                    onDelete={editMode ? () => removeFromDashboard('sensor', baseId) : undefined}
-                    onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
-                      ? () => resetSensor(baseId) : undefined}
-                  />
-                );
-              })}
-            </Column>
-            <Column title="Regler" count={displaySnap.controllers.length}>
-              {displaySnap.controllers.map((c) => (
-                <ControllerCard key={c.id} controller={c}
-                  sensors={displaySnap.sensors}
-                  actuators={displaySnap.actuators}
-                  programs={programs}
-                  onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
-                  onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:shrink-0">
+            {displaySnap.sensors.map((s) => {
+              const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+              return (
+                <SensorCard key={s.id} sensor={s}
+                  alarm={alarmByRef?.get(`sensor/${s.id}`)}
+                  onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+                  onDelete={editMode ? () => removeFromDashboard('sensor', baseId) : undefined}
+                  onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
+                    ? () => resetSensor(baseId) : undefined}
                 />
-              ))}
-            </Column>
-            <Column title="Aktoren" count={displaySnap.actuators.length}>
-              {displaySnap.actuators.map((a) => (
-                <ActuatorCard key={a.id} actuator={a}
-                  controllers={displaySnap.controllers}
-                  programs={programs}
-                  alarm={alarmByRef?.get(`actuator/${a.id}`)}
-                  onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
-                  onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}
-                />
-              ))}
-            </Column>
+              );
+            })}
+            {displaySnap.controllers.filter((c) => !claimedControllerIds.has(c.id)).map((c) => (
+              <ControllerCard key={c.id} controller={c}
+                sensors={displaySnap.sensors}
+                actuators={displaySnap.actuators}
+                programs={programs}
+                onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
+                onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
+              />
+            ))}
+            {displaySnap.actuators.map((a) => (
+              <ActuatorCard key={a.id} actuator={a}
+                controllers={displaySnap.controllers}
+                programs={programs}
+                alarm={alarmByRef?.get(`actuator/${a.id}`)}
+                onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
+                onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}
+              />
+            ))}
           </div>
           {hasProgramSheet && <div aria-hidden class="lg:hidden" style={{ height: sheetH }} />}
         </div>
       </div>
       {modals}
-    </div>
-  );
-}
-
-function Column({ title, count, children }: {
-  title: string;
-  count: number;
-  children: ComponentChildren;
-}) {
-  if (count === 0) return null;
-  return (
-    <div class="space-y-3">
-      <div class="flex items-baseline justify-between">
-        <h2 class="text-sm font-medium uppercase tracking-wider text-muted">{title}</h2>
-        <span class="text-xs text-faint">{count}</span>
-      </div>
-      {children}
     </div>
   );
 }
