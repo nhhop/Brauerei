@@ -147,6 +147,7 @@ size_t DualStageController::paramsJson(char* buf, size_t bufSize) const {
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"heatDiff\":%.4f,\"coolDiff\":%.4f,"
                          "\"coolMinOnMs\":%u,\"coolMinOffMs\":%u,\"changeoverMs\":%u,"
+                         "\"rangeMin\":%.4f,\"rangeMax\":%.4f,"
                          "\"sensor\":\"%s\",\"heatActuator\":\"%s\","
                          "\"coolActuator\":\"%s\",\"enabled\":%s,"
                          "\"heatOut\":%.4f,\"coolOut\":%.4f}",
@@ -154,6 +155,7 @@ size_t DualStageController::paramsJson(char* buf, size_t bufSize) const {
                          static_cast<unsigned>(coolMinOnMs_),
                          static_cast<unsigned>(coolMinOffMs_),
                          static_cast<unsigned>(changeoverMs_),
+                         rangeMin(), rangeMax(),
                          sensor_->id(),
                          heat_ ? heat_->id() : "",
                          cool_ ? cool_->id() : "",

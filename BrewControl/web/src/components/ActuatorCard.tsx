@@ -7,6 +7,7 @@ import { ToggleSwitch } from './ToggleSwitch';
 import { ConfirmModal } from './ConfirmModal';
 import { controllerOwnerOf, programOwnerOf } from '../ownership';
 import { btnPrimary, inp, badgeCaution, badgeCritical } from '../ui';
+import { Slider } from './Slider';
 
 export function ActuatorCard({ actuator, controllers = [], programs = [], alarm, onDelete, onEdit }: {
   actuator: Actuator; controllers?: Controller[]; programs?: ProgramConfig[];
@@ -152,10 +153,8 @@ function ContinuousSlider({ value, min, max, step, unit, disabled, onChange }: {
   useEffect(() => { setLocal(value); }, [value]);
   return (
     <div>
-      <input type="range" min={min} max={max} step={step} value={local} disabled={disabled}
-        onInput={(e) => setLocal(parseFloat((e.target as HTMLInputElement).value))}
-        onChange={(e) => onChange(parseFloat((e.target as HTMLInputElement).value))}
-        class="w-full accent-accent" />
+      <Slider min={min} max={max} step={step} value={local} disabled={disabled} color="var(--accent)"
+        onInput={setLocal} onChange={onChange} />
       <div class="mt-1 flex justify-between text-xs text-muted">
         <span>{min}</span>
         <span class="font-mono text-fg">{local.toFixed(2)} {unit}</span>
@@ -181,10 +180,9 @@ function IntervalSlider({ periodSec, onSec, onChange }: {
       <label class="block text-xs text-muted mb-1">
         Intervall: {Math.round(local * 100) / 100} / {periodDisplay} {unit} an
       </label>
-      <input type="range" min={0} max={periodDisplay} step="any" value={local}
-        onInput={(e) => setLocal(parseFloat((e.target as HTMLInputElement).value))}
-        onChange={(e) => onChange(Math.round(parseFloat((e.target as HTMLInputElement).value) * mult), periodSec)}
-        class="w-full accent-accent" />
+      <Slider min={0} max={periodDisplay} step="any" value={local} color="var(--accent)"
+        onInput={setLocal}
+        onChange={(v) => onChange(Math.round(v * mult), periodSec)} />
     </div>
   );
 }

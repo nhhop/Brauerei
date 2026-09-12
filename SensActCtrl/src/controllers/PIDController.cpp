@@ -201,6 +201,7 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,"
                          "\"Kd\":%.4f,\"Ku\":%.4f,\"Tu\":%.4f,"
                          "\"min\":%.4f,\"max\":%.4f,"
+                         "\"rangeMin\":%.4f,\"rangeMax\":%.4f,"
                          "\"sensor\":\"%s\",\"actuator\":\"%s\","
                          "\"enabled\":%s,"
                          "\"autotuneMethod\":\"%s\","
@@ -209,6 +210,7 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
                          "\"autotuneCyclesTotal\":%d}",
                          setpoint_, kp_, ki_, kd_, ku_, tu_,
                          minOutput_, maxOutput_,
+                         rangeMin(), rangeMax(),
                          sensor_->id(), actuator_->id(),
                          enabled() ? "true" : "false",
                          tuningMethodName(tuningMethod_), state,

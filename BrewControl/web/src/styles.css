@@ -133,3 +133,58 @@ html { background: var(--bg); }
   --shadow-elev-16: var(--elev-16);
   --shadow-elev-64: var(--elev-64);
 }
+
+/* ── Shared range-slider look (white round thumb, colored fill) ──────────────
+   Fill/remainder colors come from the `Slider` component's inline `style`
+   background gradient — this only resets the native track/thumb chrome so
+   the gradient shows through, and styles the thumb itself. */
+input[type="range"].range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"].range-slider::-webkit-slider-runnable-track {
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+input[type="range"].range-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+input[type="range"].range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--elev-8);
+  cursor: pointer;
+}
+input[type="range"].range-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--elev-8);
+  cursor: pointer;
+}
+input[type="range"].range-slider:disabled {
+  cursor: default;
+}
+input[type="range"].range-slider:disabled::-webkit-slider-thumb {
+  opacity: 0.5;
+  cursor: default;
+}
+input[type="range"].range-slider:disabled::-moz-range-thumb {
+  opacity: 0.5;
+  cursor: default;
+}

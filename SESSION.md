@@ -2194,3 +2194,177 @@ Erstellen noch nicht existiert, folgt direkt nach `new uPlot(...)` ein
 einmaliger Korrektur-Resize. Verifiziert bei zwei Fensterhöhen (900px und
 700px) — Legende endet jeweils exakt an der Karten-Innenpadding-Kante, kein
 Überstand mehr.
+
+## 2026-09-12 — Regler-Card: kombinierter Ist/Soll-Slider + Regelbereich
+
+Backlog-Punkt „Neues Regler-Design: Slider inkl. Sensorwert und Setpoint"
+umgesetzt (linear; die zirkuläre Variante bleibt offen, siehe PLAN.md),
+ausgelöst durch Nutzer-Wunsch nach einem Slider statt Zahlenfeld+Apply für
+den Sollwert. Per Screenshot + Rückfragen geklärtes Interaktionskonzept: ein
+Slider pro Regler, ein weißer Rundknopf = Sollwert (ziehbar), Track-Füllung
+rot wenn Istwert < Sollwert (heizt noch), blau wenn darüber; Istwert selbst
+nur als Text, kein eigener Marker. Sollwert-Text ist klickbar editierbar
+(ersetzt Zahlenfeld+Apply). Der neue weiße-Knopf-Stil ist auch auf die
+bestehenden Aktor-Slider (`ContinuousSlider`, `IntervalSlider`) übertragen.
+
+**Neues Feld „Regelbereich" (`rangeMin`/`rangeMax`):** die Slider-Skala
+sollte einstellbar sein, nicht starr an den Sensor-Messbereich gekoppelt.
+Da SensActCtrl keinen festen `ControllerParams`-Struct hat (jeder
+Controller-Typ baut `paramsJson()` von Hand), wanderte das neue Feld analog
+zum bestehenden `enabled_`-Muster in die `Controller`-Basisklasse: privates
+Feld-Paar + virtuelle `setRange()`/`rangeMin()`/`rangeMax()` mit
+Default-Implementierung (`core/Controller.h`) — keine Änderung an den vier
+Konstruktoren nötig, nur `paramsJson()` in `PIDController`/`TwoPointController`/
+`DualStageController`/`SplitRangePIDController` um `rangeMin`/`rangeMax`
+erweitert. Sentinel für „nicht gesetzt": `rangeMax <= rangeMin` (Default
+0/0) — kein NaN in JSON, keine zusätzliche Bool-Flag. `DynamicItems.cpp`
+ruft `concrete->setRange(...)` einmalig direkt nach dem Bauen der konkreten
+Instanz, vor einem eventuellen `RateLimitedController`-Wrap (dessen
+`paramsJson()` bettet das innere JSON ohnehin per `%s` ein — rangeMin/Max
+erscheinen dadurch automatisch). Naming-Konvention wie bei `heat_actuator`/
+`heatActuator` übernommen: `range_min`/`range_max` (Creation-Body,
+snake_case) vs. `rangeMin`/`rangeMax` (Snapshot/Params, camelCase). Rein
+additiv, keine SD-Migration nötig.
+
+**Frontend:** neue geteilte `Slider`-Komponente (`components/Slider.tsx`) —
+bleibt ein natives `<input type="range">` (Tastatur/Touch/A11y gratis), nur
+Thumb/Track per CSS umgestylt (`.range-slider` in `styles.css`, weißer
+Rundknopf statt `accent-color`), Füllfarbe per inline Gradient (Standardtrick,
+da CSS allein „Füllung bis zum Thumb" bei nativen Range-Inputs nicht kann).
+`ControllerCard.tsx` nutzt sie mit Fallback-Kette `params.rangeMin/Max` →
+`linkedSensor.meta.min/max` → `0/100`. `AddItemModal.tsx`: neues
+Formularfeld-Paar „Regelbereich" im typ-übergreifenden Controller-Block
+(gilt für PID/TwoPoint/DualStage/SplitRangePID gleichermaßen), Platzhalter
+zeigt den Messbereich des gewählten Sensors als Vorschlag, leer gelassen →
+Feld wird nicht mitgesendet (Server-Default 0/0 → Sensor-Fallback greift).
+
+**Verifikation:** `pio test -e native` (SensActCtrl) grün, 197 Tests inkl.
+neuer `rangeMin`/`rangeMax`-Assertion in `test_pid.cpp`. `pio run -e esp32dev`
+(BrewControl-Firmware) kompiliert. `npx @redocly/cli lint` gegen
+`openapi.yaml` grün (`ControllerCreate.range_min/max`,
+`ControllerParams.rangeMin/rangeMax` ergänzt). `pnpm typecheck` grün. Im
+Browser-Pane gegen den `pnpm dev`-Mock geprüft: Slider-Drag ändert Farbe
+live rot↔blau je nach Ist/Soll-Verhältnis, Klick auf den Sollwert-Text macht
+ihn editierbar, Aktor-Slider (`ActuatorCard`) zeigen denselben weißen Knopf.
+**Einschränkung:** der Dev-Mock-Server kennt `range_min`/`range_max` nicht
+(eigene simulierte Params, keine echte Firmware) — dass das Feld tatsächlich
+über `POST /api/controllers` persistiert und im Snapshot zurückkommt, ist
+damit nicht end-to-end geprüft; siehe PLAN.md → Hardware-Verifikation offen.
+
+**Nachtrag (Nutzer-Feedback, gleicher Tag):** die erste Fassung füllte den
+Track bis zum Knopf (Sollwert) statt bis zum Istwert — der Knopf sollte laut
+Vorgabe unabhängig vom farbigen Balken stehen, der Balken zeigt nur, wo der
+Istwert im Regelbereich liegt. Zusätzlich fühlte sich das Ziehen "hakelig"
+an. Root Cause für beides: `Slider` reichte jeden `onInput`-Tick des Drags
+per `setSp()` bis in `ControllerCard` hoch — das ließ die ganze Karte
+(ToggleSwitch, ConfirmModal, Ist/Ausgang-Zeile, …) bei jedem Maus-Pixel neu
+rendern, und die Track-Füllung war direkt an den gezogenen Wert gekoppelt.
+Fix in `Slider.tsx`: das Dragging bleibt jetzt vollständig lokal in der
+Komponente (`useState`/`useEffect` wie schon in `ActuatorCard`s
+`ContinuousSlider` vorgemacht) — nur das native `change`-Event (feuert genau
+einmal, beim Loslassen) reicht per `onChange` nach oben durch, `onInput` ist
+optional und wird von `ControllerCard` gar nicht mehr genutzt. Neue
+`fillValue`-Prop entkoppelt die Balkenfüllung vom Thumb-Wert: die farbige
+Leiste liegt jetzt als eigenes `position:absolute`-Div hinter einem
+Track-transparenten `<input>`, `ControllerCard` übergibt dafür den Istwert
+des Sensors, `ActuatorCard`s Slider lassen `fillValue` weg (Fallback = eigener
+Wert, unverändertes Verhalten). Verifiziert im Browser-Pane: Balken folgt dem
+Istwert unabhängig vom Knopf, Drag fühlt sich nativ/flüssig an, Sollwert-Text
+und Farbe aktualisieren erst nach dem Loslassen (kein Netzwerk-Call während
+des Ziehens mehr).
+
+**Zweiter Nachtrag (gleicher Tag):** der weiße Knopf lag unter dem farbigen
+Balken (Div mit `position:absolute` stapelt über dem nicht-positionierten
+nativen `<input>`, unabhängig von der DOM-Reihenfolge) — Fix: `<input>`
+bekommt selbst `position:relative`, damit beide Kinder im selben positionierten
+Stacking-Kontext liegen und die DOM-Reihenfolge (Input nach dem Fülldiv)
+gewinnt.
+
+**Dritter Nachtrag:** trotz der lokalen Drag-State-Isolation blieb das Ziehen
+weiter hakelig. Root Cause: der Regler in der Demo wird aktiv von einem
+laufenden Programm gesteuert und ändert `setpoint` autonom im Sekundentakt
+(beobachtet: Tausende Setpoint-POSTs, ganz ohne eigene Interaktion). Jede
+externe `setpoint`-Änderung lief über `ControllerCard`s
+`useEffect(() => setSp(setpoint.toString()), [setpoint])` in einen neuen
+`value`-Prop an `Slider`, dessen eigener Resync-`useEffect` den lokalen
+Drag-Wert mitten im Ziehen überschrieb — der Knopf sprang dadurch unter dem
+Cursor auf den zuletzt bekannten Serverwert. Fix in `Slider.tsx`: ein
+`dragging`-Ref, gesetzt via `onPointerDown` (deckt Maus/Touch/Pen einheitlich
+ab) und zurückgesetzt via `onChange`/`onBlur`; der Resync-Effekt überspringt
+`setLocal(value)`, solange `dragging.current` true ist. Betrifft nur
+`Slider.tsx`, keine anderen Dateien. Verifikation war ungewöhnlich aufwändig:
+synthetische `dispatchEvent('input', …)`-Tests in der Konsole lösten dabei
+selbst ein natives `change` aus (Browser-Eigenheit bei nicht-getrusteten
+Events auf `<input type=range>`, imitiert keinen echten Drag) und erzeugten
+irreführende Fehlsignale — verifiziert wurde am Ende mit echten, getrusteten
+Maus-Drags (`left_click_drag`): Regler-Slider landet exakt auf dem
+gezogenen Wert trotz der ständigen Hintergrund-Updates des Demo-Programms,
+Aktor-Slider (`IDS1`) weiterhin unverändert korrekt.
+
+**Vierter Nachtrag:** Nutzer meldet weiterhin Springen beim Ziehen — auch bei
+`testpid`, dessen `setpoint` nachweislich stabil ist (3× über 4s unverändert
+per `/api/snapshot` geprüft), was die Autonomous-Churn-Erklärung aus dem
+dritten Nachtrag widerlegt. Zu Recht eingewandter Einwand: ein echter,
+handgeführter Maus-Drag unterscheidet sich von einem skriptgesteuerten
+(egal ob synthetisches `dispatchEvent` oder CDP-`left_click_drag`) —
+Letzterer generiert vermutlich nur wenige Zwischenpunkte statt der vielen
+Events eines echten, oft nicht perfekt horizontalen Drags. Neue Hypothese:
+verlässt der Cursor während eines echten Drags kurz die (nur 18px hohe)
+Slider-Box, kann der Browser vorzeitig ein natives `change`-Event feuern,
+obwohl die Maustaste noch gedrückt ist — bis jetzt hing das Zurücksetzen von
+`dragging.current` an genau diesem `change`, wodurch der anschließende
+Server-Roundtrip den Knopf mitten im (physisch noch laufenden) Drag
+zurückgesetzt hätte. Fix: `dragging.current` hängt jetzt an
+`onPointerUp`/`onPointerCancel` statt an `onChange` — `change` löst weiterhin
+den Commit aus, beendet aber nicht mehr die Drag-Guard. **Nicht abschließend
+verifiziert:** eigene Versuche, einen Drag außerhalb der Slider-Box per
+`left_click_drag` zu simulieren, lieferten kein eindeutiges Bild (CDP
+repliziert offenbar kein echtes Pointer-Capture-Verhalten).
+
+**Fünfter Nachtrag:** Nutzer lieferte den entscheidenden Beleg — Chrome DevTools
+Network-Tab zeigt beim Ziehen Dutzende `setpoint`-POSTs pro Sekunde. Damit
+widerlegt: das native `change`-Event feuert in Chrome für `<input
+type="range">` beim Maus-Drag **nicht** einmalig bei Loslassen (wie MDN nahelegt
+und wie in den vorherigen Nachträgen angenommen), sondern fortlaufend während
+des gesamten Ziehens — das erklärte sowohl den Netzwerk-Flood als auch das
+Springen (jeder dieser Zwischen-Commits ging über `applySp()` zurück an den
+Server und kam als neuer `setpoint`-Prop wieder rein). Nutzer schlug direkt den
+richtigen Fix vor: Senden strikt an `pointerup` koppeln, nicht an `change`.
+Umsetzung in `Slider.tsx`: `onInput`/`onChange` fassen `local`/`localRef` nur
+noch lokal an, ein `commit()` (dedupliziert gegen den zuletzt gesendeten Wert
+via `lastSent`-Ref) läuft ausschließlich über `onPointerUp` — `onChange` bleibt
+nur als Fallback für den Tastatur-Pfad (Pfeiltasten ohne Pointer-Events) und
+ist dabei durch `if (!dragging.current)` gegen doppeltes Senden nach einem
+bereits erfolgten Pointer-Commit abgesichert. Verifiziert: bei einem
+CDP-Drag (`left_click_drag`) läuft jetzt genau 1 `setpoint`-POST statt vieler,
+Wert landet weiterhin exakt auf der gezogenen Position. Ob damit auch das vom
+Nutzer gemeldete Netzwerk-Flooding bei echter Maus vollständig behoben ist,
+steht noch aus — muss der Nutzer selbst mit echter Maus/DevTools
+gegenprüfen, da CDP das reale `change`-Verhalten dieses Chrome/OS nicht
+zuverlässig nachstellt (siehe vierter Nachtrag).
+
+**Sechster Nachtrag:** Netzwerk-Flood war behoben, aber der Knopf sprang
+weiterhin gelegentlich ("jedes zweite Mal") auf den vorherigen Wert zurück —
+zusätzlich der Wunsch, den Sollwert beim Ziehen auch live im Textfeld zu
+sehen (bisher erst nach dem Loslassen, seit dem dritten Nachtrag). Root
+Cause des Zurückspringens: `ControllerCard.tsx`s Slider-`onChange`
+(`(v) => { setSp(v.toString()); applySp(); }`) rief `applySp()` im selben
+Tick wie `setSp()` auf — `applySp()` las `sp` aber aus dem **alten**
+Closure (der State-Update von `setSp` wird erst beim nächsten Render
+wirksam), schickte also nicht den frisch gezogenen Wert an den Server,
+sondern den vorherigen. Traf der nächste Snapshot-Poll exakt in dem
+Zeitfenster ein (abhängig von Float-Serialisierungs-Jitter, daher nur
+gefühlt "jedes zweite Mal"), sprang der ControllerCard-`useEffect`
+(`setSp(setpoint.toString())`) auf diesen alten Wert zurück. Fix:
+`applySp(v?: number)` nimmt den Wert jetzt optional als Parameter, Slider-
+`onChange` reicht ihn direkt durch (`applySp(v)`) statt sich auf den
+Closure-`sp` zu verlassen; der Text-Input-Pfad (Enter/Blur) ruft weiter ohne
+Argument auf (dort ist `sp` nicht veraltet, da Tippen über mehrere Render-
+Zyklen läuft). Live-Textfeld-Update beim Ziehen wieder ergänzt: Slider
+bekommt jetzt zusätzlich `onInput={(v) => setSp(v.toString())}` — rein
+lokale State-Änderung, kein Netzwerk-Call, da nur `onChange` (nach wie vor
+strikt an `pointerup` gekoppelt) tatsächlich sendet. Verifiziert: drei
+aufeinanderfolgende Drags im Browser-Pane, per instrumentiertem `fetch` der
+tatsächlich gesendete Wert mit dem angezeigten verglichen — stimmte jedes
+Mal exakt überein, kein Zurückspringen auch nach 2s Wartezeit (Snapshot-Poll
+sollte da längst durch sein).

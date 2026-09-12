@@ -414,6 +414,7 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
   }
 
   std::unique_ptr<Controller> concrete(built);
+  concrete->setRange(cfg["range_min"] | 0.0f, cfg["range_max"] | 0.0f);
   float maxRate = cfg["max_rate_per_sec"] | 0.0f;
   if (maxRate > 0.0f) {
     auto* rl = new RateLimitedController(*concrete, maxRate);

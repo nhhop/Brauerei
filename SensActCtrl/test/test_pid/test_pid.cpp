@@ -184,6 +184,22 @@ void test_autotune_progress_reaches_full_when_done() {
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesTotal\":10"));
 }
 
+void test_range_defaults_unset_then_settable() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+
+  char buf[384];
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"rangeMin\":0.0000"));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"rangeMax\":0.0000"));
+
+  pid.setRange(60.0f, 80.0f);
+  pid.paramsJson(buf, sizeof(buf));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"rangeMin\":60.0000"));
+  TEST_ASSERT_NOT_NULL(strstr(buf, "\"rangeMax\":80.0000"));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -200,5 +216,6 @@ int main(int, char**) {
   RUN_TEST(test_stop_autotune_idempotent_when_idle);
   RUN_TEST(test_autotune_progress_starts_at_zero_cycles);
   RUN_TEST(test_autotune_progress_reaches_full_when_done);
+  RUN_TEST(test_range_defaults_unset_then_settable);
   return UNITY_END();
 }

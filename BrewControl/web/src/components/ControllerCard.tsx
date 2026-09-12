@@ -5,8 +5,9 @@ import { setControllerSetpoint, enableController, writeActuator, controlProgram 
 import { ToggleSwitch } from './ToggleSwitch';
 import { ConfirmModal } from './ConfirmModal';
 import { AutotuneProgress } from './AutotuneProgress';
+import { Slider } from './Slider';
 import { programOwnerOf } from '../ownership';
-import { btnPrimary, inp } from '../ui';
+import { inp } from '../ui';
 
 interface Props {
   controller: Controller;
@@ -24,6 +25,7 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [editingSp, setEditingSp] = useState(false);
 
   const isPid = params?.Kp != null;
   const autotuneState = params?.autotuneState as string | undefined;
@@ -39,8 +41,27 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
   // controller, just one level up.
   const progOwner = programOwnerOf(programs, id);
 
-  async function applySp() {
-    const n = parseFloat(sp);
+  // Regelbereich: explicit params.rangeMin/Max (set in the edit dialog) win,
+  // otherwise fall back to the linked sensor's measurement range.
+  const hasExplicitRange = params?.rangeMin != null && params?.rangeMax != null && params.rangeMax > params.rangeMin;
+  const rangeMin = hasExplicitRange ? params!.rangeMin! : (linkedSensor?.meta.min ?? 0);
+  const rangeMax = hasExplicitRange ? params!.rangeMax! : (linkedSensor?.meta.max ?? 100);
+  const spUnit = linkedSensor?.meta.unit ?? '';
+
+  // Fill bar: red while below setpoint (still heating up), blue at/above it
+  // (reached or overshot).
+  const istVal = linkedSensor?.state.v;
+  const istOk = istVal != null && isFinite(istVal);
+  const spNum = parseFloat(sp);
+  const sliderColor = istOk && !isNaN(spNum) && istVal! < spNum
+    ? 'var(--critical)' : 'var(--accent)';
+
+  async function applySp(v?: number) {
+    // Accept the value directly rather than always re-reading `sp`: called
+    // right after setSp() in the same tick (e.g. from the slider's
+    // onChange), `sp` in this closure is still the pre-update value — React
+    // state updates don't apply until the next render.
+    const n = v ?? parseFloat(sp);
     if (isNaN(n)) { setErr('ungültiger Sollwert'); return; }
     setErr(null);
     try { await setControllerSetpoint(id, n); }
@@ -145,14 +166,33 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
       )}
 
       <div class="mt-3">
-        <label for={`sp-${id}`} class="block text-xs text-muted">Setpoint</label>
-        <div class="mt-1 flex gap-2">
-          <input id={`sp-${id}`} type="number" step="any" value={sp}
-            onInput={(e) => setSp((e.target as HTMLInputElement).value)}
-            class={`${inp} w-full font-mono`} />
-          <button onClick={applySp} class={btnPrimary}>
-            Apply
-          </button>
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-muted">Sollwert</span>
+          {editingSp ? (
+            <input type="number" step="any" value={sp} autoFocus
+              onInput={(e) => setSp((e.target as HTMLInputElement).value)}
+              onBlur={() => { applySp(); setEditingSp(false); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { applySp(); setEditingSp(false); }
+                else if (e.key === 'Escape') { setSp(setpoint.toString()); setEditingSp(false); }
+              }}
+              class={`${inp} w-24 font-mono text-right`} />
+          ) : (
+            <span onClick={() => setEditingSp(true)} title="Klicken zum Bearbeiten"
+              class="cursor-pointer font-mono text-fg hover:text-accent">
+              {isNaN(spNum) ? sp : spNum.toFixed(1)} {spUnit}
+            </span>
+          )}
+        </div>
+        <div class="mt-1.5">
+          <Slider value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax} step="any"
+            color={sliderColor} fillValue={istOk ? istVal : undefined}
+            onInput={(v) => setSp(v.toString())}
+            onChange={(v) => { setSp(v.toString()); applySp(v); }} />
+        </div>
+        <div class="mt-1 flex justify-between text-[10px] text-faint">
+          <span>{rangeMin}</span>
+          <span>{rangeMax}</span>
         </div>
       </div>
 

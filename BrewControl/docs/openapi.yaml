@@ -2115,6 +2115,8 @@ components:
         Tu: { type: number }
         min: { type: number }
         max: { type: number }
+        rangeMin: { type: number, description: "Display range for the setpoint (e.g. a UI slider's scale). 0 (or rangeMax <= rangeMin) means unset." }
+        rangeMax: { type: number, description: "See `rangeMin`." }
         autotuneMethod: { type: string }
         autotuneState: { type: string, enum: [idle, running, done] }
         autotuneCyclesObserved:
@@ -2282,6 +2284,8 @@ components:
         setpoint: { type: number }
         min: { type: number }
         max: { type: number }
+        range_min: { type: number, description: "Display range for the setpoint (e.g. a UI slider's scale) — not enforced by the controller itself." }
+        range_max: { type: number, description: "See `range_min`." }
         Kp: { type: number }
         Ki: { type: number }
         Kd: { type: number }

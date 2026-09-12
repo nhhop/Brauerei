@@ -42,8 +42,21 @@ class Controller {
   virtual void setEnabled(bool e) { enabled_ = e; }
   virtual bool enabled() const { return enabled_; }
 
+  // Optional display range for the setpoint (e.g. a UI slider's scale).
+  // Construction-time config, not enforced by the controller itself.
+  // rangeMax <= rangeMin (the default 0/0) means "unset" — callers should
+  // fall back to some other sensible range (e.g. the linked sensor's).
+  virtual void setRange(float rangeMin, float rangeMax) {
+    rangeMin_ = rangeMin;
+    rangeMax_ = rangeMax;
+  }
+  virtual float rangeMin() const { return rangeMin_; }
+  virtual float rangeMax() const { return rangeMax_; }
+
  private:
   bool enabled_ = true;
+  float rangeMin_ = 0.0f;
+  float rangeMax_ = 0.0f;
 };
 
 }  // namespace SensActCtrl

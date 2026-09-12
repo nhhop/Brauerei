@@ -77,10 +77,12 @@ size_t TwoPointController::paramsJson(char* buf, size_t bufSize) const {
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"hystLow\":%.4f,"
                          "\"hystHigh\":%.4f,\"inverted\":%s,"
+                         "\"rangeMin\":%.4f,\"rangeMax\":%.4f,"
                          "\"sensor\":\"%s\",\"actuator\":\"%s\","
                          "\"enabled\":%s}",
                          setpoint_, hystLow_, hystHigh_,
                          inverted_ ? "true" : "false",
+                         rangeMin(), rangeMax(),
                          sensor_->id(), actuator_->id(),
                          enabled() ? "true" : "false");
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;

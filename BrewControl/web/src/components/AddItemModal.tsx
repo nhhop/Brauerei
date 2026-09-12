@@ -143,6 +143,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   // Rate limiter (any controller type, decorator-based) — empty = unbegrenzt.
   // Displayed in °/min, stored as max_rate_per_sec (÷60) — see submit below.
   const [maxRatePerMin, setMaxRatePerMin] = useState('');
+  // Regelbereich (any controller type) — scale for the setpoint slider in the
+  // dashboard. Empty = fall back to the linked sensor's measurement range.
+  const [rangeMin, setRangeMin] = useState('');
+  const [rangeMax, setRangeMax] = useState('');
   // PID
   const [kp, setKp] = useState('8');
   const [ki, setKi] = useState('0.2');
@@ -303,6 +307,13 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
         } else {
           setMaxRatePerMin('');
         }
+        const rMin = editConfig.range_min, rMax = editConfig.range_max;
+        if (rMin != null && rMax != null && Number(rMax) > Number(rMin)) {
+          setRangeMin(String(rMin));
+          setRangeMax(String(rMax));
+        } else {
+          setRangeMin(''); setRangeMax('');
+        }
         if (t === 'PID') {
           setKp(String(editConfig.Kp ?? '8'));
           setKi(String(editConfig.Ki ?? '0.2'));
@@ -362,6 +373,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setActuatorId(snap?.actuators[0]?.id ?? '');
       setSetpoint('65');
       setMaxRatePerMin('');
+      setRangeMin(''); setRangeMax('');
       setKp('8'); setKi('0.2'); setKd('0.5'); setMinOut('0'); setMaxOut('1');
       setHystLow('-0.5'); setHystHigh('0.5'); setInverted(false);
       setHeatActuatorId(snap?.actuators[0]?.id ?? '');
@@ -624,6 +636,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
         if (maxRatePerMin.trim()) {
           const perMin = parseFloat(maxRatePerMin);
           if (!isNaN(perMin) && perMin > 0) cfg.max_rate_per_sec = perMin / 60;
+        }
+        if (rangeMin.trim() && rangeMax.trim()) {
+          const rMin = parseFloat(rangeMin), rMax = parseFloat(rangeMax);
+          if (!isNaN(rMin) && !isNaN(rMax) && rMax > rMin) {
+            cfg.range_min = rMin; cfg.range_max = rMax;
+          }
         }
         if (isEdit) await deleteController(String(editConfig!.id));
         await createController(cfg);
@@ -1451,6 +1469,28 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 <input type="number" step="any" min="0" value={maxRatePerMin}
                   onInput={(e) => setMaxRatePerMin((e.target as HTMLInputElement).value)}
                   placeholder="unbegrenzt" class={inp} />
+              </div>
+              <div>
+                <label class={lbl}>
+                  Regelbereich (Skala für den Sollwert-Slider im Dashboard, leer = Messbereich des Sensors)
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                  {(() => {
+                    const selSensor = snap?.sensors.find((s) => s.id === sensorId);
+                    const phMin = selSensor ? String(selSensor.meta.min) : 'min';
+                    const phMax = selSensor ? String(selSensor.meta.max) : 'max';
+                    return (
+                      <>
+                        <input type="number" step="any" value={rangeMin}
+                          onInput={(e) => setRangeMin((e.target as HTMLInputElement).value)}
+                          placeholder={phMin} class={inp} />
+                        <input type="number" step="any" value={rangeMax}
+                          onInput={(e) => setRangeMax((e.target as HTMLInputElement).value)}
+                          placeholder={phMax} class={inp} />
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             </>
           )}

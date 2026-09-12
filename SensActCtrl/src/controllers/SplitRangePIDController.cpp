@@ -233,7 +233,9 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,\"Kd\":%.4f,"
                          "\"Ku\":%.4f,\"Tu\":%.4f,\"deadband\":%.4f,"
-                         "\"changeoverMs\":%u,\"sensor\":\"%s\","
+                         "\"changeoverMs\":%u,"
+                         "\"rangeMin\":%.4f,\"rangeMax\":%.4f,"
+                         "\"sensor\":\"%s\","
                          "\"heatActuator\":\"%s\",\"coolActuator\":\"%s\","
                          "\"enabled\":%s,\"autotuneMethod\":\"%s\","
                          "\"autotuneState\":\"%s\","
@@ -242,6 +244,7 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
                          "\"heatOut\":%.4f,\"coolOut\":%.4f}",
                          setpoint_, kp_, ki_, kd_, ku_, tu_, deadband_,
                          static_cast<unsigned>(changeoverMs_),
+                         rangeMin(), rangeMax(),
                          sensor_->id(),
                          heat_ ? heat_->id() : "",
                          cool_ ? cool_->id() : "",

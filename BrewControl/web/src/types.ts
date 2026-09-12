@@ -77,6 +77,11 @@ export interface ControllerParams {
   Tu?: number;
   min?: number;
   max?: number;
+  // Display range for the setpoint (e.g. a UI slider's scale), any controller
+  // type — construction-time only, not enforced by the controller itself.
+  // 0/0 (or rangeMax <= rangeMin) means unset.
+  rangeMin?: number;
+  rangeMax?: number;
   autotuneMethod?: string;
   autotuneState?: string;
   autotuneCyclesObserved?: number;
