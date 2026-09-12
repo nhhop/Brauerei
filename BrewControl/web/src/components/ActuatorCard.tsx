@@ -1,16 +1,30 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X, TriangleAlert } from 'lucide-preact';
-import type { Actuator, Severity } from '../types';
-import { writeActuator, enableActuator, setActuatorInterval } from '../api';
+import type { Actuator, Controller, ProgramConfig, Severity } from '../types';
+import { writeActuator, enableActuator, enableController, controlProgram, setActuatorInterval } from '../api';
 import { pickIntervalUnit, intervalUnitMultiplier } from '../intervalUnit';
 import { ToggleSwitch } from './ToggleSwitch';
+import { ConfirmModal } from './ConfirmModal';
+import { controllerOwnerOf, programOwnerOf } from '../ownership';
 import { btnPrimary, inp, badgeCaution, badgeCritical } from '../ui';
 
-export function ActuatorCard({ actuator, alarm, onDelete, onEdit }: { actuator: Actuator; alarm?: Severity; onDelete?: () => void; onEdit?: () => void }) {
+export function ActuatorCard({ actuator, controllers = [], programs = [], alarm, onDelete, onEdit }: {
+  actuator: Actuator; controllers?: Controller[]; programs?: ProgramConfig[];
+  alarm?: Severity; onDelete?: () => void; onEdit?: () => void;
+}) {
   const { id, meta, state, target, enabled, interval } = actuator;
   const [pending, setPending] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Neither the actuator record nor the wire format names its owner — derive
+  // it from the controllers/programs that currently target this id. A
+  // controller wins over a program if somehow both apply (rare, and the
+  // controller is the more immediate driver).
+  const ctrlOwner = controllerOwnerOf(controllers, id);
+  const progOwner = ctrlOwner ? undefined : programOwnerOf(programs, id);
+  const ownerActive = (ctrlOwner?.enabled ?? false) || progOwner != null;
 
   async function send(v: number) {
     setPending(true);
@@ -20,12 +34,28 @@ export function ActuatorCard({ actuator, alarm, onDelete, onEdit }: { actuator: 
     finally { setPending(false); }
   }
 
-  async function toggleEnabled() {
+  async function doToggle() {
     setToggling(true);
     setErr(null);
     try { await enableActuator(id, !enabled); }
     catch (e) { setErr(String(e)); }
     finally { setToggling(false); }
+  }
+
+  async function toggleEnabled() {
+    if (ownerActive) { setConfirmOpen(true); return; }
+    await doToggle();
+  }
+
+  async function toggleAndDisableOwner() {
+    setToggling(true);
+    setErr(null);
+    try {
+      await enableActuator(id, !enabled);
+      if (ctrlOwner) await enableController(ctrlOwner.id, false);
+      else if (progOwner) await controlProgram(progOwner.id, 'pause');
+    } catch (e) { setErr(String(e)); }
+    finally { setToggling(false); setConfirmOpen(false); }
   }
 
   async function sendInterval(onSec: number, periodSec: number) {
@@ -40,8 +70,10 @@ export function ActuatorCard({ actuator, alarm, onDelete, onEdit }: { actuator: 
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.kind}</span>
-          <ToggleSwitch checked={enabled} disabled={toggling}
-            title={enabled ? 'Aktor ausschalten' : 'Aktor einschalten'}
+          <ToggleSwitch checked={enabled} disabled={toggling} mixed={ownerActive}
+            title={ownerActive
+              ? `Wird von ${ctrlOwner ? `Regler „${ctrlOwner.id}“` : `Programm „${progOwner!.id}“`} gesteuert`
+              : (enabled ? 'Aktor ausschalten' : 'Aktor einschalten')}
             onChange={() => toggleEnabled()} />
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
@@ -84,6 +116,16 @@ export function ActuatorCard({ actuator, alarm, onDelete, onEdit }: { actuator: 
           <TriangleAlert size={12} /> Grenzwert
         </span>
       )}
+      <ConfirmModal open={confirmOpen}
+        title={`„${id}“ wird von ${ctrlOwner ? `Regler „${ctrlOwner.id}“` : `Programm „${progOwner?.id}“`} gesteuert`}
+        confirmLabel="Aktor schalten"
+        extraLabel={ctrlOwner ? 'Aktor schalten und Regler deaktivieren' : 'Aktor schalten und Programm pausieren'}
+        pending={toggling}
+        onConfirm={async () => { await doToggle(); setConfirmOpen(false); }}
+        onExtra={toggleAndDisableOwner}
+        onCancel={() => setConfirmOpen(false)}>
+        Ein manueller Schaltvorgang wird sonst im nächsten Regel-/Programmschritt wieder überschrieben.
+      </ConfirmModal>
     </div>
   );
 }

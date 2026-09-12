@@ -5,10 +5,14 @@ import { Spinner } from './Spinner';
 export function ConfirmModal({
   open, title, children, confirmLabel = 'Bestätigen', cancelLabel = 'Abbrechen',
   destructive = false, pending = false, onConfirm, onCancel,
+  extraLabel, onExtra,
 }: {
   open: boolean; title: string; children: ComponentChildren;
   confirmLabel?: string; cancelLabel?: string; destructive?: boolean;
   pending?: boolean; onConfirm: () => void; onCancel: () => void;
+  // Optional third action alongside confirm/cancel — e.g. "do X and also
+  // disable its owner". Only rendered when both are given.
+  extraLabel?: string; onExtra?: () => void;
 }) {
   if (!open) return null;
   return (
@@ -29,6 +33,11 @@ export function ConfirmModal({
               class={destructive ? btnDanger : btnPrimary}>
               {pending ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />{confirmLabel}</> : confirmLabel}
             </button>
+            {extraLabel && onExtra && (
+              <button type="button" onClick={onExtra} disabled={pending} class={btnSecondary}>
+                {extraLabel}
+              </button>
+            )}
           </div>
         </div>
       </div>

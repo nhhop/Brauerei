@@ -410,6 +410,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
                 <ControllerCard key={c.id} controller={c}
                   sensors={displaySnap.sensors}
                   actuators={displaySnap.actuators}
+                  programs={programs}
                   onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
                   onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
                 />
@@ -418,6 +419,8 @@ export function Dashboard({ snap, err, alarmByRef }: {
             <Column title="Aktoren" count={displaySnap.actuators.length}>
               {displaySnap.actuators.map((a) => (
                 <ActuatorCard key={a.id} actuator={a}
+                  controllers={displaySnap.controllers}
+                  programs={programs}
                   alarm={alarmByRef?.get(`actuator/${a.id}`)}
                   onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
                   onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}

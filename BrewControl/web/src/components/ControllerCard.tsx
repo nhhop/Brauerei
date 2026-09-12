@@ -1,25 +1,29 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X } from 'lucide-preact';
-import type { Controller, Sensor, Actuator } from '../types';
-import { setControllerSetpoint, enableController, writeActuator } from '../api';
+import type { Controller, Sensor, Actuator, ProgramConfig } from '../types';
+import { setControllerSetpoint, enableController, writeActuator, controlProgram } from '../api';
 import { ToggleSwitch } from './ToggleSwitch';
+import { ConfirmModal } from './ConfirmModal';
 import { AutotuneProgress } from './AutotuneProgress';
+import { programOwnerOf } from '../ownership';
 import { btnPrimary, inp } from '../ui';
 
 interface Props {
   controller: Controller;
   sensors: Sensor[];
   actuators: Actuator[];
+  programs?: ProgramConfig[];
   onDelete?: () => void;
   onEdit?: () => void;
 }
 
-export function ControllerCard({ controller, sensors, actuators, onDelete, onEdit }: Props) {
+export function ControllerCard({ controller, sensors, actuators, programs = [], onDelete, onEdit }: Props) {
   const { id, setpoint, enabled, params } = controller;
   const [sp, setSp] = useState(setpoint.toString());
   useEffect(() => { setSp(setpoint.toString()); }, [setpoint]);
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isPid = params?.Kp != null;
   const autotuneState = params?.autotuneState as string | undefined;
@@ -30,6 +34,11 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
   const linkedCool = params?.coolActuator ? actuators.find((a) => a.id === params.coolActuator) : undefined;
   const dualOutput = params?.heatActuator != null || params?.coolActuator != null;
 
+  // A running/paused program may also target this controller's id directly
+  // (see ProgramStep.targets) — same "owner" concept as an actuator's
+  // controller, just one level up.
+  const progOwner = programOwnerOf(programs, id);
+
   async function applySp() {
     const n = parseFloat(sp);
     if (isNaN(n)) { setErr('ungültiger Sollwert'); return; }
@@ -38,7 +47,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
     catch (e) { setErr(String(e)); }
   }
 
-  async function toggleEnabled() {
+  async function doToggle() {
     setToggling(true);
     setErr(null);
     try {
@@ -53,6 +62,18 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
     finally { setToggling(false); }
   }
 
+  async function toggleEnabled() {
+    if (progOwner) { setConfirmOpen(true); return; }
+    await doToggle();
+  }
+
+  async function toggleAndPauseProgram() {
+    await doToggle();
+    try { await controlProgram(progOwner!.id, 'pause'); }
+    catch (e) { setErr(String(e)); }
+    finally { setConfirmOpen(false); }
+  }
+
   function fmtActuatorOut(v: number | null, max: number): string {
     if (v == null || !isFinite(v)) return '—';
     return max <= 1 ? `${(v * 100).toFixed(0)}%` : v.toFixed(2);
@@ -65,8 +86,9 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-1.5">
-          <ToggleSwitch checked={enabled} disabled={toggling}
-            title={enabled ? 'Regler deaktivieren' : 'Regler aktivieren'}
+          <ToggleSwitch checked={enabled} disabled={toggling} mixed={!!progOwner}
+            title={progOwner ? `Wird von Programm „${progOwner.id}“ gesteuert`
+              : (enabled ? 'Regler deaktivieren' : 'Regler aktivieren')}
             onChange={() => toggleEnabled()} />
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
@@ -146,6 +168,18 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
       )}
 
       {err && <p class="mt-2 text-xs text-critical">{err}</p>}
+      {progOwner && (
+        <ConfirmModal open={confirmOpen}
+          title={`„${id}“ wird von Programm „${progOwner.id}“ gesteuert`}
+          confirmLabel="Regler schalten"
+          extraLabel="Regler schalten und Programm pausieren"
+          pending={toggling}
+          onConfirm={async () => { await doToggle(); setConfirmOpen(false); }}
+          onExtra={toggleAndPauseProgram}
+          onCancel={() => setConfirmOpen(false)}>
+          Ein manueller Schaltvorgang wird sonst im nächsten Programmschritt wieder überschrieben.
+        </ConfirmModal>
+      )}
     </div>
   );
 }
