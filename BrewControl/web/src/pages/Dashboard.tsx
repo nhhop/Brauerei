@@ -379,7 +379,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
           Bearbeiten-Modus aktiv — Karten mit dem Stift konfigurieren, mit × entfernen. Inhalte über „Hinzufügen“; Name & Löschen über den Stift am Tab.
         </p>
       )}
-      <div class={`flex flex-col gap-4 lg:min-h-0 lg:grid lg:items-stretch ${
+      <div class={`flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:grid lg:items-stretch ${
         activeDash && (activeDash.programs?.length ?? 0) > 0 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
       }`}>
         {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
@@ -416,7 +416,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
             })}
           </div>
         )}
-        <div class="min-w-0 space-y-4 lg:col-span-3 lg:-mr-6 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-y-auto lg:pt-4 lg:pr-6">
+        <div class="min-w-0 space-y-4 lg:col-span-3 lg:-mr-6 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-y-auto lg:pt-4 lg:pr-6 lg:pb-6">
           {chartLogs.length > 0 && (
             <div class="flex flex-col gap-4 lg:min-h-[240px] lg:flex-1">
               {chartLogs.map((log) => (
