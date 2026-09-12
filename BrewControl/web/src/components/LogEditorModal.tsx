@@ -94,14 +94,14 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
         <div class="mb-4 flex gap-3">
           <label class="block flex-1">
             <span class="text-xs text-muted">Name</span>
-            <input class={`mt-1 ${inp}`}
+            <input class={`mt-1 w-full ${inp}`}
               value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)}
               placeholder="z.B. Maischen" autoFocus />
           </label>
           <label class="block w-24">
             <span class="text-xs text-muted">Intervall (s)</span>
             <input type="number" min={1}
-              class={`mt-1 ${inp}`}
+              class={`mt-1 w-full ${inp}`}
               value={intervalSec}
               onInput={(e) => setIntervalSec(Number((e.target as HTMLInputElement).value))} />
           </label>
@@ -110,7 +110,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
         <div class="mb-4 flex gap-3">
           <label class="block flex-1">
             <span class="text-xs text-muted">Kompression</span>
-            <select class={`mt-1 ${inp}`}
+            <select class={`mt-1 w-full ${inp}`}
               value={algo}
               onChange={(e) => setAlgo((e.target as HTMLSelectElement).value as CompAlgo)}>
               {ALGOS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
@@ -120,7 +120,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
             <label class="block w-28">
               <span class="text-xs text-muted">Max. Lücke (s)</span>
               <input type="number" min={0}
-                class={`mt-1 ${inp}`}
+                class={`mt-1 w-full ${inp}`}
                 value={maxGapSec}
                 onInput={(e) => setMaxGapSec(Number((e.target as HTMLInputElement).value))} />
             </label>
@@ -159,7 +159,7 @@ export function LogEditorModal({ open, snap, initial, onSave, onClose }: Props) 
         {boundControllers.length > 0 && (
           <label class="mb-3 block">
             <span class="text-xs text-muted">Logging an Regler koppeln</span>
-            <select class={`mt-1 ${inp}`}
+            <select class={`mt-1 w-full ${inp}`}
               value={bindEnableTo}
               onChange={(e) => setBindEnableTo((e.target as HTMLSelectElement).value)}>
               <option value="">Nicht gekoppelt (manueller Schalter)</option>

@@ -17,8 +17,12 @@ export const linkDanger =
   'text-sm text-critical transition-colors hover:text-critical/80';
 
 // WinUI TextBox — accent underline on focus via inset box-shadow (no layout shift).
+// No `w-full` here: it used to ride along on every call site, but `.w-full`
+// is declared after `.w-20` etc. in the generated CSS and always won on
+// specificity ties, so a fixed-width override never actually applied
+// (PLAN.md). Callers that want full width add `w-full` themselves.
 export const inp =
-  'w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-fg ' +
+  'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-fg ' +
   'shadow-[inset_0_-1px_0_0_var(--color-border)] focus:outline-none ' +
   'focus:shadow-[inset_0_-2px_0_0_var(--color-accent)]';
 

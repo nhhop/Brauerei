@@ -133,13 +133,13 @@ export function MqttPage(_: { path?: string }) {
               <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-2">
                 <div>
                   <div class="mb-1 text-xs text-muted">Topic-Prefix</div>
-                  <input type="text" class={inp} value={settings.topicPrefix}
+                  <input type="text" class={`${inp} w-full`} value={settings.topicPrefix}
                     placeholder="brewcontrol, leer = kein Prefix"
                     onInput={(e) => update({ topicPrefix: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div>
                   <div class="mb-1 text-xs text-muted">Client-ID</div>
-                  <input type="text" class={inp} value={settings.clientId}
+                  <input type="text" class={`${inp} w-full`} value={settings.clientId}
                     placeholder="Leer = mDNS-Hostname"
                     onInput={(e) => update({ clientId: (e.target as HTMLInputElement).value })} />
                 </div>
@@ -151,13 +151,13 @@ export function MqttPage(_: { path?: string }) {
                 <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-[2fr_1fr]">
                   <div>
                     <div class="mb-1 text-xs text-muted">Host</div>
-                    <input type="text" class={inp} value={settings.host}
+                    <input type="text" class={`${inp} w-full`} value={settings.host}
                       placeholder="z.B. homeassistant.local"
                       onInput={(e) => update({ host: (e.target as HTMLInputElement).value })} />
                   </div>
                   <div>
                     <div class="mb-1 text-xs text-muted">Port</div>
-                    <input type="number" class={inp} value={settings.port} min={1} max={65535}
+                    <input type="number" class={`${inp} w-full`} value={settings.port} min={1} max={65535}
                       onInput={(e) => {
                         const v = Number((e.target as HTMLInputElement).value);
                         if (v >= 1 && v <= 65535) update({ port: v });
@@ -170,7 +170,7 @@ export function MqttPage(_: { path?: string }) {
             {settings.mode === 'embedded' && (
               <SettingsCard title="Broker-Port" icon={Server} desc="Nur im lokalen Netz erreichbar, keine TLS-Verschlüsselung">
                 <div class="pl-9 sm:w-40">
-                  <input type="number" class={inp} value={settings.port} min={1} max={65535}
+                  <input type="number" class={`${inp} w-full`} value={settings.port} min={1} max={65535}
                     onInput={(e) => {
                       const v = Number((e.target as HTMLInputElement).value);
                       if (v >= 1 && v <= 65535) update({ port: v });
@@ -185,13 +185,13 @@ export function MqttPage(_: { path?: string }) {
               <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-2">
                 <div>
                   <div class="mb-1 text-xs text-muted">Benutzername</div>
-                  <input type="text" class={inp} value={settings.username} autocomplete="off"
+                  <input type="text" class={`${inp} w-full`} value={settings.username} autocomplete="off"
                     onInput={(e) => update({ username: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div>
                   <div class="mb-1 text-xs text-muted">Passwort</div>
                   <div class="relative">
-                    <input type="password" class={`${inp} ${settings.passwordSet && !settings.password ? 'pr-8' : ''}`}
+                    <input type="password" class={`${inp} w-full ${settings.passwordSet && !settings.password ? 'pr-8' : ''}`}
                       value={settings.password} autocomplete="off"
                       placeholder={pwCleared ? 'wird beim Speichern gelöscht'
                         : settings.passwordSet ? '•••••••• (gespeichert — leer lassen zum Behalten)' : ''}

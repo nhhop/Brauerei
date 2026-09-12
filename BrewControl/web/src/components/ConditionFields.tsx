@@ -31,7 +31,7 @@ export function ConditionFields({ snap, refValue, op, value, hyst, onChange }: P
       <label class="block">
         <span class="text-xs text-muted">Überwachter Wert</span>
         {hasRefs ? (
-          <select class={`mt-1 ${inp}`} value={refValue}
+          <select class={`mt-1 w-full ${inp}`} value={refValue}
             onChange={(e) => onChange({ refValue: (e.target as HTMLSelectElement).value })}>
             <option value="">— bitte wählen —</option>
             {refMissing && <option value={refValue}>{refValue} (nicht vorhanden)</option>}
@@ -42,7 +42,7 @@ export function ConditionFields({ snap, refValue, op, value, hyst, onChange }: P
             ))}
           </select>
         ) : (
-          <input class={`mt-1 ${inp}`} value={refValue} placeholder="sensor/hydrometer.gravity"
+          <input class={`mt-1 w-full ${inp}`} value={refValue} placeholder="sensor/hydrometer.gravity"
             onInput={(e) => onChange({ refValue: (e.target as HTMLInputElement).value })} />
         )}
       </label>
@@ -50,7 +50,7 @@ export function ConditionFields({ snap, refValue, op, value, hyst, onChange }: P
       <div class="flex gap-3">
         <label class="block w-36">
           <span class="text-xs text-muted">Bedingung</span>
-          <select class={`mt-1 ${inp}`} value={op}
+          <select class={`mt-1 w-full ${inp}`} value={op}
             onChange={(e) => onChange({ op: (e.target as HTMLSelectElement).value as CondOp })}>
             <option value="gt">größer als</option>
             <option value="lt">kleiner als</option>
@@ -58,13 +58,13 @@ export function ConditionFields({ snap, refValue, op, value, hyst, onChange }: P
         </label>
         <label class="block flex-1">
           <span class="text-xs text-muted">Grenzwert{unit && ` (${unit})`}</span>
-          <input class={`mt-1 ${inp}`} value={value} inputMode="decimal"
+          <input class={`mt-1 w-full ${inp}`} value={value} inputMode="decimal"
             onInput={(e) => onChange({ value: (e.target as HTMLInputElement).value })}
             placeholder="1.010" />
         </label>
         <label class="block w-28">
           <span class="text-xs text-muted">Hysterese{unit && ` (${unit})`}</span>
-          <input class={`mt-1 ${inp}`} value={hyst} inputMode="decimal"
+          <input class={`mt-1 w-full ${inp}`} value={hyst} inputMode="decimal"
             onInput={(e) => onChange({ hyst: (e.target as HTMLInputElement).value })} />
         </label>
       </div>

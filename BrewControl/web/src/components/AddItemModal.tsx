@@ -18,7 +18,7 @@ type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
-type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
+type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'PulseOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
 type MqttKind = 'Binary' | 'Continuous';
 type RemoteTransport = 'mqtt' | 'webhook' | 'espnow';
 
@@ -111,6 +111,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [analogMax, setAnalogMax] = useState('1');
   const [analogUnit, setAnalogUnit] = useState('');
   const [invertOut, setInvertOut] = useState(false);
+  // PulseOutput
+  const [pulsePin, setPulsePin] = useState('');
+  const [pulseWidthMs, setPulseWidthMs] = useState('50');
+  const [pulseGapMs, setPulseGapMs] = useState('50');
+  const [pulseInvert, setPulseInvert] = useState(false);
   // MqttGeneric
   const [mqttTopic, setMqttTopic] = useState('');
   const [mqttRetained, setMqttRetained] = useState(false);
@@ -242,6 +247,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           setAnalogMin(hasRange ? String(editConfig.value_min ?? '0') : '0');
           setAnalogMax(hasRange ? String(editConfig.value_max ?? '1') : '1');
           setAnalogUnit(hasRange ? String(editConfig.unit ?? '') : '');
+        } else if (t === 'PulseOutput') {
+          setPulsePin(String(editConfig.pin ?? ''));
+          setPulseWidthMs(String(editConfig.pulse_width_ms ?? '50'));
+          setPulseGapMs(String(editConfig.gap_ms ?? '50'));
+          setPulseInvert(Boolean(editConfig.invert ?? false));
         } else if (t === 'IDS1' || t === 'IDS2') {
           setPinWhite(String(editConfig.pin_white ?? '14'));
           setPinYellow(String(editConfig.pin_yellow ?? '12'));
@@ -341,6 +351,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setPinWhite('14'); setPinYellow('12'); setPinInterrupt('13');
       setAnalogPin(''); setAnalogMode('pwm'); setAnalogShowRange(false);
       setAnalogMin('0'); setAnalogMax('1'); setAnalogUnit('');
+      setPulsePin(''); setPulseWidthMs('50'); setPulseGapMs('50'); setPulseInvert(false);
       setMqttTopic(''); setMqttRetained(false); setMqttKind('Binary');
       setMqttOnPayload('ON'); setMqttOffPayload('OFF'); setMqttTemplate('{value}');
       setMqttMin('0'); setMqttMax('100'); setMqttResolution('1'); setMqttUnit('');
@@ -488,6 +499,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
           const pi = parseInt(pinInterrupt, 10);
           if (isNaN(pw) || isNaN(py) || isNaN(pi)) throw new Error('invalid pin');
           cfg = { type: actuatorType, id: trimId, pin_white: pw, pin_yellow: py, pin_interrupt: pi };
+        } else if (actuatorType === 'PulseOutput') {
+          const p = parseInt(pulsePin, 10);
+          if (isNaN(p)) throw new Error('invalid pin');
+          const width = parseInt(pulseWidthMs, 10);
+          const gap = parseInt(pulseGapMs, 10);
+          if (isNaN(width) || width <= 0) throw new Error('Pulsbreite ungültig');
+          if (isNaN(gap) || gap <= 0) throw new Error('Pause ungültig');
+          cfg = {
+            type: 'PulseOutput', id: trimId, pin: p,
+            pulse_width_ms: width, gap_ms: gap, invert: pulseInvert,
+          };
         } else if (actuatorType === 'AnalogOutput') {
           const p = parseInt(analogPin, 10);
           if (isNaN(p)) throw new Error('invalid pin');
@@ -612,7 +634,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     setPending(false);
   }
 
-  const inp = `${inpBase} font-mono`;
+  const inp = `${inpBase} w-full font-mono`;
   const lbl = 'block text-xs text-muted mb-1';
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
@@ -739,6 +761,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 class={`${inp} ${isEdit ? 'opacity-60' : ''}`}>
                 <option value="DigitalOutput">DigitalOutput (GPIO on/off + TPO)</option>
                 <option value="AnalogOutput">AnalogOutput (PWM / DAC)</option>
+                <option value="PulseOutput">Pulse (Hopfen-Dropper)</option>
                 <option value="IDS1">IDS1 – Induktion (10 Stufen)</option>
                 <option value="IDS2">IDS2 – Induktion (5 Stufen)</option>
                 <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
@@ -1183,6 +1206,40 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                 )}
               </div>
               {intervalFields()}
+            </div>
+          )}
+
+          {/* PulseOutput fields */}
+          {role === 'actuator' && actuatorType === 'PulseOutput' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>GPIO Pin</label>
+                <input type="number" value={pulsePin}
+                  onInput={(e) => setPulsePin((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. 17" class={inp} required />
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class={lbl}>Pulsbreite (ms)</label>
+                  <input type="number" min="1" value={pulseWidthMs}
+                    onInput={(e) => setPulseWidthMs((e.target as HTMLInputElement).value)}
+                    class={inp} required />
+                </div>
+                <div>
+                  <label class={lbl}>Pause (ms)</label>
+                  <input type="number" min="1" value={pulseGapMs}
+                    onInput={(e) => setPulseGapMs((e.target as HTMLInputElement).value)}
+                    class={inp} required />
+                </div>
+              </div>
+              <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <input type="checkbox" checked={pulseInvert} class="accent-accent"
+                  onChange={(e) => setPulseInvert((e.target as HTMLInputElement).checked)} />
+                Invertieren (active-low)
+              </label>
+              <p class="text-xs text-faint">
+                Ein Programmschritt mit „v" queued so viele Impulse, einmal pro Lauf beim ersten Vorwärts-Eintritt.
+              </p>
             </div>
           )}
 

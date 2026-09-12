@@ -2006,3 +2006,66 @@ und abgelaufene Haltezeit, und `GET /api/programs` antwortete sofort, obwohl es
 denselben Mutex nimmt wie `tick()`. Details, Verdächtige und die Messung, die
 beim nächsten Auftreten **vor** dem Reboot zu machen ist, stehen in PLAN.md →
 „Bugs & bekannte Einschränkungen". Auf Wunsch des Users nicht weiterverfolgt.
+
+## 2026-09-12 — Pulse-Aktor anlegbar + `inp`-Breiten-Bug gefixt
+
+**Pulse-Aktor.** `PulseOutputActuator` (Library) war zwar über `ValueKind::Discrete`
+im `ProgramRunner` schon vollständig als Impuls-Ziel unterstützt, ließ sich aber
+nirgends anlegen. Jetzt als `PulseOutput`-Typ in
+`DynamicItems::addActuatorNoBegin()` verdrahtet (`pin`, `pulse_width_ms`,
+`gap_ms`, `invert` — snake_case wie die übrigen Typen; kein neuer Include
+nötig, `SensActCtrl.h` zieht den Header schon), im `AddItemModal` als
+„Pulse (Hopfen-Dropper)" wählbar (GPIO-Pin, Pulsbreite/Pause in ms,
+Invertieren-Checkbox), `docs/openapi.yaml`s `ActuatorCreate` um den Enum-Wert
+und die beiden neuen Felder ergänzt. Kein Serialisierungs-Sonderfall nötig —
+`DynamicItems` persistiert die rohe Config-JSON verbatim. Verifiziert:
+Firmware-Compile-Smoke (`esp32dev`, grün), `pnpm typecheck`/`build` grün,
+Redocly valide (nur die bekannte `license`-Warnung). Am laufenden LilyGo
+(`brewcontrol.local`, echtes „Hermann-Weizen"-Programm currently in Schritt 6,
+nicht angefasst) den Dialog geöffnet und einen Test-Aktor über den echten
+`POST /api/actuators` angelegt — sauber mit `400 unknown actuator type`
+abgelehnt, wie von der noch nicht geflashten Firmware erwartet, kein
+Seiteneffekt. Firmware-Flash + der eigentliche Impuls-Test („v" feuert genau
+einmal pro Lauf, nicht nach `prev`/`next`/Reboot) stehen noch aus — siehe
+PLAN.md → „Hardware-Verifikation offen".
+
+**Nachtrag — HW-Verifikation am LilyGo (2026-09-12).** Firmware
+(`lilygo_t_display_s3_amoled`) und UI-Paket per Netzwerk-OTA aufgespielt
+(`POST /api/update/firmware` + `/api/update/assets`, beide 200), während das
+echte „Hermann-Weizen"-Programm auf Schritt 6 („Freigabe erforderlich") lief —
+beide Reboots (Firmware-Flash + ein späterer Test-Reboot) überstand es
+unangetastet (`status: awaiting`, `currentStep: 5` vorher/nachher identisch).
+Test-Aktor `hop_dropper_test` (GPIO 17, frei — Pins 2/9/6/7/3/11 waren durch
+bestehende Items belegt) angelegt: `meta.kind` kam korrekt als `"Discrete"`
+zurück, direktes `write(20)` per `POST /api/actuators/<id>` zeigte die
+Pulse-Queue sauber abzählend von 19 auf 0 draining. Mit einem echten
+Test-Programm (eigener Schritt mit `hop_dropper_test.v=4`, dann Reboot mitten
+im Schritt) alle drei Fälle aus PLAN.md bestätigt: (1) Eintritt in den
+Impuls-Schritt queued die Pulse genau einmal (`target` sprang auf 4, drainte
+dann normal), (2) `prev` gefolgt von `next` zurück in denselben (bereits
+`reachedStep`) Schritt queued nichts nach (`target` blieb 0), (3) ein Reboot
+mitten im Impuls-Schritt (referenceStep 1, `stepRemainingSec` ~3575 von 3600)
+resumed korrekt (`stepRemainingSec` lief weiter, kein Sprung) ohne erneuten
+Pulse (`target` blieb über mehrere schnelle Polls direkt nach dem Neustart bei
+0). Test-Programm und Test-Aktor danach gelöscht, `GET /api/config` bestätigt
+den Gerätestand wieder identisch zu vorher. Der Impuls-Pfad der
+Multi-Regler-Programme ist damit vollständig E2E verifiziert — kein offener
+Punkt aus PLAN.md „Hardware-Verifikation offen" mehr für diesen Feature-Zweig.
+
+**`inp` `w-full`-Bug.** Die in PLAN.md dokumentierte Ursache (`.w-full` steht
+im generierten CSS hinter `.w-20` etc. und gewinnt immer) am Fließband
+behoben: `w-full` aus dem gemeinsamen `inp` (`web/src/ui.ts`) entfernt und an
+jeder der ca. 130 Aufrufstellen, die volle Breite brauchen, explizit wieder
+angehängt — bis auf die Stellen, die ohnehin `flex-1`/`min-w-0 flex-1` nutzen
+(Breite kommt dort schon vom Flex-Layout, nicht von `inp`). `AddItemModal.tsx`
+definiert `inp` lokal neu (`` `${inpBase} font-mono` ``) — dort genügte eine
+einzige Änderung für alle ~69 Stellen der Datei. Die vorher betroffenen Stellen
+(`TimePage` `w-56`/`w-48`, `NetworkPage` `w-40`, `LogEditorModal` `w-20`,
+`ProgramEditorModal`s „Aus Profil befüllen"-Select `w-48`) greifen jetzt ohne
+Änderung an ihrer eigenen Klasse — der `ProgramStepsEditor`-Workaround
+(`w-NN!`-Suffix) bleibt unangetastet stehen (funktioniert weiterhin, jetzt nur
+redundant). Verifiziert: `pnpm typecheck`/`build` grün; im Dev-Server gegen den
+LilyGo (nur GET-Requests, keine Schreibzugriffe) `TimePage` (Zeitzone/NTP-Server
+jetzt kompakt statt zeilenfüllend), `NetworkPage` (mDNS-Hostname kompakt),
+`LogEditorModal` und `ProfileEditorModal`/Programm-Editor (weiterhin
+volle Breite, keine Regression) geprüft.

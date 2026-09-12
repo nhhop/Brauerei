@@ -70,13 +70,13 @@ export function ProfileEditorModal({ open, categories, snap, initial, editing, o
         <div class="mb-4 flex gap-3">
           <label class="block flex-1">
             <span class="text-xs text-muted">Name</span>
-            <input class={`mt-1 ${inp}`}
+            <input class={`mt-1 w-full ${inp}`}
               value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)}
               placeholder="z.B. Pils-Maische" autoFocus />
           </label>
           <label class="block flex-1">
             <span class="text-xs text-muted">Kategorie</span>
-            <select class={`mt-1 ${inp}`}
+            <select class={`mt-1 w-full ${inp}`}
               value={category}
               onChange={(e) => setCategory((e.target as HTMLSelectElement).value)}>
               <option value="">— wählen —</option>

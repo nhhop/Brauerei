@@ -214,7 +214,7 @@ export function FilesPage(_: { path?: string }) {
                         if (e.key === 'Enter') submitNewFolder();
                         if (e.key === 'Escape') setCreatingFolder(false);
                       }}
-                      class={inp} placeholder="Ordnername" />
+                      class={`${inp} w-full`} placeholder="Ordnername" />
                   </div>
                 </td>
                 <td class="px-4 py-2 text-muted">—</td>
@@ -244,7 +244,7 @@ export function FilesPage(_: { path?: string }) {
                             if (e.key === 'Enter') submitRename();
                             if (e.key === 'Escape') setRenameTarget(null);
                           }}
-                          class={inp} />
+                          class={`${inp} w-full`} />
                       </div>
                     ) : entry.dir ? (
                       <button type="button" onClick={() => setDir(full)}

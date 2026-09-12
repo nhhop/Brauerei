@@ -97,13 +97,13 @@ export function EspNowPage(_: { path?: string }) {
               <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-2">
                 <div>
                   <div class="mb-1 text-xs text-muted">Topic-Prefix</div>
-                  <input type="text" class={inp} value={settings.topicPrefix}
+                  <input type="text" class={`${inp} w-full`} value={settings.topicPrefix}
                     placeholder="brewcontrol, leer = kein Prefix"
                     onInput={(e) => update({ topicPrefix: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div>
                   <div class="mb-1 text-xs text-muted">Client-ID</div>
-                  <input type="text" class={inp} value={settings.clientId}
+                  <input type="text" class={`${inp} w-full`} value={settings.clientId}
                     placeholder="Leer = mDNS-Hostname"
                     onInput={(e) => update({ clientId: (e.target as HTMLInputElement).value })} />
                 </div>

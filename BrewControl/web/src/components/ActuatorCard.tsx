@@ -154,7 +154,7 @@ function DiscreteInput({ value, disabled, onSubmit }: { value: number; disabled:
       <input type="number" value={v}
         onInput={(e) => setV((e.target as HTMLInputElement).value)}
         disabled={disabled}
-        class={`${inp} font-mono`} />
+        class={`${inp} w-full font-mono`} />
       <button onClick={() => { const n = parseFloat(v); if (!isNaN(n)) onSubmit(n); }}
         disabled={disabled}
         class={btnPrimary}>

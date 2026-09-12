@@ -126,7 +126,7 @@ export function ControllerCard({ controller, sensors, actuators, onDelete, onEdi
         <div class="mt-1 flex gap-2">
           <input id={`sp-${id}`} type="number" step="any" value={sp}
             onInput={(e) => setSp((e.target as HTMLInputElement).value)}
-            class={`${inp} font-mono`} />
+            class={`${inp} w-full font-mono`} />
           <button onClick={applySp} class={btnPrimary}>
             Apply
           </button>

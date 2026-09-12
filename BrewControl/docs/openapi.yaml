@@ -2235,12 +2235,14 @@ components:
       properties:
         type:
           type: string
-          enum: [DigitalOutput, AnalogOutput, IDS1, IDS2, MqttGeneric, Remote]
+          enum: [DigitalOutput, AnalogOutput, PulseOutput, IDS1, IDS2, MqttGeneric, Remote]
         id: { type: string }
         pin: { type: integer }
         mode: { type: string, description: "e.g. `Binary` or `TPO`." }
-        invert: { type: boolean }
+        invert: { type: boolean, description: "Active-low. Also PulseOutput (active-low pulses)." }
         period_ms: { type: integer, description: TPO cycle length. }
+        pulse_width_ms: { type: integer, description: "Pulse-on duration, ms (PulseOutput, default 50)." }
+        gap_ms: { type: integer, description: "Pulse-off duration between pulses, ms (PulseOutput, default 50)." }
         freq: { type: integer, description: LEDC frequency (AnalogOutput). }
         resolution_bits: { type: integer }
         pin_white: { type: integer, description: IDS1/IDS2. }

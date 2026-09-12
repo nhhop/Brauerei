@@ -51,7 +51,7 @@ export function LoginModal({
             Dieses Gerät ist passwortgeschützt. Zum Ändern von Werten bitte anmelden —
             Anzeigen funktioniert auch ohne.
           </p>
-          <input ref={inputRef} type="password" class={`${inp} mt-4`} value={password}
+          <input ref={inputRef} type="password" class={`${inp} w-full mt-4`} value={password}
             autocomplete="current-password" placeholder="Gerätepasswort"
             onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
           {err && <div class="mt-2 text-sm text-critical">{err}</div>}

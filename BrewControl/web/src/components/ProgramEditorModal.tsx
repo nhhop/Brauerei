@@ -97,7 +97,7 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
 
         <label class="mb-4 block">
           <span class="text-xs text-muted">Name</span>
-          <input class={`mt-1 ${inp}`}
+          <input class={`mt-1 w-full ${inp}`}
             value={name} onInput={(e) => setName((e.target as HTMLInputElement).value)}
             placeholder="z.B. Pils-Maische" autoFocus />
         </label>

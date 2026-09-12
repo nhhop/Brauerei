@@ -97,7 +97,7 @@ export function WebhookPage(_: { path?: string }) {
               <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-[1fr_2fr]">
                 <div>
                   <div class="mb-1 text-xs text-muted">Lokaler Port</div>
-                  <input type="number" class={inp} value={settings.listenPort} min={1} max={65535}
+                  <input type="number" class={`${inp} w-full`} value={settings.listenPort} min={1} max={65535}
                     onInput={(e) => {
                       const v = Number((e.target as HTMLInputElement).value);
                       if (v >= 1 && v <= 65535) update({ listenPort: v });
@@ -105,7 +105,7 @@ export function WebhookPage(_: { path?: string }) {
                 </div>
                 <div>
                   <div class="mb-1 text-xs text-muted">Peer-URL</div>
-                  <input type="text" class={inp} value={settings.peerUrl}
+                  <input type="text" class={`${inp} w-full`} value={settings.peerUrl}
                     placeholder="http://192.168.1.50:8080"
                     onInput={(e) => update({ peerUrl: (e.target as HTMLInputElement).value })} />
                 </div>
@@ -117,13 +117,13 @@ export function WebhookPage(_: { path?: string }) {
               <div class="grid grid-cols-1 gap-3 pl-9 sm:grid-cols-2">
                 <div>
                   <div class="mb-1 text-xs text-muted">Topic-Prefix</div>
-                  <input type="text" class={inp} value={settings.topicPrefix}
+                  <input type="text" class={`${inp} w-full`} value={settings.topicPrefix}
                     placeholder="brewcontrol, leer = kein Prefix"
                     onInput={(e) => update({ topicPrefix: (e.target as HTMLInputElement).value })} />
                 </div>
                 <div>
                   <div class="mb-1 text-xs text-muted">Client-ID</div>
-                  <input type="text" class={inp} value={settings.clientId}
+                  <input type="text" class={`${inp} w-full`} value={settings.clientId}
                     placeholder="Leer = mDNS-Hostname"
                     onInput={(e) => update({ clientId: (e.target as HTMLInputElement).value })} />
                 </div>

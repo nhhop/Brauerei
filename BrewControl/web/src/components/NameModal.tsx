@@ -35,7 +35,7 @@ export function NameModal({ open, title, submitLabel, placeholder, initial, onSa
           <h2 class="mb-4 text-base font-medium text-fg">{title}</h2>
           <label class="block">
             <span class="text-xs text-muted">Name</span>
-            <input class={`mt-1 ${inp}`} value={name}
+            <input class={`mt-1 w-full ${inp}`} value={name}
               onInput={(e) => setName((e.target as HTMLInputElement).value)}
               placeholder={placeholder} autoFocus />
           </label>

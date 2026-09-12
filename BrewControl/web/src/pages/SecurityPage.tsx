@@ -138,18 +138,18 @@ export function SecurityPage(_: { path?: string }) {
               {status.enabled && (
                 <div class="sm:col-span-2">
                   <div class="mb-1 text-xs text-muted">Aktuelles Passwort</div>
-                  <input type="password" class={inp} value={current} autocomplete="current-password"
+                  <input type="password" class={`${inp} w-full`} value={current} autocomplete="current-password"
                     onInput={(e) => setCurrent((e.target as HTMLInputElement).value)} />
                 </div>
               )}
               <div>
                 <div class="mb-1 text-xs text-muted">Neues Passwort</div>
-                <input type="password" class={inp} value={next} autocomplete="new-password"
+                <input type="password" class={`${inp} w-full`} value={next} autocomplete="new-password"
                   onInput={(e) => setNext((e.target as HTMLInputElement).value)} />
               </div>
               <div>
                 <div class="mb-1 text-xs text-muted">Wiederholen</div>
-                <input type="password" class={inp} value={repeat} autocomplete="new-password"
+                <input type="password" class={`${inp} w-full`} value={repeat} autocomplete="new-password"
                   onInput={(e) => setRepeat((e.target as HTMLInputElement).value)} />
               </div>
             </div>

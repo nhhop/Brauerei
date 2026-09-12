@@ -212,6 +212,15 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
     if (mode == DigitalOutputActuator::Mode::TimeProportional)
       a->setPeriodMs(cfg["period_ms"] | 2000u);
     e->ptr.reset(a);
+  } else if (strcmp(type, "PulseOutput") == 0) {
+    int pin = cfg["pin"] | -1;
+    if (pin < 0) return {false, "missing pin"};
+    bool invert = cfg["invert"] | false;
+    e->ptr = std::make_unique<PulseOutputActuator>(
+        e->id.c_str(), pin,
+        cfg["pulse_width_ms"] | 50u,
+        cfg["gap_ms"] | 50u,
+        /*activeHigh=*/!invert);
   } else if (strcmp(type, "IDS1") == 0 || strcmp(type, "IDS2") == 0) {
     int pinW = cfg["pin_white"]     | -1;
     int pinY = cfg["pin_yellow"]    | -1;

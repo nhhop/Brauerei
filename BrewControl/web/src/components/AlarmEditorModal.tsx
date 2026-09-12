@@ -75,7 +75,7 @@ export function AlarmEditorModal({ open, snap, initial, onSave, onDelete, onClos
 
           <label class="mb-4 block">
             <span class="text-xs text-muted">Name</span>
-            <input class={`mt-1 ${inp}`} value={name} autoFocus
+            <input class={`mt-1 w-full ${inp}`} value={name} autoFocus
               onInput={(e) => setName((e.target as HTMLInputElement).value)}
               placeholder="z.B. Sudpfanne zu heiß" />
           </label>
@@ -92,7 +92,7 @@ export function AlarmEditorModal({ open, snap, initial, onSave, onDelete, onClos
 
           <label class="mb-4 block w-36">
             <span class="text-xs text-muted">Mindestdauer (s)</span>
-            <input class={`mt-1 ${inp}`} value={forSec} inputMode="numeric"
+            <input class={`mt-1 w-full ${inp}`} value={forSec} inputMode="numeric"
               onInput={(e) => setForSec((e.target as HTMLInputElement).value)} />
           </label>
           <p class="mb-4 text-xs text-muted">

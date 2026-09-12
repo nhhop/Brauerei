@@ -273,7 +273,7 @@ export function NetworkPage(_: { path?: string }) {
                   <input type="text" value={manualSsid} title="SSID" placeholder="Netzwerkname (SSID)"
                     autoComplete="off" autoCorrect="off" autoCapitalize="off" spellcheck={false}
                     onInput={(e) => setManualSsid((e.target as HTMLInputElement).value)}
-                    class={inp} />
+                    class={`${inp} w-full`} />
                   <div class="flex items-center gap-2">
                     <input type="password" value={password} title="Passwort" placeholder="WLAN-Passwort"
                       autoComplete="off"
