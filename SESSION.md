@@ -2093,3 +2093,44 @@ sonst `lg:grid-cols-3`; Inhalt nimmt `lg:col-span-3`) — die verschachtelte
 3-Spalten-Grid darin ist jetzt exakt so breit wie die Programm-Spalte.
 Verifiziert: `pnpm typecheck` grün nach jeder Änderung; (2)-(4) nicht live am
 Gerät getestet (kein Dev-Server mit echten Snapshot-Daten in der Session).
+
+## 2026-09-12 — Bestätigungsdialog beim Umschalten fremdgesteuerter Aktoren/Regler
+
+Backlog-Punkt umgesetzt: der Toggle auf Aktor- und Regler-Card schaltete bisher
+sofort um, auch wenn ein aktiver Regler oder ein laufendes Programm das Item
+gerade steuert — der manuelle Vorgang wurde dann im nächsten Tick wieder
+überschrieben, ohne dass die UI das kommunizierte.
+
+**Ownership-Erkennung** (neu, `web/src/ownership.ts`): weder Aktor noch Regler
+tragen im Wire-Format einen Besitzer-Verweis — `controllerOwnerOf()` scannt
+`params.actuator`/`heatActuator`/`coolActuator` aller Regler (gleiche Logik wie
+das bestehende `drivenBy` in `ProgramStepsEditor.tsx`, hier isoliert für
+Wiederverwendung), `programOwnerOf()` nutzt das vorhandene `programIds()` aus
+`program.ts` gegen alle Programme mit Status `running`/`awaiting`/`paused`. Ein
+deaktivierter Regler bzw. ein `idle`/`done`-Programm zählt nicht als Besitzer —
+dann bleibt das Toggle-Verhalten unverändert.
+
+**UI:** `ToggleSwitch` bekommt eine `mixed`-Prop, die den Knopf unabhängig vom
+Schaltzustand mittig zeigt (Mittelstellung als Fremdsteuerungs-Indikator, wie
+vom User vorgeschlagen). `ConfirmModal` um einen optionalen dritten Button
+(`extraLabel`/`onExtra`) erweitert — additiv, alle 16 bestehenden binären
+Aufrufstellen unverändert. `ActuatorCard`/`ControllerCard`: Toggle-Klick bei
+aktivem Besitzer öffnet den Dialog statt direkt zu schalten (Abbrechen / nur
+schalten / schalten + Besitzer deaktivieren-pausieren — Regler via
+`enableController(id, false)`, Programm via `controlProgram(id, 'pause')`,
+beide Endpoints bereits vorhanden). `Dashboard.tsx` reicht `controllers`/
+`programs` an die Cards durch.
+
+**Verifikation:** `pnpm typecheck` grün. Live gegen das LilyGo-S3-Testboard
+(`brewcontrol.local`) im Browser-Pane: das laufende „Hermann-Weizen"-Programm
+zeigte den Regler `mash` (Programmziel, Status `awaiting`) und den von `mash`
+getriebenen Aktor `IDS1` (Controller-Ziel) beide mit Mittelstellung und
+korrektem Dialogtext; „Abbrechen" ändert nichts, „Aktor schalten" schaltet
+`IDS1` ohne den Regler anzufassen (per `aria-checked`/Titel-Attribut
+bestätigt), danach wieder zurückgeschaltet — Board am Ende unverändert.
+Ungeteste Aktoren/Regler ohne Besitzer zeigten weiterhin die normale
+Links/Rechts-Stellung ohne Dialog.
+
+**Nachtrag (Nutzer-Feedback):** der Extra-Button-Text ("Aktor schalten und
+Regler deaktivieren") umbricht in der 3-Spalten-Gleichbreite des
+`ConfirmModal`-Footers zu oft — Fix noch offen, siehe PLAN.md.
