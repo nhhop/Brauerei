@@ -45,6 +45,32 @@ function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
   };
 }
 
+// Chart card with its title row. On desktop the uPlot legend is moved into
+// that row (next to the title) instead of rendering below the chart; the
+// `legendHost` div only gets a real DOM node after mount, so it's kept in
+// state to trigger the re-render ChartCard needs to reparent the legend.
+function ChartRow({ log, snap, isDesktop, editMode, onRemove }: {
+  log: LogConfig; snap: Snapshot | null; isDesktop: boolean; editMode: boolean; onRemove: () => void;
+}) {
+  const [legendHost, setLegendHost] = useState<HTMLDivElement | null>(null);
+  return (
+    <div class="flex flex-col rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8 lg:min-h-0 lg:flex-1">
+      <div class="mb-2 flex shrink-0 items-center gap-2">
+        <span class="shrink-0 text-sm font-medium">{log.name}</span>
+        <div ref={setLegendHost} class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap" />
+        {editMode && (
+          <button type="button" onClick={onRemove}
+            title="Aus Dashboard entfernen"
+            class="text-faint hover:text-critical"><X size={16} /></button>
+        )}
+      </div>
+      <div class="lg:min-h-0 lg:flex-1">
+        <ChartCard log={log} snap={snap} fill={isDesktop} legendHost={isDesktop ? legendHost : null} />
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard({ snap, err, alarmByRef }: {
   snap: Snapshot | null;
   err: string | null;
@@ -500,19 +526,8 @@ export function Dashboard({ snap, err, alarmByRef }: {
           {chartLogs.length > 0 && (
             <div class="flex flex-col gap-4 lg:min-h-[240px] lg:flex-1">
               {chartLogs.map((log) => (
-                <div key={log.id} class="flex flex-col rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8 lg:min-h-0 lg:flex-1">
-                  <div class="mb-2 flex shrink-0 items-center justify-between gap-2">
-                    <span class="text-sm font-medium">{log.name}</span>
-                    {editMode && (
-                      <button type="button" onClick={() => removeChartRef(log.id)}
-                        title="Aus Dashboard entfernen"
-                        class="text-faint hover:text-critical"><X size={16} /></button>
-                    )}
-                  </div>
-                  <div class="lg:min-h-0 lg:flex-1">
-                    <ChartCard log={log} snap={snap} fill={isDesktop} />
-                  </div>
-                </div>
+                <ChartRow key={log.id} log={log} snap={snap} isDesktop={isDesktop}
+                  editMode={editMode} onRemove={() => removeChartRef(log.id)} />
               ))}
             </div>
           )}

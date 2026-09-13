@@ -51,12 +51,13 @@ interface Props {
   height?: number;
   fill?: boolean;   // stretch to the parent's rendered height instead of a fixed `height`
   session?: number;   // when set, render that archived session read-only (no live)
+  legendHost?: HTMLElement | null;   // when set, move uPlot's legend into this element (e.g. the card's title row)
 }
 
 // Renders one log session as a uPlot line chart. Without `session` it shows the
 // current session live (hydrate from CSV, then append a point per snapshot);
 // with `session` it shows that archived session read-only.
-export function ChartCard({ log, snap, height = 240, fill, session }: Props) {
+export function ChartCard({ log, snap, height = 240, fill, session, legendHost }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const uRef = useRef<uPlot | null>(null);
   const dataRef = useRef<(number | null)[][]>([[]]);
@@ -128,6 +129,12 @@ export function ChartCard({ log, snap, height = 240, fill, session }: Props) {
       lastTsRef.current = xs.length ? (xs[xs.length - 1] as number) : 0;
       uRef.current?.destroy();
       uRef.current = new uPlot(makeOpts(refs, tset), data as uPlot.AlignedData, el);
+      // Move the legend out of the plot into the caller-supplied slot (e.g. the
+      // card's title row) so it no longer takes vertical space below the chart.
+      if (legendHost) {
+        const legend = uRef.current.root.querySelector('.u-legend');
+        if (legend) legendHost.appendChild(legend);
+      }
       // The legend didn't exist yet for the estimate above (used as the
       // initial `height`) — now that uPlot has rendered it, correct once.
       if (fill) onResize();
@@ -151,10 +158,13 @@ export function ChartCard({ log, snap, height = 240, fill, session }: Props) {
       alive = false;
       window.removeEventListener('resize', onResize);
       ro?.disconnect();
+      // uPlot.destroy() only removes its own root — the legend was reparented
+      // out of it above, so it must be cleared separately here.
+      legendHost?.replaceChildren();
       uRef.current?.destroy();
       uRef.current = null;
     };
-  }, [log.id, seriesKey, height, fill, session]);
+  }, [log.id, seriesKey, height, fill, session, legendHost]);
 
   // Append a live point per snapshot (server timestamp drives the x value).
   // Skipped for archived sessions, which are read-only.

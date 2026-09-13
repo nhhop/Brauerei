@@ -188,3 +188,15 @@ input[type="range"].range-slider:disabled::-moz-range-thumb {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ── Chart legend placement (ChartCard / uPlot) ──────────────────────────────
+   uPlot renders <div class="uplot"> with the plot (.u-wrap) then the legend
+   table (.u-legend) as siblings, in that DOM order. On desktop the legend
+   moves above the plot via column-reverse to save vertical space; on mobile
+   it stays below (default column order). */
+@media (min-width: 768px) {
+  .uplot {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+}
