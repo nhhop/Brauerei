@@ -399,4 +399,12 @@ void AlarmStore::onProgramStatus(const char* id, const char* name,
   raise_("program", src.c_str(), name, "", sev, false, nullptr, status, nowEpoch);
 }
 
+void AlarmStore::onTimerExpired(const char* id, const char* name,
+                                time_t nowEpoch, uint32_t nowMs) {
+  (void)nowMs;
+  ScopedLock lk(mutex_);
+  const std::string src = std::string("timer/") + id;
+  raise_("timer", src.c_str(), name, "", SevInfo, false, nullptr, "", nowEpoch);
+}
+
 }  // namespace BrewControl

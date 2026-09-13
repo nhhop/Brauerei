@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -347,6 +347,39 @@ export async function deleteProgram(id: string): Promise<void> {
 
 export function controlProgram(id: string, action: ProgramAction): Promise<void> {
   return postJson(`/api/programs/${encodeURIComponent(id)}/control`, { action });
+}
+
+// ── Timer ─────────────────────────────────────────────────────────────────────
+
+type TimerSave = Pick<TimerConfig, 'name' | 'durationSec'>;
+
+export async function getTimers(): Promise<TimerConfig[]> {
+  const r = await fetch('/api/timers');
+  if (!r.ok) await failed(r);
+  return r.json() as Promise<TimerConfig[]>;
+}
+
+export async function createTimer(cfg: TimerSave): Promise<string> {
+  const r = await fetch('/api/timers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!r.ok) await failed(r);
+  return (await r.json() as { id: string }).id;
+}
+
+export function updateTimer(id: string, cfg: TimerSave): Promise<void> {
+  return postJson(`/api/timers/${encodeURIComponent(id)}`, cfg);
+}
+
+export async function deleteTimer(id: string): Promise<void> {
+  const r = await fetch(`/api/timers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!r.ok) await failed(r);
+}
+
+export function controlTimer(id: string, action: TimerAction): Promise<void> {
+  return postJson(`/api/timers/${encodeURIComponent(id)}/control`, { action });
 }
 
 // ── Alarme & Meldungen ─────────────────────────────────────────────────

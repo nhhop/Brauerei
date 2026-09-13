@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, DashboardConfig, LogConfig, ProgramConfig } from '../types';
+import type { Snapshot, DashboardConfig, LogConfig, ProgramConfig, TimerConfig } from '../types';
 import { AddItemModal } from './AddItemModal';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow } from '../ui';
 
 export interface DashboardMembers {
-  sensors: string[]; actuators: string[]; controllers: string[]; charts: string[]; programs: string[];
+  sensors: string[]; actuators: string[]; controllers: string[]; charts: string[]; programs: string[]; timers: string[];
 }
 
 interface Props {
@@ -12,20 +12,23 @@ interface Props {
   snap: Snapshot | null;
   logs?: LogConfig[];
   programs?: ProgramConfig[];
+  timers?: TimerConfig[];
   dash: DashboardConfig;                 // current membership to preselect
   onSave: (members: DashboardMembers) => void;
   onNewProgram?: () => void;
+  onNewTimer?: () => void;
   onClose: () => void;
 }
 
 // Content picker: check which sensors / actuators / controllers / charts /
 // programs the dashboard shows. Name & delete live in NameModal.
-export function DashboardContentModal({ open, snap, logs, programs, dash, onSave, onNewProgram, onClose }: Props) {
+export function DashboardContentModal({ open, snap, logs, programs, timers, dash, onSave, onNewProgram, onNewTimer, onClose }: Props) {
   const [sensors, setSensors] = useState<Set<string>>(new Set());
   const [actuators, setActuators] = useState<Set<string>>(new Set());
   const [controllers, setControllers] = useState<Set<string>>(new Set());
   const [charts, setCharts] = useState<Set<string>>(new Set());
   const [progs, setProgs] = useState<Set<string>>(new Set());
+  const [timerIds, setTimerIds] = useState<Set<string>>(new Set());
   const [subAddOpen, setSubAddOpen] = useState(false);
 
   useEffect(() => {
@@ -35,6 +38,7 @@ export function DashboardContentModal({ open, snap, logs, programs, dash, onSave
       setControllers(new Set(dash.controllers));
       setCharts(new Set(dash.charts ?? []));
       setProgs(new Set(dash.programs ?? []));
+      setTimerIds(new Set(dash.timers ?? []));
     }
   }, [open, dash]);
 
@@ -56,7 +60,7 @@ export function DashboardContentModal({ open, snap, logs, programs, dash, onSave
     e.preventDefault();
     onSave({
       sensors: [...sensors], actuators: [...actuators], controllers: [...controllers],
-      charts: [...charts], programs: [...progs],
+      charts: [...charts], programs: [...progs], timers: [...timerIds],
     });
   }
 
@@ -142,6 +146,21 @@ export function DashboardContentModal({ open, snap, logs, programs, dash, onSave
             </fieldset>
           )}
 
+          {timers && timers.length > 0 && (
+            <fieldset class="mb-3">
+              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Timer</legend>
+              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+                {timers.map((t) => (
+                  <label key={t.id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
+                    <input type="checkbox" class="accent-accent"
+                      checked={timerIds.has(t.id)} onChange={() => toggle(timerIds, setTimerIds, t.id)} />
+                    {t.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+
           <div class="mt-1 flex flex-col items-start gap-1">
             <button type="button" onClick={() => setSubAddOpen(true)}
               class="text-xs text-faint hover:text-fg">
@@ -151,6 +170,12 @@ export function DashboardContentModal({ open, snap, logs, programs, dash, onSave
               <button type="button" onClick={onNewProgram}
                 class="text-xs text-faint hover:text-fg">
                 + Neues Programm erstellen
+              </button>
+            )}
+            {onNewTimer && (
+              <button type="button" onClick={onNewTimer}
+                class="text-xs text-faint hover:text-fg">
+                + Neuen Timer erstellen
               </button>
             )}
           </div>

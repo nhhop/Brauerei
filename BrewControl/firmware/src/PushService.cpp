@@ -171,6 +171,9 @@ void PushService::describe_(const AlarmStore::Alert& a, String& title, String& b
   } else if (strcmp(a.kind, "autotune") == 0) {
     title = "AutoTune fertig";
     body  = name + " hat neue Regelparameter.";
+  } else if (strcmp(a.kind, "timer") == 0) {
+    title = "Timer abgelaufen";
+    body  = name + " ist fertig.";
   } else {  // threshold
     title = a.cleared ? "Alarm beendet" : "Alarm";
     body  = name;

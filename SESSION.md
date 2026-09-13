@@ -2368,3 +2368,108 @@ aufeinanderfolgende Drags im Browser-Pane, per instrumentiertem `fetch` der
 tatsächlich gesendete Wert mit dem angezeigten verglichen — stimmte jedes
 Mal exakt überein, kein Zurückspringen auch nach 2s Wartezeit (Snapshot-Poll
 sollte da längst durch sein).
+
+## 2026-09-13 — Timer-Widget (Backlog-Punkt umgesetzt)
+
+Freistehende Kitchen-Timer für Brau-Timings (Hopfengaben, Rührintervalle,
+Rasten außerhalb eines Programms) — server-persistiert (übersteht Reboot und
+Browser-Reload) und mit Push-Benachrichtigung beim Ablaufen, analog zum
+bestehenden Programm-Feature. Ursprünglich als „Timer-Gruppe" mit mehreren
+benannten Timern pro Widget geplant; nach Rückfrage stellte sich heraus, dass
+einzelne, eigenständige Timer-Elemente gewünscht waren (wie Sensor-/Aktor-
+Karten) — Gruppierung ersatzlos verworfen, dadurch entfielen auch die Fragen
+nach ID-Eindeutigkeit über Gruppen hinweg und einem Pro-Timer-Notify-Flag
+(jeder Timer benachrichtigt immer, ohne Opt-out).
+
+**Firmware:** Neue Komponente `TimerStore.h/.cpp`, 1:1 nach dem Vorbild von
+`ProgramRunner` — flache Liste von `{id, name, durationSec, status,
+startedEpoch, elapsedAtPauseSec}`, wall-clock-epoch-basierte Persistenz nach
+`/config/timers.json`, NTP-Gate (`nowEpoch > 946684800L`) wie bei
+Programmen/Logs. `control()` kennt `start|pause|resume|stop` — kein `reset`
+als eigene Action, da es mit `stop` identisch gewesen wäre (Redundanz beim
+Implementieren aufgefallen und ersatzlos gestrichen). Neue Routen
+`GET/POST /api/timers`, `POST/DELETE /api/timers/<id>`,
+`POST /api/timers/<id>/control`, exakt nach dem `/api/programs`-Muster.
+Ablauf feuert `AlarmStore::onTimerExpired` (neuer `AlertKind: timer`), darüber
+`PushService::describe_` mit „Timer abgelaufen" — Kette 1:1 von
+`onProgramStatus`/„Programm fertig" gespiegelt. `DashboardConfig` um
+`timers: string[]` erweitert (`DashboardStore`, `types.ts`, `openapi.yaml`).
+
+**Frontend:** `fmtDuration()` aus `ProgramCard.tsx` nach neuem
+`web/src/format.ts` extrahiert (jetzt auch von `ProfilesPage.tsx` importiert).
+Neue `TimerCard.tsx` (Card-Shell/Badge/Progressbar-Idiom wie `SensorCard`/
+`ProgramCard`), im normalen Item-Grid neben Sensor-/Aktor-/Regler-Karten
+platziert (kein eigener Spalten-/Bottom-Sheet-Sonderfall wie beim
+Programm-Widget, da ein Timer nichts „claimt"). `Dashboard.tsx` pollt
+`GET /api/timers` im 1s-Intervall, unabhängig von der SSE-Snapshot (gleiche
+Begründung wie bei Programmen).
+
+**Nachtrag (selber Tag):** Erste Version legte Timer über ein Inline-Formular
+in `DashboardContentModal.tsx` an (Name + Minuten, kein Rename-Fluss). Zwei
+Nutzer-Rückmeldungen dagegen: (1) Klick auf „Anlegen" tat sichtbar nichts —
+Root Cause: das an diesem Gerät laufende `pnpm dev` proxied gegen ein echtes,
+noch nicht neu geflashtes Board, `POST /api/timers` lief dort ins Leere
+(404); `createTimer()` wurde aber `await`-los aufgerufen, die verworfene
+Promise schluckte den Fehler komplett, ohne jede UI-Rückmeldung. (2) Wunsch
+nach einem eigenen Modal statt Inline-Formular, um später weitere
+Timer-Einstellungen unterzubringen. Fix: neue `TimerEditorModal.tsx` (Create
+**und** Edit, Muster wie `NameModal`/`LogEditorModal`) — der Submit-Handler
+awaitet `onSave` jetzt selbst und zeigt einen Fehlertext im Dialog, statt ihn
+verschluckt als unhandled rejection verschwinden zu lassen. Damit auch der
+Bearbeiten-Stift auf `TimerCard` verdrahtet (`openEditTimer`) — die zuvor als
+bewusste Lücke vermerkte fehlende Rename/Dauer-Änderung ist damit erledigt,
+kein separater PLAN.md-Eintrag mehr nötig. `DashboardContentModal.tsx`
+behält nur noch die Checkbox-Auswahl bestehender Timer; „+ Neuen Timer
+erstellen" öffnet jetzt das neue Modal (`onNewTimer`), analog zu „+ Neues
+Programm erstellen". Im Browser gegen das reale (alte) Gerät nachgestellt:
+Klick auf „Erstellen" zeigt jetzt sichtbar „Error: 404 Not Found" im Dialog
+statt schweigend nichts zu tun.
+
+**Verifiziert:** `pio run -e esp32dev` (Compile-Smoke, Flash 84.0%/RAM 18.2%),
+`pio test -e native` (30/30 grün, unverändert — `TimerStore` selbst ist wie
+`ProgramRunner` nicht nativ testbar, da es an Arduino/FreeRTOS/`SdLock`
+hängt), `npx @redocly/cli lint` (grün), `pnpm typecheck` (grün), Fehlerpfad
+im Browser gegen ein echtes (noch altes) Gerät nachgestellt. Der eigentliche
+Funktionspfad (Timer anlegen und laufen lassen) steht noch aus — braucht ein
+mit dieser Firmware neu geflashtes Board, siehe PLAN.md → Hardware-
+Verifikation offen.
+
+**Zweiter Nachtrag (selber Tag) — Hardware-E2E abgeschlossen:** LilyGo
+T-Display-S3-AMOLED (COM9) geflasht. `pio run -t upload` scheiterte erst
+zweimal mit „No serial data received" / „Unable to verify flash chip
+connection" — deterministisch reproduzierbar, kein Flackern, deckt sich mit
+der schon dokumentierten TinyUSB-CDC-Instabilität dieses Boards unter
+Windows (siehe `BrewControl/CLAUDE.md`). Auch mit fest gepinntem
+`upload_speed = 115200` (umgeht den sonst separaten „Changing baud rate"-
+Schritt) kam die Verbindung nicht zuverlässig durch — der Nutzer hat
+stattdessen manuell geflasht (BOOT gehalten + RESET angetippt, danach lief
+der Upload durch). Die testweise ergänzte `upload_speed`-Zeile in
+`platformio.ini` danach wieder entfernt, da sie das eigentliche Problem
+nicht löste und nichts zur Sache tut.
+
+Nach dem Flash lief das aktive Maischeprogramm (`Verzuckerungsrast`-Schritt)
+nahtlos weiter — Beleg, dass `ProgramRunner`s Epochen-Persistenz auch einen
+durch uns ausgelösten Neustart mitten im Lauf sauber übersteht, nicht nur
+einen Stromausfall.
+
+**Timer-Funktionstest am Gerät:** Über das Dashboard einen Timer „hopfengabe"
+angelegt (Fehler aus dem ersten Nachtrag damit implizit miterledigt — Nutzer
+bestätigte „funktioniert alles"), Start/Pause/Stop im Browser gegen das
+Live-Gerät durchgeklickt, Countdown lief sichtbar.
+
+**Push-Benachrichtigung:** vom Nutzer eigenständig geprüft, funktioniert.
+
+**Reboot-Test (API-getrieben, ohne Board-Zugriff):** Timer per
+`POST /api/timers/{id}/control {"action":"start"}` gestartet (`durationSec`
+60, `startedEpoch` notiert), nach ~8 s per `POST /api/network
+{"hostname":"brewcontrol"}` einen sicheren Reboot ausgelöst (ändert keine
+WLAN-Daten, siehe Test-Boards-Memo), Gerät nach ~2 s wieder erreichbar.
+**Beleg für einen echten Neustart:** `state.t` (millis seit Boot) aller
+Sensoren/Aktoren im Snapshot lag bei ~40000 (40 s) statt der Stunden an
+Laufzeit, die die Session vorher schon lief. `startedEpoch` blieb über den
+Reboot hinweg unverändert; `remainingSec` fiel kontinuierlich nach
+Wall-Clock (60→45→36→0), keine Rücksetzung auf `durationSec`, kein Einfrieren
+— der Timer landete exakt zur richtigen Zeit auf `done`. Maischeprogramm und
+Regler/Aktor-Zustand kamen ebenfalls unauffällig zurück. Damit sind beide
+zuvor offenen Hardware-Verifikationspunkte (Reboot-Überleben, Push) erledigt
+— Eintrag aus `PLAN.md` → Hardware-Verifikation entfernt.

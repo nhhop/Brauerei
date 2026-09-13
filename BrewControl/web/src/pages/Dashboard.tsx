@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, ProfileLibrary, Severity } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity } from '../types';
 import {
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
   getLogs,
   getPrograms, createProgram, updateProgram, deleteProgram,
+  getTimers, createTimer, updateTimer, deleteTimer,
   getProfiles, createProfile,
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
@@ -13,12 +14,14 @@ import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
 import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
+import { TimerCard } from '../components/TimerCard';
 import { programIds } from '../program';
 import { AddItemModal } from '../components/AddItemModal';
 import { NameModal } from '../components/NameModal';
 import { TabBtn } from '../components/TabBtn';
 import { DashboardContentModal } from '../components/DashboardContentModal';
 import { ProgramEditorModal } from '../components/ProgramEditorModal';
+import { TimerEditorModal } from '../components/TimerEditorModal';
 import { ProfileEditorModal } from '../components/ProfileEditorModal';
 import { Pencil, Check, Plus, X } from 'lucide-preact';
 
@@ -52,6 +55,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   const [dashboards, setDashboards] = useState<DashboardConfig[]>([]);
   const [logs, setLogs] = useState<LogConfig[]>([]);
   const [programs, setPrograms] = useState<ProgramConfig[]>([]);
+  const [timers, setTimers] = useState<TimerConfig[]>([]);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
   // Dashboard edit mode: gates the per-card ✎/× affordances. Off = clean view.
   const [editMode, setEditMode] = useState(false);
@@ -89,8 +93,16 @@ export function Dashboard({ snap, err, alarmByRef }: {
     return () => clearInterval(t);
   }, []);
 
+  // Same reasoning as programs: poll timer live status independently of SSE.
+  function refreshTimers() { getTimers().then(setTimers).catch(() => {}); }
+  useEffect(() => {
+    refreshTimers();
+    const t = setInterval(refreshTimers, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   async function createDashboardNamed(name: string) {
-    const empty = { name, sensors: [], actuators: [], controllers: [], charts: [], programs: [] };
+    const empty = { name, sensors: [], actuators: [], controllers: [], charts: [], programs: [], timers: [] };
     const id = await createDashboard(empty);
     setDashboards(ds => [...ds, { id, ...empty }]);
     setActiveTab({ kind: 'dashboard', id });
@@ -118,6 +130,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
       controllers: activeDash.controllers,
       charts: activeDash.charts ?? [],
       programs: activeDash.programs ?? [],
+      timers: activeDash.timers ?? [],
       ...patch,
     };
     await updateDashboard(activeDash.id, updated);
@@ -139,7 +152,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
       const updated = {
         name: d.name,
         sensors: d.sensors, actuators: d.actuators, controllers: d.controllers,
-        charts: d.charts ?? [], programs: d.programs ?? [],
+        charts: d.charts ?? [], programs: d.programs ?? [], timers: d.timers ?? [],
         [key]: d[key].map(x => x === oldId ? newId : x),
       };
       await updateDashboard(d.id, updated);
@@ -153,6 +166,10 @@ export function Dashboard({ snap, err, alarmByRef }: {
 
   async function removeChartRef(id: string) {
     await patchActiveDash({ charts: (activeDash?.charts ?? []).filter(c => c !== id) });
+  }
+
+  async function removeTimerRef(id: string) {
+    await patchActiveDash({ timers: (activeDash?.timers ?? []).filter(t => t !== id) });
   }
 
   // ── Programs (create / edit / delete) ─────────────────────────────────────
@@ -182,6 +199,28 @@ export function Dashboard({ snap, err, alarmByRef }: {
     setProgEditorOpen(false);
     setEditingProg(null);
     refreshPrograms();
+  }
+
+  // ── Timers (create / edit / delete) ───────────────────────────────────────
+  const [timerEditorOpen, setTimerEditorOpen] = useState(false);
+  const [editingTimer, setEditingTimer] = useState<TimerConfig | null>(null);
+
+  function openCreateTimer() { setEditingTimer(null); setTimerEditorOpen(true); }
+  function openEditTimer(t: TimerConfig) { setEditingTimer(t); setTimerEditorOpen(true); }
+
+  async function saveTimer(cfg: { name: string; durationSec: number }) {
+    if (editingTimer) await updateTimer(editingTimer.id, cfg);
+    else await createTimer(cfg);
+    setTimerEditorOpen(false);
+    setEditingTimer(null);
+    refreshTimers();
+  }
+
+  async function doDeleteTimer(id: string) {
+    await deleteTimer(id);
+    setTimerEditorOpen(false);
+    setEditingTimer(null);
+    refreshTimers();
   }
 
   async function startEdit(role: Role, id: string) {
@@ -313,9 +352,11 @@ export function Dashboard({ snap, err, alarmByRef }: {
           snap={snap}
           logs={logs}
           programs={programs}
+          timers={timers}
           dash={activeDash}
           onSave={(m) => { patchActiveDash(m); setContentOpen(false); }}
           onNewProgram={openCreateProgram}
+          onNewTimer={openCreateTimer}
           onClose={() => setContentOpen(false)}
         />
       )}
@@ -329,6 +370,14 @@ export function Dashboard({ snap, err, alarmByRef }: {
         onSave={saveProgram}
         onDelete={editingProg ? () => doDeleteProgram(editingProg.id) : undefined}
         onClose={() => { setProgEditorOpen(false); setEditingProg(null); }}
+      />
+
+      <TimerEditorModal
+        open={timerEditorOpen}
+        initial={editingTimer ?? undefined}
+        onSave={saveTimer}
+        onDelete={editingTimer ? () => doDeleteTimer(editingTimer.id) : undefined}
+        onClose={() => { setTimerEditorOpen(false); setEditingTimer(null); }}
       />
 
       {/* Rendered after the program editor so it stacks on top of it. */}
@@ -467,6 +516,17 @@ export function Dashboard({ snap, err, alarmByRef }: {
                 onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}
               />
             ))}
+            {(activeDash?.timers ?? []).map((tid) => {
+              const timer = timers.find((t) => t.id === tid);
+              if (!timer) return null;
+              return (
+                <TimerCard key={tid} timer={timer}
+                  onChanged={refreshTimers}
+                  onEdit={editMode ? () => openEditTimer(timer) : undefined}
+                  onDelete={editMode ? () => removeTimerRef(tid) : undefined}
+                />
+              );
+            })}
           </div>
           {hasProgramSheet && <div aria-hidden class="lg:hidden" style={{ height: sheetH }} />}
         </div>

@@ -244,13 +244,13 @@ class PostJsonHandler : public AsyncWebHandler {
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              DashboardStore& store, SettingsStore& settings,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
-             AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
-             WebhookService& webhook,
+             TimerStore& timers, AlarmStore& alarms, ProfileStore& profiles,
+             MqttService& mqtt, WebhookService& webhook,
              EspNowPublishService& espnow, PushService& push, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
-      updater_(updater), logs_(logs), programs_(programs), alarms_(alarms),
-      profiles_(profiles), mqtt_(mqtt), webhook_(webhook), espnow_(espnow),
-      push_(push), server_(port), events_("/api/events") {}
+      updater_(updater), logs_(logs), programs_(programs), timers_(timers),
+      alarms_(alarms), profiles_(profiles), mqtt_(mqtt), webhook_(webhook),
+      espnow_(espnow), push_(push), server_(port), events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -803,6 +803,66 @@ void WebUI::begin() {
           return;
         }
         programs_.saveToSD(fs_);
+        req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
+      }));
+
+  // ── Timers ───────────────────────────────────────────────────────────────────
+  server_.on("/api/timers", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", timers_.serialize());
+  });
+
+  // DELETE /api/timers/:id — remove a timer
+  server_.addHandler(new DeletePrefixHandler("/api/timers/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/timers/"));
+        if (!timers_.remove(id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        timers_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/timers/:id           — update definition (resets to idle)
+  // POST /api/timers/:id/control   — {"action":"start"|"pause"|…}
+  server_.addHandler(new BodyPrefixHandler("/api/timers/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        JsonDocument doc;
+        if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
+          req->send(400, "text/plain", "invalid JSON");
+          return;
+        }
+        String tail = req->url().substring(strlen("/api/timers/"));
+        if (tail.endsWith("/control")) {
+          String id = tail.substring(0, tail.length() - strlen("/control"));
+          const char* action = doc["action"] | "";
+          auto r = timers_.control(id.c_str(), action);
+          if (!r.ok) {
+            bool notFound = strcmp(r.error, "not found") == 0;
+            req->send(notFound ? 404 : 400, "text/plain", r.error);
+            return;
+          }
+          timers_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (!timers_.update(tail.c_str(), doc.as<JsonObject>())) {
+          req->send(404, "text/plain", "not found or invalid");
+          return;
+        }
+        timers_.saveToSD(fs_);
+        req->send(204);
+      }));
+
+  // POST /api/timers — create
+  server_.addHandler(new PostJsonHandler("/api/timers",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = timers_.add(json.as<JsonObject>());
+        if (id.isEmpty()) {
+          req->send(400, "text/plain", "invalid timer");
+          return;
+        }
+        timers_.saveToSD(fs_);
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
 
@@ -1507,6 +1567,7 @@ void WebUI::tick() {
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
   logs_.tick(reg_, fs_, time(nullptr), now);
   programs_.tick(reg_, fs_, time(nullptr));
+  timers_.tick(fs_, time(nullptr));
 
   // Alarm evaluation is deliberately gated to 1 Hz: it resolves every rule and
   // calls paramsJson() on every controller, which at loop rate (~5 ms) would

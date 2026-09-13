@@ -78,6 +78,8 @@ export function alertText(a: Alert): { title: string; body: string } {
       };
     case 'autotune':
       return { title: who, body: 'AutoTune abgeschlossen' };
+    case 'timer':
+      return { title: who, body: 'Timer abgelaufen' };
     default:
       return { title: who, body: '' };
   }

@@ -31,6 +31,7 @@
 #include "ProgramRunner.h"
 #include "PushService.h"
 #include "SettingsStore.h"
+#include "TimerStore.h"
 #include "WebUI.h"
 #include "WebhookService.h"
 #include "WiFiSetupPortal.h"
@@ -65,13 +66,14 @@ BrewControl::SettingsStore settingsStore;
 BrewControl::FirmwareUpdater firmwareUpdater(deviceFs, settingsStore);
 BrewControl::LogStore logStore;
 BrewControl::ProgramRunner programRunner;
+BrewControl::TimerStore timerStore;
 BrewControl::AlarmStore alarmStore;
 BrewControl::ProfileStore profileStore;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
 BrewControl::EspNowPublishService espNowPublishService;
 BrewControl::PushService pushService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, alarmStore, profileStore, mqttService, webhookService, espNowPublishService, pushService);
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, espNowPublishService, pushService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -235,6 +237,7 @@ void setup() {
     dashboardStore.loadFromSD(deviceFs);
     logStore.loadFromSD(deviceFs);
     programRunner.loadFromSD(deviceFs);
+    timerStore.loadFromSD(deviceFs);
     alarmStore.loadFromSD(deviceFs);
     profileStore.loadFromSD(deviceFs);
   }
@@ -256,6 +259,12 @@ void setup() {
       [](const char* id, const char* name, const char* status) {
         alarmStore.onProgramStatus(id, name, status, time(nullptr), millis());
       });
+
+  // Timer expiry feeds the alert centre too. Fires with the store's lock
+  // held, so the callback must not call back into it.
+  timerStore.setOnExpired([](const char* id, const char* name) {
+    alarmStore.onTimerExpired(id, name, time(nullptr), millis());
+  });
 
   pushService.begin(hostname_);  // no-op until a browser subscribed
   webUI.begin();

@@ -14,9 +14,9 @@
 
 namespace BrewControl {
 
-// Watches the registry and turns four things into a single stream of alerts:
+// Watches the registry and turns five things into a single stream of alerts:
 // user-defined threshold rules, driver fault() strings, setpoint-program
-// run-state changes, and PID autotune completion.
+// run-state changes, PID autotune completion, and timer expiry.
 //
 // Rules are persisted to /config/alarms.json; the alert history is a RAM ring
 // that is deliberately lost on reboot — an active threshold or fault re-raises
@@ -41,8 +41,8 @@ class AlarmStore {
     bool     hasV = false;
     uint8_t  sev  = SevWarning;
     bool     cleared = false;
-    char     kind[10]   = "";  // threshold | fault | program | autotune
-    char     src[40]    = "";  // sensor/<id> | actuator/<id> | controller/<id> | program/<id>
+    char     kind[10]   = "";  // threshold | fault | program | autotune | timer
+    char     src[40]    = "";  // sensor/<id> | actuator/<id> | controller/<id> | program/<id> | timer/<id>
     char     name[32]   = "";
     char     rule[8]    = "";
     char     detail[48] = "";
@@ -89,6 +89,12 @@ class AlarmStore {
   // into the ring — it must never call back into ProgramRunner.
   void onProgramStatus(const char* id, const char* name, const char* status,
                        time_t nowEpoch, uint32_t nowMs);
+
+  // Timer expiry, pushed by TimerStore. Called with the store's lock held and
+  // possibly from the AsyncTCP task, so it only writes into the ring — it must
+  // never call back into TimerStore.
+  void onTimerExpired(const char* id, const char* name, time_t nowEpoch,
+                      uint32_t nowMs);
 
   // Pops the oldest alert not yet pushed over SSE as a JSON object string.
   // False when the outbox is empty. Sending happens in WebUI::tick so that

@@ -139,6 +139,7 @@ export interface DashboardConfig {
   controllers: string[];
   charts: string[];       // referenced log/chart IDs (see LogConfig); always present, may be empty
   programs: string[];     // referenced setpoint-program IDs (see ProgramConfig); always present, may be empty
+  timers: string[];       // referenced timer IDs (see TimerConfig); always present, may be empty
 }
 
 // ── Setpoint programs (mash profiles) ────────────────────────────────────────
@@ -187,6 +188,27 @@ export interface ProgramConfig {
   stepRemainingSec?: number;
 }
 
+// ── Timer ─────────────────────────────────────────────────────────────────────
+// Wire format of GET /api/timers. A freestanding countdown — hop additions,
+// stirring intervals, rests outside a formal program. Each timer is its own
+// dashboard element, not grouped. Mirrors TimerStore in the firmware.
+
+export type TimerStatus = 'idle' | 'running' | 'paused' | 'done';
+
+export type TimerAction = 'start' | 'pause' | 'resume' | 'stop';
+
+export interface TimerConfig {
+  id: string;
+  name: string;
+  durationSec: number;
+  // Runtime state (always present, persisted across reboots):
+  status: TimerStatus;
+  startedEpoch: number;       // epoch (s) the timer started; 0 while idle
+  elapsedAtPauseSec: number;  // seconds already elapsed when paused; 0 otherwise
+  // Derived live field (read-only, present in GET /api/timers):
+  remainingSec: number;
+}
+
 // ── Alarme & Meldungen ───────────────────────────────────────────────────────
 // Wire format of GET /api/alarms and GET /api/alerts. Mirrors AlarmStore in the
 // firmware. A rule is user config; an alert is a point-in-time edge, kept in a
@@ -219,7 +241,7 @@ export interface AlarmConfig {
   resolved: boolean;      // false → cond.ref points at nothing; rule is dormant
 }
 
-export type AlertKind = 'threshold' | 'fault' | 'program' | 'autotune';
+export type AlertKind = 'threshold' | 'fault' | 'program' | 'autotune' | 'timer';
 
 export type AlertState = 'raised' | 'cleared';
 
@@ -231,7 +253,7 @@ export interface Alert {
   sev: Severity;
   state: AlertState;
   kind: AlertKind;
-  src: string;            // sensor/<id> | actuator/<id> | controller/<id> | program/<id>
+  src: string;            // sensor/<id> | actuator/<id> | controller/<id> | program/<id> | timer/<id>
   name?: string;          // rule name, program name or item id
   rule?: string;          // originating rule id, kind === 'threshold' only
   detail?: string;        // fault() text, program status, or the breached comparison

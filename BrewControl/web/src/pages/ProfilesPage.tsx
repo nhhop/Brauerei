@@ -11,7 +11,7 @@ import { NameModal } from '../components/NameModal';
 import { ProfileEditorModal } from '../components/ProfileEditorModal';
 import { TabBtn } from '../components/TabBtn';
 import { Fab } from '../components/Fab';
-import { fmtDuration } from '../components/ProgramCard';
+import { fmtDuration } from '../format';
 import { btnPrimary } from '../ui';
 import { Pencil, Check, Plus, Trash2, ListChecks } from 'lucide-preact';
 

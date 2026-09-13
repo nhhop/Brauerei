@@ -87,6 +87,10 @@ tags:
     description: Time-series logging of sensor/actuator values to CSV sessions.
   - name: Setpoint Programs
     description: Multi-step schedules driving controllers and actuators.
+  - name: Timers
+    description: |
+      Freestanding countdown timers (hop additions, stirring intervals, rests)
+      outside a formal program. Each timer is its own dashboard element.
   - name: Alarms
     description: |
       Threshold rules on sensor/actuator/controller values, plus the alert
@@ -788,6 +792,108 @@ paths:
               required: [action]
               properties:
                 action: { $ref: "#/components/schemas/ProgramAction" }
+            example: { action: start }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON`, `unknown action` or `invalid action for state`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
+  # ── Timers ─────────────────────────────────────────────────────────────────
+  /api/timers:
+    get:
+      tags: [Timers]
+      operationId: listTimers
+      summary: List all timers with their live remaining time
+      responses:
+        "200":
+          description: All timers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Timer" }
+    post:
+      tags: [Timers]
+      operationId: createTimer
+      summary: Create a timer
+      description: |
+        Requires `Content-Type: application/json`. Rejected (`invalid timer`)
+        when `name` is empty or `durationSec` is not greater than zero.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TimerInput" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string, pattern: "^tm_[0-9a-f]{5}$" }
+        "400":
+          description: Body is `invalid timer`.
+          content:
+            text/plain: { schema: { type: string, const: invalid timer } }
+
+  /api/timers/{id}:
+    parameters: [{ $ref: "#/components/parameters/TimerId" }]
+    post:
+      tags: [Timers]
+      operationId: updateTimer
+      summary: Replace a timer's definition
+      description: Resets the timer to `idle`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TimerInput" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404":
+          description: Body is `not found or invalid`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Timers]
+      operationId: deleteTimer
+      summary: Delete a timer
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/timers/{id}/control:
+    parameters: [{ $ref: "#/components/parameters/TimerId" }]
+    post:
+      tags: [Timers]
+      operationId: controlTimer
+      summary: Drive a timer's run state
+      description: |
+        `start` from `idle` or `done`, `pause`/`resume` while running, `stop`
+        resets to `idle`. Unlike programs, a timer has no targets to apply —
+        no snapshot push follows.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { $ref: "#/components/schemas/TimerAction" }
             example: { action: start }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1868,6 +1974,14 @@ components:
       description: Program id assigned at creation — `p_` plus five lowercase hex digits.
       example: p_1a2b3
 
+    TimerId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^tm_[0-9a-f]{5}$" }
+      description: Timer id assigned at creation — `tm_` plus five lowercase hex digits.
+      example: tm_1a2b3
+
     SessionQuery:
       name: session
       in: query
@@ -2358,10 +2472,11 @@ components:
         controllers: { type: array, items: { type: string } }
         charts: { type: array, items: { type: string }, description: Log ids. }
         programs: { type: array, items: { type: string }, description: Program ids. }
+        timers: { type: array, items: { type: string }, description: Timer ids. }
 
     Dashboard:
       type: object
-      required: [id, name, sensors, actuators, controllers, charts, programs]
+      required: [id, name, sensors, actuators, controllers, charts, programs, timers]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{6}$" }
         name: { type: string }
@@ -2370,6 +2485,7 @@ components:
         controllers: { type: array, items: { type: string } }
         charts: { type: array, items: { type: string } }
         programs: { type: array, items: { type: string } }
+        timers: { type: array, items: { type: string } }
 
     # ── Data logs ────────────────────────────────────────────────────────────
     CompAlgo:
@@ -2557,6 +2673,45 @@ components:
             Derived, clamped at 0. Present only while `currentStep` addresses a
             real step.
 
+    # ── Timers ───────────────────────────────────────────────────────────────
+    TimerStatus:
+      type: string
+      enum: [idle, running, paused, done]
+
+    TimerAction:
+      type: string
+      enum: [start, pause, resume, stop]
+
+    TimerInput:
+      type: object
+      required: [name, durationSec]
+      properties:
+        name: { type: string }
+        durationSec: { type: integer, description: Must be greater than zero. }
+
+    Timer:
+      type: object
+      required:
+        [id, name, durationSec, status, startedEpoch, elapsedAtPauseSec,
+         remainingSec]
+      properties:
+        id: { type: string, pattern: "^tm_[0-9a-f]{5}$" }
+        name: { type: string }
+        durationSec: { type: integer }
+        status: { $ref: "#/components/schemas/TimerStatus" }
+        startedEpoch:
+          type: integer
+          format: int64
+          description: When the timer started, as Unix epoch seconds; 0 while idle.
+        elapsedAtPauseSec:
+          type: integer
+          format: int64
+          description: Seconds already elapsed when the timer was paused.
+        remainingSec:
+          type: integer
+          format: int64
+          description: Derived, clamped at 0.
+
     # ── Alarms & Alerts ──────────────────────────────────────────────────────
     Severity:
       type: string
@@ -2639,7 +2794,7 @@ components:
 
     AlertKind:
       type: string
-      enum: [threshold, fault, program, autotune]
+      enum: [threshold, fault, program, autotune, timer]
 
     AlertState:
       type: string
@@ -2673,8 +2828,8 @@ components:
           type: string
           description: |
             What the alert is about: `sensor/<id>`, `actuator/<id>`,
-            `controller/<id>` or `program/<id>`. For `kind: threshold` this is
-            the rule's `cond.ref`.
+            `controller/<id>`, `program/<id>` or `timer/<id>`. For
+            `kind: threshold` this is the rule's `cond.ref`.
           example: sensor/kettle.temp
         name:
           type: string

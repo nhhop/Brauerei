@@ -3,6 +3,7 @@ import type { ProgramConfig, ProgramAction, ProgramStep, StepTarget, Condition, 
 import { controlProgram, resolveRef } from '../api';
 import { badge, badgeAccent, badgeCaution, badgeSuccess } from '../ui';
 import { effectiveTargets, fmtTarget, programIds, targetKind } from '../program';
+import { fmtDuration } from '../format';
 import {
   Check, ChevronDown, ChevronUp, FileText, Pause, Pencil, Play,
   SkipBack, SkipForward, Square, Timer, Trash2, type LucideIcon,
@@ -16,19 +17,6 @@ interface Props {
   onDelete?: () => void;
   fill?: boolean;          // stretch to full column height on desktop (single program)
   onSheetHeight?: (px: number) => void;  // mobile bottom-sheet height, for the list spacer
-}
-
-// "4:05", "1:30:00", and from a day on "5 d 03:00" — seconds stop mattering
-// once a step runs for days.
-export function fmtDuration(sec: number): string {
-  if (!isFinite(sec) || sec < 0) sec = 0;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const d = Math.floor(sec / 86400);
-  const m = Math.floor((sec % 3600) / 60);
-  if (d > 0) return `${d} d ${pad(Math.floor((sec % 86400) / 3600))}:${pad(m)}`;
-  const h = Math.floor(sec / 3600);
-  const s = Math.floor(sec % 60);
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
 // "gravity < 1.010" — the trailing segment of the ref plus the comparison.

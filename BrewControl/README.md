@@ -281,6 +281,9 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/programs` | GET, POST | Sollwert-Programme auflisten / anlegen |
 | `/api/programs/<id>` | POST, DELETE | Programm ändern / löschen |
 | `/api/programs/<id>/control` | POST | `start`/`pause`/`resume`/`stop`/`next`/`prev` |
+| `/api/timers` | GET, POST | Timer auflisten / anlegen |
+| `/api/timers/<id>` | POST, DELETE | Timer ändern (setzt zurück auf `idle`) / löschen |
+| `/api/timers/<id>/control` | POST | `start`/`pause`/`resume`/`stop` |
 | `/api/alarms` | GET, POST | Alarmregeln auflisten (inkl. Live-Zustand) / anlegen |
 | `/api/alarms/<id>` | POST, DELETE | Regel ändern / löschen |
 | `/api/alarms/<id>/enable` | POST | Regel an-/abschalten |

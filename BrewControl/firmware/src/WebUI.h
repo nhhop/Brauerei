@@ -21,6 +21,7 @@
 #include "SdTarSink.h"
 #include "SettingsStore.h"
 #include "TarExtractor.h"
+#include "TimerStore.h"
 #include "WebhookService.h"
 
 namespace BrewControl {
@@ -68,6 +69,11 @@ namespace BrewControl {
 //   POST /api/programs/<id>                — update setpoint program
 //   DELETE /api/programs/<id>              — remove setpoint program
 //   POST /api/programs/<id>/control        — {"action":start|pause|resume|stop|next|prev}
+//   GET  /api/timers                       — list timers (JSON)
+//   POST /api/timers                       — create timer
+//   POST /api/timers/<id>                  — update timer (resets it to idle)
+//   DELETE /api/timers/<id>                — remove timer
+//   POST /api/timers/<id>/control          — {"action":start|pause|resume|stop}
 //   GET  /api/alarms                       — list alarm rules incl. live state
 //   POST /api/alarms                       — create alarm rule
 //   POST /api/alarms/<id>                  — update alarm rule
@@ -111,9 +117,10 @@ class WebUI {
  public:
   WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
-        LogStore& logs, ProgramRunner& programs, AlarmStore& alarms,
-        ProfileStore& profiles, MqttService& mqtt, WebhookService& webhook,
-        EspNowPublishService& espnow, PushService& push, uint16_t port = 80);
+        LogStore& logs, ProgramRunner& programs, TimerStore& timers,
+        AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
+        WebhookService& webhook, EspNowPublishService& espnow,
+        PushService& push, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -143,6 +150,7 @@ class WebUI {
   FirmwareUpdater& updater_;
   LogStore& logs_;
   ProgramRunner& programs_;
+  TimerStore& timers_;
   AlarmStore& alarms_;
   ProfileStore& profiles_;
   MqttService& mqtt_;
