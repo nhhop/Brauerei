@@ -2615,3 +2615,25 @@ Hardware-Verifikation offen) — `sensorModes`/`controllerModes`/`timerModes`
 liefen serverseitig deshalb nur gegen die alte Firmware, die das Feld beim
 Speichern stillschweigend verwirft (Reload zeigte dadurch erwartungsgemäß
 wieder „normal" — kein Frontend-Bug, nur alte Firmware auf dem Gerät).
+
+## 2026-09-13 — Fix: ControllerCard/ActuatorCard zeigten verknüpfte Items auf anderen Tabs nicht an
+
+**Root Cause:** `Dashboard.tsx` reichte `ControllerCard`/`ActuatorCard` die
+Tab-gefilterte `displaySnap.sensors`/`.actuators`/`.controllers` (aus
+`filterSnap`) statt des vollen Snapshots durch. Lag der per `params.sensor`/
+`params.actuator` verknüpfte Sensor/Aktor eines Reglers (oder der steuernde
+Regler eines Aktors) auf einem anderen Dashboard-Tab, fand der `.find()`-
+Lookup ihn nicht — Ist-Wert, Ausgang, Regelbereich (Fallback auf 0–100) und
+Einheit fehlten auf der Regler-Karte, die „Steuert von …"-Zuordnung auf der
+Aktor-Karte ebenso.
+
+**Umsetzung:** `sensors`/`actuators`/`controllers` an beiden `ControllerCard`-
+Stellen und an `ActuatorCard` auf den ungefilterten `snap` umgestellt — die
+Tab-Filterung (`displaySnap`) bestimmt weiterhin nur, welche Karten auf einem
+Tab überhaupt erscheinen, nicht mehr, welche verknüpften Items eine Karte
+auflösen kann.
+
+**Verifikation:** `pnpm typecheck` grün. Live gegen `brewcontrol.local`
+geprüft: Regler `testpid` (Sensor `mlt` + Aktor `kettle`, beide auf anderen
+Tabs) zeigt auf dem „Gärung"-Tab jetzt korrekt Ist-Wert, Ausgang und den vom
+Sensor geerbten Regelbereich.

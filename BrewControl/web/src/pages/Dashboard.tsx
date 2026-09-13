@@ -473,8 +473,8 @@ export function Dashboard({ snap, err, alarmByRef }: {
                   {featured && (
                     <div class="lg:shrink-0">
                       <ControllerCard controller={featured}
-                        sensors={displaySnap.sensors}
-                        actuators={displaySnap.actuators}
+                        sensors={snap!.sensors}
+                        actuators={snap!.actuators}
                         programs={programs}
                         viewMode={activeDash?.controllerModes?.[featured.id] ?? 'normal'}
                         onEdit={editMode ? () => startEdit('controller', featured.id) : undefined}
@@ -536,8 +536,8 @@ export function Dashboard({ snap, err, alarmByRef }: {
               const mode = activeDash?.controllerModes?.[c.id] ?? 'normal';
               return (
                 <ControllerCard key={c.id} controller={c}
-                  sensors={displaySnap.sensors}
-                  actuators={displaySnap.actuators}
+                  sensors={snap!.sensors}
+                  actuators={snap!.actuators}
                   programs={programs}
                   viewMode={mode}
                   onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
@@ -548,7 +548,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
             })}
             {displaySnap.actuators.map((a) => (
               <ActuatorCard key={a.id} actuator={a}
-                controllers={displaySnap.controllers}
+                controllers={snap!.controllers}
                 programs={programs}
                 alarm={alarmByRef?.get(`actuator/${a.id}`)}
                 onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
