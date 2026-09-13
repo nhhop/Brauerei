@@ -1,16 +1,23 @@
 import { useState } from 'preact/hooks';
-import type { TimerConfig, TimerAction } from '../types';
+import type { TimerConfig, TimerAction, ProgramConfig } from '../types';
 import { controlTimer } from '../api';
 import { badge, badgeAccent, badgeSuccess } from '../ui';
 import { fmtDuration } from '../format';
-import { Pause, Pencil, Play, Square, Timer as TimerIcon, Trash2, type LucideIcon } from 'lucide-preact';
+import { Pause, Pencil, Play, Repeat, Square, Timer as TimerIcon, Trash2, type LucideIcon } from 'lucide-preact';
 
 interface Props {
   timer: TimerConfig;
+  programs: ProgramConfig[];
   onChanged: () => void;   // re-fetch timers after a control action
   onEdit?: () => void;
   onDelete?: () => void;
 }
+
+const TARGET_KIND_LABEL: Record<string, string> = {
+  actuator: 'Aktor',
+  controller: 'Regler',
+  program: 'Programm',
+};
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'Bereit',
@@ -25,8 +32,8 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
-export function TimerCard({ timer, onChanged, onEdit, onDelete }: Props) {
-  const { id, name, durationSec, status, remainingSec } = timer;
+export function TimerCard({ timer, programs, onChanged, onEdit, onDelete }: Props) {
+  const { id, name, mode, timeOfDay, repeat, onExpire, durationSec, status, remainingSec } = timer;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -70,6 +77,7 @@ export function TimerCard({ timer, onChanged, onEdit, onDelete }: Props) {
           <h3 class="truncate font-medium text-fg">{name}</h3>
         </div>
         <div class="flex shrink-0 items-center gap-1">
+          {repeat && <Repeat size={14} aria-hidden title="Wiederholt sich" class="text-muted" />}
           <span class={statusBadgeClass(status)}>{STATUS_LABEL[status] ?? status}</span>
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
@@ -91,7 +99,7 @@ export function TimerCard({ timer, onChanged, onEdit, onDelete }: Props) {
           {fmtDuration(remainingSec)}
         </div>
         <div class="mt-1 text-[10px] uppercase tracking-wide text-faint">
-          von {fmtDuration(durationSec)}
+          {mode === 'clock' ? `bis ${timeOfDay} Uhr` : `von ${fmtDuration(durationSec)}`}
         </div>
       </div>
 
@@ -110,6 +118,15 @@ export function TimerCard({ timer, onChanged, onEdit, onDelete }: Props) {
           <Btn action="stop" label="Stop" icon={Square} />
         )}
       </div>
+
+      {onExpire && (
+        <p class="mt-2 truncate text-[11px] text-muted">
+          → {onExpire.action === 'start' ? 'startet' : 'stoppt'} {TARGET_KIND_LABEL[onExpire.targetType]}{' '}
+          {onExpire.targetType === 'program'
+            ? (programs.find((p) => p.id === onExpire.targetId)?.name ?? onExpire.targetId)
+            : onExpire.targetId}
+        </p>
+      )}
 
       {err && <p class="mt-2 text-xs text-critical">{err}</p>}
     </div>

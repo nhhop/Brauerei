@@ -823,7 +823,9 @@ paths:
       summary: Create a timer
       description: |
         Requires `Content-Type: application/json`. Rejected (`invalid timer`)
-        when `name` is empty or `durationSec` is not greater than zero.
+        when `name` is empty, the field required by `mode` (`durationSec` for
+        `duration`, a valid `timeOfDay` for `clock`) is missing/invalid, or
+        `onExpire` is present but malformed.
       requestBody:
         required: true
         content:
@@ -882,9 +884,11 @@ paths:
       operationId: controlTimer
       summary: Drive a timer's run state
       description: |
-        `start` from `idle` or `done`, `pause`/`resume` while running, `stop`
-        resets to `idle`. Unlike programs, a timer has no targets to apply —
-        no snapshot push follows.
+        `start` from `idle` or `done` (in `clock` mode, `durationSec` is
+        (re)computed from the current time and `timeOfDay`), `pause`/`resume`
+        while running, `stop` resets to `idle`. The optional `onExpire`
+        action fires automatically on expiry, not through this endpoint — no
+        snapshot push follows a plain control action.
       requestBody:
         required: true
         content:
@@ -2682,22 +2686,79 @@ components:
       type: string
       enum: [start, pause, resume, stop]
 
+    TimerMode:
+      type: string
+      enum: [duration, clock]
+
+    TimerExpireAction:
+      type: object
+      required: [targetType, targetId, action]
+      description: |
+        Fired once, directly against the actuator/controller/program, when
+        the timer transitions to `done` — before a `repeat` re-arm, if any.
+        Coarse start/stop only; no value or setpoint is set.
+      properties:
+        targetType:
+          type: string
+          enum: [actuator, controller, program]
+        targetId:
+          type: string
+          description: Id of the actuator, controller or program to act on.
+        action:
+          type: string
+          enum: [start, stop]
+          description: |
+            For `actuator`/`controller`: the master enable switch
+            (`enabled` true/false). For `program`: the program's own
+            `start`/`stop` control action.
+
     TimerInput:
       type: object
-      required: [name, durationSec]
+      required: [name, mode]
+      description: |
+        `durationSec` is required (and used) only when `mode` is `duration`;
+        `timeOfDay` is required (and used) only when `mode` is `clock` — the
+        field for the other mode, if present, is ignored.
       properties:
         name: { type: string }
+        mode: { $ref: "#/components/schemas/TimerMode" }
         durationSec: { type: integer, description: Must be greater than zero. }
+        timeOfDay:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          description: |
+            24h local time "HH:MM", no date — always means the next
+            occurrence of that time, rolling to tomorrow if already past
+            today.
+        repeat:
+          type: boolean
+          default: false
+          description: |
+            Re-arms immediately after the `onExpire` action fires instead of
+            staying `done`. `clock` mode re-arms to the same time tomorrow
+            (no drift); `duration` mode just recounts the same `durationSec`.
+        onExpire: { $ref: "#/components/schemas/TimerExpireAction" }
 
     Timer:
       type: object
       required:
-        [id, name, durationSec, status, startedEpoch, elapsedAtPauseSec,
-         remainingSec]
+        [id, name, mode, durationSec, repeat, status, startedEpoch,
+         elapsedAtPauseSec, remainingSec]
       properties:
         id: { type: string, pattern: "^tm_[0-9a-f]{5}$" }
         name: { type: string }
-        durationSec: { type: integer }
+        mode: { $ref: "#/components/schemas/TimerMode" }
+        durationSec:
+          type: integer
+          description: |
+            `duration` mode: the configured value. `clock` mode: the value
+            computed for the current/most recent run; 0 before the first
+            start.
+        timeOfDay:
+          type: string
+          description: Present when `mode` is `clock`.
+        repeat: { type: boolean }
+        onExpire: { $ref: "#/components/schemas/TimerExpireAction" }
         status: { $ref: "#/components/schemas/TimerStatus" }
         startedEpoch:
           type: integer

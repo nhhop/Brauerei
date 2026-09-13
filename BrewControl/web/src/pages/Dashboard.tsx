@@ -26,6 +26,7 @@ import { ProfileEditorModal } from '../components/ProfileEditorModal';
 import { Pencil, Check, Plus, X } from 'lucide-preact';
 
 type ProgramSave = Pick<ProgramConfig, 'name' | 'steps'>;
+type TimerSave = Pick<TimerConfig, 'name' | 'mode' | 'durationSec' | 'timeOfDay' | 'repeat' | 'onExpire'>;
 
 type Role = 'sensor' | 'actuator' | 'controller';
 type Tab = { kind: 'dashboard'; id: string };
@@ -208,7 +209,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   function openCreateTimer() { setEditingTimer(null); setTimerEditorOpen(true); }
   function openEditTimer(t: TimerConfig) { setEditingTimer(t); setTimerEditorOpen(true); }
 
-  async function saveTimer(cfg: { name: string; durationSec: number }) {
+  async function saveTimer(cfg: TimerSave) {
     if (editingTimer) await updateTimer(editingTimer.id, cfg);
     else await createTimer(cfg);
     setTimerEditorOpen(false);
@@ -375,6 +376,8 @@ export function Dashboard({ snap, err, alarmByRef }: {
       <TimerEditorModal
         open={timerEditorOpen}
         initial={editingTimer ?? undefined}
+        snap={snap}
+        programs={programs}
         onSave={saveTimer}
         onDelete={editingTimer ? () => doDeleteTimer(editingTimer.id) : undefined}
         onClose={() => { setTimerEditorOpen(false); setEditingTimer(null); }}
@@ -521,6 +524,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
               if (!timer) return null;
               return (
                 <TimerCard key={tid} timer={timer}
+                  programs={programs}
                   onChanged={refreshTimers}
                   onEdit={editMode ? () => openEditTimer(timer) : undefined}
                   onDelete={editMode ? () => removeTimerRef(tid) : undefined}

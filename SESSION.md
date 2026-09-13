@@ -2473,3 +2473,79 @@ Wall-Clock (60→45→36→0), keine Rücksetzung auf `durationSec`, kein Einfri
 Regler/Aktor-Zustand kamen ebenfalls unauffällig zurück. Damit sind beide
 zuvor offenen Hardware-Verifikationspunkte (Reboot-Überleben, Push) erledigt
 — Eintrag aus `PLAN.md` → Hardware-Verifikation entfernt.
+
+## 2026-09-13 — Timer-Erweiterung: Uhrzeit-Modus, Start/Stop-Aktion, Wiederholen
+
+Der freistehende Timer konnte bisher nur ablaufen und eine Push-Meldung
+auslösen. Auf Wunsch erweitert um: (1) statt einer reinen Dauer auch eine
+Zieluhrzeit einstellbar (`mode: duration|clock`, `timeOfDay: "HH:MM"`) —
+praktisch fürs automatische Vorheizen zum Brautag-Start; (2) eine optionale
+Start/Stop-Aktion auf einen Aktor, Regler oder ein Programm bei Ablauf
+(`onExpire: {targetType, targetId, action}`); (3) Wiederholen, das im
+Uhrzeit-Modus driftfrei auf „morgen selbe Zeit" rearmt und im Dauer-Modus
+dieselbe Dauer erneut abzählt.
+
+**Architektur:** `durationSec` bleibt die einzige Laufzeitgröße — im
+Uhrzeit-Modus wird sie bei jedem Start/Rearm frisch aus `timeOfDay` berechnet
+(`TimerSchedule.h`, neu, reine C++-Helfer analog `ProgramTargets.h`, nativ
+getestet). Die Aktion feuert direkt in `TimerStore::tick()` gegen
+`Registry`/`ProgramRunner` (dafür deren Referenzen neu in die Signatur
+aufgenommen, ein Zeilen-Change am Aufrufer in `WebUI.cpp`) — das muss auch
+ohne offenen Browser funktionieren. Locking geprüft: kein Deadlock-Pfad, da
+weder `ProgramRunner` noch `Registry`/`Actuator`/`Controller` zurück in
+`TimerStore` rufen, exakt das Muster, das `WebUI::tick()` mit
+`programs_.tick(reg_, ...)` schon lebt.
+
+**Umgesetzt:** `TimerStore.h/.cpp`, neue `TimerSchedule.h` + native Tests
+(`test_timer_schedule`, 7 Fälle inkl. Mitternachts-Übergang und „exakter
+Treffer rollt vollen Tag"), `WebUI.cpp` (Tick-Aufruf), `openapi.yaml`
+(`TimerMode`, `TimerExpireAction`, erweiterte `TimerInput`/`Timer`-Schemas,
+korrigierte Endpoint-Beschreibung), `types.ts`/`api.ts`,
+`TimerEditorModal.tsx` (Dauer/Uhrzeit-Segmented, Wiederholen-Checkbox,
+Aktion-Picker für Aktor/Regler/Programm mit Start/Stop), `TimerCard.tsx`
+(Uhrzeit-Anzeige, Repeat-Icon, Aktionszeile). Abwärtskompatibel: alte
+`timers.json`-Einträge ohne die neuen Felder laden über dieselben
+`|`-Defaults wie bisher als normale Dauer-Timer.
+
+**Verifikation:** `pio test -e native` (37/37, inkl. neuer
+`test_timer_schedule`-Suite), `pio run -e esp32dev` + `-e
+lilygo_t_display_s3_amoled` kompiliert, `npx @redocly/cli lint` sauber,
+`pnpm typecheck` + `pnpm build` sauber.
+
+**Hardware-E2E am LilyGo T-Display-S3-AMOLED (`brewcontrol.local`,
+192.168.178.87, reine Testumgebung ohne reale Aktoren):** neue Firmware
+geflasht (`pio run -e lilygo_t_display_s3_amoled -t upload --upload-port
+COM9`, lief ohne manuellen BOOT/RESET-Eingriff durch — anders als beim S2
+Mini nicht nötig). Danach per `curl` gegen die echte API getestet:
+- Alter Timer „hopfengabe" (vor dem Feature angelegt, ohne `mode`/`repeat`/
+  `onExpire` in `timers.json`) lädt nach dem Flash weiterhin korrekt als
+  normaler Dauer-Timer — Abwärtskompatibilität bestätigt.
+- Uhrzeit-Timer mit `onExpire` auf „Riptide Pumpe" (start), Ziel 2 Min. in der
+  Zukunft: `durationSec` exakt korrekt aus der Ziel-Uhrzeit berechnet (80 s bis
+  19:14 Uhr, real UTC+2 via Settings), nach Ablauf schaltete die Pumpe live um
+  (`enabled:false→true`, `state.v:0→1`) — der Direktzugriff auf
+  `Registry`/`ProgramRunner` aus `TimerStore::tick()` funktioniert ohne
+  offenen Browser.
+- Dauer-Timer (15 s) mit `repeat`: vier Zyklen beobachtet, `startedEpoch`
+  sprang exakt im 15-s-Raster weiter, Status blieb durchgehend `running`
+  (kein Zwischenstopp bei `done`).
+- Uhrzeit-Timer mit `repeat`: nach dem ersten Ablauf sprang `durationSec` von
+  55 auf exakt 86400 und `startedEpoch` wurde auf den exakten
+  Ablaufzeitpunkt rebased (Status blieb `running`) — der drift-freie
+  „morgen selbe Uhrzeit"-Rearm funktioniert wie geplant.
+- Reboot-Test (sicherer Trigger über `POST /api/network` mit unverändertem
+  Hostnamen) während ein Uhrzeit+Repeat+Aktion-Timer lief: nach dem Neustart
+  (Uptime laut `state.t` ~22 s, also echter Reboot) waren `mode`, `timeOfDay`,
+  `repeat`, `onExpire`, `startedEpoch` und `durationSec` unverändert erhalten,
+  `remainingSec` lief nach Wall-Clock korrekt weiter statt zurückgesetzt zu
+  werden.
+- Alle Testtimer und der Pumpen-Zustand danach wieder aufgeräumt/zurückgesetzt.
+  Nebenbefund (nicht durch diese Änderung verursacht, bestehendes Verhalten):
+  der Reboot setzte den `mash`-Regler-Sollwert von einem manuell gesetzten
+  Laufzeitwert (72 °C) auf den Config-Default (65 °C) zurück — das
+  zugehörige Programm „Hermann-Weizen" stand dabei bereits auf `idle`, war
+  also nicht aktiv am Steuern; nicht-programmgebundene Sollwerte werden beim
+  Boot grundsätzlich nicht persistiert.
+
+Damit ist der zuvor offene Hardware-Verifikationspunkt für die Timer-Erweiterung
+erledigt — Eintrag aus `PLAN.md` entfernt.

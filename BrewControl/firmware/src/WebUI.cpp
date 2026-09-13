@@ -1567,7 +1567,7 @@ void WebUI::tick() {
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
   logs_.tick(reg_, fs_, time(nullptr), now);
   programs_.tick(reg_, fs_, time(nullptr));
-  timers_.tick(fs_, time(nullptr));
+  timers_.tick(reg_, programs_, fs_, time(nullptr));
 
   // Alarm evaluation is deliberately gated to 1 Hz: it resolves every rule and
   // calls paramsJson() on every controller, which at loop rate (~5 ms) would

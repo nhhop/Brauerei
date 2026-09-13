@@ -351,7 +351,7 @@ export function controlProgram(id: string, action: ProgramAction): Promise<void>
 
 // ── Timer ─────────────────────────────────────────────────────────────────────
 
-type TimerSave = Pick<TimerConfig, 'name' | 'durationSec'>;
+type TimerSave = Pick<TimerConfig, 'name' | 'mode' | 'durationSec' | 'timeOfDay' | 'repeat' | 'onExpire'>;
 
 export async function getTimers(): Promise<TimerConfig[]> {
   const r = await fetch('/api/timers');

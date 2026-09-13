@@ -197,10 +197,30 @@ export type TimerStatus = 'idle' | 'running' | 'paused' | 'done';
 
 export type TimerAction = 'start' | 'pause' | 'resume' | 'stop';
 
+export type TimerMode = 'duration' | 'clock';
+
+export type TimerTargetKind = 'actuator' | 'controller' | 'program';
+
+export type TimerTargetAction = 'start' | 'stop';
+
+// Fired once, directly against the target, when the timer expires — before a
+// repeat re-arm, if any. Coarse start/stop only, no value/setpoint.
+export interface TimerExpireAction {
+  targetType: TimerTargetKind;
+  targetId: string;
+  action: TimerTargetAction;
+}
+
 export interface TimerConfig {
   id: string;
   name: string;
+  mode: TimerMode;
+  // duration mode: the configured value. clock mode: computed for the
+  // current/most recent run, 0 before the first start.
   durationSec: number;
+  timeOfDay?: string;         // "HH:MM", present when mode === 'clock'
+  repeat: boolean;
+  onExpire?: TimerExpireAction;
   // Runtime state (always present, persisted across reboots):
   status: TimerStatus;
   startedEpoch: number;       // epoch (s) the timer started; 0 while idle
