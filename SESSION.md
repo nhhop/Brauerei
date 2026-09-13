@@ -2708,3 +2708,26 @@ Zugriffsschutz war wieder aus. Für den nächsten Fall: welche Session/wer
 zuletzt ein Testpasswort auf einem der drei Boards gesetzt hat, bleibt
 ungeklärt — beim Verlassen einer Testsession den Zugriffsschutz wieder
 aufheben, sonst sperrt es die nächste Session aus.
+
+## 2026-09-14 — Dashboard-Chart: Legende in die Titelzeile (Desktop)
+
+Auf Desktop-Breite verlor die uPlot-Legende unter dem Chart unnötig viel
+Platz. Erster Versuch per reinem CSS (`.uplot { flex-direction:
+column-reverse }` ab 768px) schob sie nur über den Chart in eine eigene
+Zeile; auf Wunsch danach in die gleiche Zeile wie der Karten-Titel verschoben.
+Dafür bekam `ChartCard.tsx` einen neuen `legendHost`-Prop: sobald gesetzt,
+wird `.u-legend` nach dem Bau des uPlot-Charts per `appendChild` dorthin
+verschoben (uPlot selbst kümmert sich nicht um den DOM-Elternteil seiner
+Legende) und beim Unmount/Rebuild wieder geleert — `uPlot.destroy()` entfernt
+nur die eigene Root, nicht Knoten, die vorher herausgelöst wurden.
+`Dashboard.tsx` kapselt Titel+Chart jetzt in einer lokalen `ChartRow`-
+Komponente mit einem Platzhalter-`div` in der Titelzeile als Legend-Ziel
+(als State geführt, weil der Ref erst nach dem Mount existiert und ChartCard
+den erneuten Effect-Lauf zum Verschieben braucht); aktiv nur wenn
+`isDesktop` (matcht den bestehenden `lg`-Breakpoint des Dashboards).
+LogsPage/ArchivePage bekommen keinen `legendHost` und behalten die CSS-
+Fallback-Lösung (Legende weiterhin in eigener Zeile über dem Chart ab
+768px). Mobil unverändert (Legende unter dem Chart). Verifiziert live gegen
+das Testboard `192.168.178.87`: Legendenwerte aktualisieren sich mit dem
+Snapshot, Edit-Modus (Titel + Legende + Entfernen-Button in einer Zeile)
+kollidiert nicht.
