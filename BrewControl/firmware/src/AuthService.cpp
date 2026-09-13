@@ -64,6 +64,7 @@ void AuthService::begin() {
   prefs.begin("brewctrl", true);
   saltHex_ = prefs.getString("authSalt", "");
   hashHex_ = prefs.getString("authHash", "");
+  uiProtected_ = prefs.getBool("authUiLock", false);
   prefs.end();
   // A half-written pair (salt without hash or vice versa) would leave the
   // device permanently unlockable — treat it as unconfigured.
@@ -71,6 +72,9 @@ void AuthService::begin() {
     saltHex_ = "";
     hashHex_ = "";
   }
+  // A UI lock without a password would be unrecoverable — can't happen via
+  // setPassword()/setUiProtected(), but don't trust it blindly from NVS.
+  if (!isConfigured()) uiProtected_ = false;
 }
 
 void AuthService::persist_() const {
@@ -83,6 +87,11 @@ void AuthService::persist_() const {
     prefs.putString("authSalt", saltHex_);
     prefs.putString("authHash", hashHex_);
   }
+  if (uiProtected_) {
+    prefs.putBool("authUiLock", true);
+  } else {
+    prefs.remove("authUiLock");
+  }
   prefs.end();
 }
 
@@ -91,6 +100,7 @@ bool AuthService::setPassword(const String& current, const String& newPassword) 
   if (newPassword.isEmpty()) {
     saltHex_ = "";
     hashHex_ = "";
+    uiProtected_ = false;
   } else {
     saltHex_ = randomHex(16);
     hashHex_ = hashPassword(saltHex_, newPassword);
@@ -99,6 +109,13 @@ bool AuthService::setPassword(const String& current, const String& newPassword) 
   persist_();
   // Changing or clearing the password invalidates every existing login.
   revokeAll();
+  return true;
+}
+
+bool AuthService::setUiProtected(bool enabled) {
+  if (!isConfigured()) return false;
+  uiProtected_ = enabled;
+  persist_();
   return true;
 }
 

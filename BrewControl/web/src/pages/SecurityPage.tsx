@@ -1,14 +1,15 @@
 // BrewControl/web/src/pages/SecurityPage.tsx
 import { useEffect, useState } from 'preact/hooks';
 import type { AuthStatus } from '../types';
-import { getAuthStatus, setDevicePassword, revokeAllSessions } from '../api';
+import { getAuthStatus, setDevicePassword, setUiProtection, revokeAllSessions } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
+import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary, btnDanger, btnSecondary, inp, badge, badgeSuccess } from '../ui';
-import { Lock, LockOpen, Info, LogOut } from 'lucide-preact';
+import { Lock, LockOpen, Info, LogOut, EyeOff } from 'lucide-preact';
 
 export function SecurityPage(_: { path?: string }) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
@@ -68,6 +69,19 @@ export function SecurityPage(_: { path?: string }) {
     }
   }
 
+  async function toggleUiProtection(enabled: boolean) {
+    setPending(true); setErr(null); setNote(null);
+    try {
+      await setUiProtection(enabled);
+      await reload();
+      setNote(enabled ? 'UI-Schutz aktiviert.' : 'UI-Schutz deaktiviert.');
+    } catch {
+      setErr('Speichern fehlgeschlagen.');
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function revokeAll() {
     setPending(true); setErr(null); setNote(null);
     try {
@@ -113,7 +127,9 @@ export function SecurityPage(_: { path?: string }) {
           icon={status.enabled ? Lock : LockOpen}
           title={status.enabled ? 'Zugriffsschutz aktiv' : 'Kein Zugriffsschutz'}
           desc={status.enabled
-            ? 'Werte ändern, Geräte anlegen, Updates und Backups verlangen das Gerätepasswort. Anzeigen bleibt für jeden im Netzwerk offen.'
+            ? (status.uiProtected
+                ? 'Werte ändern, Geräte anlegen, Updates und Backups verlangen das Gerätepasswort. Anzeigen ist zusätzlich gesperrt.'
+                : 'Werte ändern, Geräte anlegen, Updates und Backups verlangen das Gerätepasswort. Anzeigen bleibt für jeden im Netzwerk offen.')
             : 'Jeder im Netzwerk kann dieses Gerät bedienen. Ein Passwort schützt alle schreibenden Zugriffe; Anzeigen bleibt offen.'}
           control={<span class={status.enabled ? badgeSuccess : badge}>
             {status.enabled ? 'Aktiv' : 'Aus'}
@@ -154,6 +170,13 @@ export function SecurityPage(_: { path?: string }) {
               </div>
             </div>
           </SettingsCard>
+        )}
+
+        {status.enabled && !locked && (
+          <SettingsCard icon={EyeOff} title="Auch Lesen/UI sperren"
+            desc="Ohne gültige Anmeldung zeigt das Gerät nur noch eine Login-Seite — keine Werte, keine Steuerung."
+            control={<ToggleSwitch checked={status.uiProtected} onChange={toggleUiProtection}
+              disabled={pending} title="Auch Lesen/UI sperren" />} />
         )}
 
         {status.enabled && !locked && (

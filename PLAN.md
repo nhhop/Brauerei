@@ -62,7 +62,6 @@ Grob nach Bereitschaft / Aufwand; Abhängigkeiten stehen inline. Jeder Punkt bek
 - **Hauptschalter/Notaus-Funktion.** *(Opus · mittel · mit Plan — Sicherheits-/Architekturfrage, was „Notaus" konkret abschaltet)*
 - **Alternative Slider-Darstellung für Aktoren mit diskreten Stufen** (statt stufenlosem Slider). *(Sonnet · mittel · mit Plan — UX für diskrete Aktoren)*
 - **Programm-Komponente: anderen Button als „Start" je nach Zustand hervorheben** (Highlight). *(Sonnet · klein · ohne Plan)*
-- **Zugriffsschutz: Option auch für die UI selbst anbieten** (nicht nur für die API). *(Sonnet · mittel · mit Plan — Scope-Frage, was „geschützt" für die UI bedeutet)*
 - **Alternative MQTT-Broker prüfen** (z. B. picomqtt) als Ersatz/Ergänzung für den eingebetteten Broker. *(Sonnet · klein · mit Plan — erst Recherche/Vergleich, dann Entscheidung)*
 
 ## Größere Brocken (eigene Spec vor Umsetzung)

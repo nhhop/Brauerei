@@ -130,6 +130,60 @@ bool requireAuth(AsyncWebServerRequest* req) {
   return false;
 }
 
+// Self-contained login page, served instead of the SPA for GET requests when
+// auth_.isUiProtected() is on and the caller has no session (see the
+// addMiddleware() gate near serveStatic() in begin()). Embedded rather than
+// a file under /www: it must stay reachable independent of the SPA bundle
+// (e.g. mid asset-upload), and the LittleFS boards only have a 256 KB data
+// partition to spend on the app itself.
+const char kLockedPageHtml[] = R"HTML(<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BrewControl gesperrt</title>
+<style>
+:root{color-scheme:light dark}
+body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;margin:0;
+  align-items:center;justify-content:center;background:#12161c;color:#e6e8eb}
+form{background:#1b212b;padding:2rem;border-radius:12px;width:min(90vw,320px);
+  box-shadow:0 8px 24px rgba(0,0,0,.4)}
+h1{font-size:1.1rem;margin:0 0 1rem}
+input{width:100%;box-sizing:border-box;padding:.6rem .7rem;border-radius:8px;
+  border:1px solid #333c48;background:#12161c;color:inherit;margin-bottom:.75rem;
+  font-size:1rem}
+button{width:100%;padding:.6rem;border:0;border-radius:8px;background:#3b82f6;
+  color:#fff;font-size:1rem;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}
+#err{color:#f87171;font-size:.85rem;min-height:1.2em;margin-top:.5rem}
+</style></head>
+<body>
+<form id="f">
+<h1>&#128274; BrewControl gesperrt</h1>
+<input type="password" id="pw" placeholder="Ger&#228;tepasswort" autofocus autocomplete="current-password">
+<button type="submit">Anmelden</button>
+<div id="err"></div>
+</form>
+<script>
+document.getElementById('f').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var btn = e.target.querySelector('button');
+  var err = document.getElementById('err');
+  btn.disabled = true; err.textContent = '';
+  try {
+    var r = await fetch('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: document.getElementById('pw').value}),
+    });
+    if (r.ok) { location.reload(); return; }
+    err.textContent = r.status === 409 ? 'Kein Passwort konfiguriert.' : 'Falsches Passwort.';
+  } catch (e) {
+    err.textContent = 'Verbindung fehlgeschlagen.';
+  }
+  btn.disabled = false;
+});
+</script>
+</body></html>
+)HTML";
+
 // Matches POST <prefix>* requests and delivers the body in a single call.
 // Used for write and create routes where the URL contains a path param or
 // the body must be parsed. Bodies spanning several TCP segments are collected
@@ -270,7 +324,9 @@ void WebUI::begin() {
   // With no password configured every gate is a no-op and the API behaves
   // exactly as it did before this feature. Reads stay open either way; only
   // mutating routes are gated, plus GET /api/backup (it carries the MQTT
-  // password). See requireAuth above.
+  // password). See requireAuth above. auth_.isUiProtected() is a further,
+  // separately-toggled step that also gates reads and the UI itself — see
+  // the addMiddleware() gate near serveStatic() below.
   auth_.begin();
   g_auth = &auth_;
 
@@ -279,6 +335,8 @@ void WebUI::begin() {
     out += auth_.isConfigured() ? "true" : "false";
     out += ",\"authenticated\":";
     out += isAuthenticated(req) ? "true" : "false";
+    out += ",\"uiProtected\":";
+    out += auth_.isUiProtected() ? "true" : "false";
     out += "}";
     req->send(200, "application/json", out);
   });
@@ -336,6 +394,17 @@ void WebUI::begin() {
     resp->addHeader("Set-Cookie", clearedCookieHeader());
     req->send(resp);
   });
+
+  // Turns the UI-lock step on/off. Requires an existing session, same as
+  // changing the password — knowing it once isn't enough on its own.
+  server_.addHandler(new PostJsonHandler("/api/auth/ui-protection",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        if (!auth_.isConfigured()) { req->send(409, "text/plain", "no password configured"); return; }
+        if (!isAuthenticated(req)) { req->send(401, "text/plain", "authentication required"); return; }
+        auth_.setUiProtected(json["enabled"] | false);
+        req->send(204);
+      }));
 
   // ── Delete (prefix, no body) ──────────────────────────────────────────────
   server_.addHandler(new DeletePrefixHandler("/api/sensors/",
@@ -1552,6 +1621,24 @@ void WebUI::begin() {
       req->send(fs_, "/www/index.html", "text/html");
     } else {
       req->send(404, "text/plain", "Not Found");
+    }
+  });
+
+  // UI-lock gate: when auth_.isUiProtected() is on, this runs before every
+  // request reaches its handler — static file, SPA fallback or API route
+  // alike (server-level middleware sits in front of the whole dispatch, see
+  // ESPAsyncWebServer's AsyncWebServerRequest::_runMiddlewareChain) — so it
+  // covers reads too, not just the mutating routes requireAuth() already
+  // gates. /api/auth/* stays exempt so logging in remains possible.
+  server_.addMiddleware([this](AsyncWebServerRequest* req, ArMiddlewareNext next) {
+    if (!auth_.isUiProtected() || req->url().startsWith("/api/auth/") || isAuthenticated(req)) {
+      next();
+      return;
+    }
+    if (req->method() == HTTP_GET && !req->url().startsWith("/api/")) {
+      req->send(200, "text/html", kLockedPageHtml);
+    } else {
+      req->send(401, "text/plain", "authentication required");
     }
   });
 

@@ -314,6 +314,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/auth/login` · `/logout` | POST | Anmelden (Session-Cookie) / abmelden |
 | `/api/auth/password` | POST | Passwort setzen, ändern oder (leer) löschen |
 | `/api/auth/revoke-all` | POST | Alle Sitzungen abmelden |
+| `/api/auth/ui-protection` | POST | UI-/Lesesperre an- oder abschalten (nur bei gesetztem Passwort) |
 
 Erfolgreiche Schreib-Requests antworten mit `204` ohne Body, Fehler mit
 `text/plain` und der nackten Meldung (kein JSON-Error-Objekt).
@@ -393,8 +394,18 @@ Bestandszustand, das Verhalten ist identisch zu vorher. Ein Passwort
 (`GET /api/settings` schwärzt es, das Backup nicht).
 
 Einen separaten An/Aus-Schalter gibt es nicht: das gesetzte Passwort *ist* der
-Schutz, Löschen hebt ihn auf. Ein paar Verhaltensweisen, die sich aus dem
-Cookie-Modell ergeben:
+Schutz, Löschen hebt ihn auf.
+
+Ein weiterer, eigens umschaltbarer Schritt (`POST /api/auth/ui-protection`,
+Einstellungen → Zugriffsschutz → „Auch Lesen/UI sperren"; nur bei gesetztem
+Passwort verfügbar) sperrt zusätzlich alle Leserouten und die UI selbst. Ist
+er aktiv, liefert das Gerät auf ein unauthentifiziertes `GET /` oder jede
+statische Datei eine eigenständige Login-Seite statt der SPA, und jede
+sonstige Route (`/api/snapshot`, `/api/settings`, `/api/events`, …) antwortet
+mit `401` — offen bleibt nur `/api/auth/*`, damit die Anmeldung selbst
+funktioniert. Passwort löschen schaltet auch diesen Schritt automatisch ab.
+
+Ein paar Verhaltensweisen, die sich aus dem Cookie-Modell ergeben:
 
 - Sitzungen liegen nur im RAM — jeder Reboot meldet alle ab.
 - Das Cookie hängt am Host, für den es ausgestellt wurde. `http://192.168.1.50/`

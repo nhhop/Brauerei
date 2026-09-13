@@ -17,9 +17,16 @@ info:
     read is `GET /api/backup`, whose bundle carries the MQTT password in
     cleartext (`GET /api/settings` redacts it — the backup does not).
 
+    A further, separately-toggled step (`POST /api/auth/ui-protection`, only
+    settable once a password exists) also gates every read and the UI itself.
+    With it on, an unauthenticated `GET` of `/` or any static asset gets a
+    standalone login page instead of the SPA, and every other endpoint
+    (`/api/snapshot`, `/api/settings`, `/api/events`, …) answers `401` — only
+    `/api/auth/*` stays reachable so logging in remains possible.
+
     There is no separate "enabled" flag: a configured password *is* the
-    protection. `GET /api/auth/status` reports both whether one is set and
-    whether the caller holds a valid session.
+    protection. `GET /api/auth/status` reports whether one is set, whether the
+    caller holds a valid session, and whether the UI/read lock is on.
 
     Sessions live in device RAM, so a reboot invalidates every login. The
     cookie is scoped to the host it was issued for — reaching the same device
@@ -132,6 +139,7 @@ paths:
         cannot be allocated, or the registry no longer fits it, the response is
         `503` — never a truncated or empty `200`.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Current snapshot.
           content:
@@ -166,6 +174,7 @@ paths:
         that must not miss an alert tracks the highest `seq` it saw and calls
         `GET /api/alerts?since=<seq>` after every (re)connect.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Event stream.
           content:
@@ -435,6 +444,7 @@ paths:
           schema: { type: integer }
           description: GPIO number the bus is attached to.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Scan result (an empty `devices` array if nothing responded).
           content:
@@ -457,6 +467,7 @@ paths:
         Used by the edit UI to prefill forms. Statically compiled items are not
         included.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Stored config.
           content:
@@ -470,6 +481,7 @@ paths:
       operationId: listDashboards
       summary: List all dashboards
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: All dashboards.
           content:
@@ -527,6 +539,7 @@ paths:
       operationId: listLogs
       summary: List all log configurations
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: All log configs.
           content:
@@ -628,6 +641,7 @@ paths:
       summary: List the recorded sessions of a log
       description: An unknown id yields an empty array, not a 404.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Recorded sessions.
           content:
@@ -666,6 +680,7 @@ paths:
       operationId: getLogData
       summary: Get a session's samples as CSV
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Session CSV.
           content:
@@ -685,6 +700,7 @@ paths:
       summary: Download a session's samples as CSV
       description: "Identical to `/data`, but sent with `Content-Disposition: attachment`."
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Session CSV as a file download.
           headers:
@@ -705,6 +721,7 @@ paths:
       operationId: listPrograms
       summary: List all programs with their live run state
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: All programs.
           content:
@@ -810,6 +827,7 @@ paths:
       operationId: listTimers
       summary: List all timers with their live remaining time
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: All timers.
           content:
@@ -920,6 +938,7 @@ paths:
         `since`, `resolved`), so a client can badge cards without replaying the
         alert history.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: All alarm rules.
           content:
@@ -1024,6 +1043,7 @@ paths:
             path after an SSE reconnect. `seq` restarts at 1 on reboot, so a
             client whose stored cursor exceeds the newest `seq` should reset it.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Alert history.
           content:
@@ -1057,6 +1077,7 @@ paths:
         bootstrap page as `?k=` so a second browser subscribes against the same
         keypair instead of starting a rival one.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Current push configuration.
           content:
@@ -1177,6 +1198,7 @@ paths:
       summary: Get the profile library
       description: The categories ride along here; they have no GET of their own.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: All categories and profiles.
           content:
@@ -1298,6 +1320,7 @@ paths:
         carries `mqtt.passwordSet` (bool) instead. On `POST /api/settings`, an
         empty or omitted `mqtt.password` leaves the stored password unchanged.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Current settings.
           content:
@@ -1352,6 +1375,7 @@ paths:
       operationId: getNetworkStatus
       summary: Get the current WiFi status and configured hostname
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Station status.
           content:
@@ -1405,6 +1429,7 @@ paths:
         The scan briefly takes the radio off-channel; the WiFi watchdog in
         `main.cpp` reconnects the station link if it drops.
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Scan finished.
           content:
@@ -1425,6 +1450,7 @@ paths:
       operationId: getUpdateStatus
       summary: Get the firmware updater state
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Updater state.
           content:
@@ -1605,6 +1631,7 @@ paths:
       summary: List a directory
       parameters: [{ $ref: "#/components/parameters/PathQuery" }]
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: Directory listing.
           content:
@@ -1643,6 +1670,7 @@ paths:
         downloaded.
       parameters: [{ $ref: "#/components/parameters/PathQuery" }]
       responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
           description: File contents as an attachment.
           content:
@@ -1803,7 +1831,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [enabled, authenticated]
+                required: [enabled, authenticated, uiProtected]
                 properties:
                   enabled:
                     type: boolean
@@ -1813,10 +1841,18 @@ paths:
                     description: |
                       This request carried a valid session cookie. Always `true`
                       while `enabled` is `false` — nothing is gated then.
+                  uiProtected:
+                    type: boolean
+                    description: |
+                      A further, separately-toggled step (only settable while
+                      `enabled` is `true`) that also gates reads and the UI
+                      itself, not just writes — see `POST /api/auth/ui-protection`.
+                      Always `false` while `enabled` is `false`.
                 additionalProperties: false
               examples:
-                open: { summary: No password set, value: { enabled: false, authenticated: true } }
-                loggedOut: { summary: "Protected, no session", value: { enabled: true, authenticated: false } }
+                open: { summary: No password set, value: { enabled: false, authenticated: true, uiProtected: false } }
+                loggedOut: { summary: "Protected, no session", value: { enabled: true, authenticated: false, uiProtected: false } }
+                uiLocked: { summary: "UI protection on, no session", value: { enabled: true, authenticated: false, uiProtected: true } }
 
   /api/auth/login:
     post:
@@ -1936,6 +1972,39 @@ paths:
               schema: { type: string }
               example: bcsid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/ui-protection:
+    post:
+      tags: [Access Control]
+      operationId: setUiProtection
+      summary: Turn the UI/read lock on or off
+      description: |
+        Only settable while a device password is configured. When on, every
+        request other than `/api/auth/*` requires a valid session — `GET /`,
+        every static asset, and every other read endpoint answer with the
+        standalone login page (GET, non-`/api/`) or `401` (everything else)
+        until the caller logs in. Requires an existing session, same as
+        `POST /api/auth/password` — knowing the password once is not enough.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+              additionalProperties: false
+      responses:
+        "204":
+          description: Stored.
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: Body is `no password configured`.
+          content:
+            text/plain: { schema: { type: string, const: no password configured } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
 
 
 components:

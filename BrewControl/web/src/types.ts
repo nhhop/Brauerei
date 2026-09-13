@@ -467,10 +467,13 @@ export interface FileListing {
 }
 
 // GET /api/auth/status. `enabled` is false until a device password is set —
-// there is no separate on/off flag on the device either.
+// there is no separate on/off flag on the device either. `uiProtected` is a
+// further, separately-toggled step (only settable once `enabled` is true)
+// that also gates reads and the UI itself, not just writes.
 export interface AuthStatus {
   enabled: boolean;
   authenticated: boolean;
+  uiProtected: boolean;
 }
 
 // ── Web Push ────────────────────────────────────────────────────────────────

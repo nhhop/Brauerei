@@ -5,13 +5,15 @@
 
 namespace BrewControl {
 
-// Optional access protection for the write side of the API.
+// Optional access protection for the write side of the API, with an optional
+// further step (isUiProtected()) that also gates reads and the UI itself.
 //
 // "Optional" without a separate flag: isConfigured() is the single source of
 // truth. No password set — the default, and the state of every device that
 // existed before this feature — means every gate is a no-op and the device
 // behaves exactly as it did before. Turning protection on is setting a
-// password; turning it off is clearing it.
+// password; turning it off is clearing it (which also turns uiProtected_
+// off, since a UI lock without a password would be unrecoverable).
 //
 // Credentials live in Preferences("brewctrl"), the same NVS namespace as the
 // WiFi credentials. That keeps them out of GET /api/settings, out of the
@@ -39,10 +41,16 @@ class AuthService {
 
   // Sets, changes or (with an empty newPassword) clears the password.
   // Returns false when one is already configured and `current` doesn't match.
-  // Clearing or changing the password revokes every session.
+  // Clearing or changing the password revokes every session and, since a UI
+  // lock without a password would be unrecoverable, also turns it off.
   bool setPassword(const String& current, const String& newPassword);
 
   bool verifyPassword(const String& password) const;
+
+  // Extends the write-only gate to reads (snapshot, settings, the UI itself).
+  // Only meaningful once a password is configured; no-ops otherwise.
+  bool isUiProtected() const { return uiProtected_; }
+  bool setUiProtected(bool enabled);
 
   // Issues a session token. Evicts the oldest entry when the table is full.
   String issueSession();
@@ -63,6 +71,7 @@ class AuthService {
 
   String saltHex_;
   String hashHex_;
+  bool uiProtected_ = false;
   Session sessions_[kMaxSessions] = {};
 };
 

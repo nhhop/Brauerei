@@ -617,6 +617,10 @@ export async function revokeAllSessions(): Promise<void> {
   if (!r.ok) await failed(r);
 }
 
+export function setUiProtection(enabled: boolean): Promise<void> {
+  return postJson('/api/auth/ui-protection', { enabled });
+}
+
 // ── Web Push ────────────────────────────────────────────────────────────────
 
 export async function getPush(): Promise<PushStatus> {

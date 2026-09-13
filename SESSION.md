@@ -2637,3 +2637,74 @@ auflösen kann.
 geprüft: Regler `testpid` (Sensor `mlt` + Aktor `kettle`, beide auf anderen
 Tabs) zeigt auf dem „Gärung"-Tab jetzt korrekt Ist-Wert, Ausgang und den vom
 Sensor geerbten Regelbereich.
+
+## 2026-09-13 — Zugriffsschutz Stufe 2: auch die UI/Leseseite sperrbar
+
+Bisheriger Schutz (Stufe 1, 2026-09-05) gilt nur für schreibende Routen;
+Lesen — inklusive `index.html`/JS/CSS und `/api/snapshot` — blieb laut
+README immer offen, auch bei gesetztem Passwort. PLAN.md-Punkt „Zugriffsschutz:
+Option auch für die UI selbst anbieten" verlangte eine Option, das ebenfalls
+zu sperren. Mit dem Nutzer geklärt (AskUserQuestion): volle Sperre (eigene
+Login-Seite statt SPA-Gerüst mit leeren Daten) als eigener Schalter,
+zusätzlich zum Passwort — das bisherige Verhalten bleibt Default.
+
+**Mechanismus:** ein einziges neues `AuthService::uiProtected_`-Flag
+(`Preferences`-Key `authUiLock`, nur bei gesetztem Passwort setzbar, wird
+beim Passwort-Löschen automatisch mit zurückgesetzt — ein UI-Lock ohne
+Passwort wäre unwiederherstellbar). Die eigentliche Sperre ist **ein**
+`server_.addMiddleware(...)`-Callback in `WebUI::begin()`
+(`ArMiddlewareCallback`, dokumentiert in ESPAsyncWebServer für genau diesen
+Zweck: „check authentication") statt Änderungen an jeder einzelnen GET-Route
+oder an `serveStatic`/`onNotFound` einzeln. Server-Middleware läuft laut
+`AsyncWebServerRequest::_runMiddlewareChain()` vor **jedem** Handler — Static-
+File-Handler, SPA-Fallback (`onNotFound`) und jede API-Route eingeschlossen —
+und kann die Antwort selbst senden, ohne `next()` aufzurufen. Damit reicht ein
+Gate für alles: bei aktivem UI-Schutz und fehlender Session bekommt jedes GET
+außerhalb von `/api/` (also `/`, jede statische Datei, jeder SPA-Client-Pfad)
+eine eingebettete, eigenständige Login-Seite (`kLockedPageHtml`, reines HTML/
+CSS/JS ohne externe Requests, im Firmware-Binary statt unter `/www` — die
+LittleFS-Boards haben nur 256 KB Datenpartition, und die Seite muss auch
+während eines laufenden UI-Uploads erreichbar bleiben); jede andere Route
+außer `/api/auth/*` (sonst wäre Einloggen selbst blockiert) bekommt `401`.
+Die bestehenden `requireAuth()`-Aufrufe in den Schreib-Handlern bleiben
+unverändert für den „nur Passwort"-Fall.
+
+**Neue Route:** `POST /api/auth/ui-protection` (Body `{"enabled"}`), verlangt
+wie `/api/auth/password` eine bestehende Session, plus `409` ohne
+konfiguriertes Passwort. `GET /api/auth/status` liefert zusätzlich
+`uiProtected`. Frontend: `SecurityPage.tsx` bekam eine neue `ToggleSwitch`-
+Karte „Auch Lesen/UI sperren" (nur sichtbar bei gesetztem Passwort und
+angemeldet); `LoginModal.tsx`/`app.tsx` blieben unverändert, da Unauthenti-
+fizierte bei aktivem UI-Schutz ohnehin nie die SPA laden, sondern direkt die
+Locked-Page von der Firmware bekommen.
+
+**Bekannte, bewusst nicht behobene Lücke:** läuft ein Tab schon offen und die
+Session läuft währenddessen ab (7-Tage-TTL oder „Alle Sitzungen abmelden"),
+zeigt das bestehende dismissible `LoginModal` weiter Stale-Daten/Fehler statt
+sofort zur Locked-Page zu wechseln — ein Reload holt sie. Für den seltenen
+Fall kein zusätzlicher Code.
+
+**Verifikation:** `pio run -e esp32dev` kompiliert (Flash 85 %, RAM 18 %),
+`pnpm typecheck` grün, `npx @redocly/cli lint` sauber (`openapi.yaml`:
+`AuthStatus`-Schema + neue Operation + `401` bei allen bisher immer-offenen
+GET-Routen ergänzt). Hardware-E2E gegen `brewcontrol.local` (LilyGo
+T-Display-S3-AMOLED) vom Nutzer bestätigt: Passwort setzen, „Auch Lesen/UI
+sperren" aktivieren, abgemeldet liefert `GET /` die eingebettete Login-Seite
+statt der SPA, Login auf der Locked-Page setzt das Cookie und schaltet frei,
+Schalter wieder aus stellt den „nur Schreiben geschützt"-Zustand wieder her.
+
+**Nebenbei:** Board landete während des Tests im gesperrten Zustand ohne
+bekanntes Passwort (vermutlich Rest eines früheren Tests, nicht aus dieser
+Session). Ohne erreichbaren BOOT-Button am Board (T-Display-S3-AMOLED-1.43-
+1.75 hat laut Schaltplan zwei Taster `S1`/GPIO0 und `SW1`/EN direkt am
+USB-C, aber die Reihenfolge „BOOT halten + RESET drücken" schickt den
+ESP32-S3 stattdessen in den seriellen Download-Modus statt den App-seitigen
+Recovery-Check in `main.cpp` auszulösen — hat hier nicht funktioniert) per
+`esptool.py --chip esp32s3 --port COM9 erase_region 0x9000 0x5000` nur die
+NVS-Partition gelöscht (Offset/Größe aus der kompilierten
+`partitions.bin` dieses Envs verifiziert, `gen_esp32part.py`) — WLAN +
+Auth-Passwort weg, Firmware/UI/SD unangetastet. Danach WLAN neu eingerichtet,
+Zugriffsschutz war wieder aus. Für den nächsten Fall: welche Session/wer
+zuletzt ein Testpasswort auf einem der drei Boards gesetzt hat, bleibt
+ungeklärt — beim Verlassen einer Testsession den Zugriffsschutz wieder
+aufheben, sonst sperrt es die nächste Session aus.
