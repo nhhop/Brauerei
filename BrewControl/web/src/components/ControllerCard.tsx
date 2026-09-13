@@ -1,24 +1,28 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X } from 'lucide-preact';
-import type { Controller, Sensor, Actuator, ProgramConfig } from '../types';
+import type { Controller, Sensor, Actuator, ProgramConfig, WidgetMode } from '../types';
 import { setControllerSetpoint, enableController, writeActuator, controlProgram } from '../api';
 import { ToggleSwitch } from './ToggleSwitch';
 import { ConfirmModal } from './ConfirmModal';
 import { AutotuneProgress } from './AutotuneProgress';
 import { Slider } from './Slider';
+import { Gauge } from './Gauge';
+import { CardModeButton } from './CardModeButton';
 import { programOwnerOf } from '../ownership';
-import { inp } from '../ui';
+import { inp, widgetSizeClass } from '../ui';
 
 interface Props {
   controller: Controller;
   sensors: Sensor[];
   actuators: Actuator[];
   programs?: ProgramConfig[];
+  viewMode?: WidgetMode;
   onDelete?: () => void;
   onEdit?: () => void;
+  onCycleMode?: () => void;
 }
 
-export function ControllerCard({ controller, sensors, actuators, programs = [], onDelete, onEdit }: Props) {
+export function ControllerCard({ controller, sensors, actuators, programs = [], viewMode = 'normal', onDelete, onEdit, onCycleMode }: Props) {
   const { id, setpoint, enabled, params } = controller;
   const [sp, setSp] = useState(setpoint.toString());
   useEffect(() => { setSp(setpoint.toString()); }, [setpoint]);
@@ -100,8 +104,28 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
     return max <= 1 ? `${(v * 100).toFixed(0)}%` : v.toFixed(2);
   }
 
+  // Click-to-edit Sollwert value — identical across all three view modes,
+  // just the input width differs to fit tighter layouts.
+  function sollwertValue(narrow?: boolean) {
+    return editingSp ? (
+      <input type="number" step="any" value={sp} autoFocus
+        onInput={(e) => setSp((e.target as HTMLInputElement).value)}
+        onBlur={() => { applySp(); setEditingSp(false); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { applySp(); setEditingSp(false); }
+          else if (e.key === 'Escape') { setSp(setpoint.toString()); setEditingSp(false); }
+        }}
+        class={`${inp} ${narrow ? 'w-20' : 'w-24'} font-mono text-right`} />
+    ) : (
+      <span onClick={() => setEditingSp(true)} title="Klicken zum Bearbeiten"
+        class="cursor-pointer font-mono text-fg hover:text-accent">
+        {isNaN(spNum) ? sp : spNum.toFixed(1)} {spUnit}
+      </span>
+    );
+  }
+
   return (
-    <div class={`min-h-[160px] rounded-lg border bg-card p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
+    <div class={`${widgetSizeClass[viewMode]} rounded-lg border bg-card p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
       enabled ? 'border-card-border' : 'border-card-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">
@@ -111,6 +135,7 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
             title={progOwner ? `Wird von Programm „${progOwner.id}“ gesteuert`
               : (enabled ? 'Regler deaktivieren' : 'Regler aktivieren')}
             onChange={() => toggleEnabled()} />
+          {onCycleMode && <CardModeButton mode={viewMode} onCycle={onCycleMode} />}
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="text-faint hover:text-fg"><Pencil size={14} /></button>
@@ -165,38 +190,53 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
         </div>
       )}
 
-      <div class="mt-3">
-        <div class="flex items-center justify-between">
+      {viewMode === 'compact' && (
+        <div class="mt-3 flex items-center justify-between">
           <span class="text-xs text-muted">Sollwert</span>
-          {editingSp ? (
-            <input type="number" step="any" value={sp} autoFocus
-              onInput={(e) => setSp((e.target as HTMLInputElement).value)}
-              onBlur={() => { applySp(); setEditingSp(false); }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { applySp(); setEditingSp(false); }
-                else if (e.key === 'Escape') { setSp(setpoint.toString()); setEditingSp(false); }
-              }}
-              class={`${inp} w-24 font-mono text-right`} />
-          ) : (
-            <span onClick={() => setEditingSp(true)} title="Klicken zum Bearbeiten"
-              class="cursor-pointer font-mono text-fg hover:text-accent">
-              {isNaN(spNum) ? sp : spNum.toFixed(1)} {spUnit}
-            </span>
-          )}
+          {sollwertValue(true)}
         </div>
-        <div class="mt-1.5">
-          <Slider value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax} step="any"
-            color={sliderColor} fillValue={istOk ? istVal : undefined}
-            onInput={(v) => setSp(v.toString())}
-            onChange={(v) => { setSp(v.toString()); applySp(v); }} />
-        </div>
-        <div class="mt-1 flex justify-between text-[10px] text-faint">
-          <span>{rangeMin}</span>
-          <span>{rangeMax}</span>
-        </div>
-      </div>
+      )}
 
-      {isPid && autotuneState && (
+      {viewMode === 'gauge' && (
+        <div class="mt-1 flex flex-col items-center">
+          <Gauge value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax}
+            fillValue={istOk ? istVal : undefined} color={sliderColor} interactive
+            ariaLabel={`Sollwert ${id}`}
+            onInput={(val) => setSp(val.toString())}
+            onChange={(val) => { setSp(val.toString()); applySp(val); }}
+            size={220}>
+            <div class="pointer-events-auto flex flex-col items-center gap-0.5">
+              <span class="text-[10px] uppercase tracking-wide text-faint">Soll</span>
+              {sollwertValue(true)}
+            </div>
+          </Gauge>
+          <div class="-mt-1 flex w-[220px] justify-between text-[10px] text-faint">
+            <span>{rangeMin}</span>
+            <span>{rangeMax}</span>
+          </div>
+        </div>
+      )}
+
+      {viewMode === 'normal' && (
+        <div class="mt-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-muted">Sollwert</span>
+            {sollwertValue()}
+          </div>
+          <div class="mt-1.5">
+            <Slider value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax} step="any"
+              color={sliderColor} fillValue={istOk ? istVal : undefined}
+              onInput={(v) => setSp(v.toString())}
+              onChange={(v) => { setSp(v.toString()); applySp(v); }} />
+          </div>
+          <div class="mt-1 flex justify-between text-[10px] text-faint">
+            <span>{rangeMin}</span>
+            <span>{rangeMax}</span>
+          </div>
+        </div>
+      )}
+
+      {viewMode !== 'compact' && isPid && autotuneState && (
         <div class="mt-3 border-t border-border/50 pt-3">
           {autotuneState === 'running' && <AutotuneProgress params={params} />}
           {autotuneState === 'done' && (

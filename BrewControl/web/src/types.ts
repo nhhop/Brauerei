@@ -130,6 +130,10 @@ export interface ConfigSnapshot {
   controllers: ItemConfig[];
 }
 
+// Per-widget dashboard display variant. 'normal' entries are never stored —
+// absence from the *Modes map already means 'normal'.
+export type WidgetMode = 'normal' | 'compact' | 'gauge';
+
 // Wire format of GET /api/dashboards
 export interface DashboardConfig {
   id: string;
@@ -140,6 +144,9 @@ export interface DashboardConfig {
   charts: string[];       // referenced log/chart IDs (see LogConfig); always present, may be empty
   programs: string[];     // referenced setpoint-program IDs (see ProgramConfig); always present, may be empty
   timers: string[];       // referenced timer IDs (see TimerConfig); always present, may be empty
+  sensorModes: Record<string, WidgetMode>;      // sensor base-id -> display mode, may be empty
+  controllerModes: Record<string, WidgetMode>;  // controller id -> display mode, may be empty
+  timerModes: Record<string, WidgetMode>;       // timer id -> display mode, may be empty
 }
 
 // ── Setpoint programs (mash profiles) ────────────────────────────────────────

@@ -1,3 +1,15 @@
+import type { WidgetMode } from './types';
+
+// Dashboard card height per display variant — `row-span-N` for the grid's
+// dense packing (base row unit 72px, see Dashboard.tsx's grid classes) plus a
+// matching `min-h` floor so a card that outgrows its row-span budget (e.g. a
+// wrapped fault badge) still grows instead of clipping.
+export const widgetSizeClass: Record<WidgetMode, string> = {
+  normal: 'min-h-[160px] row-span-2',
+  compact: 'min-h-[72px] row-span-1',
+  gauge: 'min-h-[336px] row-span-4',
+};
+
 // Shared Fluent-style button classes for dialog footers — reused across
 // ConfirmModal, AddItemModal and the *EditorModal components. Each carries the
 // WinUI rest → hover → pressed (active:) states plus a focus-visible stroke.

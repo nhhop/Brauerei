@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity } from '../types';
+import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity, WidgetMode } from '../types';
 import {
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard,
@@ -103,7 +103,10 @@ export function Dashboard({ snap, err, alarmByRef }: {
   }, []);
 
   async function createDashboardNamed(name: string) {
-    const empty = { name, sensors: [], actuators: [], controllers: [], charts: [], programs: [], timers: [] };
+    const empty = {
+      name, sensors: [], actuators: [], controllers: [], charts: [], programs: [], timers: [],
+      sensorModes: {}, controllerModes: {}, timerModes: {},
+    };
     const id = await createDashboard(empty);
     setDashboards(ds => [...ds, { id, ...empty }]);
     setActiveTab({ kind: 'dashboard', id });
@@ -132,6 +135,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
       charts: activeDash.charts ?? [],
       programs: activeDash.programs ?? [],
       timers: activeDash.timers ?? [],
+      sensorModes: activeDash.sensorModes ?? {},
+      controllerModes: activeDash.controllerModes ?? {},
+      timerModes: activeDash.timerModes ?? {},
       ...patch,
     };
     await updateDashboard(activeDash.id, updated);
@@ -144,8 +150,25 @@ export function Dashboard({ snap, err, alarmByRef }: {
     await patchActiveDash({ [key]: activeDash[key].filter(x => x !== id) } as Partial<DashboardConfig>);
   }
 
+  // Cycles a widget's display mode (normal -> gauge -> compact -> normal) and
+  // persists it. 'normal' is never stored — the key is simply removed.
+  const MODE_ORDER: WidgetMode[] = ['normal', 'gauge', 'compact'];
+  function cycleMode(mapKey: 'sensorModes' | 'controllerModes' | 'timerModes', id: string, current: WidgetMode) {
+    const next = MODE_ORDER[(MODE_ORDER.indexOf(current) + 1) % MODE_ORDER.length];
+    const modes = { ...(activeDash?.[mapKey] ?? {}) };
+    if (next === 'normal') delete modes[id]; else modes[id] = next;
+    patchActiveDash({ [mapKey]: modes } as Partial<DashboardConfig>);
+  }
+
   // Renaming an item (delete+recreate under a new id) would otherwise silently
-  // drop it from every dashboard that referenced the old id.
+  // drop it from every dashboard that referenced the old id — including any
+  // display mode it had, which lives in a sibling id-keyed map.
+  function remapMode(modes: Record<string, WidgetMode> | undefined, oldId: string, newId: string): Record<string, WidgetMode> {
+    if (!modes || !(oldId in modes)) return modes ?? {};
+    const { [oldId]: v, ...rest } = modes;
+    return { ...rest, [newId]: v };
+  }
+
   async function handleRenamed(role: Role, oldId: string, newId: string) {
     const key = role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers';
     for (const d of dashboards) {
@@ -154,6 +177,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
         name: d.name,
         sensors: d.sensors, actuators: d.actuators, controllers: d.controllers,
         charts: d.charts ?? [], programs: d.programs ?? [], timers: d.timers ?? [],
+        sensorModes: role === 'sensor' ? remapMode(d.sensorModes, oldId, newId) : (d.sensorModes ?? {}),
+        controllerModes: role === 'controller' ? remapMode(d.controllerModes, oldId, newId) : (d.controllerModes ?? {}),
+        timerModes: d.timerModes ?? {},
         [key]: d[key].map(x => x === oldId ? newId : x),
       };
       await updateDashboard(d.id, updated);
@@ -450,8 +476,10 @@ export function Dashboard({ snap, err, alarmByRef }: {
                         sensors={displaySnap.sensors}
                         actuators={displaySnap.actuators}
                         programs={programs}
+                        viewMode={activeDash?.controllerModes?.[featured.id] ?? 'normal'}
                         onEdit={editMode ? () => startEdit('controller', featured.id) : undefined}
                         onDelete={editMode ? () => removeFromDashboard('controller', featured.id) : undefined}
+                        onCycleMode={editMode ? () => cycleMode('controllerModes', featured.id, activeDash?.controllerModes?.[featured.id] ?? 'normal') : undefined}
                       />
                     </div>
                   )}
@@ -488,28 +516,36 @@ export function Dashboard({ snap, err, alarmByRef }: {
               ))}
             </div>
           )}
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:shrink-0">
+          <div class="grid grid-cols-1 gap-4 [grid-auto-flow:dense] [grid-auto-rows:minmax(72px,auto)] sm:grid-cols-2 md:grid-cols-3 lg:shrink-0">
             {displaySnap.sensors.map((s) => {
               const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+              const mode = activeDash?.sensorModes?.[baseId] ?? 'normal';
               return (
                 <SensorCard key={s.id} sensor={s}
                   alarm={alarmByRef?.get(`sensor/${s.id}`)}
+                  viewMode={mode}
                   onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
                   onDelete={editMode ? () => removeFromDashboard('sensor', baseId) : undefined}
                   onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
                     ? () => resetSensor(baseId) : undefined}
+                  onCycleMode={editMode ? () => cycleMode('sensorModes', baseId, mode) : undefined}
                 />
               );
             })}
-            {displaySnap.controllers.filter((c) => !claimedControllerIds.has(c.id)).map((c) => (
-              <ControllerCard key={c.id} controller={c}
-                sensors={displaySnap.sensors}
-                actuators={displaySnap.actuators}
-                programs={programs}
-                onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
-                onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
-              />
-            ))}
+            {displaySnap.controllers.filter((c) => !claimedControllerIds.has(c.id)).map((c) => {
+              const mode = activeDash?.controllerModes?.[c.id] ?? 'normal';
+              return (
+                <ControllerCard key={c.id} controller={c}
+                  sensors={displaySnap.sensors}
+                  actuators={displaySnap.actuators}
+                  programs={programs}
+                  viewMode={mode}
+                  onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
+                  onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
+                  onCycleMode={editMode ? () => cycleMode('controllerModes', c.id, mode) : undefined}
+                />
+              );
+            })}
             {displaySnap.actuators.map((a) => (
               <ActuatorCard key={a.id} actuator={a}
                 controllers={displaySnap.controllers}
@@ -522,12 +558,15 @@ export function Dashboard({ snap, err, alarmByRef }: {
             {(activeDash?.timers ?? []).map((tid) => {
               const timer = timers.find((t) => t.id === tid);
               if (!timer) return null;
+              const mode = activeDash?.timerModes?.[tid] ?? 'normal';
               return (
                 <TimerCard key={tid} timer={timer}
                   programs={programs}
+                  viewMode={mode}
                   onChanged={refreshTimers}
                   onEdit={editMode ? () => openEditTimer(timer) : undefined}
                   onDelete={editMode ? () => removeTimerRef(tid) : undefined}
+                  onCycleMode={editMode ? () => cycleMode('timerModes', tid, mode) : undefined}
                 />
               );
             })}

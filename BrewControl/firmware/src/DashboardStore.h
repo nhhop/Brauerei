@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <FS.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace BrewControl {
@@ -38,6 +39,12 @@ class DashboardStore {
     std::vector<std::string> charts;       // referenced log/chart IDs
     std::vector<std::string> programs;     // referenced setpoint-program IDs
     std::vector<std::string> timers;       // referenced timer IDs
+    // Per-widget display mode ("compact"/"gauge"), id -> mode. "normal" is
+    // never stored — an id simply absent here means "normal". Opaque to the
+    // firmware, interpreted only by the frontend.
+    std::vector<std::pair<std::string, std::string>> sensorModes;
+    std::vector<std::pair<std::string, std::string>> controllerModes;
+    std::vector<std::pair<std::string, std::string>> timerModes;
   };
 
   std::vector<DashboardCfg> dashboards_;

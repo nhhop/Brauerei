@@ -2549,3 +2549,69 @@ Mini nicht nötig). Danach per `curl` gegen die echte API getestet:
 
 Damit ist der zuvor offene Hardware-Verifikationspunkt für die Timer-Erweiterung
 erledigt — Eintrag aus `PLAN.md` entfernt.
+
+## 2026-09-13 — Alternative Card-Darstellungen: Gauge & Kompakt für Sensor/Regler/Timer
+
+Sensor-, Regler- und Timer-Cards hatten bisher nur eine feste Darstellung.
+Ergänzt um zwei zusätzliche Anzeigevarianten pro Widget: **Gauge** (rundes
+SVG-Gauge, ~doppelte Höhe) und **Kompakt** (~halbe Höhe). Absorbiert zwei
+offene Backlog-Punkte: „Zirkuläre Variante des Regler-Sliders" (linear war
+seit 2026-09-12 umgesetzt) und „Sensor-/Aktor-/Controller-Cards: feste
+Höhe/Breite".
+
+**Datenmodell:** additiv, kein Breaking Change — `DashboardConfig` bekommt
+drei neue Maps (`sensorModes`/`controllerModes`/`timerModes`, id → `'compact'
+| 'gauge'`); `'normal'` wird nie gespeichert, ein fehlender Eintrag heißt
+implizit normal. Firmware (`DashboardStore.h/.cpp`) hält sie als
+`vector<pair<string,string>>` neben den bestehenden ID-Listen, reine
+Passthrough-Felder (Frontend interpretiert die Werte, Firmware nicht).
+`docs/openapi.yaml` um `WidgetMode`-Schema + die drei Properties auf
+`DashboardInput`/`Dashboard` ergänzt.
+
+**Gauge-Primitive:** neue `Gauge.tsx` — 270°-Bogen (90°-Lücke unten mittig),
+`pathLength={100}`-Trick für prozentuale `stroke-dasharray`-Füllung statt
+Umfangsrechnung. Optionale `interactive`-Variante (nur vom Regler genutzt)
+mit ziehbarem Thumb: Pointer-Winkel relativ zum SVG-Mittelpunkt berechnet
+(`atan2`), Totzonen-Snap auf 0/100 % in der unteren Lücke, Commit-Semantik
+1:1 von `Slider.tsx` übernommen (`onInput` laufend fürs visuelle Feedback,
+`onChange` erst einmalig bei `pointerup`/`pointercancel` — vermeidet den dort
+schon dokumentierten Chrome-Bug mit dauerfeuerndem `change`). Zusätzlich
+`fillValue`-Prop (unabhängig vom Thumb-Wert), damit der Regler-Gauge wie der
+lineare Slider gleichzeitig Ist (Füllbogen) und Soll (Thumb) zeigt.
+Pfeiltasten-Nudge + `role="slider"`/`aria-value*` für Tastatur-Zugänglichkeit,
+da ein SVG-Custom-Control die native Range-Semantik nicht mitbringt.
+
+**Umschalten:** neuer Icon-Button (`CardModeButton.tsx`) direkt im
+Card-Header, nur im Bearbeiten-Modus sichtbar, zyklisch normal → gauge →
+compact → normal. `Dashboard.tsx` bekam dafür `cycleMode()` neben
+`patchActiveDash`; `handleRenamed()` zieht beim Umbenennen eines Sensors/
+Reglers dessen Modus-Eintrag mit um, sonst würde er stillschweigend auf
+normal zurückfallen.
+
+**Grid:** Dense-Packing (`[grid-auto-flow:dense]` +
+`[grid-auto-rows:minmax(72px,auto)]`) statt der bisherigen gleichförmigen
+Zeilenhöhe — Basis-Einheit 72 px, `row-span-1/2/4` für kompakt/normal/gauge
+(2×72+Gap = exakt die bisherigen 160 px, war der Ableitungsanker für die
+Einheit). `minmax(…, auto)` statt eines festen Werts, damit eine Karte, die
+ihr Zeilenbudget sprengt (z. B. eine umbrechende Alarm-Badge), wächst statt
+abzuschneiden. `ActuatorCard` bleibt inhaltlich unverändert, bekommt aber ein
+hartkodiertes `row-span-2`, sonst würde Dense-Packing sie auf eine 72-px-Zeile
+stauchen.
+
+**Verifikation:** `pnpm typecheck` sauber, `npx @redocly/cli lint` sauber,
+`pio run -e esp32dev` kompiliert die `DashboardStore`-Änderung fehlerfrei.
+Live gegen `brewcontrol.local` (192.168.178.87, per `pnpm dev`-Proxy) im
+Browser durchgeklickt: alle drei Widget-Typen durch alle drei Modi zyklen,
+Dense-Grid-Packing bei gemischten Höhen (kein Clipping/Overlap), Regler-Gauge
+per Drag über den vollen Bogen inkl. unterer Lücke gezogen — echter
+`setControllerSetpoint`-Request feuerte laut Netzwerk-Log nur genau einmal
+beim Loslassen, per `GET /api/snapshot` gegen das Gerät bestätigt (Sollwert
+tatsächlich übernommen, danach wieder auf 65 °C zurückgesetzt), Klick-zum-
+Bearbeiten-Eingabe im Gauge-Zentrum funktioniert trotz `pointer-events-none`-
+Overlay (gezielt `pointer-events-auto` auf dem Center-Content). Dark/Light
+manuell umgeschaltet, Gauge in beiden lesbar. **Nicht gemacht:** neue
+Firmware wurde nicht auf das Testboard geflasht (siehe PLAN.md →
+Hardware-Verifikation offen) — `sensorModes`/`controllerModes`/`timerModes`
+liefen serverseitig deshalb nur gegen die alte Firmware, die das Feld beim
+Speichern stillschweigend verwirft (Reload zeigte dadurch erwartungsgemäß
+wieder „normal" — kein Frontend-Bug, nur alte Firmware auf dem Gerät).

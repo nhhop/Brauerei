@@ -1,16 +1,20 @@
 import { useState } from 'preact/hooks';
-import type { TimerConfig, TimerAction, ProgramConfig } from '../types';
+import type { TimerConfig, TimerAction, ProgramConfig, WidgetMode } from '../types';
 import { controlTimer } from '../api';
-import { badge, badgeAccent, badgeSuccess } from '../ui';
+import { badge, badgeAccent, badgeSuccess, widgetSizeClass } from '../ui';
 import { fmtDuration } from '../format';
 import { Pause, Pencil, Play, Repeat, Square, Timer as TimerIcon, Trash2, type LucideIcon } from 'lucide-preact';
+import { CardModeButton } from './CardModeButton';
+import { Gauge } from './Gauge';
 
 interface Props {
   timer: TimerConfig;
   programs: ProgramConfig[];
+  viewMode?: WidgetMode;
   onChanged: () => void;   // re-fetch timers after a control action
   onEdit?: () => void;
   onDelete?: () => void;
+  onCycleMode?: () => void;
 }
 
 const TARGET_KIND_LABEL: Record<string, string> = {
@@ -32,7 +36,7 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
-export function TimerCard({ timer, programs, onChanged, onEdit, onDelete }: Props) {
+export function TimerCard({ timer, programs, viewMode = 'normal', onChanged, onEdit, onDelete, onCycleMode }: Props) {
   const { id, name, mode, timeOfDay, repeat, onExpire, durationSec, status, remainingSec } = timer;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -52,8 +56,8 @@ export function TimerCard({ timer, programs, onChanged, onEdit, onDelete }: Prop
 
   const progressPct = durationSec > 0 ? Math.max(0, Math.min(1, 1 - remainingSec / durationSec)) : 0;
 
-  function Btn({ action, label, icon: Icon, primary }: {
-    action: TimerAction; label: string; icon: LucideIcon; primary?: boolean;
+  function Btn({ action, label, icon: Icon, primary, iconOnly }: {
+    action: TimerAction; label: string; icon: LucideIcon; primary?: boolean; iconOnly?: boolean;
   }) {
     return (
       <button type="button" disabled={busy} title={label}
@@ -64,13 +68,15 @@ export function TimerCard({ timer, programs, onChanged, onEdit, onDelete }: Prop
             ? 'bg-accent text-accent-fg hover:bg-accent/90 active:bg-accent/80 focus-visible:ring-accent'
             : 'border border-border text-fg hover:bg-fg/5 active:bg-fg/10 focus-visible:ring-fg/30')}>
         <Icon size={16} class="shrink-0" />
-        {label}
+        {!iconOnly && label}
       </button>
     );
   }
 
+  const subtitle = mode === 'clock' ? `bis ${timeOfDay} Uhr` : `von ${fmtDuration(durationSec)}`;
+
   return (
-    <div class="min-h-[160px] rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+    <div class={`${widgetSizeClass[viewMode]} rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8`}>
       <div class="flex items-center justify-between gap-2">
         <div class="flex min-w-0 items-center gap-2">
           <TimerIcon size={18} aria-hidden class="shrink-0 text-muted" />
@@ -79,6 +85,10 @@ export function TimerCard({ timer, programs, onChanged, onEdit, onDelete }: Prop
         <div class="flex shrink-0 items-center gap-1">
           {repeat && <Repeat size={14} aria-hidden title="Wiederholt sich" class="text-muted" />}
           <span class={statusBadgeClass(status)}>{STATUS_LABEL[status] ?? status}</span>
+          {onCycleMode && (
+            <CardModeButton mode={viewMode} onCycle={onCycleMode}
+              class="rounded p-1 text-faint transition-colors hover:bg-fg/10 hover:text-fg" />
+          )}
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="rounded p-1 text-faint transition-colors hover:bg-fg/10 hover:text-fg">
@@ -94,32 +104,70 @@ export function TimerCard({ timer, programs, onChanged, onEdit, onDelete }: Prop
         </div>
       </div>
 
-      <div class="mt-3 text-center">
-        <div class="font-mono text-3xl font-bold leading-none tabular-nums text-accent">
-          {fmtDuration(remainingSec)}
+      {viewMode === 'compact' && (
+        <>
+          <div class="mt-2 text-center font-mono text-lg font-bold leading-none tabular-nums text-accent">
+            {fmtDuration(remainingSec)}
+          </div>
+          <div class="mt-2 grid grid-flow-col auto-cols-fr gap-2">
+            {(status === 'idle' || status === 'done') && (
+              <Btn action="start" label="Start" icon={Play} primary iconOnly />
+            )}
+            {status === 'running' && <Btn action="pause" label="Pause" icon={Pause} iconOnly />}
+            {status === 'paused' && <Btn action="resume" label="Fortsetzen" icon={Play} primary iconOnly />}
+            {(status === 'running' || status === 'paused') && (
+              <Btn action="stop" label="Stop" icon={Square} iconOnly />
+            )}
+          </div>
+        </>
+      )}
+
+      {viewMode === 'gauge' && (
+        <div class="mt-1 flex flex-col items-center">
+          <Gauge value={durationSec - remainingSec} min={0} max={durationSec} size={220}>
+            <div class="text-center">
+              <div class="font-mono text-2xl font-bold leading-none tabular-nums text-accent">
+                {fmtDuration(remainingSec)}
+              </div>
+              <div class="mt-1 text-[10px] uppercase tracking-wide text-faint">
+                {subtitle}
+              </div>
+            </div>
+          </Gauge>
         </div>
-        <div class="mt-1 text-[10px] uppercase tracking-wide text-faint">
-          {mode === 'clock' ? `bis ${timeOfDay} Uhr` : `von ${fmtDuration(durationSec)}`}
+      )}
+
+      {viewMode === 'normal' && (
+        <>
+          <div class="mt-3 text-center">
+            <div class="font-mono text-3xl font-bold leading-none tabular-nums text-accent">
+              {fmtDuration(remainingSec)}
+            </div>
+            <div class="mt-1 text-[10px] uppercase tracking-wide text-faint">
+              {subtitle}
+            </div>
+          </div>
+          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-fg/10">
+            <div class="h-full rounded-full bg-accent transition-[width] duration-300"
+              style={{ width: `${Math.round(progressPct * 100)}%` }} />
+          </div>
+        </>
+      )}
+
+      {viewMode !== 'compact' && (
+        <div class="mt-3 grid grid-flow-col auto-cols-fr gap-2">
+          {(status === 'idle' || status === 'done') && (
+            <Btn action="start" label="Start" icon={Play} primary />
+          )}
+          {status === 'running' && <Btn action="pause" label="Pause" icon={Pause} />}
+          {status === 'paused' && <Btn action="resume" label="Fortsetzen" icon={Play} primary />}
+          {(status === 'running' || status === 'paused') && (
+            <Btn action="stop" label="Stop" icon={Square} />
+          )}
         </div>
-      </div>
+      )}
 
-      <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-fg/10">
-        <div class="h-full rounded-full bg-accent transition-[width] duration-300"
-          style={{ width: `${Math.round(progressPct * 100)}%` }} />
-      </div>
-
-      <div class="mt-3 grid grid-flow-col auto-cols-fr gap-2">
-        {(status === 'idle' || status === 'done') && (
-          <Btn action="start" label="Start" icon={Play} primary />
-        )}
-        {status === 'running' && <Btn action="pause" label="Pause" icon={Pause} />}
-        {status === 'paused' && <Btn action="resume" label="Fortsetzen" icon={Play} primary />}
-        {(status === 'running' || status === 'paused') && (
-          <Btn action="stop" label="Stop" icon={Square} />
-        )}
-      </div>
-
-      {onExpire && (
+      {viewMode !== 'compact' && onExpire && (
         <p class="mt-2 truncate text-[11px] text-muted">
           → {onExpire.action === 'start' ? 'startet' : 'stoppt'} {TARGET_KIND_LABEL[onExpire.targetType]}{' '}
           {onExpire.targetType === 'program'

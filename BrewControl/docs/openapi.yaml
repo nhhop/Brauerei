@@ -2466,9 +2466,16 @@ components:
           - { index: 0, address: 28ff64c8815604ef }
 
     # ── Dashboards ───────────────────────────────────────────────────────────
+    WidgetMode:
+      type: string
+      description: |
+        Per-widget dashboard display variant. Only non-default modes are ever
+        present in a *Modes map — an id absent from the map means "normal".
+      enum: [compact, gauge]
+
     DashboardInput:
       type: object
-      description: Every key is optional; absent lists default to empty.
+      description: Every key is optional; absent lists/maps default to empty.
       properties:
         name: { type: string, default: Dashboard }
         sensors: { type: array, items: { type: string } }
@@ -2477,10 +2484,22 @@ components:
         charts: { type: array, items: { type: string }, description: Log ids. }
         programs: { type: array, items: { type: string }, description: Program ids. }
         timers: { type: array, items: { type: string }, description: Timer ids. }
+        sensorModes:
+          type: object
+          description: Sensor base-id -> display mode.
+          additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
+        controllerModes:
+          type: object
+          description: Controller id -> display mode.
+          additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
+        timerModes:
+          type: object
+          description: Timer id -> display mode.
+          additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
 
     Dashboard:
       type: object
-      required: [id, name, sensors, actuators, controllers, charts, programs, timers]
+      required: [id, name, sensors, actuators, controllers, charts, programs, timers, sensorModes, controllerModes, timerModes]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{6}$" }
         name: { type: string }
@@ -2490,6 +2509,15 @@ components:
         charts: { type: array, items: { type: string } }
         programs: { type: array, items: { type: string } }
         timers: { type: array, items: { type: string } }
+        sensorModes:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
+        controllerModes:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
+        timerModes:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
 
     # ── Data logs ────────────────────────────────────────────────────────────
     CompAlgo:

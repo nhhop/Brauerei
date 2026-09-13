@@ -31,6 +31,12 @@ void DashboardStore::loadFromSD(fs::FS& sd) {
       if (const char* s = v.as<const char*>()) d.programs.push_back(s);
     for (JsonVariant v : obj["timers"].as<JsonArray>())
       if (const char* s = v.as<const char*>()) d.timers.push_back(s);
+    for (JsonPair kv : obj["sensorModes"].as<JsonObject>())
+      if (const char* v = kv.value().as<const char*>()) d.sensorModes.push_back({kv.key().c_str(), v});
+    for (JsonPair kv : obj["controllerModes"].as<JsonObject>())
+      if (const char* v = kv.value().as<const char*>()) d.controllerModes.push_back({kv.key().c_str(), v});
+    for (JsonPair kv : obj["timerModes"].as<JsonObject>())
+      if (const char* v = kv.value().as<const char*>()) d.timerModes.push_back({kv.key().c_str(), v});
     dashboards_.push_back(std::move(d));
   }
 }
@@ -65,6 +71,12 @@ String DashboardStore::serialize() const {
     for (const auto& id : d.programs)    pr.add(id.c_str());
     JsonArray tm = obj["timers"].to<JsonArray>();
     for (const auto& id : d.timers)      tm.add(id.c_str());
+    JsonObject sm = obj["sensorModes"].to<JsonObject>();
+    for (const auto& kv : d.sensorModes)     sm[kv.first.c_str()] = kv.second.c_str();
+    JsonObject cm = obj["controllerModes"].to<JsonObject>();
+    for (const auto& kv : d.controllerModes) cm[kv.first.c_str()] = kv.second.c_str();
+    JsonObject tmo = obj["timerModes"].to<JsonObject>();
+    for (const auto& kv : d.timerModes)      tmo[kv.first.c_str()] = kv.second.c_str();
   }
   String out;
   serializeJson(doc, out);
@@ -87,6 +99,9 @@ void DashboardStore::fillFromJson(DashboardCfg& d, const JsonObject& cfg) {
   d.charts.clear();
   d.programs.clear();
   d.timers.clear();
+  d.sensorModes.clear();
+  d.controllerModes.clear();
+  d.timerModes.clear();
   for (JsonVariant v : cfg["sensors"].as<JsonArray>())
     if (const char* s = v.as<const char*>()) d.sensors.push_back(s);
   for (JsonVariant v : cfg["actuators"].as<JsonArray>())
@@ -99,6 +114,12 @@ void DashboardStore::fillFromJson(DashboardCfg& d, const JsonObject& cfg) {
     if (const char* s = v.as<const char*>()) d.programs.push_back(s);
   for (JsonVariant v : cfg["timers"].as<JsonArray>())
     if (const char* s = v.as<const char*>()) d.timers.push_back(s);
+  for (JsonPair kv : cfg["sensorModes"].as<JsonObject>())
+    if (const char* v = kv.value().as<const char*>()) d.sensorModes.push_back({kv.key().c_str(), v});
+  for (JsonPair kv : cfg["controllerModes"].as<JsonObject>())
+    if (const char* v = kv.value().as<const char*>()) d.controllerModes.push_back({kv.key().c_str(), v});
+  for (JsonPair kv : cfg["timerModes"].as<JsonObject>())
+    if (const char* v = kv.value().as<const char*>()) d.timerModes.push_back({kv.key().c_str(), v});
 }
 
 String DashboardStore::add(const JsonObject& cfg) {
