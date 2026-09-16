@@ -2798,7 +2798,9 @@ flachen Linie. `ChartCard.tsx` gruppiert die Reihen jetzt nach Einheit
 (bestehendes `unitOf()` aus `refs.ts`, Regler-Sollwert = Einheit seines
 Sensors) und legt pro Gruppe eine eigene uPlot-Skala an: erste Gruppe links,
 weitere rechts. Einheitslose Reihen bekommen je eine eigene Achse (0/1-Relais
-und 0–255-PWM wären sonst wieder gemischt). Achsentitel = Einheit; eine Achse
+und 0–255-PWM wären sonst wieder gemischt). Die Einheit steht waagerecht unter der jeweiligen Achse (auf
+Höhe der Zeit-Ticks, als HTML-Element im `.u-axis`-Div per `ready`-Hook
+statt uPlots gedrehtem `label`); eine Achse
 mit genau einer Reihe nimmt deren Linienfarbe an; nur die linke Achse zeichnet
 Gitterlinien. Einheiten werden beim Chart-Aufbau festgelegt — ohne
 Live-Snapshot (Archiv, LogsPage vor erstem SSE-Event) wird einmal

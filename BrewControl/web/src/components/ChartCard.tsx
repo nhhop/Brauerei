@@ -99,6 +99,21 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
       // the rest on the right.
       const scaleKeys = refs.map((ref, i) => units[i] || ref);
       const groups = [...new Set(scaleKeys)];
+      const yAxes = groups.map((key, gi) => {
+        const members = scaleKeys.flatMap((k, i) => (k === key ? [i] : []));
+        return {
+          unit: units[members[0]],
+          axis: {
+            scale: key,
+            side: gi === 0 ? 3 : 1,
+            // A single-series axis takes that line's color, so it's clear which scale it reads.
+            stroke: members.length === 1 ? PALETTE[members[0] % PALETTE.length] : axisColor,
+            // Only the left axis draws grid lines; several misaligned grids would just be noise.
+            grid: { show: gi === 0, stroke: gridColor },
+            ticks: { stroke: gridColor },
+          } satisfies uPlot.Axis,
+        };
+      });
       return {
         width: el!.clientWidth || 600,
         height: heightRef.current,
@@ -124,21 +139,24 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
             // Use the configured time format (with seconds) instead of uPlot's default.
             values: (_u, splits) => splits.map((t) => formatTime(t, tset)),
           },
-          ...groups.map((key, gi): uPlot.Axis => {
-            const members = scaleKeys.flatMap((k, i) => (k === key ? [i] : []));
-            const unit = units[members[0]];
-            return {
-              scale: key,
-              side: gi === 0 ? 3 : 1,
-              label: unit || undefined,
-              // A single-series axis takes that line's color, so it's clear which scale it reads.
-              stroke: members.length === 1 ? PALETTE[members[0] % PALETTE.length] : axisColor,
-              // Only the left axis draws grid lines; several misaligned grids would just be noise.
-              grid: { show: gi === 0, stroke: gridColor },
-              ticks: { stroke: gridColor },
-            };
-          }),
+          ...yAxes.map((y) => y.axis),
         ],
+        hooks: {
+          // Unit as a horizontal caption below each y-axis (in the x-axis row)
+          // instead of uPlot's rotated `label`. uPlot renders one .u-axis div
+          // per axis in option order (x first) and keeps it positioned on resize.
+          ready: [(u) => {
+            const axisEls = u.root.querySelectorAll<HTMLElement>('.u-axis');
+            yAxes.forEach((y, gi) => {
+              const host = axisEls[gi + 1];
+              if (!y.unit || !host) return;
+              const cap = document.createElement('div');
+              cap.textContent = y.unit;
+              cap.style.cssText = `position:absolute;top:100%;left:0;right:0;padding-top:11px;text-align:center;font-size:12px;line-height:1;color:${y.axis.stroke}`;
+              host.appendChild(cap);
+            });
+          }],
+        },
       };
     }
 
