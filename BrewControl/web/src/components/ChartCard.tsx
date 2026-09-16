@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'preact/hooks';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import type { Snapshot, LogConfig, TimeSettings } from '../types';
-import { getLogData, resolveRef } from '../api';
+import { getLogData, getSnapshot, resolveRef } from '../api';
+import { unitOf } from '../refs';
 import { formatTime, formatDateTime, loadTimeSettings } from '../time';
 
 // Distinct line colors, reused cyclically across series.
@@ -68,6 +69,9 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
   // via ResizeObserver — kept in a ref (not state) so a resize just calls
   // uPlot's setSize instead of re-running the data-fetching effect below.
   const heightRef = useRef(height);
+  // Latest snapshot for the build effect, which must not re-run on every snapshot.
+  const snapRef = useRef(snap);
+  snapRef.current = snap;
 
   // Rebuild the plot whenever the log identity or its series set changes.
   const seriesKey = log.series.map((s) => s.ref).join(',');
@@ -86,9 +90,15 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
       return Math.max(Math.round(el!.clientHeight - legendH), 0);
     }
 
-    function makeOpts(refs: string[], tset: TimeSettings): uPlot.Options {
+    function makeOpts(refs: string[], tset: TimeSettings, units: string[]): uPlot.Options {
       const axisColor = cssVar('--fg', '#888');
       const gridColor = cssVar('--border', 'rgba(128,128,128,0.2)');
+      // One y-scale per unit, so series of very different magnitude each get
+      // their own range. Unitless series can't be grouped safely (a 0/1 relay
+      // vs. a 0–255 PWM) and get a scale of their own. First scale sits left,
+      // the rest on the right.
+      const scaleKeys = refs.map((ref, i) => units[i] || ref);
+      const groups = [...new Set(scaleKeys)];
       return {
         width: el!.clientWidth || 600,
         height: heightRef.current,
@@ -97,6 +107,7 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
           { value: (u) => { const cx = cursorX(u); return cx == null ? '--' : formatDateTime(Math.round(cx), tset); } },
           ...refs.map((ref, i) => ({
             label: ref,
+            scale: scaleKeys[i],
             stroke: PALETTE[i % PALETTE.length],
             width: 1.5,
             spanGaps: false,
@@ -113,12 +124,28 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
             // Use the configured time format (with seconds) instead of uPlot's default.
             values: (_u, splits) => splits.map((t) => formatTime(t, tset)),
           },
-          { stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: gridColor } },
+          ...groups.map((key, gi): uPlot.Axis => {
+            const members = scaleKeys.flatMap((k, i) => (k === key ? [i] : []));
+            const unit = units[members[0]];
+            return {
+              scale: key,
+              side: gi === 0 ? 3 : 1,
+              label: unit || undefined,
+              // A single-series axis takes that line's color, so it's clear which scale it reads.
+              stroke: members.length === 1 ? PALETTE[members[0] % PALETTE.length] : axisColor,
+              // Only the left axis draws grid lines; several misaligned grids would just be noise.
+              grid: { show: gi === 0, stroke: gridColor },
+              ticks: { stroke: gridColor },
+            };
+          }),
         ],
       };
     }
 
-    Promise.all([getLogData(log.id, session), loadTimeSettings()]).then(([d, tset]) => {
+    // Units come from the snapshot; the archive (and the logs page before the
+    // first SSE event) has none, so fetch one. Units are fixed per build.
+    const snapP = snapRef.current ? Promise.resolve(snapRef.current) : getSnapshot().catch(() => null);
+    Promise.all([getLogData(log.id, session), loadTimeSettings(), snapP]).then(([d, tset, unitSnap]) => {
       if (!alive || !el) return;
       // Fall back to the config's series when the server has no data yet.
       const refs = d.refs.length ? d.refs : log.series.map((s) => s.ref);
@@ -128,7 +155,8 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
       const xs = data[0];
       lastTsRef.current = xs.length ? (xs[xs.length - 1] as number) : 0;
       uRef.current?.destroy();
-      uRef.current = new uPlot(makeOpts(refs, tset), data as uPlot.AlignedData, el);
+      const units = refs.map((ref) => unitOf(unitSnap, ref));
+      uRef.current = new uPlot(makeOpts(refs, tset, units), data as uPlot.AlignedData, el);
       // Move the legend out of the plot into the caller-supplied slot (e.g. the
       // card's title row) so it no longer takes vertical space below the chart.
       if (legendHost) {

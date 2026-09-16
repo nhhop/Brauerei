@@ -2790,3 +2790,20 @@ im Header die Zentrierung. `dashActions()` bekommt jetzt einen
 Header (ohne). Verifiziert bei 375px (Buttons jetzt auf einer Linie mit dem
 Titeltext) und 1280px (Tab-Streifen unverändert).
 
+## 2026-09-16 — Log-Chart: zusätzliche Y-Achsen pro Einheit
+
+Alle Reihen eines Logs lagen bisher auf einer Y-Skala; mischte man z. B.
+Temperatur (0–100 °C) mit einem 0/1-Aktor, wurde die kleine Reihe zur
+flachen Linie. `ChartCard.tsx` gruppiert die Reihen jetzt nach Einheit
+(bestehendes `unitOf()` aus `refs.ts`, Regler-Sollwert = Einheit seines
+Sensors) und legt pro Gruppe eine eigene uPlot-Skala an: erste Gruppe links,
+weitere rechts. Einheitslose Reihen bekommen je eine eigene Achse (0/1-Relais
+und 0–255-PWM wären sonst wieder gemischt). Achsentitel = Einheit; eine Achse
+mit genau einer Reihe nimmt deren Linienfarbe an; nur die linke Achse zeichnet
+Gitterlinien. Einheiten werden beim Chart-Aufbau festgelegt — ohne
+Live-Snapshot (Archiv, LogsPage vor erstem SSE-Event) wird einmal
+`/api/snapshot` geladen. Keine API-Änderung. Verifiziert: `pnpm typecheck`,
+`pnpm dev` gegen `192.168.178.87` — Dashboard-Log „Maischen“
+(`sensor/mlt` + `controller/mash` in °C links, `actuator/kettle` rechts 0–1
+in Grün) und Archiv-Ansicht einer alten Session zeigen beide Achsen korrekt,
+keine Console-Fehler.
