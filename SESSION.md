@@ -2731,3 +2731,62 @@ Fallback-Lösung (Legende weiterhin in eigener Zeile über dem Chart ab
 das Testboard `192.168.178.87`: Legendenwerte aktualisieren sich mit dem
 Snapshot, Edit-Modus (Titel + Legende + Entfernen-Button in einer Zeile)
 kollidiert nicht.
+
+## 2026-09-16 — WebSocket als vierter Remote-Transport (SensActCtrl + BrewControl)
+
+Neben MQTT, ESP-NOW und Webhook gibt es jetzt `WebSocketTransport`: eine
+dauerhafte, bidirektionale Verbindung ohne Broker. **Rollen (Hub-Modell):**
+der veröffentlichende Knoten (Leaf) ist Client und verbindet sich zum
+konsumierenden Knoten (Hub), der den Server betreibt — nur ein Client blockiert
+beim Connect, und ein Leaf hat genau eine solche Verbindung; der Hub muss die
+Leaves nicht kennen. Der Hub-Server ist eine Geräteeinstellung (läuft
+unabhängig von Items) — Voraussetzung für die spätere Autodiscovery (in
+PLAN.md vorgemerkt, Mechanismus mDNS-SD vs. UDP noch offen). Library:
+`links2004/WebSockets` 2.7.3 (Server + Client, in `loop()` gepollt wie der
+Webhook-`WebServer`); verworfen `esp_websocket_client` (eigener Task, ab IDF 5
+nicht mehr im Framework) und `AsyncWebSocket` (nur Server, Async-Abhängigkeit
+für die Library).
+
+**Library:** `WebSocketProtocol.h` (ein Text-Frame pro Nachricht:
+`D<topic>\n<payload>` bzw. `R` als Retained-Request, dazu URL-Parser nur für
+`ws://`), `WebSocketTransport` (Server broadcastet an alle Clients, kein
+Relaying zwischen Clients; Retain-Emulation wie ESP-NOW: wer Subscriptions
+hat, fragt bei jeder neuen Verbindung und nach `subscribe()` — pro `tick()`
+zusammengefasst — den Retained-Cache der Gegenseite ab; Heartbeat 5 s/3 s/2,
+Reconnect-Abstand 5 s). `lastErrorMessage()` zeigt immer auf ein
+String-Literal, weil WebUI es aus dem AsyncTCP-Task liest. Test
+`test_websocket_protocol` (13 Fälle), Beispiel `11_remote_websocket`.
+**BrewControl:** Settings-Abschnitt `websocket` (`hubEnabled`/`hubPort`,
+`publishEnabled`/`hubUrl`/`clientId`/`topicPrefix`), `WebSocketService`
+(Hub-Server + Publish-Client mit `RemotePublisher`), Remote-Items mit
+`transport:"websocket"` ohne Zusatzfelder (ohne Hub: `websocket hub not
+enabled`), `GET /api/settings` mit `connected`/`error`/`hubClients`,
+`-DWEBSOCKETS_TCP_TIMEOUT=1000`; Frontend: neue Seite Einstellungen →
+Konnektivität → WebSocket, WebSocket-Button im Remote-Dialog. openapi.yaml,
+READMEs nachgezogen. Umgesetzt in einem eigenen Worktree
+(`worktree-websocket-transport`), weil parallel eine andere Session im
+Haupt-Checkout an der Dashboard-Sortierung arbeitete.
+
+**Verifikation:** `pio test -e native` 210/210; Firmware für alle drei Envs,
+Flash je ~+29,8 KB (esp32dev 85,0 → 86,6 %, S2 81,8 → 83,3 %, LilyGo
+23,6 → 24,0 %), RAM +72–80 B, keine neuen Warnungen; beide Beispiele per
+`pio ci` (mit `-std=gnu++17` — die dokumentierten Befehle scheitern bei allen
+Beispielen an `IntervalActuator.h` unter gnu++11, vorbestehend, in PLAN.md);
+`pnpm typecheck`/`build`; `redocly lint` valide. **Hardware** (LilyGo war
+durch die andere Session belegt): esp32dev als Hub, LOLIN S2 Mini als Leaf,
+beide per OTA. Ohne Hub wird ein WebSocket-Remote-Item abgelehnt,
+Settings-Validierung greift (`hubUrl`, `hubPort`, `clientId`). Hub-Port nimmt
+den Handshake an (`101`), Leaf `connected:true`, Hub `hubClients:1`. Auf dem
+Hub nachträglich angelegte Remote-Items (DigitalInput GPIO0, LED GPIO15 am S2)
+hatten Meta + State sofort (Retained-Request); `write 1` am Hub schaltete die
+LED am Leaf, der Zustand kam zurück. Hub-Neustart: Leaf meldete nach ~2 s
+„Keine Verbindung zum Server" und war nach ~7 s ohne Eingriff wieder
+verbunden, die gespeicherten Remote-Items auf dem Hub bekamen Meta/State neu.
+Loop-Blockade bei nicht antwortendem Hub (`ws://192.168.178.250:8081`) von
+außen über den Sensor-Zeitstempel gemessen: ~1 s Stillstand alle ~6 s (max.
+1002 ms), mit erreichbarem Hub keiner. Danach Test-Items gelöscht und
+WebSocket auf beiden Boards wieder ausgeschaltet. **Nicht verifiziert:** zwei
+Leaves gleichzeitig und die neue UI am Gerät — der UI-Tar-Upload passt auf
+esp32dev nicht mehr in die LittleFS-Partition (neues JS 100 KB gzip, in
+PLAN.md), und das Browser-Pane startet keinen Dev-Server aus dem Worktree;
+beides als offener HW-Punkt in PLAN.md.
