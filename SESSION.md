@@ -2868,3 +2868,51 @@ Leaves gleichzeitig und die neue UI am Gerät — der UI-Tar-Upload passt auf
 esp32dev nicht mehr in die LittleFS-Partition (neues JS 100 KB gzip, in
 PLAN.md), und das Browser-Pane startet keinen Dev-Server aus dem Worktree;
 beides als offener HW-Punkt in PLAN.md.
+
+## 2026-09-16 — Tar-Upload-Fehler (S2 Mini, LilyGo S3): eingegrenzt, noch nicht HW-verifiziert
+
+Ausgangspunkt: zwei in PLAN.md dokumentierte Tar-Upload-Fehler auf
+verschiedenen Boards (S2 Mini: `Connection was reset` nach ~65 KB; LilyGo S3:
+sofortiges `extract failed`). Erster Schritt war zu klären, ob der
+`TarExtractor`-Parser selbst kaputt ist: ein nativer Test-Harness
+(`TarExtractor.cpp` direkt kompiliert, echtes `webui.tar` aus `pnpm build:sd`
++ `tar -C dist -cf webui.tar .`, in willkürlich kleinen 173-Byte-Häppchen
+gefüttert) extrahiert alle 16 Dateien fehlerfrei — der Parser ist raus als
+Ursache, das Problem liegt im SD/LittleFS-I/O (`SdTarSink`) oder im
+Restzustand von `/www.new`.
+
+Zwei Fixes eingebaut: `SdTarSink.h` — `/www.new` wird vor jeder Extraktion
+jetzt über das bestehende `removeRecursive_()` geleert statt über
+`fs_.rmdir()`, das bei nicht-leerem Verzeichnis stillschweigend nichts tut;
+ein vorheriger fehlgeschlagener Lauf konnte also Dateileichen hinterlassen,
+in die der nächste Versuch dann hineingeschrieben hätte (`FILE_WRITE` hängt
+auf dieser Plattform an, statt zu überschreiben). `WebUI.cpp` — die
+500-Antwort auf `/api/update/assets` trägt jetzt `TarExtractor::errorMsg()`
+(`open failed`/`write failed`/`close failed`) plus den zuletzt versuchten
+Pfad (`SdTarSink::lastPath()`) statt nur der generischen Meldung; dieselbe
+Zeile geht zusätzlich auf `Serial`. `docs/openapi.yaml` entsprechend
+nachgezogen.
+
+**Verifiziert:** `pio test -e native` (37/37 grün), `pio run` auf allen drei
+Envs (esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled) kompiliert,
+Redocly-Lint valide. **Nicht verifiziert:** ob das der tatsächliche Root
+Cause ist — dafür fehlt ein Hardware-Testlauf mit der neuen Firmware auf S2
+Mini und LilyGo, der jetzt aber die genaue Fehlerstelle statt nur „extract
+failed" zeigen sollte. Bis dahin bleibt der Punkt offen in PLAN.md.
+
+**Nachtrag — Cross-Session-Info aus der parallelen WebSocket-Session
+(2026-09-16):** dort am echten esp32dev reproduziert, mit dem
+Doku-empfohlenen gz-only-Tar (~133 KB, gewachsen seit dem 100-KB-Befund vom
+2026-09-10). Ergebnis deckt sich mit der schon in PLAN.md vermuteten
+Platzursache: `/www.new/assets/…js.gz` landet mit 0 Byte, `/www` bleibt
+unverändert, geschätzt ~84 KB frei (4-KB-Block-Schätzung) gegen 100 KB neues
+JS-Gzip — aber der Client bekommt dabei **gar keine Antwort**
+(`curl: (56) Recv failure: Connection was reset`), nicht die von
+`openapi.yaml` versprochene `500`. Das ist dasselbe Fehlerbild wie der
+ältere S2-Mini-Befund (`Connection was reset`, gleiche 256-KB-Partition) —
+naheliegende, aber noch unbestätigte Vermutung: S2 Mini und esp32dev könnten
+dieselbe Platz-Ursache teilen, nicht die zwei getrennten Fehlerbilder, von
+denen PLAN.md bisher ausging. Ob es tatsächlich crasht/rebootet (statt eines
+sauberen I/O-Fehlers) wurde nicht per Serial geprüft. PLAN.md entsprechend
+konsolidiert: LittleFS-Boards (Platz, vermutlich gemeinsame Ursache) jetzt
+als ein Punkt geführt, LilyGo (SD-I/O, bestätigt kein Platzproblem) separat.

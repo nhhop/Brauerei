@@ -1589,9 +1589,13 @@ paths:
           content:
             text/plain: { schema: { type: string, const: ok } }
         "500":
-          description: Body is `extract failed`. `/www` is left untouched.
+          description: |
+            Body is `extract failed: <reason> (<path>)` — reason is one of
+            `open failed`/`write failed`/`close failed`/`no data received`,
+            path is the archive member being written when it failed.
+            `/www` is left untouched.
           content:
-            text/plain: { schema: { type: string, const: extract failed } }
+            text/plain: { schema: { type: string } }
 
   # ── Backup ─────────────────────────────────────────────────────────────────
   /api/backup:

@@ -1424,19 +1424,28 @@ void WebUI::begin() {
           assetTar_.reset(new TarExtractor(assetSink_->openCb(),
                                            assetSink_->writeCb(),
                                            assetSink_->closeCb()));
-          // Clear staging dir.
+          // Recursive: plain rmdir() silently no-ops on a non-empty dir, so a
+          // previous failed/partial extraction would otherwise leave stale
+          // files behind for this run to write into (FILE_WRITE appends
+          // rather than truncates on this platform).
+          removeRecursive_("/www.new");
           SdLock lock;
-          fs_.rmdir("/www.new");
           fs_.mkdir("/www.new");
         }
         if (uploadUnauthorized_) return;
         if (len && assetTar_) assetTar_->feed(data, len);
         if (final) {
           bool ok = assetTar_ && !assetTar_->hasError();
+          String err;
+          if (!ok) {
+            err = assetTar_ ? assetTar_->errorMsg() : "no data received";
+            if (assetSink_) err += " (" + assetSink_->lastPath() + ")";
+            Serial.printf("asset upload failed: %s\n", err.c_str());
+          }
           assetTar_.reset();
           assetSink_.reset();
           if (ok) { assetSwapPending_ = true; req->send(200, "text/plain", "ok"); }
-          else { req->send(500, "text/plain", "extract failed"); }
+          else { req->send(500, "text/plain", "extract failed: " + err); }
         }
       });
 

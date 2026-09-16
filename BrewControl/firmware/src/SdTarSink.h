@@ -23,12 +23,17 @@ class SdTarSink {
       const char* p = path.c_str();
       if (p[0] == '.' && p[1] == '/') p += 2;
       String full = base_ + "/" + String(p);
+      lastPath_ = full;
       ensureParentDirs(full);
       if (cur_) cur_.close();
       cur_ = fs_.open(full, FILE_WRITE);
       return static_cast<bool>(cur_);
     };
   }
+
+  // Path of the most recently attempted file — for error reporting when
+  // extraction fails partway through.
+  const String& lastPath() const { return lastPath_; }
 
   TarExtractor::WriteCb writeCb() {
     return [this](const uint8_t* data, size_t len) {
@@ -58,6 +63,7 @@ class SdTarSink {
   fs::FS& fs_;
   String base_;
   File cur_;
+  String lastPath_;
 };
 
 }  // namespace BrewControl
