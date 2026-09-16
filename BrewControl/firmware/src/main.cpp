@@ -166,12 +166,17 @@ void setup() {
   // flashed as a recovery path even without a network. On boards where the SD
   // slot uses non-default SPI pins (e.g. T-Display-S3 AMOLED on GPIO 36/35/37),
   // bring up an explicit HSPI instance first.
+  // max_files 16 instead of the default 5: ESPAsyncWebServer keeps every file
+  // it serves open for the whole transfer, and a browser loading the UI or
+  // log charts fetches several in parallel. With 5, further opens failed —
+  // UI uploads died with "open failed", assets got the fallback page.
+  constexpr uint8_t kSdMaxOpenFiles = 16;
 #ifdef BREWCTL_SD_SCK
   static SPIClass sdSpi(HSPI);
   sdSpi.begin(BREWCTL_SD_SCK, BREWCTL_SD_MISO, BREWCTL_SD_MOSI, kSdCsPin);
-  const bool fsOk = SD.begin(kSdCsPin, sdSpi);
+  const bool fsOk = SD.begin(kSdCsPin, sdSpi, 4000000, "/sd", kSdMaxOpenFiles);
 #else
-  const bool fsOk = SD.begin(kSdCsPin);
+  const bool fsOk = SD.begin(kSdCsPin, SPI, 4000000, "/sd", kSdMaxOpenFiles);
 #endif
   if (!fsOk) {
     Serial.println(F("SD mount FAILED — UI assets unavailable, API still works"));

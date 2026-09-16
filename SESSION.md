@@ -3034,3 +3034,64 @@ das Board beim Schließen/Neuöffnen des Ports in den ROM-Download-Modus
 geschickt (COM7, 303A:0002). Das Board war danach offline und wurde per USB
 neu geflasht. Den S2-Port also nicht in einer Reopen-Schleife mit DTR-Toggle
 mitschneiden.
+
+## 2026-09-16 — UI-Tar-Upload auf dem LilyGo S3 (SD) gefixt: zu wenige offene Dateien
+
+`POST /api/update/assets` scheiterte auf dem LilyGo sporadisch mit
+`extract failed`, obwohl die SD genug Platz hat. Der native Test-Harness hatte
+den Parser schon als Ursache ausgeschlossen.
+
+**Eingrenzung am Gerät:**
+- **Alte Firmware** (`02560d5-dirty`, 2,2 h Uptime, Datenlog aktiv): Das volle
+  Tar (roh + gz, 522 KB) scheiterte nach 28 672 Byte der ersten Datei. Eine
+  ältere Leiche `index-V1ocpu6Q.js` (225 280 Byte) lag noch in `/www/assets`.
+  Das gz-only-Tar ging durch.
+- **Nach OTA-Neustart:** Auf der aktuellen Firmware gingen 13 von 13 Uploads
+  durch. Ein sauberer Build von `02560d5` schaffte ebenfalls 10 von 10.
+  Die Änderungen aus 24b0eb7 waren also nicht der Fix, der Fehler hing am
+  Laufzeitzustand.
+- **Erste Hypothese:** ungeschützte SD-Lesezugriffe von ESPAsyncWebServer
+  (bekannte `SdLock`-Lücke). Sie ist schwach, denn diese Lesezugriffe laufen
+  im selben AsyncTCP-Task wie das Entpacken, und ein A/B-Test mit 3 Lesern
+  blieb unauffällig.
+- **Belastungstest mit 4 parallelen JS-Downloads:** 0 von 15 Uploads ok, alle
+  mit `open failed (…)`. Das deutete auf `SD.begin()` mit dem Default
+  `max_files = 5`: ESPAsyncWebServer hält jede ausgelieferte Datei für die
+  ganze Übertragung offen.
+- **Beleg für die Handle-Grenze:** Bei 6–8 gleichzeitigen Downloads bekamen
+  einige Clients nur 2 589 Byte, also die Notfall-Seite. Das Öffnen der
+  JS-Datei scheiterte, und `onNotFound` hielt die UI für fehlend.
+
+**Root Cause:** Die Grenze von 5 gleichzeitig offenen Dateien auf der SD. Ein
+Browser lädt UI-Assets bzw. Log-CSVs parallel, und das Datenlog braucht eine
+weitere Datei. Liegt das Entpacken in einem solchen Moment, schlägt das
+Öffnen fehl.
+
+**Fix:** `main.cpp` mountet die SD mit `max_files = 16` (`kSdMaxOpenFiles`,
+mit Kommentar). Das betrifft nur Boards mit SD. LittleFS hat eigene
+Defaults und ist nicht betroffen.
+
+**Verifiziert:** `pio test -e native` (37/37), `pio run` auf allen drei Envs.
+Am LilyGo per OTA, das Datenlog vorübergehend auf 1 s gestellt:
+- 4 JS-Leser + Log-CSV + Datei-Download → 12 von 12 Uploads ok (vorher 0 von 15).
+- 8 JS-Leser → 8 von 8 ok.
+- Tar-Upload während 8 gedrosselter Downloads → `200`, alle Downloads
+  vollständig, keiner bekam die Notfall-Seite.
+- UI danach aktuell. Das Log-Intervall steht wieder auf 5 s, `/stress` ist
+  gelöscht.
+
+**Nicht restlos geklärt:** Zweimal trat vor dem Fix unter Last statt
+`open failed` ein `write failed` auf (einmal bei einem 50-KB-Datei-Upload,
+einmal beim Tar). Mit `max_files = 16` gab es das in 20 Uploads unter
+starker Last nicht mehr. Die Ursache ist unbelegt.
+
+**Nebenbefunde:**
+- Die Notfall-Seite unterscheidet nicht zwischen „fehlt" und „konnte nicht
+  geöffnet werden" (neuer Punkt in PLAN.md).
+- Direkt nach dem ersten OTA-Boot lieferte die SD einmal eine leere Registry
+  und `/config: not a directory`. Nach einem weiteren Neustart war alles
+  normal, nicht erneut aufgetreten.
+- Jede Änderung einer Log-Konfiguration beginnt eine neue Log-Session. Vom
+  Test liegen zwei zusätzliche archivierte Sessions auf dem Gerät, die alte
+  ist erhalten.
+- Das Öffnen von COM9 (USB-Serial-JTAG des S3) setzt das Board zurück.
