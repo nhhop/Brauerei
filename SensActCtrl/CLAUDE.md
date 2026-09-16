@@ -16,7 +16,7 @@ src/
 ├── sensors/      DS18B20, BME280, AnalogInput, DigitalInput, PulseCounter
 ├── actuators/    DigitalOutput (Binary + TPO), PulseOutput
 ├── controllers/  TwoPoint, PID (AutoTune-Wrapper)
-├── transport/    ITransport, MqttTransport, EspNowTransport, WebhookTransport
+├── transport/    ITransport, MqttTransport, EspNowTransport, WebhookTransport, WebSocketTransport
 └── remote/       RemoteSensor, RemoteActuator, RemotePublisher, MetaJson, Topics
 ```
 

@@ -26,6 +26,11 @@ DynamicItems::Result DynamicItems::resolveRemoteTransport(const JsonObject& cfg,
     *out = mqttTransport_;
     return {true};
   }
+  if (strcmp(transportType, "websocket") == 0) {
+    if (!webSocketHubTransport_) return {false, "websocket hub not enabled"};
+    *out = webSocketHubTransport_;
+    return {true};
+  }
   if (strcmp(transportType, "espnow") == 0) {
     if (!espNowTransport_) return {false, "espnow not available"};
     *out = espNowTransport_;

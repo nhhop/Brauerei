@@ -1314,7 +1314,8 @@ paths:
       summary: Get all settings plus live transport status
       description: |
         The stored settings, with the live `connected`/`error` state of the
-        MQTT, webhook and ESP-NOW transports spliced in.
+        MQTT, webhook, WebSocket and ESP-NOW transports spliced in, plus
+        `websocket.hubClients`.
 
         **`mqtt.password` is write-only** — it is never returned. The response
         carries `mqtt.passwordSet` (bool) instead. On `POST /api/settings`, an
@@ -1336,9 +1337,9 @@ paths:
         before anything is stored, so a rejected patch changes nothing.
 
         Sending a `time` section re-applies the NTP configuration immediately.
-        **Sending an `mqtt`, `webhook` or `espnow` section reboots the device
-        ~500 ms after the response** — those transports are only established at
-        boot.
+        **Sending an `mqtt`, `webhook`, `websocket` or `espnow` section reboots
+        the device ~500 ms after the response** — those transports are only
+        established at boot.
 
         `mqtt.password` is write-only: an empty string or an omitted key keeps
         the stored password; an explicit JSON `null` clears it.
@@ -1352,8 +1353,8 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204":
           description: |
-            Settings stored. A reboot follows if `mqtt`, `webhook` or `espnow`
-            was part of the patch.
+            Settings stored. A reboot follows if `mqtt`, `webhook`, `websocket`
+            or `espnow` was part of the patch.
         "400":
           description: |
             Validation failed. Body is one of `invalid JSON`, `invalid mode`,
@@ -1363,7 +1364,9 @@ paths:
             `embedded broker not supported on this board`, `invalid mqtt port`,
             `invalid mqtt topicPrefix`, `invalid mqtt clientId`,
             `invalid webhook listenPort`, `invalid webhook topicPrefix`,
-            `invalid webhook clientId`, `invalid espnow topicPrefix`,
+            `invalid webhook clientId`, `invalid websocket hubPort`,
+            `invalid websocket hubUrl`, `invalid websocket topicPrefix`,
+            `invalid websocket clientId`, `invalid espnow topicPrefix`,
             `invalid espnow clientId`.
           content:
             text/plain: { schema: { type: string } }
@@ -2410,7 +2413,11 @@ components:
         prefix: { type: string }
         transport:
           type: string
-          description: Remote transport — `mqtt`, `webhook` or `espnow`.
+          description: |
+            Remote transport — `mqtt`, `webhook`, `websocket` or `espnow`.
+            `websocket` rides this device's WebSocket hub server and needs no
+            further keys; it is rejected while the hub is disabled in
+            settings.
         listen_port: { type: integer, description: Webhook transport. }
         peer_url: { type: string, description: Webhook transport. }
 
@@ -3139,6 +3146,26 @@ components:
         connected: { type: boolean, readOnly: true }
         error: { type: string, readOnly: true }
 
+    WebSocketSettings:
+      type: object
+      required: [hubEnabled, hubPort, publishEnabled, hubUrl, clientId, topicPrefix]
+      properties:
+        hubEnabled:
+          type: boolean
+          description: |
+            Run the WebSocket server other devices connect to. Remote items
+            with transport `websocket` require it.
+        hubPort: { type: integer, minimum: 1, maximum: 65535 }
+        publishEnabled:
+          type: boolean
+          description: Publish this device's registry to a hub as a WebSocket client.
+        hubUrl: { type: string, description: "`ws://host[:port][/path]` or empty. No TLS (`wss://`)." }
+        clientId: { type: string, description: Must not contain `/`. }
+        topicPrefix: { type: string, description: Must not contain `/`. }
+        connected: { type: boolean, readOnly: true, description: Live state of the publish connection. }
+        error: { type: string, readOnly: true }
+        hubClients: { type: integer, readOnly: true, description: Devices connected to this device's hub. }
+
     EspNowSettings:
       type: object
       required: [enabled, clientId, topicPrefix]
@@ -3152,16 +3179,17 @@ components:
     AppSettings:
       type: object
       description: |
-        All six sections are always emitted. On `GET /api/settings` the `mqtt`,
-        `webhook` and `espnow` sections additionally carry the live `connected`
-        and `error` fields.
-      required: [theme, firmware, time, mqtt, webhook, espnow]
+        All seven sections are always emitted. On `GET /api/settings` the
+        `mqtt`, `webhook`, `websocket` and `espnow` sections additionally carry
+        the live `connected` and `error` fields (`websocket` also `hubClients`).
+      required: [theme, firmware, time, mqtt, webhook, websocket, espnow]
       properties:
         theme: { $ref: "#/components/schemas/ThemeSettings" }
         firmware: { $ref: "#/components/schemas/FirmwareSettings" }
         time: { $ref: "#/components/schemas/TimeSettings" }
         mqtt: { $ref: "#/components/schemas/MqttSettings" }
         webhook: { $ref: "#/components/schemas/WebhookSettings" }
+        websocket: { $ref: "#/components/schemas/WebSocketSettings" }
         espnow: { $ref: "#/components/schemas/EspNowSettings" }
 
     AppSettingsPatch:
@@ -3175,6 +3203,7 @@ components:
         time: { type: object, description: Subset of `TimeSettings`. }
         mqtt: { type: object, description: Subset of `MqttSettings`. Triggers a reboot. }
         webhook: { type: object, description: Subset of `WebhookSettings`. Triggers a reboot. }
+        websocket: { type: object, description: Subset of `WebSocketSettings`. Triggers a reboot. }
         espnow: { type: object, description: Subset of `EspNowSettings`. Triggers a reboot. }
 
     # ── Network ──────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 {
   "name": "SensActCtrl",
   "version": "0.1.0",
-  "description": "Sensor/Actuator/Controller library for ESP32. Local and remote (MQTT/ESP-Now) primitives behind a unified API.",
-  "keywords": "esp32, sensors, actuators, pid, mqtt, automation",
+  "description": "Sensor/Actuator/Controller library for ESP32. Local and remote (MQTT/ESP-Now/Webhook/WebSocket) primitives behind a unified API.",
+  "keywords": "esp32, sensors, actuators, pid, mqtt, websocket, automation",
   "authors": [
     {
       "name": "SensActCtrl Contributors"
@@ -51,6 +51,11 @@
       "name": "PubSubClient",
       "owner": "knolleary",
       "version": "^2.8"
+    },
+    {
+      "name": "WebSockets",
+      "owner": "links2004",
+      "version": "^2.7.3"
     },
     {
       "name": "ArduinoJson",

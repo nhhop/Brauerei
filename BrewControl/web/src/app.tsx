@@ -19,6 +19,7 @@ import { TimePage } from './pages/TimePage';
 import { NetworkPage } from './pages/NetworkPage';
 import { MqttPage } from './pages/MqttPage';
 import { WebhookPage } from './pages/WebhookPage';
+import { WebSocketPage } from './pages/WebSocketPage';
 import { EspNowPage } from './pages/EspNowPage';
 import { LogsPage } from './pages/LogsPage';
 import { ArchivePage } from './pages/ArchivePage';
@@ -163,6 +164,7 @@ export function App() {
         <ConnectivityPage path="/settings/connectivity" />
         <MqttPage path="/settings/connectivity/mqtt" />
         <WebhookPage path="/settings/connectivity/webhook" />
+        <WebSocketPage path="/settings/connectivity/websocket" />
         <EspNowPage path="/settings/connectivity/espnow" />
         <LogsPage path="/settings/logs" snap={snap} />
         <ArchivePage path="/settings/logs/:id/archive" />

@@ -298,7 +298,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/profiles/<id>` | POST, DELETE | Profil ändern / löschen |
 | `/api/profile-categories` | POST | Kategorie anlegen |
 | `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
-| `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/ESP-NOW |
+| `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
 | `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |
 | `/api/update/status` | GET | Updater-Zustand |
@@ -418,6 +418,11 @@ Ein paar Verhaltensweisen, die sich aus dem Cookie-Modell ergeben:
 Ohne TLS geht das Passwort beim Anmelden unverschlüsselt über das Netz. Der
 Schutz ist gegen Fehlbedienung und beiläufige Zugriffe im Heimnetz gedacht,
 nicht gegen einen aktiven Angreifer im selben Segment.
+
+Nicht abgedeckt sind die eigenen Ports der Remote-Transporte: Webhook-Server
+und WebSocket-Hub (Einstellungen → Konnektivität) nehmen Verbindungen ohne
+Anmeldung an. Wer im Heimnetz den Hub-Port erreicht, kann dem Hub Werte für
+Remote-Items unterschieben.
 
 Mehrere DS18B20 auf einem Pin: erst scannen, dann jeden Sensor mit der
 gefundenen `address` anlegen — der ESP32 verwaltet die Shared-Bus-Instanz intern.

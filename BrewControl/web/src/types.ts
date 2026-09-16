@@ -419,6 +419,18 @@ export interface WebhookSettings {
   error?: string;        // read-only, always "" — WebhookTransport has nothing specific to say
 }
 
+export interface WebSocketSettings {
+  hubEnabled: boolean;      // this device runs the WebSocket server leaves connect to
+  hubPort: number;
+  publishEnabled: boolean;  // this device publishes its registry to a hub as a client
+  hubUrl: string;           // ws://host[:port][/path]
+  clientId: string;
+  topicPrefix: string;
+  connected?: boolean;      // read-only, live state of the publish connection to the hub
+  error?: string;           // read-only, reason when !connected
+  hubClients?: number;      // read-only, leaves currently connected to this device's hub
+}
+
 export interface EspNowSettings {
   enabled: boolean;
   clientId: string;
@@ -427,7 +439,7 @@ export interface EspNowSettings {
   error?: string;        // read-only, always "" — EspNowTransport has nothing specific to say
 }
 
-// GET /api/settings always returns all six sections; SettingsStore::serialize()
+// GET /api/settings always returns all seven sections; SettingsStore::serialize()
 // emits every one unconditionally.
 export interface AppSettings {
   theme: ThemeSettings;
@@ -435,6 +447,7 @@ export interface AppSettings {
   time: TimeSettings;
   mqtt: MqttSettings;
   webhook: WebhookSettings;
+  websocket: WebSocketSettings;
   espnow: EspNowSettings;
 }
 

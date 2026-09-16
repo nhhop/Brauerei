@@ -20,7 +20,7 @@ type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
 type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'PulseOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
 type MqttKind = 'Binary' | 'Continuous';
-type RemoteTransport = 'mqtt' | 'webhook' | 'espnow';
+type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -1065,10 +1065,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               <div>
                 <label class={lbl}>Transport</label>
                 <div class="flex gap-2">
-                  {(['mqtt', 'webhook', 'espnow'] as RemoteTransport[]).map((t) => (
+                  {(['mqtt', 'webhook', 'websocket', 'espnow'] as RemoteTransport[]).map((t) => (
                     <button key={t} type="button" onClick={() => setRemoteTransport(t)}
                       class={segBtn(remoteTransport === t)}>
-                      {t === 'mqtt' ? 'MQTT' : t === 'webhook' ? 'Webhook' : 'ESP-NOW'}
+                      {t === 'mqtt' ? 'MQTT' : t === 'webhook' ? 'Webhook' : t === 'websocket' ? 'WebSocket' : 'ESP-NOW'}
                     </button>
                   ))}
                 </div>
@@ -1379,10 +1379,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
               <div>
                 <label class={lbl}>Transport</label>
                 <div class="flex gap-2">
-                  {(['mqtt', 'webhook', 'espnow'] as RemoteTransport[]).map((t) => (
+                  {(['mqtt', 'webhook', 'websocket', 'espnow'] as RemoteTransport[]).map((t) => (
                     <button key={t} type="button" onClick={() => setRemoteTransport(t)}
                       class={segBtn(remoteTransport === t)}>
-                      {t === 'mqtt' ? 'MQTT' : t === 'webhook' ? 'Webhook' : 'ESP-NOW'}
+                      {t === 'mqtt' ? 'MQTT' : t === 'webhook' ? 'Webhook' : t === 'websocket' ? 'WebSocket' : 'ESP-NOW'}
                     </button>
                   ))}
                 </div>

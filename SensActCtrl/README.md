@@ -3,14 +3,14 @@
 ESP32-Library für Sensoren, Aktoren und Controller. Liefert generische
 Primitive (Wert lesen, Aktor schalten, Zwei-Punkt/PID regeln, …) hinter
 einer einheitlichen API — lokal über GPIO/I2C/OneWire/SPI oder remote über
-MQTT/ESP-Now/Webhooks, transparent aus Sicht des Reglers. Domain-Logik
+MQTT/ESP-Now/Webhooks/WebSockets, transparent aus Sicht des Reglers. Domain-Logik
 (z.B. Brauerei-Rasten, Aquaristik-Profile, Gewächshaus-Kurven) bleibt im
 Anwender-Sketch oder einem aufsetzenden Projekt (etwa
 [`BrewControl`](https://github.com/nhhop/Brauerei/tree/main/BrewControl) für
 Heim-/Hobbybrau).
 
 > **Status:** Phase 1–3 vollständig (lokale Sensoren/Aktoren/Controller,
-> Remote-Transport MQTT/ESP-Now/Webhook, Registry-JSON-Snapshot). 189+
+> Remote-Transport MQTT/ESP-Now/Webhook/WebSocket, Registry-JSON-Snapshot). 189+
 > native Unit-Tests grün (`pio test -e native`).
 
 ## Architektur in einem Bild
@@ -113,14 +113,20 @@ Sollwert-Änderungsrate °/min für einen beliebigen Regler).
 `MqttTransport` (PubSubClient-Wrapper, Reconnect-Backoff), `EspNowTransport`
 (Broadcast, Retain-Emulation via Retained-Request, 250-Byte-Paketlimit),
 `WebhookTransport` (HTTP-Push/Pull, peer-to-peer, Timeout+Backoff bei
-unerreichbarem Peer).
+unerreichbarem Peer), `WebSocketTransport` (dauerhafte bidirektionale
+Verbindung ohne Broker über `links2004/WebSockets`; Server- oder Client-Rolle,
+gedacht als Hub: veröffentlichende Knoten verbinden sich als Client zum
+konsumierenden Knoten; Retain-Emulation via Retained-Request, Heartbeat).
+Der Client-Connect blockiert bei unerreichbarem Server bis zu
+`WEBSOCKETS_TCP_TIMEOUT` (Library-Default 5000 ms) pro Reconnect-Versuch —
+`-DWEBSOCKETS_TCP_TIMEOUT=1000` in `build_flags` empfohlen.
 
 **Remote** (`src/remote/`): `RemoteSensor`/`RemoteActuator` (proxyen einen
 Sensor/Aktor eines anderen Knotens transparent über einen `ITransport&`),
 `RemotePublisher` (veröffentlicht lokale Items automatisch: Meta retained
 bei `attach()`, State zyklisch, Controller-Tuning eingehend über `/tune`).
 Alle drei sind komplett transport-agnostisch. Topic-Schema
-(`src/remote/Topics.h`, gilt für alle drei Transporte gleich):
+(`src/remote/Topics.h`, gilt für alle Transporte gleich):
 
 ```
 <prefix>/<device>/sensor/<id>              State (retained)
@@ -133,9 +139,9 @@ Alle drei sind komplett transport-agnostisch. Topic-Schema
 <prefix>/<device>/controller/<id>/tune     Tuning-Command
 ```
 
-Drei Zwei-Geräte-Beispiel-Sketches demonstrieren das Muster:
-`examples/08_remote_mqtt/`, `09_remote_espnow/`, `10_remote_webhook/` (je
-`publisher/` + `consumer/` + eigenem `README.md`).
+Vier Zwei-Geräte-Beispiel-Sketches demonstrieren das Muster:
+`examples/08_remote_mqtt/`, `09_remote_espnow/`, `10_remote_webhook/`,
+`11_remote_websocket/` (je `publisher/` + `consumer/` + eigenem `README.md`).
 
 **Snapshot** (`src/core/RegistrySnapshot.{h,cpp}`): freie Funktion
 `serializeRegistry()` erzeugt einen vollständigen JSON-Snapshot der

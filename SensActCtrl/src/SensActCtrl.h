@@ -43,6 +43,7 @@
 #include "transport/MqttTransport.h"
 #include "transport/EspNowTransport.h"
 #include "transport/WebhookTransport.h"
+#include "transport/WebSocketTransport.h"
 
 #include "remote/RemoteSensor.h"
 #include "remote/RemoteActuator.h"

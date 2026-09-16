@@ -300,11 +300,13 @@ WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              FirmwareUpdater& updater, LogStore& logs, ProgramRunner& programs,
              TimerStore& timers, AlarmStore& alarms, ProfileStore& profiles,
              MqttService& mqtt, WebhookService& webhook,
-             EspNowPublishService& espnow, PushService& push, uint16_t port)
+             WebSocketService& websocket, EspNowPublishService& espnow,
+             PushService& push, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
       updater_(updater), logs_(logs), programs_(programs), timers_(timers),
       alarms_(alarms), profiles_(profiles), mqtt_(mqtt), webhook_(webhook),
-      espnow_(espnow), push_(push), server_(port), events_("/api/events") {}
+      websocket_(websocket), espnow_(espnow), push_(push), server_(port),
+      events_("/api/events") {}
 
 void WebUI::begin() {
   // ── Snapshot ─────────────────────────────────────────────────────────────
@@ -1180,6 +1182,9 @@ void WebUI::begin() {
     doc["mqtt"]["error"] = mqtt_.lastErrorMessage();
     doc["webhook"]["connected"] = webhook_.publishConnected();
     doc["webhook"]["error"] = webhook_.publishLastErrorMessage();
+    doc["websocket"]["connected"] = websocket_.publishConnected();
+    doc["websocket"]["error"] = websocket_.publishLastErrorMessage();
+    doc["websocket"]["hubClients"] = websocket_.hubClientCount();
     doc["espnow"]["connected"] = espnow_.connected();
     doc["espnow"]["error"] = espnow_.lastErrorMessage();
     // mqtt.password is write-only: never echo the stored secret. Report only
@@ -1286,6 +1291,28 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject websocket = obj["websocket"].as<JsonObject>();
+        if (!websocket.isNull()) {
+          if (websocket["hubPort"].is<int>()) {
+            int32_t p = websocket["hubPort"].as<int32_t>();
+            if (p < 1 || p > 65535) { req->send(400, "text/plain", "invalid websocket hubPort"); return; }
+          }
+          if (const char* url = websocket["hubUrl"]) {
+            if (*url && strncmp(url, "ws://", 5) != 0) {
+              req->send(400, "text/plain", "invalid websocket hubUrl"); return;
+            }
+          }
+          if (const char* tp = websocket["topicPrefix"]) {
+            if (strchr(tp, '/')) {
+              req->send(400, "text/plain", "invalid websocket topicPrefix"); return;
+            }
+          }
+          if (const char* cid = websocket["clientId"]) {
+            if (strchr(cid, '/')) {
+              req->send(400, "text/plain", "invalid websocket clientId"); return;
+            }
+          }
+        }
         JsonObject espnow = obj["espnow"].as<JsonObject>();
         if (!espnow.isNull()) {
           if (const char* tp = espnow["topicPrefix"]) {
@@ -1306,11 +1333,11 @@ void WebUI::begin() {
                      settings_.ntpServer().c_str());
         }
         req->send(204);
-        // MQTT/webhook/ESP-NOW's actual publish connection is only
-        // (re-)established at boot from SettingsStore — reboot so a saved
-        // change takes effect immediately, same as the WiFi/hostname
-        // settings on /api/network.
-        if (!mqtt.isNull() || !webhook.isNull() || !espnow.isNull())
+        // MQTT/webhook/WebSocket/ESP-NOW's actual publish connection (and
+        // the WebSocket hub server) is only (re-)established at boot from
+        // SettingsStore — reboot so a saved change takes effect immediately,
+        // same as the WiFi/hostname settings on /api/network.
+        if (!mqtt.isNull() || !webhook.isNull() || !websocket.isNull() || !espnow.isNull())
           rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 

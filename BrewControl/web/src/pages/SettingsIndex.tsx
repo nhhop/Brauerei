@@ -25,7 +25,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/files', icon: FolderOpen, title: 'Dateiverwaltung', desc: 'SD-Karte durchsuchen, hoch-/herunterladen, löschen' },
   { href: '/settings/time', icon: Clock, title: 'Zeit & Formate', desc: 'Zeitzone, NTP-Server, Uhrzeit- und Datumsformat' },
   { href: '/settings/network', icon: Wifi, title: 'Netzwerk', desc: 'WLAN-Status, Netzwerk wechseln, Hostname' },
-  { href: '/settings/connectivity', icon: Network, title: 'Konnektivität', desc: 'MQTT, Webhook und ESP-NOW' },
+  { href: '/settings/connectivity', icon: Network, title: 'Konnektivität', desc: 'MQTT, Webhook, WebSocket und ESP-NOW' },
   { href: '/settings/security', icon: ShieldCheck, title: 'Zugriffsschutz', desc: 'Gerätepasswort für schreibende Zugriffe' },
   { href: '/settings/logs', icon: ChartLine, title: 'Logs & Charts', desc: 'Datenaufzeichnung konfigurieren und Verläufe anzeigen' },
   { href: '/settings/alarms', icon: BellRing, title: 'Alarme', desc: 'Grenzwerte überwachen und melden' },

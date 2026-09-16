@@ -51,6 +51,15 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* c = webhook["clientId"])    webhookClientId_    = c;
     if (const char* p = webhook["topicPrefix"]) webhookTopicPrefix_ = p;
   }
+  JsonObject websocket = doc["websocket"].as<JsonObject>();
+  if (!websocket.isNull()) {
+    if (websocket["hubEnabled"].is<bool>())       websocketHubEnabled_     = websocket["hubEnabled"].as<bool>();
+    if (websocket["hubPort"].is<int>())           websocketHubPort_        = websocket["hubPort"].as<uint16_t>();
+    if (websocket["publishEnabled"].is<bool>())   websocketPublishEnabled_ = websocket["publishEnabled"].as<bool>();
+    if (const char* u = websocket["hubUrl"])      websocketHubUrl_         = u;
+    if (const char* c = websocket["clientId"])    websocketClientId_       = c;
+    if (const char* p = websocket["topicPrefix"]) websocketTopicPrefix_    = p;
+  }
   JsonObject espnow = doc["espnow"].as<JsonObject>();
   if (!espnow.isNull()) {
     if (espnow["enabled"].is<bool>())          espnowEnabled_     = espnow["enabled"].as<bool>();
@@ -104,6 +113,13 @@ String SettingsStore::serialize() const {
   webhook["peerUrl"]     = webhookPeerUrl_.c_str();
   webhook["clientId"]    = webhookClientId_.c_str();
   webhook["topicPrefix"] = webhookTopicPrefix_.c_str();
+  JsonObject websocket = doc["websocket"].to<JsonObject>();
+  websocket["hubEnabled"]     = websocketHubEnabled_;
+  websocket["hubPort"]        = websocketHubPort_;
+  websocket["publishEnabled"] = websocketPublishEnabled_;
+  websocket["hubUrl"]         = websocketHubUrl_.c_str();
+  websocket["clientId"]       = websocketClientId_.c_str();
+  websocket["topicPrefix"]    = websocketTopicPrefix_.c_str();
   JsonObject espnow = doc["espnow"].to<JsonObject>();
   espnow["enabled"]     = espnowEnabled_;
   espnow["clientId"]    = espnowClientId_.c_str();
@@ -158,6 +174,16 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* c = webhook["clientId"])    webhookClientId_    = c;
     if (const char* p = webhook["topicPrefix"]) webhookTopicPrefix_ = p;
     // "connected"/"error" are read-only (live transport state) — never read from a patch.
+  }
+  JsonObject websocket = patch["websocket"].as<JsonObject>();
+  if (!websocket.isNull()) {
+    if (websocket["hubEnabled"].is<bool>())       websocketHubEnabled_     = websocket["hubEnabled"].as<bool>();
+    if (websocket["hubPort"].is<int>())           websocketHubPort_        = websocket["hubPort"].as<uint16_t>();
+    if (websocket["publishEnabled"].is<bool>())   websocketPublishEnabled_ = websocket["publishEnabled"].as<bool>();
+    if (const char* u = websocket["hubUrl"])      websocketHubUrl_         = u;
+    if (const char* c = websocket["clientId"])    websocketClientId_       = c;
+    if (const char* p = websocket["topicPrefix"]) websocketTopicPrefix_    = p;
+    // "connected"/"error"/"hubClients" are read-only (live transport state) — never read from a patch.
   }
   JsonObject espnow = patch["espnow"].as<JsonObject>();
   if (!espnow.isNull()) {

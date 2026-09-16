@@ -44,6 +44,17 @@ class SettingsStore {
   const String& webhookClientId() const { return webhookClientId_; }
   const String& webhookTopicPrefix() const { return webhookTopicPrefix_; }
 
+  // WebSocket preferences. Hub: this device runs the WebSocket server that
+  // leaves connect to — "Remote" items with transport "websocket" in
+  // DynamicItems ride it. Publish: this device as a leaf, mirroring its own
+  // registry to a hub over a client connection.
+  bool websocketHubEnabled() const { return websocketHubEnabled_; }
+  uint16_t websocketHubPort() const { return websocketHubPort_; }
+  bool websocketPublishEnabled() const { return websocketPublishEnabled_; }
+  const String& websocketHubUrl() const { return websocketHubUrl_; }
+  const String& websocketClientId() const { return websocketClientId_; }
+  const String& websocketTopicPrefix() const { return websocketTopicPrefix_; }
+
   // ESP-NOW publish preferences (this device as a leaf, broadcasting its
   // own registry — no host/port/channel: rides the existing shared
   // broadcast transport).
@@ -79,6 +90,13 @@ class SettingsStore {
   String   webhookPeerUrl_     = "";
   String   webhookClientId_    = "";           // empty ⇒ falls back to mDNS hostname
   String   webhookTopicPrefix_ = "brewcontrol";
+
+  bool     websocketHubEnabled_     = false;
+  uint16_t websocketHubPort_        = 8081;
+  bool     websocketPublishEnabled_ = false;
+  String   websocketHubUrl_         = "";           // ws://host[:port][/path]
+  String   websocketClientId_       = "";           // empty ⇒ falls back to mDNS hostname
+  String   websocketTopicPrefix_    = "brewcontrol";
 
   bool     espnowEnabled_     = false;
   String   espnowClientId_    = "";           // empty ⇒ falls back to mDNS hostname

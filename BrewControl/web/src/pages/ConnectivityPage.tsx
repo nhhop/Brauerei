@@ -3,7 +3,7 @@ import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
 import { SettingsCard } from '../components/SettingsCard';
 import { EspressifIcon } from '../components/EspressifIcon';
-import { Radio, Webhook, type LucideIcon } from 'lucide-preact';
+import { Cable, Radio, Webhook, type LucideIcon } from 'lucide-preact';
 
 interface Entry {
   href: string;
@@ -15,6 +15,7 @@ interface Entry {
 const ENTRIES: Entry[] = [
   { href: '/settings/connectivity/mqtt', icon: Radio, title: 'MQTT', desc: 'Externen oder eingebauten Broker konfigurieren' },
   { href: '/settings/connectivity/webhook', icon: Webhook, title: 'Webhook', desc: 'Registry per HTTP an ein Peer-Gerät senden' },
+  { href: '/settings/connectivity/websocket', icon: Cable, title: 'WebSocket', desc: 'Hub für andere Geräte bereitstellen oder Registry an einen Hub senden' },
   { href: '/settings/connectivity/espnow', icon: EspressifIcon, title: 'ESP-NOW', desc: 'Registry per ESP-NOW-Broadcast senden' },
 ];
 

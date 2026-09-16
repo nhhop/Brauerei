@@ -32,6 +32,7 @@
 #include "PushService.h"
 #include "SettingsStore.h"
 #include "TimerStore.h"
+#include "WebSocketService.h"
 #include "WebUI.h"
 #include "WebhookService.h"
 #include "WiFiSetupPortal.h"
@@ -71,9 +72,10 @@ BrewControl::AlarmStore alarmStore;
 BrewControl::ProfileStore profileStore;
 BrewControl::MqttService mqttService(registry, dynamicItems, settingsStore);
 BrewControl::WebhookService webhookService;
+BrewControl::WebSocketService webSocketService;
 BrewControl::EspNowPublishService espNowPublishService;
 BrewControl::PushService pushService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, espNowPublishService, pushService);
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, pushService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -227,10 +229,12 @@ void setup() {
                                   // dynamicItems.loadFromSD() constructs any
                                   // actuator that publishes over MQTT itself
   webhookService.beginPublish(settingsStore, hostname_);  // no-op if disabled
+  webSocketService.begin(settingsStore, hostname_);  // hub and/or publish, each no-op if disabled
   espNowPublishService.begin(*espNowTransport, settingsStore, hostname_);  // no-op if disabled
   dynamicItems.setMqttTransport(mqttService.transport());  // nullable
   dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
   dynamicItems.setEspNowTransport(espNowTransport.get());  // always available, no toggle
+  dynamicItems.setWebSocketHubTransport(webSocketService.hubTransport());  // nullable
 
   if (fsOk) {
     dynamicItems.loadFromSD(deviceFs, registry);
@@ -251,6 +255,7 @@ void setup() {
                                     // DynamicItems hooks — must run before
                                     // webUI can serve add/remove requests
   webhookService.attachExistingPublish(registry, dynamicItems);
+  webSocketService.attachExistingPublish(registry, dynamicItems);
   espNowPublishService.attachExisting(registry, dynamicItems);
 
   // Program run-state transitions feed the alert centre. Fires with the
@@ -293,6 +298,7 @@ void loop() {
   firmwareUpdater.tick();
   mqttService.tick();
   webhookService.tick();
+  webSocketService.tick();
   if (espNowTransport) espNowTransport->tick();
   espNowPublishService.tick();
   pushService.tick();

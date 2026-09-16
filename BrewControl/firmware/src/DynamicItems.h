@@ -69,8 +69,8 @@ class DynamicItems {
   // (e.g. to detach it from a live subscriber like MqttService before the
   // unique_ptr destroys it). Multiple observers may register (each set*
   // call adds another one, in registration order) — MqttService,
-  // WebhookService, and EspNowPublishService all track live add/remove
-  // independently.
+  // WebhookService, WebSocketService, and EspNowPublishService all track
+  // live add/remove independently.
   void setOnSensorAdded(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorAdded_.push_back(std::move(cb)); }
   void setOnSensorRemoving(std::function<void(SensActCtrl::Sensor&)> cb) { onSensorRemoving_.push_back(std::move(cb)); }
   void setOnActuatorAdded(std::function<void(SensActCtrl::Actuator&)> cb) { onActuatorAdded_.push_back(std::move(cb)); }
@@ -97,6 +97,12 @@ class DynamicItems {
   // connects — see main.cpp) — must be set before loadFromSD()/add*() are
   // called for such items.
   void setEspNowTransport(SensActCtrl::ITransport* t) { espNowTransport_ = t; }
+
+  // Remote items with transport:"websocket" all ride this one hub server
+  // (WebSocketService). nullptr if the hub is disabled in settings — such
+  // items are then rejected at load/add time. Must be set before
+  // loadFromSD()/add*() are called for such items.
+  void setWebSocketHubTransport(SensActCtrl::ITransport* t) { webSocketHubTransport_ = t; }
 
  private:
   struct SensorEntry {
@@ -149,6 +155,7 @@ class DynamicItems {
   SensActCtrl::ITransport* mqttTransport_ = nullptr;
   WebhookService* webhookService_ = nullptr;
   SensActCtrl::ITransport* espNowTransport_ = nullptr;
+  SensActCtrl::ITransport* webSocketHubTransport_ = nullptr;
 
   // Internal variants that do NOT call begin() — used by loadFromSD.
   Result addSensorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);
@@ -159,7 +166,7 @@ class DynamicItems {
   static bool parseHexAddress(const char* hex, uint8_t out[8]);
 
   // Resolves the ITransport for a "Remote" sensor/actuator from
-  // cfg["transport"] ("mqtt", default, or "webhook") — shared by both
+  // cfg["transport"] ("mqtt", default, "webhook", "websocket" or "espnow") — shared by both
   // addSensorNoBegin and addActuatorNoBegin. On success sets *out and
   // returns {true}; on failure *out is untouched and the Result carries
   // the reason (missing transport / invalid config).

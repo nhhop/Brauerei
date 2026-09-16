@@ -22,6 +22,7 @@
 #include "SettingsStore.h"
 #include "TarExtractor.h"
 #include "TimerStore.h"
+#include "WebSocketService.h"
 #include "WebhookService.h"
 
 namespace BrewControl {
@@ -119,7 +120,8 @@ class WebUI {
         DashboardStore& store, SettingsStore& settings, FirmwareUpdater& updater,
         LogStore& logs, ProgramRunner& programs, TimerStore& timers,
         AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
-        WebhookService& webhook, EspNowPublishService& espnow,
+        WebhookService& webhook, WebSocketService& websocket,
+        EspNowPublishService& espnow,
         PushService& push, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
@@ -155,6 +157,7 @@ class WebUI {
   ProfileStore& profiles_;
   MqttService& mqtt_;
   WebhookService& webhook_;
+  WebSocketService& websocket_;
   EspNowPublishService& espnow_;
   PushService& push_;
   AuthService auth_;
