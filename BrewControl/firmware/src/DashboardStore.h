@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <FS.h>
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +29,11 @@ class DashboardStore {
 
   // Removes a dashboard. Returns false if id not found.
   bool remove(const char* id);
+
+  // Swaps a dashboard with its left/right neighbor (dir = -1 left, +1 right).
+  // No-op (returns true, no change) if id sits at that edge already.
+  // Returns false if id not found.
+  bool move(const char* id, int dir);
 
  private:
   struct DashboardCfg {

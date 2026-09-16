@@ -690,7 +690,8 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // POST /api/dashboards/:id — update (BodyPrefixHandler)
+  // POST /api/dashboards/:id           — update (BodyPrefixHandler)
+  // POST /api/dashboards/:id/move      — {"direction":"left"|"right"}
   server_.addHandler(new BodyPrefixHandler("/api/dashboards/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
         JsonDocument doc;
@@ -698,8 +699,23 @@ void WebUI::begin() {
           req->send(400, "text/plain", "invalid JSON");
           return;
         }
-        String id = req->url().substring(strlen("/api/dashboards/"));
-        if (!store_.update(id.c_str(), doc.as<JsonObject>())) {
+        String tail = req->url().substring(strlen("/api/dashboards/"));
+        if (tail.endsWith("/move")) {
+          String id = tail.substring(0, tail.length() - strlen("/move"));
+          const char* dir = doc["direction"] | "";
+          int d;
+          if (strcmp(dir, "left") == 0) d = -1;
+          else if (strcmp(dir, "right") == 0) d = 1;
+          else { req->send(400, "text/plain", "invalid direction"); return; }
+          if (!store_.move(id.c_str(), d)) {
+            req->send(404, "text/plain", "not found");
+            return;
+          }
+          store_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (!store_.update(tail.c_str(), doc.as<JsonObject>())) {
           req->send(404, "text/plain", "not found");
           return;
         }

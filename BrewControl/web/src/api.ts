@@ -204,6 +204,10 @@ export function updateDashboard(id: string, cfg: Omit<DashboardConfig, 'id'>): P
   return postJson(`/api/dashboards/${encodeURIComponent(id)}`, cfg);
 }
 
+export function moveDashboard(id: string, direction: 'left' | 'right'): Promise<void> {
+  return postJson(`/api/dashboards/${encodeURIComponent(id)}/move`, { direction });
+}
+
 export async function deleteDashboard(id: string): Promise<void> {
   const r = await fetch(`/api/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!r.ok) await failed(r);

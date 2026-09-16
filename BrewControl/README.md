@@ -271,6 +271,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items |
 | `/api/dashboards` | GET, POST | Dashboards auflisten / anlegen |
 | `/api/dashboards/<id>` | POST, DELETE | Dashboard ändern / löschen |
+| `/api/dashboards/<id>/move` | POST | Dashboard eine Position nach links/rechts verschieben |
 | `/api/logs` | GET, POST | Log-Konfigurationen auflisten / anlegen |
 | `/api/logs/<id>` | POST, DELETE | Log-Konfiguration ändern / löschen |
 | `/api/logs/<id>/enable` | POST | Logging an-/abschalten |

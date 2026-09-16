@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity, WidgetMode } from '../types';
 import {
   resetSensor, getConfig,
-  getDashboards, createDashboard, updateDashboard, deleteDashboard,
+  getDashboards, createDashboard, updateDashboard, deleteDashboard, moveDashboard,
   getLogs,
   getPrograms, createProgram, updateProgram, deleteProgram,
   getTimers, createTimer, updateTimer, deleteTimer,
@@ -23,7 +23,7 @@ import { DashboardContentModal } from '../components/DashboardContentModal';
 import { ProgramEditorModal } from '../components/ProgramEditorModal';
 import { TimerEditorModal } from '../components/TimerEditorModal';
 import { ProfileEditorModal } from '../components/ProfileEditorModal';
-import { Pencil, Check, Plus, X } from 'lucide-preact';
+import { Pencil, Check, Plus, X, ChevronLeft, ChevronRight } from 'lucide-preact';
 
 type ProgramSave = Pick<ProgramConfig, 'name' | 'steps'>;
 type TimerSave = Pick<TimerConfig, 'name' | 'mode' | 'durationSec' | 'timeOfDay' | 'repeat' | 'onExpire'>;
@@ -144,6 +144,19 @@ export function Dashboard({ snap, err, alarmByRef }: {
     await deleteDashboard(id);
     setDashboards(ds => ds.filter(d => d.id !== id));
     if (activeTab?.id === id) setActiveTab(null);
+  }
+
+  async function moveTab(id: string, direction: 'left' | 'right') {
+    const i = dashboards.findIndex(d => d.id === id);
+    if (i < 0) return;
+    const j = direction === 'left' ? i - 1 : i + 1;
+    if (j < 0 || j >= dashboards.length) return;
+    await moveDashboard(id, direction);
+    setDashboards(ds => {
+      const next = [...ds];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   }
 
   // ── Edit item (from card buttons) ─────────────────────────────────────────
@@ -311,9 +324,44 @@ export function Dashboard({ snap, err, alarmByRef }: {
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
+  // Dashboard actions (Bearbeiten / Hinzufügen+Fertig): rendered in the header
+  // on mobile (tab row is too cramped there for both tabs and buttons) and in
+  // the tab row on desktop (lg:), where there's room to spare.
+  // `alignEnd`: in the desktop tab row (items-end) the buttons need a bottom
+  // margin to line up above the tab underline; in the header (items-center)
+  // that same margin would push them off-center, so it's opt-in per call site.
+  function dashActions(alignEnd: boolean) {
+    if (!activeDash) return null;
+    const m = alignEnd ? 'mb-2 ' : '';
+    return editMode ? (
+      <div class={`${m}flex shrink-0 items-center gap-1.5`}>
+        <button type="button"
+          class="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
+          onClick={() => setContentOpen(true)}
+          title="Inhalte hinzufügen">
+          <Plus size={12} /> Hinzufügen
+        </button>
+        <button type="button"
+          class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-fg hover:bg-accent/90"
+          onClick={() => setEditMode(false)}
+          title="Bearbeiten beenden">
+          <Check size={12} /> Fertig
+        </button>
+      </div>
+    ) : (
+      <button type="button"
+        class={`${m}flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10`}
+        onClick={() => setEditMode(true)}
+        title="Dashboard bearbeiten">
+        <Pencil size={12} /> Bearbeiten
+      </button>
+    );
+  }
+
   const header = (
     <header class="flex items-center justify-between gap-3">
       <h1 class="text-2xl font-semibold tracking-tight">BrewControl</h1>
+      <div class="lg:hidden">{dashActions(false)}</div>
     </header>
   );
 
@@ -321,12 +369,22 @@ export function Dashboard({ snap, err, alarmByRef }: {
   const tabBar = (
     <div class="my-4 flex items-end gap-2 border-b border-border lg:mb-0">
       <div class="flex flex-1 overflow-x-auto">
-        {dashboards.map(d => {
+        {dashboards.map((d, i) => {
           const active = activeTab?.id === d.id;
           return (
             <TabBtn key={d.id} active={active}
               onClick={() => { if (!active) setActiveTab({ kind: 'dashboard', id: d.id }); }}>
+              {editMode && active && (
+                <button type="button" title="Nach links verschieben" disabled={i === 0}
+                  onClick={(e) => { e.stopPropagation(); moveTab(d.id, 'left'); }}
+                  class="mr-1 text-faint hover:text-fg disabled:opacity-30 disabled:hover:text-faint"><ChevronLeft size={12} /></button>
+              )}
               {d.name}
+              {editMode && active && (
+                <button type="button" title="Nach rechts verschieben" disabled={i === dashboards.length - 1}
+                  onClick={(e) => { e.stopPropagation(); moveTab(d.id, 'right'); }}
+                  class="ml-1 text-faint hover:text-fg disabled:opacity-30 disabled:hover:text-faint"><ChevronRight size={12} /></button>
+              )}
               {editMode && active && (
                 <button type="button" title="Umbenennen / Löschen"
                   onClick={(e) => { e.stopPropagation(); setMeta('edit'); }}
@@ -343,30 +401,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
           </button>
         )}
       </div>
-      {activeDash && !editMode && (
-        <button type="button"
-          class="mb-2 flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
-          onClick={() => setEditMode(true)}
-          title="Dashboard bearbeiten">
-          <Pencil size={12} /> Bearbeiten
-        </button>
-      )}
-      {activeDash && editMode && (
-        <div class="mb-2 flex shrink-0 items-center gap-1.5">
-          <button type="button"
-            class="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 text-xs text-muted hover:bg-fg/10"
-            onClick={() => setContentOpen(true)}
-            title="Inhalte hinzufügen">
-            <Plus size={12} /> Hinzufügen
-          </button>
-          <button type="button"
-            class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1 text-xs font-medium text-accent-fg hover:bg-accent/90"
-            onClick={() => setEditMode(false)}
-            title="Bearbeiten beenden">
-            <Check size={12} /> Fertig
-          </button>
-        </div>
-      )}
+      <div class="hidden lg:contents">{dashActions(true)}</div>
     </div>
   );
 
