@@ -2731,3 +2731,62 @@ Fallback-Lösung (Legende weiterhin in eigener Zeile über dem Chart ab
 das Testboard `192.168.178.87`: Legendenwerte aktualisieren sich mit dem
 Snapshot, Edit-Modus (Titel + Legende + Entfernen-Button in einer Zeile)
 kollidiert nicht.
+
+## 2026-09-16 — Dashboard-Tabs im Bearbeiten-Modus neu anordnen
+
+Tab-Reihenfolge war bisher fix (Array-Position von `DashboardConfig[]`,
+kein `order`-Feld) — Erstellen/Umbenennen/Löschen gab es, aber kein
+Umsortieren. Neue ◀/▶-Pfeile am aktiven Tab im `editMode` verschieben ihn
+um eine Position; bewusst kein Drag & Drop, da die UI auch auf
+Touchscreens am Braustand zuverlässig bedienbar sein muss, und bewusst nur
+Nachbar-Vertauschung statt einer vollständigen Reorder-Route (reicht für
+den Anwendungsfall). Neu: `DashboardStore::move(id, dir)` (swapped
+Vector-Nachbarn, No-Op an den Rändern) + `POST /api/dashboards/{id}/move`
+(`WebUI.cpp`, analog zum bestehenden `/control`-Pattern bei
+Programs/Timers) + `moveDashboard()` in `api.ts` + `moveTab()` in
+`Dashboard.tsx` (folgt dem bestehenden Await-vor-Commit-Pattern ohne
+Optimistic-Rollback, wie `patchActiveDash`). `docs/openapi.yaml` +
+README-Routentabelle im selben Commit ergänzt. Keine neuen nativen
+Firmware-Tests — `DashboardStore` hat wegen FS/SdLock-Abhängigkeit generell
+keine `native`-Testabdeckung (auch `add`/`update`/`remove` nicht), das für
+ein Feature nachzuholen wäre Überkonstruktion. Verifiziert: `pio run -e
+esp32dev` + `pio test -e native` (37 bestehende Tests weiter grün) +
+Redocly-Lint + `pnpm typecheck`/`build`; UI zunächst live gegen
+`192.168.178.87` mit der alten Firmware (ohne `/move`) getestet — Pfeile
+erscheinen nur am aktiven Tab im Edit-Modus, Rand-Buttons korrekt disabled,
+fehlschlagender `/move`-Call (404, altes Board) lässt die Tab-Reihenfolge
+unverändert statt sie clientseitig zu verfälschen. Danach die neue
+Firmware per Netzwerk-OTA auf dieselbe LilyGo S3 aufgespielt
+(`curl -F f=@firmware.bin http://192.168.178.87/api/update/firmware`,
+Reboot bestätigt über `/api/update/status`) und den echten Persistenz-Pfad
+verifiziert: ◀/▶ verschiebt den Tab, `POST /api/dashboards/<id>/move` →
+`204`, Reload behält die neue Reihenfolge (SD-persistiert). Anschließend
+die ursprüngliche Tab-Reihenfolge wiederhergestellt. **Nebenbei entdeckt:**
+`POST /api/update/assets` (UI-Tar-Upload) schlägt auf diesem Board jetzt
+auch fehl (`extract failed`, sofort) — bisher nur auf LOLIN S2 Mini bekannt
+und dort anders (Reset nach ~65 KB); vermutlich zwei verschiedene Ursachen,
+nicht weiter verfolgt, siehe PLAN.md. Deshalb blieb die UI auf dem Board
+bei der alten Firmware-Version im `index.html`, ändert aber nichts an der
+Verifikation, da der Test über den lokalen `pnpm dev`-Server lief (nur die
+Firmware/API musste aktuell sein).
+
+Direkt danach Nutzer-Feedback zur mobilen Ansicht: Auf schmalen Breiten
+saßen „Bearbeiten"/„Hinzufügen"+„Fertig" in derselben Zeile wie die Tabs
+und quetschten den Tab-Streifen auf einen kaum bedienbaren Rest zusammen.
+Die Buttons sitzen jetzt bei `max-width < 1024px` in der Titelzeile neben
+„BrewControl" statt in der Tab-Zeile — dieselbe Logik (`dashActions()` in
+`Dashboard.tsx`) wird zweimal gerendert, einmal `lg:hidden` im Header,
+einmal `hidden lg:contents` in der Tab-Zeile (Breakpoint deckt sich mit dem
+bereits vorhandenen `isDesktop`/`lg`-Umschaltpunkt für den Chart-Legende-
+Umzug). Ab 1024px unverändert wie vorher. Verifiziert per `pnpm build` +
+live im Browser bei 375px und 1280px Breite gegen das echte Testboard.
+
+Nachgebessert: Im Header (`items-center`) saßen die Buttons zu hoch,
+sichtbar gegenüber der Mittellinie von „BrewControl" (Nutzer-Screenshot mit
+Markierung). Ursache: `mb-2` auf den Buttons, eigentlich nur für die
+Baseline-Ausrichtung im Desktop-Tab-Streifen (`items-end`) gedacht, verzerrt
+im Header die Zentrierung. `dashActions()` bekommt jetzt einen
+`alignEnd`-Parameter — `true` im Tab-Streifen (mit `mb-2`), `false` im
+Header (ohne). Verifiziert bei 375px (Buttons jetzt auf einer Linie mit dem
+Titeltext) und 1280px (Tab-Streifen unverändert).
+

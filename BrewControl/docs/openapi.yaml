@@ -532,6 +532,36 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/dashboards/{id}/move:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Dashboards]
+      operationId: moveDashboard
+      summary: Swap a dashboard with its left/right neighbor
+      description: |
+        Reorders the dashboard tab list by swapping the dashboard with its
+        immediate neighbor. A no-op (still `204`) if the dashboard is already
+        at that edge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [direction]
+              properties:
+                direction: { type: string, enum: [left, right] }
+            example: { direction: left }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON` or `invalid direction`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
   # ── Data Logs ──────────────────────────────────────────────────────────────
   /api/logs:
     get:

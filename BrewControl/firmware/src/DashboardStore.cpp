@@ -145,4 +145,16 @@ bool DashboardStore::remove(const char* id) {
   return false;
 }
 
+bool DashboardStore::move(const char* id, int dir) {
+  auto it = std::find_if(dashboards_.begin(), dashboards_.end(),
+      [&](const DashboardCfg& d) { return d.id == id; });
+  if (it == dashboards_.end()) return false;
+  size_t i = std::distance(dashboards_.begin(), it);
+  if (dir < 0 && i == 0) return true;                        // already leftmost: no-op
+  if (dir > 0 && i + 1 >= dashboards_.size()) return true;    // already rightmost: no-op
+  size_t j = (dir < 0) ? i - 1 : i + 1;
+  std::swap(dashboards_[i], dashboards_[j]);
+  return true;
+}
+
 }  // namespace BrewControl
