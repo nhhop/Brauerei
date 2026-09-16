@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -485,6 +485,21 @@ export async function scanOneWireBus(pin: number): Promise<BusScanResult> {
   const r = await fetch(`/api/bus/scan?type=onewire&pin=${pin}`);
   if (!r.ok) await failed(r);
   return r.json() as Promise<BusScanResult>;
+}
+
+// ── Remote discovery ─────────────────────────────────────────────────────────
+
+// Asks every device on the transport which items it publishes. Same polling
+// shape as scanNetworks: 202 while the ~3 s scan window runs, 200 + JSON after.
+// Non-202 errors (e.g. 409 "mqtt not available") abort immediately.
+export async function discoverRemote(transport: 'mqtt' | 'espnow'): Promise<DiscoveredItem[]> {
+  for (let i = 0; i < 15; i++) {
+    const r = await fetch(`/api/remote/discover?transport=${transport}`);
+    if (r.status === 200) return ((await r.json()) as { items: DiscoveredItem[] }).items;
+    if (r.status !== 202) await failed(r);
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  throw new Error('Such-Timeout');
 }
 
 // ── App Settings ─────────────────────────────────────────────────────────────

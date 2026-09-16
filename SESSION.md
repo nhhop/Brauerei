@@ -2916,3 +2916,48 @@ denen PLAN.md bisher ausging. Ob es tatsächlich crasht/rebootet (statt eines
 sauberen I/O-Fehlers) wurde nicht per Serial geprüft. PLAN.md entsprechend
 konsolidiert: LittleFS-Boards (Platz, vermutlich gemeinsame Ursache) jetzt
 als ein Punkt geführt, LilyGo (SD-I/O, bestätigt kein Platzproblem) separat.
+
+## 2026-09-16 — Remote-Discovery (MQTT + ESP-NOW) + ESP-NOW-Unicast für Befehle
+
+Remote-Items mussten bisher komplett von Hand eingetragen werden (Gerät,
+Remote-ID, Prefix, Kanal) — fehleranfällig, zumal BrewControl mit Prefix
+`brewcontrol` publisht, Remote-Items aber `sensactctrl` vorbelegen. Jetzt gibt
+es im Remote-Bereich des Hinzufügen-Dialogs „Geräte suchen".
+
+**Entscheidungen:** Request/Response über Topics statt MAC-Pairing, einmal in
+der Library über `ITransport` (läuft auf MQTT und ESP-NOW, später
+WebSocket/Webhook). Retained-Announce + Last Will (Home-Assistant-Muster)
+verworfen: braucht Wildcard-Subscribe (keiner unserer Transporte kann das),
+hinterlässt Leichen am Broker und passt nicht zu ESP-NOW. ESP-NOW hybrid:
+Adressierung bleibt deviceId/Topic (Hardwaretausch ohne Neu-Koppeln), aber
+nicht-retained Befehle gehen unicast mit ACK.
+
+**Umsetzung:**
+- `SensActCtrl/src/remote/Discovery.{h,cpp}`: Protokoll (fixe Topics
+  `sensactctrl/discover` + `/<scanner>`, `rid` gegen verspätete Antworten, eine
+  Antwort pro Sensor-Kanal/Aktor wegen 250-Byte-Limit, Controller nicht
+  gelistet) und `DiscoveryScanner` (thread-sicher, Anfrage geht nur aus
+  `tick()` raus, 3-s-Fenster, Dedup, eigenes Gerät gefiltert, Ergebnis-TTL 30 s).
+- `RemotePublisher` antwortet automatisch: Anfrage wird unter Mutex übergeben,
+  `tick()` sendet nach Zufalls-Jitter (0–400 ms) ein Item pro Aufruf.
+- `EspNowTransport` + neues `EspNowPeerTable.h`: Absender-MAC wird für
+  abonnierte Topics gelernt; `publish(retained=false)` geht an den Sender des
+  Eltern-Topics (`…/actuator/x/set` → Sender von `…/actuator/x`), LRU von max.
+  16 Unicast-Peers, sonst Broadcast. Send-Callback meldet Zustellfehler in
+  `lastErrorMessage()` (eigener String, den periodische Broadcasts nicht
+  sofort überschreiben). Wire-Format unverändert. Nebeneffekt:
+  Discovery-Antworten gehen ebenfalls unicast an den anfragenden Scanner.
+- BrewControl: `RemoteDiscovery.h` (Scanner je Transport, eigene IDs wie
+  `MqttService`/`EspNowPublishService`), `GET /api/remote/discover?transport=`
+  im Muster von `/api/network/scan` (202 → 200, 409 wenn MQTT aus),
+  `openapi.yaml` + README-Tabelle. Web: `discoverRemote()`, Liste gruppiert
+  nach Gerät, gefiltert nach Sensor/Aktor, „bereits angelegt"-Markierung,
+  Klick füllt Gerät/Remote-ID/Prefix/Kanal und leere lokale ID.
+
+**Verifiziert:** `pio test -e native` alle Suites grün (neu: `test_discovery`
+9, `test_espnow_peers` 5); `pio run` esp32dev, lolin_s2_mini,
+lilygo_t_display_s3_amoled kompilieren; `pnpm typecheck` + `pnpm build`;
+Redocly-Lint valide; Such-UI im Browser gegen `brewcontrol.local` mit
+gestubbtem Endpoint (Liste, Sensor-Filter, Übernahme der Felder).
+**Nicht verifiziert:** Hardware (nichts geflasht) → PLAN.md
+„Hardware-Verifikation offen".

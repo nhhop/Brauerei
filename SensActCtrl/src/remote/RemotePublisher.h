@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <stdint.h>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,10 @@ namespace SensActCtrl {
 //   Controller: /controller/<id>/meta (retained, paramsJson — refreshed after
 //               every accepted /tune)
 //               subscribes /controller/<id>/tune and forwards to setParamsJson()
+//   Discovery: subscribes sensactctrl/discover and answers every request with
+//              one response per sensor channel / actuator (see Discovery.h),
+//              sent from tick() one item per call after a random start delay
+//              so several devices don't answer in one burst.
 //
 // Lifecycle: attach() everything in setup(), then begin() to push retained
 // meta. tick() must be called from loop() — it republishes state at
@@ -47,6 +52,10 @@ class RemotePublisher {
   // Minimum gap between repeated state publishes per item. 0 = publish on
   // every tick(). Default 1000 ms.
   void setStateIntervalMs(uint32_t ms) { stateIntervalMs_ = ms; }
+
+  // Upper bound of the random delay before answering a discovery request.
+  // 0 = answer from the next tick(). Default 400 ms.
+  void setDiscoveryJitterMs(uint32_t ms) { discoveryJitterMs_ = ms; }
 
   // Must be called before attach(). Overrides the default "sensactctrl" root.
   void setPrefix(const char* p) {
@@ -88,6 +97,8 @@ class RemotePublisher {
   void publishActuatorMeta(ActuatorEntry& e);
   void publishActuatorState(ActuatorEntry& e);
   void publishControllerMeta(ControllerEntry& e);
+  void onDiscoverRequest(const char* payload);
+  void tickDiscovery(uint32_t now);
 
   ITransport* transport_;
   std::string deviceId_;
@@ -97,6 +108,22 @@ class RemotePublisher {
   uint32_t stateIntervalMs_ = 1000;
   std::string prefix_ = "sensactctrl";
   bool prevConnected_ = false;
+
+  // Discovery responder. The request callback may run on another task (e.g.
+  // the ESP-Now receive callback), so it only hands the request over under
+  // the mutex; tick() adopts it and sends the answers.
+  uint32_t discoveryJitterMs_ = 400;
+  bool discoverSubscribed_ = false;
+  std::mutex discoverMutex_;
+  bool discoverPending_ = false;
+  std::string discoverPendingReply_;
+  uint32_t discoverPendingRid_ = 0;
+  std::string discoverReply_;
+  uint32_t discoverRid_ = 0;
+  size_t discoverNext_ = 0;       // index over sensors_ then actuators_
+  bool discoverActive_ = false;
+  uint32_t discoverStartMs_ = 0;
+  uint32_t discoverDelayMs_ = 0;
 };
 
 }  // namespace SensActCtrl

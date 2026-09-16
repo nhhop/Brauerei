@@ -7,6 +7,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 
+#include <cstdio>
 #include <cstring>
 
 namespace SensActCtrl {
@@ -20,8 +21,16 @@ constexpr size_t kMaxPacket = 250;
 EspNowTransport* g_active = nullptr;
 const uint8_t kBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-void onRecv(const uint8_t* /*mac*/, const uint8_t* data, int len) {
-  if (g_active) g_active->dispatchIncoming(data, len);
+void onRecv(const uint8_t* mac, const uint8_t* data, int len) {
+  if (g_active) g_active->dispatchIncoming(mac, data, len);
+}
+
+void onSent(const uint8_t* mac, esp_now_send_status_t status) {
+  if (g_active && mac) g_active->onSendStatus(mac, status == ESP_NOW_SEND_SUCCESS);
+}
+
+bool isBroadcast(const uint8_t* mac) {
+  return std::memcmp(mac, kBroadcastMac, 6) == 0;
 }
 
 }  // namespace
@@ -59,10 +68,12 @@ bool EspNowTransport::initEspNow_() {
     return false;
   }
   esp_now_register_recv_cb(onRecv);
+  esp_now_register_send_cb(onSent);
 
+  peerChannel_ = staConnected ? 0 : channel_;
   esp_now_peer_info_t peer = {};
   std::memcpy(peer.peer_addr, kBroadcastMac, 6);
-  peer.channel = staConnected ? 0 : channel_;
+  peer.channel = peerChannel_;
   peer.encrypt = false;
   if (esp_now_add_peer(&peer) != ESP_OK) {
     esp_now_deinit();
@@ -73,9 +84,9 @@ bool EspNowTransport::initEspNow_() {
   return true;
 }
 
-bool EspNowTransport::sendRaw_(const uint8_t* data, size_t len) {
+bool EspNowTransport::sendRaw_(const uint8_t* data, size_t len, const uint8_t* dest) {
   if (!initialized_ || len > kMaxPacket) return false;
-  const bool ok = esp_now_send(kBroadcastMac, data, len) == ESP_OK;
+  const bool ok = esp_now_send(dest, data, len) == ESP_OK;
   if (ok) {
     lastErrorMsg_.clear();
   } else {
@@ -84,7 +95,8 @@ bool EspNowTransport::sendRaw_(const uint8_t* data, size_t len) {
   return ok;
 }
 
-bool EspNowTransport::sendDataPacket_(const char* topic, const char* payload) {
+bool EspNowTransport::sendDataPacket_(const char* topic, const char* payload,
+                                      const uint8_t* dest) {
   const size_t tlen = std::strlen(topic);
   const size_t plen = std::strlen(payload);
   if (tlen == 0 || tlen > 255) {
@@ -102,23 +114,54 @@ bool EspNowTransport::sendDataPacket_(const char* topic, const char* payload) {
   buf[1] = static_cast<uint8_t>(tlen);
   std::memcpy(buf + 2, topic, tlen);
   std::memcpy(buf + 2 + tlen, payload, plen);
-  return sendRaw_(buf, 2 + tlen + plen);
+  return sendRaw_(buf, 2 + tlen + plen, dest);
+}
+
+bool EspNowTransport::ensurePeer_(const EspNowPeerTable::Mac& mac) {
+  EspNowPeerTable::PeerUse use;
+  {
+    std::lock_guard<std::mutex> lock(peersMutex_);
+    use = peers_.usePeer(mac);
+  }
+  if (use.evict) esp_now_del_peer(use.evicted.data());
+  if (!use.isNew || esp_now_is_peer_exist(mac.data())) return true;
+
+  esp_now_peer_info_t peer = {};
+  std::memcpy(peer.peer_addr, mac.data(), 6);
+  peer.channel = peerChannel_;
+  peer.encrypt = false;
+  if (esp_now_add_peer(&peer) == ESP_OK) return true;
+  std::lock_guard<std::mutex> lock(peersMutex_);
+  peers_.forgetPeer(mac);
+  return false;
 }
 
 void EspNowTransport::sendRetainedRequest_() {
   uint8_t buf[1] = {kPacketRetainedRequest};
-  sendRaw_(buf, 1);
+  sendRaw_(buf, 1, kBroadcastMac);
 }
 
 void EspNowTransport::handleRetainedRequest_() {
   for (const auto& kv : retained_) {
-    sendDataPacket_(kv.first.c_str(), kv.second.c_str());
+    sendDataPacket_(kv.first.c_str(), kv.second.c_str(), kBroadcastMac);
   }
 }
 
 bool EspNowTransport::publish(const char* topic, const char* payload, bool retained) {
-  if (retained) retained_[topic] = payload;
-  return sendDataPacket_(topic, payload);
+  if (retained) {
+    retained_[topic] = payload;
+    return sendDataPacket_(topic, payload, kBroadcastMac);
+  }
+  EspNowPeerTable::Mac mac;
+  bool known;
+  {
+    std::lock_guard<std::mutex> lock(peersMutex_);
+    known = peers_.macForPublish(topic, mac);
+  }
+  if (known && initialized_ && ensurePeer_(mac)) {
+    return sendDataPacket_(topic, payload, mac.data());
+  }
+  return sendDataPacket_(topic, payload, kBroadcastMac);
 }
 
 bool EspNowTransport::subscribe(const char* topic, MessageCallback callback) {
@@ -139,7 +182,30 @@ void EspNowTransport::requestRetained_() {
   }
 }
 
+void EspNowTransport::onSendStatus(const uint8_t* mac, bool delivered) {
+  if (isBroadcast(mac)) return;  // broadcasts are never ACKed — no signal
+  uint64_t packed = 0;
+  for (int i = 0; i < 6; ++i) packed = (packed << 8) | mac[i];
+  deliveryReport_.store(packed | (delivered ? kDelivered : kFailed));
+}
+
 void EspNowTransport::tick() {
+  const uint64_t report = deliveryReport_.exchange(0);
+  if (report & kFailed) {
+    char msg[64];
+    std::snprintf(msg, sizeof(msg),
+                  "Zustellung an %02X:%02X:%02X:%02X:%02X:%02X fehlgeschlagen",
+                  static_cast<unsigned>((report >> 40) & 0xFF),
+                  static_cast<unsigned>((report >> 32) & 0xFF),
+                  static_cast<unsigned>((report >> 24) & 0xFF),
+                  static_cast<unsigned>((report >> 16) & 0xFF),
+                  static_cast<unsigned>((report >> 8) & 0xFF),
+                  static_cast<unsigned>(report & 0xFF));
+    deliveryErrorMsg_ = msg;
+  } else if (report & kDelivered) {
+    deliveryErrorMsg_.clear();
+  }
+
   // A subscribe() inside the throttle window above defers here instead of
   // being dropped — catch up once the window has elapsed.
   if (retainedRequestPending_ && initialized_ &&
@@ -150,7 +216,8 @@ void EspNowTransport::tick() {
   }
 }
 
-void EspNowTransport::dispatchIncoming(const uint8_t* data, int length) {
+void EspNowTransport::dispatchIncoming(const uint8_t* mac, const uint8_t* data,
+                                       int length) {
   if (length < 1) return;
   switch (data[0]) {
     case kPacketRetainedRequest:
@@ -163,8 +230,16 @@ void EspNowTransport::dispatchIncoming(const uint8_t* data, int length) {
       std::string topic(reinterpret_cast<const char*>(data + 2), tlen);
       std::string payload(reinterpret_cast<const char*>(data + 2 + tlen),
                           length - 2 - tlen);
+      bool learned = false;
       for (auto& sub : subs_) {
         if (sub.first == topic) {
+          // Only subscribed topics are learned — bounds the table to what
+          // this node actually consumes.
+          if (!learned && mac) {
+            std::lock_guard<std::mutex> lock(peersMutex_);
+            peers_.learn(topic, mac);
+            learned = true;
+          }
           sub.second(topic.c_str(), payload.c_str(), payload.size());
         }
       }
@@ -176,7 +251,7 @@ void EspNowTransport::dispatchIncoming(const uint8_t* data, int length) {
 }
 
 const char* EspNowTransport::lastErrorMessage() const {
-  return lastErrorMsg_.c_str();
+  return lastErrorMsg_.empty() ? deliveryErrorMsg_.c_str() : lastErrorMsg_.c_str();
 }
 
 }  // namespace SensActCtrl
@@ -191,10 +266,12 @@ bool EspNowTransport::publish(const char*, const char*, bool) { return false; }
 bool EspNowTransport::subscribe(const char*, MessageCallback) { return false; }
 void EspNowTransport::tick() {}
 const char* EspNowTransport::lastErrorMessage() const { return ""; }
-void EspNowTransport::dispatchIncoming(const uint8_t*, int) {}
+void EspNowTransport::dispatchIncoming(const uint8_t*, const uint8_t*, int) {}
+void EspNowTransport::onSendStatus(const uint8_t*, bool) {}
 bool EspNowTransport::initEspNow_() { return false; }
-bool EspNowTransport::sendRaw_(const uint8_t*, size_t) { return false; }
-bool EspNowTransport::sendDataPacket_(const char*, const char*) { return false; }
+bool EspNowTransport::sendRaw_(const uint8_t*, size_t, const uint8_t*) { return false; }
+bool EspNowTransport::sendDataPacket_(const char*, const char*, const uint8_t*) { return false; }
+bool EspNowTransport::ensurePeer_(const EspNowPeerTable::Mac&) { return false; }
 void EspNowTransport::sendRetainedRequest_() {}
 void EspNowTransport::handleRetainedRequest_() {}
 void EspNowTransport::requestRetained_() {}

@@ -48,3 +48,4 @@
 #include "remote/RemoteSensor.h"
 #include "remote/RemoteActuator.h"
 #include "remote/RemotePublisher.h"
+#include "remote/Discovery.h"

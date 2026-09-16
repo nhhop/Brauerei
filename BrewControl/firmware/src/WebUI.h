@@ -18,6 +18,7 @@
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
 #include "PushService.h"
+#include "RemoteDiscovery.h"
 #include "SdTarSink.h"
 #include "SettingsStore.h"
 #include "TarExtractor.h"
@@ -96,6 +97,9 @@ namespace BrewControl {
 //   POST /api/profile-categories/<id>      — rename profile category
 //   DELETE /api/profile-categories/<id>    — remove category and its profiles
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
+//   GET  /api/remote/discover?transport=mqtt|espnow
+//                                          — async discovery of remote items
+//                                            (202 while scanning → 200+JSON)
 //   GET  /api/files?path=<dir>             — list directory entries (JSON)
 //   GET  /api/files/download?path=<file>   — download one file (attachment)
 //   POST /api/files/upload?path=<dir>      — multipart upload into <dir> (field "f")
@@ -121,7 +125,7 @@ class WebUI {
         LogStore& logs, ProgramRunner& programs, TimerStore& timers,
         AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
         WebhookService& webhook, WebSocketService& websocket,
-        EspNowPublishService& espnow,
+        EspNowPublishService& espnow, RemoteDiscovery& discovery,
         PushService& push, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
@@ -159,6 +163,7 @@ class WebUI {
   WebhookService& webhook_;
   WebSocketService& websocket_;
   EspNowPublishService& espnow_;
+  RemoteDiscovery& discovery_;
   PushService& push_;
   AuthService auth_;
   AsyncWebServer server_;

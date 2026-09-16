@@ -86,6 +86,10 @@ tags:
       device filesystem (SD or LittteFS, board-dependent) and restored on boot.
   - name: Bus Discovery
     description: Scan a hardware bus for attached devices.
+  - name: Remote Discovery
+    description: |
+      Find the sensors and actuators other SensActCtrl/BrewControl devices
+      publish over MQTT or ESP-NOW, to prefill a `Remote` item.
   - name: Config
     description: The stored creation config of all dynamic items.
   - name: Dashboards
@@ -452,6 +456,52 @@ paths:
               schema: { $ref: "#/components/schemas/BusScanResult" }
         "400":
           description: Body is `missing type or pin` or `unsupported bus type`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  # ── Remote Discovery ───────────────────────────────────────────────────────
+  /api/remote/discover:
+    get:
+      tags: [Remote Discovery]
+      operationId: discoverRemote
+      summary: Discover remote items on a transport
+      description: |
+        Asynchronous, same shape as `/api/network/scan`. The first call arms a
+        scan and answers `202`; the device then publishes a discovery request
+        on `sensactctrl/discover` and collects answers for about 3 s. Poll
+        until a `200` arrives. Results are consumed on read — the next call
+        starts a new scan; results nobody picks up expire after 30 s.
+
+        Every device running a SensActCtrl `RemotePublisher` on that transport
+        answers with one entry per sensor channel and actuator (controllers
+        are not listed). This device's own items are filtered out. Use the
+        entry's `device`, `id`, `prefix` and `channel_key` for a `Remote`
+        item's `device`, `remote_id`, `prefix` and `channel_key`.
+      parameters:
+        - name: transport
+          in: query
+          required: true
+          schema: { type: string, enum: [mqtt, espnow] }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Scan finished (an empty `items` array if nobody answered).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemoteDiscoveryResult" }
+        "202":
+          description: Scan armed or in progress — poll again. Body is always `{}`.
+          content:
+            application/json:
+              schema: { type: object, maxProperties: 0 }
+        "400":
+          description: Body is `missing transport` or `unsupported transport`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: |
+            Body is `mqtt not available` — MQTT was disabled at boot, so there
+            is no transport to scan.
           content:
             text/plain: { schema: { type: string } }
 
@@ -2574,6 +2624,31 @@ components:
         pin: 4
         devices:
           - { index: 0, address: 28ff64c8815604ef }
+
+    # ── Remote discovery ─────────────────────────────────────────────────────
+    RemoteDiscoveryResult:
+      type: object
+      required: [transport, items]
+      properties:
+        transport: { type: string, enum: [mqtt, espnow] }
+        items:
+          type: array
+          items:
+            type: object
+            required: [device, prefix, kind, id, channel_key, quantity, unit]
+            properties:
+              device: { type: string, description: Device id of the publishing node. }
+              prefix: { type: string, description: "Topic prefix the node publishes under (may be empty)." }
+              kind: { type: string, enum: [sensor, actuator] }
+              id: { type: string, description: Item id on the remote node. }
+              channel_key: { type: string, description: 'Channel key of a multi-channel sensor, "" otherwise.' }
+              quantity: { type: string, description: 'Quantity name, e.g. "Temperature"; "None" if unset.' }
+              unit: { type: string }
+      example:
+        transport: espnow
+        items:
+          - { device: node-a, prefix: brewcontrol, kind: sensor, id: mash_temp, channel_key: "", quantity: Temperature, unit: "°C" }
+          - { device: node-a, prefix: brewcontrol, kind: actuator, id: heater, channel_key: "", quantity: None, unit: "" }
 
     # ── Dashboards ───────────────────────────────────────────────────────────
     WidgetMode:

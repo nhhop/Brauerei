@@ -301,11 +301,12 @@ WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              TimerStore& timers, AlarmStore& alarms, ProfileStore& profiles,
              MqttService& mqtt, WebhookService& webhook,
              WebSocketService& websocket, EspNowPublishService& espnow,
-             PushService& push, uint16_t port)
+             RemoteDiscovery& discovery, PushService& push, uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
       updater_(updater), logs_(logs), programs_(programs), timers_(timers),
       alarms_(alarms), profiles_(profiles), mqtt_(mqtt), webhook_(webhook),
-      websocket_(websocket), espnow_(espnow), push_(push), server_(port),
+      websocket_(websocket), espnow_(espnow), discovery_(discovery), push_(push),
+      server_(port),
       events_("/api/events") {}
 
 void WebUI::begin() {
@@ -662,6 +663,47 @@ void WebUI::begin() {
       JsonObject d = devs.add<JsonObject>();
       d["index"] = i;
       d["address"] = hex;
+    }
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
+  });
+
+  // ── Remote discovery ──────────────────────────────────────────────────────
+  // GET /api/remote/discover?transport=mqtt|espnow — same async shape as
+  // /api/network/scan: the first call arms a scan (202), 202 while it runs
+  // (~3 s window), then 200 + the collected items once, after which the next
+  // call starts a fresh scan. The request itself goes out from loop()
+  // (RemoteDiscovery::tick), never from this async_tcp handler.
+  server_.on("/api/remote/discover", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    if (!req->hasParam("transport")) { req->send(400, "text/plain", "missing transport"); return; }
+    const String transport = req->getParam("transport")->value();
+    if (transport != "mqtt" && transport != "espnow") {
+      req->send(400, "text/plain", "unsupported transport");
+      return;
+    }
+    SensActCtrl::DiscoveryScanner* scanner = discovery_.scanner(transport);
+    if (!scanner) { req->send(409, "text/plain", transport + " not available"); return; }
+
+    using Status = SensActCtrl::DiscoveryScanner::Status;
+    if (scanner->status() != Status::Done) {
+      scanner->requestScan();  // no-op while one is already running
+      req->send(202, "application/json", "{}");
+      return;
+    }
+    const auto found = scanner->takeResults();
+    JsonDocument doc;
+    doc["transport"] = transport;
+    JsonArray arr = doc["items"].to<JsonArray>();
+    for (const auto& it : found) {
+      JsonObject o = arr.add<JsonObject>();
+      o["device"] = it.device;
+      o["prefix"] = it.prefix;
+      o["kind"] = it.kind;
+      o["id"] = it.id;
+      o["channel_key"] = it.channelKey;
+      o["quantity"] = it.quantity;
+      o["unit"] = it.unit;
     }
     String out;
     serializeJson(doc, out);

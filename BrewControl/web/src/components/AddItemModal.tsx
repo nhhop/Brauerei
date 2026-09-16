@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, ScannedDevice, ItemConfig } from '../types';
+import type { Snapshot, ScannedDevice, ItemConfig, DiscoveredItem } from '../types';
 import {
   createSensor, createActuator, createController,
   deleteSensor, deleteActuator, deleteController,
-  scanOneWireBus, startAutotune, stopAutotune,
+  scanOneWireBus, startAutotune, stopAutotune, discoverRemote, getConfig,
 } from '../api';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
@@ -87,6 +87,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [remoteTransport, setRemoteTransport] = useState<RemoteTransport>('mqtt');
   const [remoteListenPort, setRemoteListenPort] = useState('8080');
   const [remotePeerUrl, setRemotePeerUrl] = useState('');
+  // Discovery results are tied to the transport they were fetched for.
+  const [discovering, setDiscovering] = useState(false);
+  const [discovered, setDiscovered] = useState<{ transport: RemoteTransport; items: DiscoveredItem[] } | null>(null);
+  const [knownRemotes, setKnownRemotes] = useState<Set<string>>(new Set());
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -177,6 +181,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     setErr(null);
     setAtErr(null); setAtBusy(false); setAtMethod('ZieglerNichols');
     setScanning(false); setScanned(false); setScannedDevices([]); setSelectedAddress('');
+    setDiscovering(false); setDiscovered(null);
 
     if (isEdit && editConfig && editRole) {
       setRole(editRole);
@@ -662,6 +667,85 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       active ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
 
+  const remoteKey = (transport: string, device: string, remoteId: string, channelKey: string) =>
+    `${transport}|${device}|${remoteId}|${channelKey}`;
+
+  async function runDiscovery(transport: 'mqtt' | 'espnow') {
+    setDiscovering(true); setDiscovered(null); setErr(null);
+    try {
+      const [items, cfg] = await Promise.all([discoverRemote(transport), getConfig()]);
+      const known = new Set<string>();
+      for (const c of [...cfg.sensors, ...cfg.actuators]) {
+        if (c.type !== 'Remote') continue;
+        known.add(remoteKey(String(c.transport ?? 'mqtt'), String(c.device ?? ''),
+          String(c.remote_id ?? ''), String(c.channel_key ?? '')));
+      }
+      setKnownRemotes(known);
+      setDiscovered({ transport, items });
+    } catch (e) { setErr(String(e)); }
+    setDiscovering(false);
+  }
+
+  function pickDiscovered(it: DiscoveredItem) {
+    setRemoteDevice(it.device);
+    setRemoteId(it.id);
+    setRemotePrefix(it.prefix);
+    setRemoteChannelKey(it.channel_key);
+    if (!id.trim()) setId(it.channel_key ? `${it.id}_${it.channel_key}` : it.id);
+  }
+
+  // Search button + result list under the Remote transport selector. Only
+  // MQTT and ESP-NOW answer discovery requests.
+  function remoteDiscoveryFields(kind: 'sensor' | 'actuator') {
+    if (remoteTransport !== 'mqtt' && remoteTransport !== 'espnow') return null;
+    const transport = remoteTransport;
+    const items = discovered?.transport === transport
+      ? discovered.items.filter((it) => it.kind === kind) : null;
+    const byDevice = new Map<string, DiscoveredItem[]>();
+    for (const it of items ?? []) {
+      const list = byDevice.get(it.device) ?? [];
+      list.push(it);
+      byDevice.set(it.device, list);
+    }
+    return (
+      <div class="space-y-2">
+        <button type="button" disabled={discovering} onClick={() => runDiscovery(transport)}
+          class="rounded-md bg-fg/5 px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10 disabled:opacity-50">
+          {discovering ? 'Suche läuft …' : 'Geräte suchen'}
+        </button>
+        {items && items.length === 0 && (
+          <p class="text-xs text-caution">
+            Nichts gefunden — sendet das Gerät per {transport === 'mqtt' ? 'MQTT' : 'ESP-NOW'} (Veröffentlichen aktiv){transport === 'espnow' ? ', auf demselben Kanal' : ', am selben Broker'} und mit aktueller Firmware?
+          </p>
+        )}
+        {[...byDevice.entries()].map(([device, list]) => (
+          <div key={device}>
+            <label class={lbl}>{device}</label>
+            <div class="space-y-1">
+              {list.map((it) => {
+                const selected = remoteDevice === it.device && remoteId === it.id &&
+                  remoteChannelKey === it.channel_key;
+                const known = knownRemotes.has(remoteKey(transport, it.device, it.id, it.channel_key));
+                return (
+                  <button key={`${it.prefix}|${it.id}|${it.channel_key}`} type="button"
+                    onClick={() => pickDiscovered(it)}
+                    class={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs ${
+                      selected ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
+                    <span class="font-mono">{it.channel_key ? `${it.id}/${it.channel_key}` : it.id}</span>
+                    <span class={selected ? '' : 'text-faint'}>
+                      {[it.quantity !== 'None' ? it.quantity : '', it.unit].filter(Boolean).join(' · ')}
+                    </span>
+                    {known && <span class={`ml-auto ${selected ? '' : 'text-faint'}`}>bereits angelegt</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   // Shared by DigitalOutput + AnalogOutput + MqttGeneric — decorator-based, any actuator kind.
   function intervalFields() {
     const period = parseFloat(intervalPeriod);
@@ -1073,6 +1157,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   ))}
                 </div>
               </div>
+              {remoteDiscoveryFields('sensor')}
               {remoteTransport === 'webhook' && (
                 <div class="grid grid-cols-2 gap-2">
                   <div>
@@ -1387,6 +1472,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   ))}
                 </div>
               </div>
+              {remoteDiscoveryFields('actuator')}
               {remoteTransport === 'webhook' && (
                 <div class="grid grid-cols-2 gap-2">
                   <div>

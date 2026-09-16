@@ -1,13 +1,18 @@
 #include "RemotePublisher.h"
 
+#include "Discovery.h"
 #include "MetaJson.h"
 #include "Topics.h"
 
 #if defined(ARDUINO)
   #include <Arduino.h>
+  // Hardware RNG on ESP32 — boards must not pick the same answer delay.
+  static uint32_t randomBelow(uint32_t n) { return static_cast<uint32_t>(random(n)); }
 #else
+  #include <cstdlib>
   // Tests drive cadence via setStateIntervalMs(0); a constant millis is fine.
   static uint32_t millis() { return 0; }
+  static uint32_t randomBelow(uint32_t n) { return static_cast<uint32_t>(std::rand()) % n; }
 #endif
 
 namespace SensActCtrl {
@@ -164,6 +169,12 @@ void RemotePublisher::begin() {
     }
   }
 
+  if (!discoverSubscribed_) {
+    transport_->subscribe(remote::kDiscoverRequestTopic,
+        [this](const char*, const char* p, size_t /*n*/) { onDiscoverRequest(p); });
+    discoverSubscribed_ = true;
+  }
+
   for (auto& e : sensors_)     publishSensorMeta(e);
   for (auto& e : actuators_)   publishActuatorMeta(e);
   for (auto& e : controllers_) publishControllerMeta(e);
@@ -196,6 +207,65 @@ void RemotePublisher::tick() {
       e.lastPublishMs = now;
     }
   }
+
+  tickDiscovery(now);
+}
+
+void RemotePublisher::onDiscoverRequest(const char* payload) {
+  std::string reply;
+  uint32_t rid = 0;
+  if (!remote::parseDiscoverRequest(payload, reply, rid)) return;
+  std::lock_guard<std::mutex> lock(discoverMutex_);
+  discoverPendingReply_ = std::move(reply);
+  discoverPendingRid_ = rid;
+  discoverPending_ = true;
+}
+
+void RemotePublisher::tickDiscovery(uint32_t now) {
+  {
+    std::lock_guard<std::mutex> lock(discoverMutex_);
+    if (discoverPending_) {
+      // A newer request restarts the answer from the first item.
+      discoverPending_ = false;
+      discoverReply_ = std::move(discoverPendingReply_);
+      discoverRid_ = discoverPendingRid_;
+      discoverNext_ = 0;
+      discoverActive_ = true;
+      discoverStartMs_ = now;
+      discoverDelayMs_ = discoveryJitterMs_ ? randomBelow(discoveryJitterMs_) : 0;
+    }
+  }
+  if (!discoverActive_ || now - discoverStartMs_ < discoverDelayMs_) return;
+
+  // One item per tick. detach() may shrink the lists mid-answer — the bound
+  // check below ends the answer early rather than touching a stale index.
+  remote::DiscoveredItem item;
+  item.device = deviceId_;
+  item.prefix = prefix_;
+  if (discoverNext_ < sensors_.size()) {
+    const SensorEntry& e = sensors_[discoverNext_];
+    const Channel ch = e.sensor->channel(e.channelIdx);
+    item.kind = "sensor";
+    item.id = e.sensor->id();
+    item.channelKey = ch.key;
+    item.quantity = toString(ch.meta.quantity);
+    item.unit = ch.meta.unit ? ch.meta.unit : "";
+  } else if (discoverNext_ - sensors_.size() < actuators_.size()) {
+    const Actuator* a = actuators_[discoverNext_ - sensors_.size()].actuator;
+    const ActuatorMeta m = a->meta();
+    item.kind = "actuator";
+    item.id = a->id();
+    item.quantity = toString(m.quantity);
+    item.unit = m.unit ? m.unit : "";
+  } else {
+    discoverActive_ = false;
+    return;
+  }
+  ++discoverNext_;
+
+  char buf[224];
+  if (remote::serializeDiscoverResponse(discoverRid_, item, buf, sizeof(buf)) == 0) return;
+  transport_->publish(discoverReply_.c_str(), buf, /*retained=*/false);
 }
 
 }  // namespace SensActCtrl

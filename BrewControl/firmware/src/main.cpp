@@ -30,6 +30,7 @@
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
 #include "PushService.h"
+#include "RemoteDiscovery.h"
 #include "SettingsStore.h"
 #include "TimerStore.h"
 #include "WebSocketService.h"
@@ -75,7 +76,8 @@ BrewControl::WebhookService webhookService;
 BrewControl::WebSocketService webSocketService;
 BrewControl::EspNowPublishService espNowPublishService;
 BrewControl::PushService pushService;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, pushService);
+BrewControl::RemoteDiscovery remoteDiscovery;
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, pushService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -235,6 +237,13 @@ void setup() {
   dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
   dynamicItems.setEspNowTransport(espNowTransport.get());  // always available, no toggle
   dynamicItems.setWebSocketHubTransport(webSocketService.hubTransport());  // nullable
+  // Own ids = what our own publishers answer discovery with (same fallback
+  // as MqttService / EspNowPublishService), so we don't list ourselves.
+  remoteDiscovery.begin(
+      mqttService.transport(),
+      settingsStore.mqttClientId().isEmpty() ? hostname_ : settingsStore.mqttClientId(),
+      espNowTransport.get(),
+      settingsStore.espnowClientId().isEmpty() ? hostname_ : settingsStore.espnowClientId());
 
   if (fsOk) {
     dynamicItems.loadFromSD(deviceFs, registry);
@@ -301,6 +310,7 @@ void loop() {
   webSocketService.tick();
   if (espNowTransport) espNowTransport->tick();
   espNowPublishService.tick();
+  remoteDiscovery.tick();
   pushService.tick();
   maintainWiFi();
   delay(5);

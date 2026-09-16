@@ -374,6 +374,17 @@ export interface BusScanResult {
   devices: ScannedDevice[];
 }
 
+// One entry of GET /api/remote/discover — an item a remote device publishes.
+export interface DiscoveredItem {
+  device: string;
+  prefix: string;
+  kind: 'sensor' | 'actuator';
+  id: string;
+  channel_key: string; // "" for flat single-channel items
+  quantity: string;
+  unit: string;
+}
+
 export interface ThemeSettings {
   mode: 'light' | 'dark' | 'system';
   accent: string;

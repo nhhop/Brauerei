@@ -111,7 +111,11 @@ Sollwert-Änderungsrate °/min für einen beliebigen Regler).
 **Transport** (`src/transport/`): `ITransport`-Interface
 (`publish`/`subscribe`/`tick`/`connected`/`lastErrorMessage`), Implementierungen
 `MqttTransport` (PubSubClient-Wrapper, Reconnect-Backoff), `EspNowTransport`
-(Broadcast, Retain-Emulation via Retained-Request, 250-Byte-Paketlimit),
+(Broadcast für Meta/State, Retain-Emulation via Retained-Request,
+250-Byte-Paketlimit; nicht-retained Befehle wie `/set` gehen unicast mit
+ESP-NOW-ACK an den Knoten, der das Eltern-Topic zuletzt gesendet hat — die
+MAC wird aus empfangenen Paketen gelernt, nichts wird gespeichert; Ziel
+unbekannt → Broadcast; Zustellfehler erscheinen in `lastErrorMessage()`),
 `WebhookTransport` (HTTP-Push/Pull, peer-to-peer, Timeout+Backoff bei
 unerreichbarem Peer), `WebSocketTransport` (dauerhafte bidirektionale
 Verbindung ohne Broker über `links2004/WebSockets`; Server- oder Client-Rolle,
@@ -138,6 +142,22 @@ Alle drei sind komplett transport-agnostisch. Topic-Schema
 <prefix>/<device>/controller/<id>/meta     Meta inkl. paramsJson (retained)
 <prefix>/<device>/controller/<id>/tune     Tuning-Command
 ```
+
+**Discovery** (`src/remote/Discovery.h`): Jeder `RemotePublisher` beantwortet
+Suchanfragen automatisch; `DiscoveryScanner` ist die Gegenseite (Anfrage
+senden, Antworten ~3 s sammeln, dedupliziert, eigenes Gerät gefiltert,
+thread-sicher). Die Topics sind fix und prefix-unabhängig, damit man ohne
+Kenntnis von Gerät oder Prefix suchen kann; beides ist nicht retained:
+
+```
+sensactctrl/discover             {"reply":"sensactctrl/discover/<scanner>","rid":7}
+sensactctrl/discover/<scanner>   eine Antwort je Sensor-Kanal / Aktor:
+  {"rid":7,"d":"node-a","p":"brewcontrol","k":"sensor","id":"mash_temp","ch":"","q":"Temperature","u":"°C"}
+```
+
+Der Publisher antwortet nach zufälliger Verzögerung (`setDiscoveryJitterMs()`,
+Default 400 ms) ein Item pro `tick()`, damit mehrere Knoten nicht gleichzeitig
+funken. Controller werden nicht gelistet.
 
 Vier Zwei-Geräte-Beispiel-Sketches demonstrieren das Muster:
 `examples/08_remote_mqtt/`, `09_remote_espnow/`, `10_remote_webhook/`,
