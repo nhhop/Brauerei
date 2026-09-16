@@ -175,6 +175,7 @@ class WebUI {
   std::unique_ptr<SdTarSink> assetSink_;
   std::unique_ptr<TarExtractor> assetTar_;
   bool assetSwapPending_ = false;
+  String assetNoSpace_;  // set when the LittleFS free-space check aborted an upload
 
   File fileUpload_;
   String fileUploadPath_;

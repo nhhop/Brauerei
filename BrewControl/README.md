@@ -200,11 +200,25 @@ tar -C /tmp/gzonly -cf /tmp/webui-gz.tar .
 curl -F "f=@/tmp/webui-gz.tar" http://<ip>/api/update/assets
 ```
 
-Am esp32dev verifiziert (2026-09-10): Upload in ~2 s, Swap sauber, `/www`
-danach identisch zum lokalen Build. Auf dem LOLIN S2 Mini **nicht** benutzen —
-dort bricht `POST /api/update/assets` reproduzierbar bei ~65 KB ab (siehe
-PLAN.md), da bleibt nur `uploadfs`. Die Firmware selbst geht auf beiden Boards
-ohnehin per OTA über `POST /api/update/firmware`.
+Beide Boards entpacken das Tar **in-place**, gesteuert über das Build-Flag
+`BREWCTL_ASSETS_IN_PLACE` in `platformio.ini`. Die 256-KB-Partition fasst altes
+und neues Bundle nicht gleichzeitig, also wird `/www` vor dem Entpacken geleert,
+statt erst nach `/www.new` zu entpacken und dann zu tauschen. Die UI ist während
+des Uploads weg. Die API bleibt erreichbar. Schlägt der Upload fehl, zum Beispiel
+bei `not enough space` oder einem Verbindungsabbruch, liefert jede Nicht-API-Seite
+eine eingebaute Notfall-Seite, über die sich das Tar erneut hochladen lässt. Das
+geht auch auf einem frisch geflashten Board mit leerem Dateisystem. `index.html`
+wird erst nach vollständigem Entpacken freigeschaltet. Vor jeder Datei prüft die
+Firmware den freien Platz, denn LittleFS crasht bei vollem Dateisystem mitten im
+Schreiben (Panic in `lfs_alloc`), statt einen Fehler zurückzugeben.
+
+Das Flag hängt **an der Partitionsgröße, nicht an LittleFS**. Ein Board ohne
+SD-Slot, aber mit größerer Datenpartition (z. B. ein S3 mit 8/16 MB Flash) lässt
+es weg und behält den atomaren `/www.new`-Tausch. Dort bleibt die alte UI bei
+einem Fehlschlag erhalten.
+
+Auf beiden Boards verifiziert (2026-09-16). Die Firmware selbst geht ohnehin per
+OTA über `POST /api/update/firmware`.
 
 ## Erstboot — WiFi-Setup-Portal
 
@@ -529,9 +543,8 @@ Settings/Registry/Dashboards/Programme/Logs-Index). Herleitung von `min_spiffs.c
 64 KB von beiden App-Slots abgezwackt, komplett in die Datenpartition gesteckt.
 **Wichtig:** Der Wechsel auf dieses Layout muss **einmalig per USB** geflasht werden —
 OTA kann die Partitionstabelle nicht ändern. Danach laufen OTA-Updates normal (der
-UI-Teil weiterhin nur über `uploadfs`/USB, s. oben — `webui.tar`-Netzwerk-Uploads
-landen zwar auch im Dateisystem, aber der allererste Bootstrap eines leeren Boards
-braucht `uploadfs`). Der LilyGo-S3 (16 MB) behält die Default-Tabelle + SD (genug Platz).
+UI-Teil über `uploadfs`/USB oder ein gz-only-Tar per `POST /api/update/assets`, s. oben —
+ein leeres Board zeigt dafür die eingebaute Notfall-Seite). Der LilyGo-S3 (16 MB) behält die Default-Tabelle + SD (genug Platz).
 `LogStore` hat keine eingebaute Log-Rotation — auf diesen beiden Boards mit der
 256-KB-Partition nicht unbegrenzt loggen.
 

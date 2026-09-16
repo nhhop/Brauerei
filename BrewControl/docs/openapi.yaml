@@ -1621,9 +1621,23 @@ paths:
         which is cleared first. On success the swap to `/www` happens on the
         next main-loop tick. **No reboot.**
 
+        Boards whose data partition cannot hold the old and the new UI at once
+        (build flag `BREWCTL_ASSETS_IN_PLACE`, currently `esp32dev` and
+        `lolin_s2_mini` with their 256 KB LittleFS partition) skip the staging
+        step: `/www` is cleared first and the tar is extracted straight into
+        it. The UI is gone during the upload, and stays gone if the upload
+        fails or the connection drops. The API keeps working. `index.html`
+        is only put in place once the whole package is extracted. While
+        `/www` holds no `index.html`, every non-API `GET` returns a built-in
+        recovery page that can upload the tar again. On LittleFS every archive member is checked against the
+        free space before it is written. A member that does not fit aborts
+        with `not enough space`: running out of blocks mid-write would crash
+        the board instead of failing.
+
         The tar must contain the *gzipped* build output with paths relative to
-        the dist root (`tar -C dist -cf webui.tar .`). The multipart field name
-        is irrelevant; there is no size limit.
+        the dist root (`tar -C dist -cf webui.tar .`). On the 256 KB boards
+        ship only the `.gz` files. The multipart field name is irrelevant;
+        there is no size limit beyond the free space.
       requestBody:
         required: true
         content:
@@ -1635,15 +1649,20 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
-          description: Extracted; the swap to `/www` follows. Body is `ok`.
+          description: |
+            Extracted; the swap to `/www` follows (in-place boards: `/www` is
+            already current). Body is `ok`.
           content:
             text/plain: { schema: { type: string, const: ok } }
         "500":
           description: |
             Body is `extract failed: <reason> (<path>)` — reason is one of
             `open failed`/`write failed`/`close failed`/`no data received`,
-            path is the archive member being written when it failed.
-            `/www` is left untouched.
+            path is the archive member being written when it failed. LittleFS
+            boards may instead report
+            `extract failed: not enough space (<member>, <size> bytes)`.
+            With the staged swap `/www` is left untouched. On in-place boards
+            `/www` is left incomplete, so the recovery page is served.
           content:
             text/plain: { schema: { type: string } }
 

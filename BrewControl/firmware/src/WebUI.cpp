@@ -8,6 +8,9 @@
 #include <math.h>
 #include <memory>
 #include <time.h>
+#ifdef BREWCTL_USE_LITTLEFS
+#include <LittleFS.h>
+#endif
 
 #include "Hostname.h"
 #include "SdLock.h"
@@ -24,6 +27,43 @@ constexpr uint32_t kRebootDelayMs = 500;
 // JSON document. Allocated only for bodies that actually span several chunks,
 // and only for as long as the request lives.
 constexpr size_t kMaxBodyBytes = 16384;
+
+// Where a UI package upload is extracted. Normally a staging dir swapped in
+// only after a complete extraction, so a failed upload leaves the running UI
+// intact. BREWCTL_ASSETS_IN_PLACE is for boards whose data partition cannot
+// hold the old and the new bundle at once (the 256 KB partition of
+// partitions_4mb_littlefs.csv): /www is cleared first and overwritten
+// directly — a failed upload then leaves no UI (kRecoveryPageHtml takes over).
+// It is about partition size, not LittleFS: a board with a larger data
+// partition keeps the staged swap.
+#ifdef BREWCTL_ASSETS_IN_PLACE
+constexpr char kAssetTarget[] = "/www";
+#else
+constexpr char kAssetTarget[] = "/www.new";
+#endif
+
+// Flash usage around a UI package upload — the small LittleFS data partition
+// is the usual reason such an upload fails.
+void logFsUsage(const char* when) {
+#ifdef BREWCTL_USE_LITTLEFS
+  Serial.printf("asset upload %s: LittleFS %u/%u bytes used\n", when,
+                (unsigned)LittleFS.usedBytes(), (unsigned)LittleFS.totalBytes());
+#else
+  (void)when;
+#endif
+}
+
+#ifdef BREWCTL_USE_LITTLEFS
+// esp_littlefs panics (IntegerDivideByZero in lfs_alloc) instead of returning
+// an error when a write finds no free block, rebooting mid-request. So check
+// before opening each archived file that it fits, with headroom for block
+// rounding, CTZ skip-list pointers and a metadata block.
+bool littleFsHasRoomFor(uint32_t fileSize) {
+  constexpr size_t kBlock = 4096;
+  size_t freeBytes = LittleFS.totalBytes() - LittleFS.usedBytes();
+  return freeBytes >= fileSize + fileSize / 64 + 2 * kBlock;
+}
+#endif
 
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
@@ -177,6 +217,69 @@ document.getElementById('f').addEventListener('submit', async function (e) {
     err.textContent = r.status === 409 ? 'Kein Passwort konfiguriert.' : 'Falsches Passwort.';
   } catch (e) {
     err.textContent = 'Verbindung fehlgeschlagen.';
+  }
+  btn.disabled = false;
+});
+</script>
+</body></html>
+)HTML";
+
+// Served instead of the SPA when /www holds no index.html — e.g. after a
+// failed in-place UI upload (BREWCTL_ASSETS_IN_PLACE). Embedded for the same
+// reason as kLockedPageHtml: it must work without any file under /www, so the
+// UI package can be re-uploaded from a browser without USB.
+const char kRecoveryPageHtml[] = R"HTML(<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BrewControl &#8211; UI fehlt</title>
+<style>
+:root{color-scheme:light dark}
+body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;margin:0;
+  align-items:center;justify-content:center;background:#12161c;color:#e6e8eb}
+form{background:#1b212b;padding:2rem;border-radius:12px;width:min(90vw,360px);
+  box-shadow:0 8px 24px rgba(0,0,0,.4)}
+h1{font-size:1.1rem;margin:0 0 .5rem}
+p{font-size:.9rem;color:#9aa4b2;margin:0 0 1rem}
+input{width:100%;box-sizing:border-box;padding:.6rem .7rem;border-radius:8px;
+  border:1px solid #333c48;background:#12161c;color:inherit;margin-bottom:.75rem;
+  font-size:1rem}
+button{width:100%;padding:.6rem;border:0;border-radius:8px;background:#3b82f6;
+  color:#fff;font-size:1rem;cursor:pointer}
+button:disabled{opacity:.6;cursor:default}
+#msg{font-size:.85rem;min-height:1.2em;margin-top:.5rem;word-break:break-word}
+</style></head>
+<body>
+<form id="f">
+<h1>BrewControl &#8211; Web-UI fehlt</h1>
+<p>Keine UI-Dateien auf dem Ger&#228;t (z.&#160;B. nach einem abgebrochenen Update). Die API l&#228;uft weiter. UI-Paket (.tar) erneut hochladen:</p>
+<input type="file" id="file" accept=".tar" required>
+<input type="password" id="pw" placeholder="Ger&#228;tepasswort (falls gesetzt)" autocomplete="current-password">
+<button type="submit">Hochladen</button>
+<div id="msg"></div>
+</form>
+<script>
+document.getElementById('f').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var btn = e.target.querySelector('button');
+  var msg = document.getElementById('msg');
+  var pw = document.getElementById('pw').value;
+  btn.disabled = true; msg.style.color = ''; msg.textContent = 'Lädt hoch …';
+  try {
+    if (pw) {
+      await fetch('/api/auth/login', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({password: pw}),
+      });
+    }
+    var fd = new FormData();
+    fd.append('f', document.getElementById('file').files[0]);
+    var r = await fetch('/api/update/assets', {method: 'POST', body: fd});
+    if (r.ok) { msg.textContent = 'Fertig, lade neu …'; setTimeout(function () { location.reload(); }, 1500); return; }
+    msg.style.color = '#f87171';
+    msg.textContent = r.status === 401 ? 'Anmeldung erforderlich (Passwort).' : 'Fehler ' + r.status + ': ' + await r.text();
+  } catch (e) {
+    msg.style.color = '#f87171';
+    msg.textContent = 'Verbindung fehlgeschlagen.';
   }
   btn.disabled = false;
 });
@@ -1454,7 +1557,8 @@ void WebUI::begin() {
         }
       });
 
-  // Multipart UI package (.tar) upload → extract to /www.new, swap on loopTask.
+  // Multipart UI package (.tar) upload → extract to kAssetTarget; for the
+  // staged /www.new, swap on loopTask afterwards.
   server_.on("/api/update/assets", HTTP_POST,
       [](AsyncWebServerRequest* req) { /* response sent in upload cb */ },
       [this](AsyncWebServerRequest* req, const String& filename, size_t index,
@@ -1462,31 +1566,77 @@ void WebUI::begin() {
         if (index == 0) {
           uploadUnauthorized_ = !requireAuth(req);
           if (uploadUnauthorized_) return;
-          assetSink_.reset(new SdTarSink(fs_, "/www.new"));
-          assetTar_.reset(new TarExtractor(assetSink_->openCb(),
+          assetSink_.reset(new SdTarSink(fs_, kAssetTarget));
+          TarExtractor::OpenCb open = assetSink_->openCb();
+          assetNoSpace_ = "";
+#ifdef BREWCTL_USE_LITTLEFS
+          open = [this, open](const std::string& path, uint32_t size) {
+            if (!littleFsHasRoomFor(size)) {
+              assetNoSpace_ = "not enough space (" + String(path.c_str()) + ", " +
+                              String(size) + " bytes)";
+              return false;
+            }
+            return open(path, size);
+          };
+#endif
+#ifdef BREWCTL_ASSETS_IN_PLACE
+          // index.html is what makes /www count as a UI (see onNotFound). Hold
+          // it back under a .part name until the whole package is extracted,
+          // so an aborted upload — also a dropped connection that never
+          // reaches `final` — ends on the recovery page, not on a broken UI.
+          open = [open](const std::string& path, uint32_t size) {
+            bool isIndex = path == "index.html" || path == "./index.html" ||
+                           path == "index.html.gz" || path == "./index.html.gz";
+            return open(isIndex ? path + ".part" : path, size);
+          };
+#endif
+          assetTar_.reset(new TarExtractor(open,
                                            assetSink_->writeCb(),
                                            assetSink_->closeCb()));
           // Recursive: plain rmdir() silently no-ops on a non-empty dir, so a
           // previous failed/partial extraction would otherwise leave stale
           // files behind for this run to write into (FILE_WRITE appends
-          // rather than truncates on this platform).
+          // rather than truncates on this platform). /www.new is cleared in
+          // place mode too: leftovers of an earlier staged attempt eat space.
           removeRecursive_("/www.new");
+#ifdef BREWCTL_ASSETS_IN_PLACE
+          removeRecursive_("/www");
+#endif
           SdLock lock;
-          fs_.mkdir("/www.new");
+          fs_.mkdir(kAssetTarget);
+          logFsUsage("start");
         }
         if (uploadUnauthorized_) return;
         if (len && assetTar_) assetTar_->feed(data, len);
         if (final) {
+          logFsUsage("end");
           bool ok = assetTar_ && !assetTar_->hasError();
           String err;
           if (!ok) {
-            err = assetTar_ ? assetTar_->errorMsg() : "no data received";
-            if (assetSink_) err += " (" + assetSink_->lastPath() + ")";
+            if (assetNoSpace_.length()) {
+              err = assetNoSpace_;
+            } else {
+              err = assetTar_ ? assetTar_->errorMsg() : "no data received";
+              if (assetSink_) err += " (" + assetSink_->lastPath() + ")";
+            }
             Serial.printf("asset upload failed: %s\n", err.c_str());
           }
           assetTar_.reset();
           assetSink_.reset();
+#ifdef BREWCTL_ASSETS_IN_PLACE
+          if (ok) {
+            {
+              SdLock lock;
+              for (const char* f : {"/www/index.html", "/www/index.html.gz"}) {
+                String part = String(f) + ".part";
+                if (fs_.exists(part)) fs_.rename(part, f);
+              }
+            }
+            req->send(200, "text/plain", "ok");
+          }
+#else
           if (ok) { assetSwapPending_ = true; req->send(200, "text/plain", "ok"); }
+#endif
           else { req->send(500, "text/plain", "extract failed: " + err); }
         }
       });
@@ -1712,7 +1862,13 @@ void WebUI::begin() {
   // SPA fallback: serve index.html for unknown GET paths so client-side routes work
   server_.onNotFound([this](AsyncWebServerRequest* req) {
     if (req->method() == HTTP_GET && !req->url().startsWith("/api/")) {
-      req->send(fs_, "/www/index.html", "text/html");
+      bool haveUi;
+      {
+        SdLock lock;
+        haveUi = fs_.exists("/www/index.html") || fs_.exists("/www/index.html.gz");
+      }
+      if (haveUi) req->send(fs_, "/www/index.html", "text/html");
+      else req->send(200, "text/html", kRecoveryPageHtml);
     } else {
       req->send(404, "text/plain", "Not Found");
     }

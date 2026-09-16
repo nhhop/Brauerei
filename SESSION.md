@@ -2961,3 +2961,76 @@ Redocly-Lint valide; Such-UI im Browser gegen `brewcontrol.local` mit
 gestubbtem Endpoint (Liste, Sensor-Filter, Übernahme der Felder).
 **Nicht verifiziert:** Hardware (nichts geflasht) → PLAN.md
 „Hardware-Verifikation offen".
+
+## 2026-09-16 — UI-Tar-Upload auf den 256-KB-LittleFS-Boards (esp32dev, lolin_s2_mini) gefixt
+
+`POST /api/update/assets` schlug auf beiden LittleFS-Boards fehl, und statt der
+dokumentierten `500` bekam der Client einen Connection-Reset.
+
+**Root Cause (per Serial belegt):** `/www.new` wurde neben dem noch liegenden
+`/www` entpackt. Die 256-KB-Partition fasst altes und neues Bundle aber nicht
+gleichzeitig. esp32dev: 176 KB von 256 KB schon vor dem Entpacken belegt, frei
+also ~86 KB gegen ~101 KB JS-Gzip. Der fehlende 500er ist ein **Crash**: Wenn
+kein freier Block mehr da ist, gibt esp_littlefs keinen Fehler zurück, sondern
+panict (`Guru Meditation Error: IntegerDivideByZero` in `lfs_alloc`, lfs.c:689,
+Backtrace über `SdTarSink::writeCb` → `TarExtractor::feed`). Das Board bootet
+mitten im Request neu. Der LOLIN zeigt dasselbe Muster (135 KB belegt, frei
+~127 KB gegen ~120 KB plus Metadaten): Neustart mitten im Upload, curl
+bekommt `(56)`. Den Panic-Text gibt das S2 über USB-CDC nicht mehr aus. Der
+ältere Befund „Abbruch bei ~65 KB" war also dieselbe Ursache, nur knapper am
+Limit.
+
+**Entscheidung:** Drei Ansätze standen zur Wahl. Umgesetzt ist „`/www` vor dem
+Entpacken leeren", ergänzt um eine eingebettete Notfall-Seite. Diff-Sync
+verworfen: Vite hasht die Dateinamen, das große JS ändert sich also bei jedem
+Build und muss trotzdem neben dem alten liegen. Code-Splitting verworfen: Die
+Gesamtgröße bleibt gleich. Umpartitionieren geht nicht, die Firmware belegt
+schon 1,65 MB des 1,86-MB-App-Slots. Das In-place-Verhalten hängt bewusst
+**nicht** an `BREWCTL_USE_LITTLEFS`, sondern an einem eigenen Flag
+`BREWCTL_ASSETS_IN_PLACE`. Ein künftiges Board ohne SD, aber mit größerer
+Datenpartition behält den atomaren Tausch.
+
+**Umsetzung:**
+- `platformio.ini`: `-DBREWCTL_ASSETS_IN_PLACE=1` in `esp32dev` +
+  `lolin_s2_mini`, mit Kommentar zur Partitionsgröße.
+- `WebUI.cpp`: `kAssetTarget` (`/www` bzw. `/www.new`). Im In-place-Modus wird
+  zu Beginn `/www` geleert. `/www.new` wird immer geleert, denn Reste früherer
+  Versuche fressen Platz. Es gibt keinen Swap. `index.html(.gz)` wird als
+  `.part` geschrieben und erst bei Erfolg umbenannt. So endet auch ein
+  Verbindungsabbruch, der nie `final` erreicht, auf der Notfall-Seite statt
+  in einer halben SPA.
+- LittleFS-Guard: Vor jedem Archiv-Member prüft ein Wrapper um
+  `SdTarSink::openCb()` den freien Platz (Größe + 1/64 + 2 Blöcke). Reicht er
+  nicht, kommt `500 extract failed: not enough space (<member>, <size> bytes)`
+  statt eines Panics. Dazu kommt eine knappe Serial-Zeile mit
+  `LittleFS used/total` bei Start und Ende.
+- `kRecoveryPageHtml` (Muster `kLockedPageHtml`): `onNotFound` liefert sie für
+  Nicht-API-GETs, solange `/www/index.html(.gz)` fehlt. Die Seite bietet einen
+  Tar-Upload plus ein optionales Passwort-Feld und gilt für alle Boards.
+- `openapi.yaml`, `BrewControl/README.md`, `BrewControl/CLAUDE.md`
+  nachgezogen. Der Punkt ist aus PLAN.md raus, der LilyGo-SD-Befund steht dort
+  als eigener Punkt weiter.
+
+**Verifiziert:** `pio test -e native` (SensActCtrl 224, Firmware 37 grün);
+`pio run` für esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled; Redocly-Lint.
+Hardware an **beiden** LittleFS-Boards per OTA, jeweils mit curl:
+- gz-only-Tar → `200` in 2–4 s, neues Bundle wird ausgeliefert
+  (esp32dev: 29 KB → 172 KB belegt).
+- Erneuter Upload über bestehende UI → `200`.
+- Volles Tar (522 KB) bzw. Tar mit `index.html.gz` zuerst plus 300-KB-Datei →
+  `500 not enough space (…)`, kein Reboot, `GET /` liefert die Notfall-Seite.
+- Per `--limit-rate` abgebrochener Upload → Notfall-Seite (esp32dev).
+- Wiederherstellung per curl → UI wieder da. Die SPA lädt im Browser ohne
+  Konsolenfehler. Der Upload-Flow der Notfall-Seite ist im Browser-Pane
+  geprüft (Dummy-Tar → `200` → Reload).
+
+**Nicht verifiziert:** Den Upload über die Notfall-Seite mit einem echten
+UI-Tar gab es nur per curl; das Browser-Pane kann keine lokale Datei wählen.
+Auf dem LilyGo (SD, ohne Flag) läuft der unveränderte Staged-Pfad, dort nicht
+neu geflasht.
+
+**Nebenbefund:** Mein PowerShell-Serial-Logger am nativen USB-CDC des S2 hat
+das Board beim Schließen/Neuöffnen des Ports in den ROM-Download-Modus
+geschickt (COM7, 303A:0002). Das Board war danach offline und wurde per USB
+neu geflasht. Den S2-Port also nicht in einer Reopen-Schleife mit DTR-Toggle
+mitschneiden.
