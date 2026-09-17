@@ -184,28 +184,19 @@ void EspNowTransport::requestRetained_() {
 
 void EspNowTransport::onSendStatus(const uint8_t* mac, bool delivered) {
   if (isBroadcast(mac)) return;  // broadcasts are never ACKed — no signal
-  uint64_t packed = 0;
-  for (int i = 0; i < 6; ++i) packed = (packed << 8) | mac[i];
-  deliveryReport_.store(packed | (delivered ? kDelivered : kFailed));
+  std::lock_guard<std::mutex> lock(deliveryMutex_);
+  if (delivered) {
+    deliveryErrorMsg_.clear();
+    return;
+  }
+  char msg[64];
+  std::snprintf(msg, sizeof(msg),
+                "Zustellung an %02X:%02X:%02X:%02X:%02X:%02X fehlgeschlagen",
+                mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  deliveryErrorMsg_ = msg;
 }
 
 void EspNowTransport::tick() {
-  const uint64_t report = deliveryReport_.exchange(0);
-  if (report & kFailed) {
-    char msg[64];
-    std::snprintf(msg, sizeof(msg),
-                  "Zustellung an %02X:%02X:%02X:%02X:%02X:%02X fehlgeschlagen",
-                  static_cast<unsigned>((report >> 40) & 0xFF),
-                  static_cast<unsigned>((report >> 32) & 0xFF),
-                  static_cast<unsigned>((report >> 24) & 0xFF),
-                  static_cast<unsigned>((report >> 16) & 0xFF),
-                  static_cast<unsigned>((report >> 8) & 0xFF),
-                  static_cast<unsigned>(report & 0xFF));
-    deliveryErrorMsg_ = msg;
-  } else if (report & kDelivered) {
-    deliveryErrorMsg_.clear();
-  }
-
   // A subscribe() inside the throttle window above defers here instead of
   // being dropped — catch up once the window has elapsed.
   if (retainedRequestPending_ && initialized_ &&
@@ -251,7 +242,9 @@ void EspNowTransport::dispatchIncoming(const uint8_t* mac, const uint8_t* data,
 }
 
 const char* EspNowTransport::lastErrorMessage() const {
-  return lastErrorMsg_.empty() ? deliveryErrorMsg_.c_str() : lastErrorMsg_.c_str();
+  if (!lastErrorMsg_.empty()) return lastErrorMsg_.c_str();
+  std::lock_guard<std::mutex> lock(deliveryMutex_);
+  return deliveryErrorMsg_.c_str();
 }
 
 }  // namespace SensActCtrl

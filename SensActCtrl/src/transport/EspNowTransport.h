@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <atomic>
 #include <map>
 #include <mutex>
 #include <string>
@@ -89,15 +88,13 @@ class EspNowTransport : public ITransport {
   uint8_t peerChannel_ = 0;  // 0 = ride the STA channel
   std::mutex peersMutex_;    // learn() runs on the WiFi task, publish() on loop
   EspNowPeerTable peers_;
-  // Latest unicast delivery report from the send callback (WiFi task):
-  // 0 = none, else kDelivered/kFailed flag | 48-bit MAC. Folded into
-  // deliveryErrorMsg_ by tick().
-  static constexpr uint64_t kDelivered = 1ULL << 62;
-  static constexpr uint64_t kFailed = 1ULL << 63;
-  std::atomic<uint64_t> deliveryReport_{0};
-  // Kept apart from lastErrorMsg_ (cleared by every successful send, which
-  // periodic broadcasts would do within a second) — only a later successful
-  // unicast delivery clears it.
+  // Unicast delivery error, set/cleared directly from the send callback
+  // (WiFi task) as each report comes in — not batched through tick(), so a
+  // failure report can't outlive a later success just because both landed
+  // before the next tick(). Kept apart from lastErrorMsg_ (cleared by every
+  // successful send, which periodic broadcasts would do within a second) —
+  // only a later successful unicast delivery clears it.
+  mutable std::mutex deliveryMutex_;
   std::string deliveryErrorMsg_;
 };
 
