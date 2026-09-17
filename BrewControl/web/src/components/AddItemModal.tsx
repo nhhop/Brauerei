@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, ScannedDevice, ItemConfig, DiscoveredItem } from '../types';
+import { ChevronLeft } from 'lucide-preact';
+import type { Snapshot, ScannedDevice, ItemConfig } from '../types';
 import {
   createSensor, createActuator, createController,
   deleteSensor, deleteActuator, deleteController,
-  scanOneWireBus, startAutotune, stopAutotune, discoverRemote, getConfig,
+  scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
+import { ITEM_TYPES, ROLE_LABEL, type ItemPrefill } from '../itemTypes';
 import { AutotuneProgress } from './AutotuneProgress';
+import { ItemTypePicker } from './ItemTypePicker';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -24,17 +27,27 @@ type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
-export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCreated, onRenamed }: {
+export function AddItemModal({ open, snap, onClose, editConfig, editRole, initialRole, prefill, onCreated, onRenamed }: {
   open: boolean;
   snap: Snapshot | null;
   onClose: () => void;
   editConfig?: ItemConfig;
   editRole?: Role;
+  // Role the type picker starts on (the caller knows which kind of item the
+  // user set out to create). Only the starting point -- the picker's own
+  // segmented control still switches roles freely.
+  initialRole?: Role;
+  // A device picked in DiscoverDevicesModal. Only read while the dialog opens
+  // (the hydration effect keys on `open` alone), so the caller must set it in
+  // the same handler that opens the dialog and clear it in onClose.
+  prefill?: ItemPrefill;
   onCreated?: (role: Role, id: string) => void;
   onRenamed?: (role: Role, oldId: string, newId: string) => void;
 }) {
   const isEdit = !!(editConfig && editRole);
 
+  // 1 = type picker, 2 = fields. Edit and prefill open straight at 2.
+  const [step, setStep] = useState<1 | 2>(1);
   const [role, setRole] = useState<Role>('sensor');
 
   // shared
@@ -87,10 +100,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
   const [remoteTransport, setRemoteTransport] = useState<RemoteTransport>('mqtt');
   const [remoteListenPort, setRemoteListenPort] = useState('8080');
   const [remotePeerUrl, setRemotePeerUrl] = useState('');
-  // Discovery results are tied to the transport they were fetched for.
-  const [discovering, setDiscovering] = useState(false);
-  const [discovered, setDiscovered] = useState<{ transport: RemoteTransport; items: DiscoveredItem[] } | null>(null);
-  const [knownRemotes, setKnownRemotes] = useState<Set<string>>(new Set());
 
   // MAX31865
   const [csPin, setCsPin] = useState('');
@@ -181,7 +190,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
     setErr(null);
     setAtErr(null); setAtBusy(false); setAtMethod('ZieglerNichols');
     setScanning(false); setScanned(false); setScannedDevices([]); setSelectedAddress('');
-    setDiscovering(false); setDiscovered(null);
 
     if (isEdit && editConfig && editRole) {
       setRole(editRole);
@@ -349,7 +357,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       }
     } else {
       // new item — reset to defaults
-      setRole('sensor'); setId(''); setPin('');
+      setRole(initialRole ?? 'sensor'); setId(''); setPin('');
       setSensorType('DS18B20');
       setI2cAddr(0x76);
       setCsPin(''); setWiresCount(2); setRtdType('PT100');
@@ -386,10 +394,44 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       setHeatDiff('0.5'); setCoolDiff('0.5');
       setCoolMinOnS('0'); setCoolMinOffS('0');
       setSrDeadband('0.05'); setChangeoverS('0');
+
+      if (prefill) {
+        setRole(prefill.role);
+        setId(prefill.id);
+        if (prefill.type === 'DS18B20') {
+          setSensorType('DS18B20');
+          setPin(String(prefill.pin));
+          setSelectedAddress(prefill.address);
+          // Seed the bus list too — it only renders after a scan, and without
+          // it the picked address would be invisible.
+          setScannedDevices([{ address: prefill.address, index: 0 }]);
+          setScanned(true);
+        } else {
+          if (prefill.role === 'sensor') setSensorType('Remote'); else setActuatorType('Remote');
+          setRemoteDevice(prefill.device); setRemoteId(prefill.remoteId);
+          setRemotePrefix(prefill.prefix); setRemoteChannelKey(prefill.channelKey);
+          setRemoteTransport(prefill.transport);
+        }
+      }
     }
+    setStep(isEdit || prefill ? 2 : 1);
   }, [open]);
 
   if (!open) return null;
+
+  if (step === 1) return (
+    <ItemTypePicker role={role} onRole={setRole} onClose={onClose}
+      onPick={(e) => {
+        if (e.role === 'sensor') setSensorType(e.type as SensorType);
+        else if (e.role === 'actuator') setActuatorType(e.type as ActuatorType);
+        else setCtrlType(e.type as ControllerType);
+        setErr(null);
+        setStep(2);
+      }} />
+  );
+
+  const currentType = role === 'sensor' ? sensorType : role === 'actuator' ? actuatorType : ctrlType;
+  const typeLabel = ITEM_TYPES.find((t) => t.role === role && t.type === currentType)?.label ?? currentType;
 
   const liveController = isEdit && editRole === 'controller' && id
     ? snap?.controllers.find((c) => c.id === id)
@@ -667,85 +709,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       active ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-muted hover:bg-fg/10'
     }`;
 
-  const remoteKey = (transport: string, device: string, remoteId: string, channelKey: string) =>
-    `${transport}|${device}|${remoteId}|${channelKey}`;
-
-  async function runDiscovery(transport: 'mqtt' | 'espnow') {
-    setDiscovering(true); setDiscovered(null); setErr(null);
-    try {
-      const [items, cfg] = await Promise.all([discoverRemote(transport), getConfig()]);
-      const known = new Set<string>();
-      for (const c of [...cfg.sensors, ...cfg.actuators]) {
-        if (c.type !== 'Remote') continue;
-        known.add(remoteKey(String(c.transport ?? 'mqtt'), String(c.device ?? ''),
-          String(c.remote_id ?? ''), String(c.channel_key ?? '')));
-      }
-      setKnownRemotes(known);
-      setDiscovered({ transport, items });
-    } catch (e) { setErr(String(e)); }
-    setDiscovering(false);
-  }
-
-  function pickDiscovered(it: DiscoveredItem) {
-    setRemoteDevice(it.device);
-    setRemoteId(it.id);
-    setRemotePrefix(it.prefix);
-    setRemoteChannelKey(it.channel_key);
-    if (!id.trim()) setId(it.channel_key ? `${it.id}_${it.channel_key}` : it.id);
-  }
-
-  // Search button + result list under the Remote transport selector. Only
-  // MQTT and ESP-NOW answer discovery requests.
-  function remoteDiscoveryFields(kind: 'sensor' | 'actuator') {
-    if (remoteTransport !== 'mqtt' && remoteTransport !== 'espnow') return null;
-    const transport = remoteTransport;
-    const items = discovered?.transport === transport
-      ? discovered.items.filter((it) => it.kind === kind) : null;
-    const byDevice = new Map<string, DiscoveredItem[]>();
-    for (const it of items ?? []) {
-      const list = byDevice.get(it.device) ?? [];
-      list.push(it);
-      byDevice.set(it.device, list);
-    }
-    return (
-      <div class="space-y-2">
-        <button type="button" disabled={discovering} onClick={() => runDiscovery(transport)}
-          class="rounded-md bg-fg/5 px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10 disabled:opacity-50">
-          {discovering ? 'Suche läuft …' : 'Geräte suchen'}
-        </button>
-        {items && items.length === 0 && (
-          <p class="text-xs text-caution">
-            Nichts gefunden — sendet das Gerät per {transport === 'mqtt' ? 'MQTT' : 'ESP-NOW'} (Veröffentlichen aktiv){transport === 'espnow' ? ', auf demselben Kanal' : ', am selben Broker'} und mit aktueller Firmware?
-          </p>
-        )}
-        {[...byDevice.entries()].map(([device, list]) => (
-          <div key={device}>
-            <label class={lbl}>{device}</label>
-            <div class="space-y-1">
-              {list.map((it) => {
-                const selected = remoteDevice === it.device && remoteId === it.id &&
-                  remoteChannelKey === it.channel_key;
-                const known = knownRemotes.has(remoteKey(transport, it.device, it.id, it.channel_key));
-                return (
-                  <button key={`${it.prefix}|${it.id}|${it.channel_key}`} type="button"
-                    onClick={() => pickDiscovered(it)}
-                    class={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs ${
-                      selected ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-fg hover:bg-fg/10'}`}>
-                    <span class="font-mono">{it.channel_key ? `${it.id}/${it.channel_key}` : it.id}</span>
-                    <span class={selected ? '' : 'text-faint'}>
-                      {[it.quantity !== 'None' ? it.quantity : '', it.unit].filter(Boolean).join(' · ')}
-                    </span>
-                    {known && <span class={`ml-auto ${selected ? '' : 'text-faint'}`}>bereits angelegt</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   // Shared by DigitalOutput + AnalogOutput + MqttGeneric — decorator-based, any actuator kind.
   function intervalFields() {
     const period = parseFloat(intervalPeriod);
@@ -801,97 +764,22 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
       >
         <form onSubmit={handleSubmit} class="flex min-h-0 flex-col">
           <div class="min-h-0 space-y-4 overflow-y-auto p-5">
-          <h2 class="text-base font-medium text-fg">
-            {isEdit ? 'Item bearbeiten' : 'Item hinzufügen'}
-          </h2>
-
-          {/* Role selector */}
-          <div>
-            <label class={lbl}>Typ</label>
-            <div class="flex gap-2">
-              {(['sensor', 'actuator', 'controller'] as Role[]).map((r) => (
-                <button key={r} type="button"
-                  onClick={() => { if (!isEdit) setRole(r); }}
-                  disabled={isEdit}
-                  class={segBtn(role === r, isEdit)}>
-                  {r.charAt(0).toUpperCase() + r.slice(1)}
-                </button>
-              ))}
+          {/* Step-2 header — the subline is the only place the chosen type is
+              still named, which matters most in edit mode (type is immutable). */}
+          <div class="flex items-center gap-2">
+            {!isEdit && (
+              <button type="button" onClick={() => setStep(1)} title="Zurück"
+                class="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-subtle-hover hover:text-fg">
+                <ChevronLeft size={16} />
+              </button>
+            )}
+            <div class="min-w-0">
+              <h2 class="text-base font-medium text-fg">
+                {isEdit ? 'Item bearbeiten' : 'Gerät hinzufügen'}
+              </h2>
+              <p class="truncate text-xs text-muted">{ROLE_LABEL[role]} · {typeLabel}</p>
             </div>
           </div>
-
-          {/* Sensor sub-type dropdown */}
-          {role === 'sensor' && (
-            <div>
-              <label class={lbl}>Sensor Type</label>
-              <select value={sensorType} disabled={isEdit}
-                onChange={(e) => setSensorType((e.target as HTMLSelectElement).value as SensorType)}
-                class={`${inp} ${isEdit ? 'opacity-60' : ''}`}>
-                <optgroup label="Temperatur">
-                  <option value="DS18B20">DS18B20 (OneWire)</option>
-                  <option value="MAX31865">MAX31865 (PT100/PT1000, SPI)</option>
-                </optgroup>
-                <optgroup label="Feuchte / Druck">
-                  <option value="BME280">BME280 (T/H/P, I²C)</option>
-                </optgroup>
-                <optgroup label="Durchfluss">
-                  <option value="YF-S201">YF-S201 (Durchfluss)</option>
-                </optgroup>
-                <optgroup label="Distanz">
-                  <option value="HCSR04">HC-SR04 (Ultraschall)</option>
-                </optgroup>
-                <optgroup label="Gewicht">
-                  <option value="HX711">HX711 (Wägezelle)</option>
-                </optgroup>
-                <optgroup label="Digital / Schalter">
-                  <option value="DigitalInput">Digitaler Eingang (GPIO)</option>
-                </optgroup>
-                <optgroup label="MQTT">
-                  <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
-                </optgroup>
-                <optgroup label="Remote">
-                  <option value="Remote">Remote (SensActCtrl-Knoten)</option>
-                </optgroup>
-              </select>
-            </div>
-          )}
-
-          {/* Actuator sub-type dropdown */}
-          {role === 'actuator' && (
-            <div>
-              <label class={lbl}>Actuator Type</label>
-              <select value={actuatorType} disabled={isEdit} title="Actuator Type"
-                onChange={(e) => setActuatorType((e.target as HTMLSelectElement).value as ActuatorType)}
-                class={`${inp} ${isEdit ? 'opacity-60' : ''}`}>
-                <option value="DigitalOutput">DigitalOutput (GPIO on/off + TPO)</option>
-                <option value="AnalogOutput">AnalogOutput (PWM / DAC)</option>
-                <option value="PulseOutput">Pulse (Hopfen-Dropper)</option>
-                <option value="IDS1">IDS1 – Induktion (10 Stufen)</option>
-                <option value="IDS2">IDS2 – Induktion (5 Stufen)</option>
-                <option value="MqttGeneric">MQTT Generic (externes Gerät)</option>
-                <option value="Remote">Remote (SensActCtrl-Knoten)</option>
-              </select>
-            </div>
-          )}
-
-          {/* Controller type selector */}
-          {role === 'controller' && (
-            <div>
-              <label class={lbl}>Regler-Typ</label>
-              <select value={ctrlType} disabled={isEdit} title="Regler-Typ"
-                onChange={(e) => setCtrlType((e.target as HTMLSelectElement).value as ControllerType)}
-                class={`${inp} ${isEdit ? 'opacity-60' : ''}`}>
-                <optgroup label="Zweipunktregler">
-                  <option value="TwoPoint">Einfacher Zweipunktregler</option>
-                  <option value="DualStage">Dual-Stage-Regler (Heizen/Kühlen)</option>
-                </optgroup>
-                <optgroup label="PID">
-                  <option value="PID">Einfacher PID-Regler</option>
-                  <option value="SplitRangePID">Split-Range-PID-Regler (Heizen/Kühlen)</option>
-                </optgroup>
-              </select>
-            </div>
-          )}
 
           {/* ID field (all roles) */}
           <div>
@@ -1157,7 +1045,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   ))}
                 </div>
               </div>
-              {remoteDiscoveryFields('sensor')}
               {remoteTransport === 'webhook' && (
                 <div class="grid grid-cols-2 gap-2">
                   <div>
@@ -1472,7 +1359,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, onCrea
                   ))}
                 </div>
               </div>
-              {remoteDiscoveryFields('actuator')}
               {remoteTransport === 'webhook' && (
                 <div class="grid grid-cols-2 gap-2">
                   <div>

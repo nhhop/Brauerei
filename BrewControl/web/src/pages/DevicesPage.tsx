@@ -7,10 +7,11 @@ import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { Spinner } from '../components/Spinner';
 import { AddItemModal } from '../components/AddItemModal';
+import { DiscoverDevicesCard } from '../components/DiscoverDevicesCard';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
-import { Fab } from '../components/Fab';
 import { btnPrimary } from '../ui';
+import type { ItemPrefill } from '../itemTypes';
 import { Pencil, Plus, X, Gauge, SlidersHorizontal, Zap, type LucideIcon } from 'lucide-preact';
 
 type Role = 'sensor' | 'actuator' | 'controller';
@@ -23,6 +24,7 @@ const iconBtn =
 
 export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [prefill, setPrefill] = useState<ItemPrefill | null>(null);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
   const [editPending, setEditPending] = useState<string | null>(null);
   const [editErr, setEditErr] = useState<string | null>(null);
@@ -33,6 +35,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
   async function startEdit(role: Role, id: string) {
     setEditPending(id);
     setEditErr(null);
+    setPrefill(null);
     try {
       const config = await getConfig();
       const list = role === 'sensor' ? config.sensors
@@ -75,13 +78,24 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
     <PageShell>
       <header class="flex items-center justify-between gap-3">
         <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Geräte' }]} />
-        <button type="button" onClick={() => setAddOpen(true)} class={`${btnPrimary} hidden md:inline-flex`}>
-          + Hinzufügen
-        </button>
       </header>
-      <Fab icon={Plus} label="Hinzufügen" onClick={() => setAddOpen(true)} />
 
       <div class="mt-6 space-y-4">
+        {/* The two action cards read as one block — same row density as the
+            cards inside a SettingsGroup below. */}
+        <div class="space-y-1">
+          <DiscoverDevicesCard onPick={(p) => { setPrefill(p); setAddOpen(true); }} />
+
+          <SettingsCard icon={Plus} title="Gerät hinzufügen"
+            desc="Sensor, Aktor oder Regler von Hand anlegen."
+            control={
+              <button type="button" class={btnPrimary}
+                onClick={() => { setPrefill(null); setAddOpen(true); }}>
+                + Hinzufügen
+              </button>
+            } />
+        </div>
+
         {!snap && <SkeletonList count={3} />}
         {editErr && <p class="text-sm text-critical">{editErr}</p>}
         {empty && (
@@ -140,9 +154,10 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
       </ConfirmModal>
 
       <AddItemModal open={addOpen} snap={snap}
-        onClose={() => { setAddOpen(false); setEditItem(null); }}
+        onClose={() => { setAddOpen(false); setEditItem(null); setPrefill(null); }}
         editConfig={editItem?.cfg}
-        editRole={editItem?.role} />
+        editRole={editItem?.role}
+        prefill={prefill ?? undefined} />
     </PageShell>
   );
 }

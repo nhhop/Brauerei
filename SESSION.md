@@ -3166,3 +3166,108 @@ auch bei `espnow.enabled=false` weiterläuft): Write bei abgestecktem A →
 Fehleranzeige erscheint korrekt; A wieder angesteckt, Write erneut
 erfolgreich → Fehleranzeige cleart sofort, kein Hängenbleiben mehr.
 PLAN.md-Punkt entfernt.
+
+## 2026-09-17 — Add-Item-Dialog: Discovery herausgelöst + 2-Step-Dialog
+
+**Problem:** `AddItemModal.tsx` (1782 Z., ~70 `useState`, 16 nebeneinander
+liegende `role && type`-Guards) war unübersichtlich, und Discovery lag
+darin begraben: Remote-Discovery erschien erst nach Rolle → Typ `Remote` →
+Transport `mqtt|espnow` — man musste also schon wissen, was man sucht,
+bevor man suchen durfte.
+
+**Umsetzung (reiner Layout-/Navigations-Umbau, Feldblöcke und
+`handleSubmit` unverändert):**
+
+- Zwei neue Aktions-Karten über der Geräteliste, jeweils nach dem Vorbild
+  der WLAN-Suche in `NetworkPage` (Button im `control`-Slot von
+  `SettingsCard`): „Geräte suchen“ (`DiscoverDevicesCard`) und „Gerät
+  hinzufügen“ (drei Zeilen direkt in `DevicesPage`). Damit entfallen die
+  Header-Buttons und der `SpeedDialFab` auf dieser Seite — die Aktionen
+  stehen jetzt auf jeder Breite im Seitenfluss. Die Treffer klappen **in
+  der Such-Karte selbst** auf statt in einem Dialog; gesucht werden **alle
+  Quellen parallel**: `discoverRemote('mqtt')` + `discoverRemote('espnow')` +
+  OneWire-Scan über alle bereits konfigurierten DS18B20-Pins (letztere
+  sequenziell, weil `/api/bus/scan` synchron im AsyncTCP-Handler läuft).
+  Jede Quelle rendert, sobald sie fertig ist; nicht verfügbare Transporte
+  (409) werden still übersprungen, alles andere wird eine Notiz. Treffer
+  sind nach Quelle gruppiert, Bekanntes ist „bereits angelegt“ markiert.
+- Klick auf einen Treffer öffnet den Anlege-Dialog **vorausgefüllt**
+  (neue Prop `prefill?: ItemPrefill`). Der Hydrations-Effect keyt weiter
+  auf `[open]` — `prefill` gehört bewusst *nicht* in die Deps, sonst würde
+  jeder SSE-Tick eine halb getippte Eingabe wegwischen; Vertrag: im selben
+  Handler setzen, der den Dialog öffnet, in `onClose` wieder `null`.
+- `AddItemModal` ist jetzt zweistufig: Schritt 1 ist der neue
+  `ItemTypePicker` (Rolle über das gemeinsame `Segmented`, darunter der
+  gruppierte Typ-Katalog aus dem neuen `itemTypes.ts` mit je einer
+  Erklärzeile) statt der drei `<select><optgroup>`-Dropdowns; Schritt 2
+  zeigt nur noch ID + die Felder dieses einen Typs. Edit öffnet direkt in
+  Schritt 2 (die beiden `disabled`-Selects entfallen); die neue Unterzeile
+  `Rolle · Typ` trägt die Information, die vorher nur im Select stand.
+- Der DS18B20-Inline-Scan bleibt im Formular — er ist ein Feld-Helfer für
+  einen manuell eingetippten Pin, keine Geräte-Suche.
+
+Netto −150/+30 Zeilen in `AddItemModal.tsx`, ohne Churn in den
+per-Typ-Feldblöcken. Keine Firmware-/Routen-Änderung, `openapi.yaml`
+unberührt.
+
+**Verifiziert:** `pnpm typecheck` + `pnpm build` grün. Gegen esp32dev live
+durchgeklickt: Schritt 1/2 inkl. Zurück und Rollenwechsel, Edit eines
+PID-Reglers (kein Zurück-Chevron, AutoTune intakt), verschachteltes
+Öffnen aus „Dashboard-Inhalte“ (startet in Schritt 1), Suche findet alle
+drei Quellen — OneWire GPIO 2 (`28:ff:19:…`, „bereits angelegt“),
+`MQTT · brewcontrol-esp32dev` (Sensor) und `ESP-NOW · brewcontrol-lolin`
+(Aktor `IDS1`) —, alle Prefill-Pfade inkl. sichtbar vorausgewählter
+Bus-Adresse und automatisch auf „Aktor“ gewechselter Rolle, DS18B20
+end-to-end angelegt und wieder gelöscht, kein Prefill-Leak beim nächsten
+„+ Hinzufügen“, beide Karten bei 375×812. Keine Konsolenfehler.
+
+**Nebenbefund:** ein Zwischenstand hatte beide Buttons in *einer* Karte —
+zwei Buttons im `control`-Slot von `SettingsCard` sind `shrink-0`, während
+der Textblock `flex-1 min-w-0` ist, also zerquetschen sie auf einem
+375-px-Display den Titel auf wenige Zeichen pro Zeile. Eine Karte pro
+Aktion umgeht das; wer je zwei Buttons in einen `control`-Slot legt,
+läuft wieder hinein.
+
+## 2026-09-17 — Dashboard-Inhalte-Dialog: Auswahlliste statt Checkbox-Wüste
+
+`DashboardContentModal` bestand aus sechs `fieldset`-Blöcken mit nativen
+Checkboxen im Flow-Umbruch: ~14 px Trefferfläche (schlecht am Tablet),
+keine Hierarchie zwischen Gruppen und Inhalten, nur rohe IDs ohne Kontext,
+kein Hinweis wie viel ausgewählt ist, und die drei
+„+ Neues … erstellen“-Links sahen in `text-faint` wie deaktivierter Text
+aus.
+
+Ersetzt durch eine WinUI-ListView-artige Auswahlliste:
+
+- Jeder Eintrag ist eine vollbreite Zeile (Rollen-Icon | Name | Detail |
+  Checkbox, ~44 px hoch, ganze Zeile klickbar), ausgewählte Zeilen mit
+  `bg-accent/10` + Accent-Icon.
+- Die Detailspalte zeigt Live-Kontext aus dem Snapshot: Sensor-Messwert
+  bzw. „n Kanäle“ bei Multi-Channel-IDs, An/Aus bei binären Aktoren,
+  Sollwert beim Regler, Serien-/Schrittzahl bei Chart und Programm,
+  Dauer beim Timer.
+- Gruppenköpfe kleben beim Scrollen (`sticky top-0 bg-surface`) und
+  tragen einen `n/m`-Zähler; im Kopf steht „x von y ausgewählt“.
+- Suchfeld erst ab mehr als 8 Einträgen (`SEARCH_THRESHOLD`) — filtert
+  über die Labels, leere Gruppen fallen weg, sonst „Keine Treffer“.
+- Die Erstellen-Aktionen sind normale Zeilen mit Plus-Icon und stehen am
+  Ende **ihrer** Gruppe („Neuer Sensor“ unter Sensoren usw.) statt als
+  blasser Link-Block am Listenende. Charts haben keine — ein Chart wird
+  auf seiner eigenen Seite angelegt. Eine leere Gruppe bleibt sichtbar,
+  solange sie von hier aus befüllt werden kann, damit der erste Sensor
+  eines frischen Geräts einen Klick entfernt ist. Während einer Suche
+  sind die Zeilen ausgeblendet (kein Suchtreffer).
+
+Dafür bekam `AddItemModal` eine optionale Prop `initialRole`: der
+Typ-Picker startet auf der Rolle der angeklickten Gruppe, sein
+Segmented-Control schaltet weiterhin frei um. Zwei Zeilen dort, sonst
+keine Änderung an dem Dialog.
+
+**Verifiziert:** `pnpm typecheck` grün. Live gegen `brewcontrol.local`
+(LilyGo, 12 Einträge) durchgeklickt: Zeilenklick schaltet um und
+aktualisiert Kopf- und Gruppenzähler, Suche „ma“ filtert auf Regler/
+Charts/Programme, Scrollen mit klebenden Köpfen, Light- und Dark-Theme,
+375x812. „Neuer Regler“ öffnet den Typ-Picker auf Regler, „Neuer Sensor“
+auf Sensor (Rolle wechselt pro Klick, kein Hängenbleiben).
+Abschließend mit „Abbrechen“ verlassen — keine Config auf dem Gerät
+verändert. Keine Konsolenfehler.
