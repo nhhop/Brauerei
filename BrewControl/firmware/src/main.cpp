@@ -217,6 +217,11 @@ void setup() {
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
 
+  // Modem sleep drops ESP-NOW packets that arrive while the radio is
+  // dozing between beacons — disable it so ESP-NOW is reliable alongside
+  // the STA link.
+  WiFi.setSleep(false);
+
   // STA is up — safe to bring up ESP-Now now (initEspNow_() rides the
   // current WiFi channel instead of forcing one, so it must come after this).
   espNowTransport = std::make_unique<EspNowTransport>();
