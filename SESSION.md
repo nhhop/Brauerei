@@ -3095,3 +3095,74 @@ starker Last nicht mehr. Die Ursache ist unbelegt.
   Test liegen zwei zusätzliche archivierte Sessions auf dem Gerät, die alte
   ist erhalten.
 - Das Öffnen von COM9 (USB-Serial-JTAG des S3) setzt das Board zurück.
+
+## 2026-09-17 — Remote-Discovery + ESP-NOW-Unicast E2E am Gerät
+
+Beide LittleFS-Boards (esp32dev = A, LOLIN S2 Mini = B) auf aktuellen
+`main`-Stand geflasht und per HTTP gegeneinander getestet (Discovery über
+ESP-NOW und MQTT, Remote-Item anlegen, `/set` über beide Transporte,
+Verhalten bei Board-Ausfall/-Wiederkehr). Ergebnis: alle vier PLAN.md-Punkte
+zu diesem Thema abgearbeitet und entfernt — Discovery findet die Items des
+jeweils anderen Boards und filtert eigene korrekt heraus, `Remote`-Actuator
+schaltet den echten Aktor auf dem Zielboard über beide Transporte, MQTT
+(TCP-basiert) ist dabei durchgehend zuverlässig, ESP-NOW dagegen deutlich
+verlustbehaftet (~1 von 8 Discovery-Scans erfolgreich trotz durchgehend
+verbundener Boards) und ohne Retry-Mechanismus — das ist inhärent (einzelne
+unbestätigte Pakete), aber jetzt als PLAN.md-Punkt festgehalten statt nur
+vermutet. Dabei zwei weitere Befunde aufgedeckt: die ESP-NOW-Fehleranzeige
+(`espnow.error`) kann nach einem erfolgreichen Write fälschlich auf
+„fehlgeschlagen" hängen bleiben (Single-Slot-Overwrite eines älteren
+Fehler-Reports, in PLAN.md dokumentiert), und das Öffnen des COM-Ports
+resettet auch das esp32dev-Board (nicht nur den LilyGo S3 wie bisher
+bekannt) — deshalb während des Tests komplett auf Serial-Zugriff verzichtet
+und rein über HTTP verifiziert.
+
+**Nachtrag — ESP-NOW-Discovery-Verlustrate behoben:** Root Cause für die
+oben beschriebene ~1-von-8-Trefferquote gefunden: `WiFi.setSleep(false)`
+fehlte nach dem STA-Connect. Ohne das aktiviert der ESP32 Modem-Sleep, sobald
+die STA-Verbindung steht — der Funk döst zwischen den AP-Beacons, und
+ESP-NOW-Pakete, die währenddessen eintreffen, gehen komplett verloren (kein
+gelegentliches RF-Rauschen, sondern ein systematischer Effekt). Fix:
+`WiFi.setSleep(false)` in `main.cpp` direkt nach dem WLAN-Connect, vor der
+ESP-NOW-Initialisierung. Nach Reflash beider Boards: 7 von 10
+Discovery-Versuchen erfolgreich (davor 1 von 8–10), ab dem vierten Versuch
+durchgehend 7/7 — deutliche, reproduzierbare Verbesserung. Aktor-Write über
+den Remote-Pfad weiterhin bestätigt funktionsfähig. Der Fehleranzeige-Bug
+bleibt als eigener PLAN.md-Punkt offen (unabhängig von der Sleep-Ursache).
+
+**Nebenbefund beim Reflash:** Nach dem zweiten Flash-Vorgang (mit dem
+Sleep-Fix) blieb das esp32dev-Board kurzzeitig unerreichbar — weder WLAN
+noch lesbarer Serial-Output (nur Rauschen). Ein manueller Power-Cycle durch
+den Nutzer hat es zuverlässig zurückgeholt; Ursache nicht geklärt (möglich:
+unsauberer BOOT-Button-Übergang beim vorherigen Upload-Versuch hat einen
+inkonsistenten Flash-Zustand hinterlassen, der erst nach Reflash + kompletter
+Power-Cycle sauber gebootet hat). Bei ähnlichem Verhalten künftig zuerst
+Power-Cycle statt weiterer Serial-Diagnose versuchen.
+
+Testkonfiguration (Sensoren/Aktoren/Transport-Settings) danach von beiden
+Boards wieder entfernt.
+
+## 2026-09-17 — Fix: ESP-NOW-Fehleranzeige blieb nach erfolgreicher Zustellung hängen
+
+**Root Cause:** `EspNowTransport::onSendStatus()` (WiFi-Task) hat jeden
+Zustellstatus nur in einem einzelnen Atomic (`deliveryReport_`) abgelegt;
+`tick()` (loop-Task) hat davon nur den *zuletzt* eingetroffenen Report
+gelesen und dabei alle dazwischen eingetroffenen überschrieben. Trafen
+zwischen zwei `tick()`-Aufrufen ein Erfolg und danach noch ein älterer
+Fehler-Callback eines parallel unterwegs gewesenen Pakets ein, gewann der
+Fehler und blieb stehen — auch wenn der eigentliche Schreibvorgang
+nachweislich angekommen war.
+
+**Fix:** `deliveryErrorMsg_` wird jetzt direkt im Send-Callback
+gesetzt/gecleart (mutex-geschützt), nicht mehr über `tick()` gepuffert —
+jedes Ereignis wird einzeln und in der Reihenfolge verarbeitet, in der es
+eintrifft. `EspNowTransport.h/.cpp` (SensActCtrl), kein API-Vertrag
+betroffen.
+
+**Verifiziert:** `pio test -e native` (224/224), `pio run` auf allen drei
+Firmware-Envs. Am Gerät (esp32dev = A, LOLIN S2 Mini = B, echter
+Power-Cycle von A statt nur ESP-NOW-Toggle, weil der Transport laut Design
+auch bei `espnow.enabled=false` weiterläuft): Write bei abgestecktem A →
+Fehleranzeige erscheint korrekt; A wieder angesteckt, Write erneut
+erfolgreich → Fehleranzeige cleart sofort, kein Hängenbleiben mehr.
+PLAN.md-Punkt entfernt.
