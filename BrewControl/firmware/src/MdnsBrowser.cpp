@@ -23,10 +23,6 @@ MdnsBrowser::~MdnsBrowser() {
   if (search_) mdns_query_async_delete(search_);
 }
 
-void MdnsBrowser::begin(const String& ownHostname) {
-  ownHostname_ = ownHostname.c_str();
-}
-
 void MdnsBrowser::abandonSearch() {
   std::lock_guard<std::mutex> lock(mutex_);
   abandoned_ = true;
@@ -112,7 +108,6 @@ void MdnsBrowser::tick(uint32_t nowMs) {
     if (const char* v = txtValue(r, "dev")) p.device = v;
     if (const char* v = txtValue(r, "prefix")) p.prefix = v;
     if (const char* v = txtValue(r, "ws")) p.wsPort = static_cast<uint16_t>(atoi(v));
-    p.self = strcasecmp(p.hostname.c_str(), ownHostname_.c_str()) == 0;
 
     std::lock_guard<std::mutex> lock(mutex_);
     // One board answers once per interface — keep the first hit per hostname.

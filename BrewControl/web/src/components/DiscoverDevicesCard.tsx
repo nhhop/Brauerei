@@ -243,9 +243,7 @@ export function DiscoverDevicesCard({ onPick }: {
                             .filter(Boolean).join(' · ')}
                         </span>
                       </span>
-                      {p.self ? (
-                        <span class="shrink-0 text-xs text-faint">dieses Gerät</span>
-                      ) : p.paired ? (
+                      {p.paired ? (
                         <span class="shrink-0 text-xs text-faint">gekoppelt</span>
                       ) : (
                         <button type="button" class={btnSecondary} disabled={pairing !== null}

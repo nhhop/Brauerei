@@ -348,6 +348,8 @@ ebenfalls.
 Ablauf in der UI (Einstellungen → Geräte → „Geräte suchen"):
 
 1. `GET /api/remote/peers` durchsucht das LAN und listet die gefundenen Boards.
+   Das eigene Board steht nie in der Liste — der ESP32-mDNS-Responder
+   beantwortet seine eigenen Anfragen nicht.
 2. „Koppeln" schickt `POST /api/remote/pair`. Das Gerät ruft daraufhin die
    **eigene** `POST /api/settings` des Ziel-Boards auf und setzt dort
    `websocket.publishEnabled` und `websocket.hubUrl` auf

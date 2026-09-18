@@ -523,8 +523,8 @@ paths:
 
         Every board announces that service on port 80 (its HTTP API) with TXT
         records `dev`, `prefix`, `ver` and `ws` (its WebSocket hub port, `0`
-        when it runs no hub). This device is reported too, marked `self`, so a
-        UI can grey it out instead of silently dropping it.
+        when it runs no hub). This device is never in the list — the ESP32 mDNS
+        responder does not answer its own queries.
 
         Finding a board does not connect it — hand it this device's hub URL
         with `POST /api/remote/pair`.
@@ -2783,7 +2783,7 @@ components:
           type: array
           items:
             type: object
-            required: [hostname, ip, device, prefix, ws_port, self]
+            required: [hostname, ip, device, prefix, ws_port]
             properties:
               hostname: { type: string, description: 'mDNS hostname without the ".local" suffix.' }
               ip: { type: string, description: "First IPv4 address, empty if the answer carried none." }
@@ -2792,11 +2792,10 @@ components:
               ws_port:
                 type: integer
                 description: 'TXT "ws" — its own WebSocket hub port, 0 when it runs no hub.'
-              self: { type: boolean, description: This device itself. }
       example:
         peers:
-          - { hostname: brewcontrol, ip: 192.168.1.40, device: brewcontrol, prefix: brewcontrol, ws_port: 8081, self: true }
-          - { hostname: brew-kessel2, ip: 192.168.1.41, device: kessel2, prefix: brewcontrol, ws_port: 0, self: false }
+          - { hostname: brew-kessel2, ip: 192.168.1.41, device: kessel2, prefix: brewcontrol, ws_port: 0 }
+          - { hostname: brew-gaerfass, ip: 192.168.1.42, device: gaerfass, prefix: brewcontrol, ws_port: 0 }
 
     PairResult:
       type: object

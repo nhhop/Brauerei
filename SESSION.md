@@ -3372,3 +3372,71 @@ ob `.local` in der gespeicherten `hubUrl` auflöst
 Framework-Config belegt, nicht am Gerät). Neu notiert wurden außerdem der
 `/set`-Broadcast im Hub (Unicast wäre ~15 Zeilen in der Library) und
 „zuletzt gesehen" pro Remote-Item als Ersatz für den fehlenden Peer-Status.
+---
+
+## 2026-09-18 — mDNS-Kopplung E2E am Gerät + `self` entfernt
+
+Hardware-Runde zur Autodiscovery (Eintrag oben), esp32dev als Hub/Master
+(192.168.178.74), LOLIN S2 Mini als Leaf (192.168.178.82), LilyGo bewusst nur
+als Zuschauer in der Suche. Alles über HTTP, kein Serial (Port-Open resettet
+beide Boards, PLAN.md).
+
+**Durchgelaufen:**
+
+- Neue Firmware auf allen drei Boards, alle antworten auf `/api/remote/peers`.
+- `409 websocket hub not enabled` ohne eigenen Hub, `400 missing host` ohne
+  `host`.
+- mDNS-Suche von allen drei Boards: jedes findet die beiden anderen, TXT `dev`
+  und `prefix` korrekt. `ws` stimmt ebenfalls — nachdem A den Hub bekam, meldet
+  die Suche von B aus `ws_port: 8081` für A und `0` für den LilyGo, auch nach
+  A's Reboot (der Re-Announce bei `STA_GOT_IP` greift).
+- Kopplung: `202` → `code 200`. B hat danach
+  `hubUrl: ws://brewcontrol-esp32dev.local:8081` gespeichert und ist
+  `connected=True`. **Damit ist die offene Frage beantwortet: `.local` löst am
+  Gerät auf** (`CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES=y` war bisher nur aus der
+  Framework-Config belegt). A meldet stabil `hubClients=1`.
+- Item-Suche `?transport=websocket` findet B's Items. Ein auf B **neu**
+  angelegter Sensor (`DigitalInput` GPIO 3, Pullup — als Testsensor ohne
+  Hardware) erscheint dabei ohne Reboot, die Live-Hooks des `RemotePublisher`
+  greifen also auch hier.
+- Remote-Sensor auf A: `v=1 ok=True`, Zeitstempel laufen im 2-s-Takt.
+- `/set` von A auf B's Aktor `IDS1`: 0.1 kam innerhalb einer Sekunde an
+  (`v=target=0.1`), danach sauber zurück auf 0.
+- `401`-Pfad mit echtem Zugriffsschutz: Passwort auf B gesetzt → Kopplung ohne
+  Passwort liefert `code 401` „Board … ist passwortgeschützt", mit Passwort
+  `code 200` (der Login-plus-Cookie-Weg trägt also am Gerät). Passwort danach
+  wieder entfernt.
+- `502` bei unerreichbarem Board nach ~2 s (`kPairTimeoutMs`).
+- **Die Auslagerung aus dem Handler ist belegt:** während loopTask 2 s im
+  blockierenden Connect hing, hat `GET /api/remote/pair` weiter geantwortet und
+  `state: running` geliefert.
+- Reboot B: Reconnect von selbst nach ~4–6 s. Reboot A: das Remote-Item kommt
+  aus `registry.json` zurück und B verbindet sich ohne erneutes Koppeln.
+- A bleibt flüssig: Snapshot-Latenz 22–46 ms (zwei Ausreißer ~320 ms), keine
+  Stalls in Sekunden-Größe — erwartungsgemäß, weil A in dieser Topologie nie
+  selbst wählt.
+- `hubClients` stand direkt nach B's Reboot kurz auf `2` (der alte Socket war
+  noch gezählt) und fiel dann auf `1` — der Heartbeat räumt auf, kein Leck von
+  Client-Slots (relevant, weil `WEBSOCKETS_SERVER_CLIENT_MAX` = 5 ist).
+
+**Fund: `self` war toter Code.** Kein Board listet sich selbst — der
+ESP32-mDNS-Responder beantwortet eigene Queries nicht, auf allen drei Boards
+bestätigt. Das Feld war damit immer `false`, die „dieses Gerät"-Zeile in der UI
+unerreichbar und die Aussage in `openapi.yaml`/`README.md` („This device is
+reported too, marked `self`") falsch. Entfernt: `DiscoveredPeer::self` samt
+`MdnsBrowser::begin()`/`ownHostname_` (die nur dafür existierten), das Feld in
+der `/api/remote/peers`-Response, in `types.ts` und der UI-Zweig. Doku
+korrigiert, dazu je ein Kommentar in `MdnsBrowser.h`, `WebUI.cpp` und
+`types.ts`, damit das Feld nicht wieder eingebaut wird.
+
+**Nebenbei bestätigt:** der Messwert auf A wurde beim Ausfall von B *nicht* als
+veraltet markiert — der Backlog-Punkt „zuletzt gesehen pro Remote-Item" ist real
+und nicht bloß theoretisch.
+
+**Verifiziert:** `pio run -e esp32dev` und `-e lolin_s2_mini` bauen nach dem
+Aufräumen weiter, `pnpm typecheck` + `build` grün, `redocly lint` sauber.
+
+**Zustand der Testboards danach** (bewusst so gelassen): esp32dev ist Hub, sein
+alter `publishEnabled` auf den LilyGo ist aus; S2 Mini ist an ihn gekoppelt und
+hat den Testsensor `wstest`; esp32dev hat die Remote-Items `lolin_wstest` und
+`lolin_ids1`.

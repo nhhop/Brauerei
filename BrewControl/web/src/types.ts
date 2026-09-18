@@ -387,13 +387,14 @@ export interface DiscoveredItem {
 
 // One entry of GET /api/remote/peers — another board found via mDNS
 // (_sensactctrl._tcp). ws_port is its WebSocket hub port, 0 when it runs none.
+// Never contains this device itself: the ESP32 mDNS responder does not answer
+// its own queries.
 export interface DiscoveredPeer {
   hostname: string;
   ip: string;
   device: string;
   prefix: string;
   ws_port: number;
-  self: boolean;
 }
 
 // GET /api/remote/pair — outcome of the last pairing attempt. code/message are

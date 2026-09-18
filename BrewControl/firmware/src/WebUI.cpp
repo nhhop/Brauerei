@@ -825,7 +825,8 @@ void WebUI::begin() {
   // Same 202-poll contract as the discovery above, and for the same reason:
   // the query itself is issued and collected from loop() (MdnsBrowser::tick).
   // Whether a board is already in use is not reported here — the UI knows that
-  // from GET /api/config, which it fetches for the scan anyway.
+  // from GET /api/config, which it fetches for the scan anyway. This board is
+  // never in the list: the ESP32 responder does not answer its own queries.
   server_.on("/api/remote/peers", HTTP_GET, [this](AsyncWebServerRequest* req) {
     using Status = MdnsBrowser::Status;
     if (peers_.status() != Status::Done) {
@@ -843,7 +844,6 @@ void WebUI::begin() {
       o["device"] = p.device;
       o["prefix"] = p.prefix;
       o["ws_port"] = p.wsPort;
-      o["self"] = p.self;
     }
     String out;
     serializeJson(doc, out);

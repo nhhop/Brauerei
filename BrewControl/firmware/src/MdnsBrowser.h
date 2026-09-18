@@ -19,14 +19,15 @@ namespace BrewControl {
 constexpr const char* kServiceType = "_sensactctrl";
 constexpr const char* kServiceProto = "_tcp";
 
-// One board found on the LAN via _sensactctrl._tcp.
+// One board found on the LAN via _sensactctrl._tcp. Never this board itself:
+// the ESP32 responder does not answer its own queries (verified on all three
+// test boards 2026-09-18), so there is no "self" flag to report.
 struct DiscoveredPeer {
   std::string hostname;   // as mDNS reports it, without the ".local" suffix
   std::string ip;         // first IPv4 address
   std::string device;     // TXT "dev" — device id this board publishes under
   std::string prefix;     // TXT "prefix" — its topic prefix
   uint16_t wsPort = 0;    // TXT "ws" — its WebSocket hub port, 0 = not a hub
-  bool self = false;      // this very board (reported, not hidden)
 };
 
 // Browses _sensactctrl._tcp, backing GET /api/remote/peers.
@@ -38,9 +39,9 @@ struct DiscoveredPeer {
 // MDNS.queryService() blocks the caller for the whole search window, which
 // would stall sensor and controller ticks.
 //
-// Lifecycle: begin() once WiFi is up, tick(nowMs) from loop(). requestScan()
-// arms a scan; it runs for kWindowMs, then status() reports Done until
-// takeResults() hands the list over (or it goes stale after kResultTtlMs).
+// Lifecycle: tick(nowMs) from loop(). requestScan() arms a scan; it runs for
+// kWindowMs, then status() reports Done until takeResults() hands the list over
+// (or it goes stale after kResultTtlMs).
 class MdnsBrowser {
  public:
   enum class Status { Idle, Running, Done };
@@ -52,9 +53,6 @@ class MdnsBrowser {
 
   ~MdnsBrowser();
 
-  // ownHostname marks our own entry as self instead of dropping it, so the UI
-  // can grey it out rather than leaving the user wondering where it went.
-  void begin(const String& ownHostname);
   void tick(uint32_t nowMs);
 
   // Must be called right before MDNS.end() — from whichever task restarts the
@@ -72,8 +70,6 @@ class MdnsBrowser {
   std::vector<DiscoveredPeer> takeResults();
 
  private:
-  std::string ownHostname_;
-
   mutable std::mutex mutex_;
   Status status_ = Status::Idle;
   bool pending_ = false;

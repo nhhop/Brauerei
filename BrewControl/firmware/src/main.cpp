@@ -259,7 +259,6 @@ void setup() {
                                           // below needs it before actuators load
   }
   startMDNS();
-  mdnsBrowser.begin(hostname_);
 
   mqttService.begin(hostname_);  // creates the transport (if enabled) before
                                   // dynamicItems.loadFromSD() constructs any
