@@ -30,40 +30,116 @@ constexpr char kSetupHtml[] = R"HTML(<!doctype html>
  body{font-family:system-ui,sans-serif;max-width:480px;margin:1em auto;padding:0 1em;color:#111}
  h1{font-size:1.25em}
  label{display:block;margin:.75em 0 .25em}
- input,select,button{font:inherit;padding:.4em;width:100%;box-sizing:border-box}
- button{margin-top:1em;padding:.6em;background:#333;color:#fff;border:0;border-radius:.25em}
+ input,button{font:inherit;padding:.4em;width:100%;box-sizing:border-box}
+ button{padding:.6em;background:#333;color:#fff;border:0;border-radius:.25em}
  button:disabled{opacity:.5}
  #msg{margin-top:1em;color:#a00;min-height:1.2em}
- .row{display:flex;gap:.5em;align-items:flex-end}
- .row select{flex:1}
- .row button{width:auto;margin-top:0;padding:.4em .8em;background:#666}
+ #scan{width:auto;margin-top:.5em;padding:.4em .8em;background:#666}
+ .net{border-radius:.25em}
+ .net:hover{background:#f0f0f0}
+ .net.exp{background:#e8e8e8}
+ .net-row{display:flex;align-items:center;gap:.5em;width:100%;text-align:left;background:none;color:inherit;border:0;padding:.5em;margin:0}
+ .bars{display:inline-flex;align-items:flex-end;gap:1px;width:14px;flex:none}
+ .bars i{display:block;width:3px;background:#bbb;border-radius:1px}
+ .bars i.on{background:#333}
+ .net-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .net-sub{font-size:.8em;color:#666;flex:none}
+ .net-connect{display:flex;gap:.5em;padding:0 .5em .5em 2em}
+ .net-connect input{flex:1;width:auto}
+ .net-connect button{width:auto;padding:.4em .8em;margin:0}
+ .manual-toggle{display:block;margin-top:.5em;padding:0;width:auto;background:none;color:#666;border:0;
+  font-size:.85em;text-decoration:underline}
 </style></head>
 <body>
 <h1>BrewControl WiFi Setup</h1>
 <label>Network</label>
-<div class="row"><select id="ssid"></select><button type="button" id="scan">Rescan</button></div>
-<label>Password</label>
-<input type="password" id="pwd" autocomplete="off">
+<div id="list"></div>
+<button type="button" id="manualToggle" class="manual-toggle">Enter network manually</button>
+<div id="manualRow" style="display:none">
+ <input type="text" id="manualSsid" placeholder="Network name (SSID)" autocomplete="off">
+ <div class="net-connect" style="padding-left:0">
+  <input type="password" id="manualPwd" placeholder="WiFi password" autocomplete="off">
+  <button type="button" id="manualGo">Connect</button>
+ </div>
+</div>
+<button type="button" id="scan">Rescan</button>
 <label>Hostname (optional, default "brewcontrol")</label>
 <input type="text" id="host" autocomplete="off" placeholder="brewcontrol">
-<button id="go">Connect</button>
 <div id="msg"></div>
 <script>
 const $=id=>document.getElementById(id);
+function escHtml(s){
+ return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// Same 0-4 bucket breakpoints as the settings UI's signal-bar display.
+function barCount(rssi){
+ if(rssi>=-55)return 4;
+ if(rssi>=-65)return 3;
+ if(rssi>=-75)return 2;
+ if(rssi>=-85)return 1;
+ return 0;
+}
+function barsHtml(rssi){
+ const n=barCount(rssi);
+ let h='<span class="bars">';
+ for(let i=1;i<=4;i++) h+=`<i class="${i<=n?'on':''}" style="height:${i*3+2}px"></i>`;
+ return h+'</span>';
+}
+
+let nets=[];
+let expanded=null;   // ssid of the expanded row, or null
+let manualOpen=false;
+
+function renderList(){
+ const list=$('list');
+ list.innerHTML=nets.length?'':'<div id="msg2" style="color:#666">No networks found</div>';
+ nets.forEach(n=>{
+  const div=document.createElement('div');
+  div.className='net'+(expanded===n.ssid?' exp':'');
+  div.innerHTML=`<button type="button" class="net-row" data-ssid="${escHtml(n.ssid)}">`+
+   barsHtml(n.rssi)+
+   `<span class="net-name">${escHtml(n.ssid)}</span>`+
+   `<span class="net-sub">${n.open?'Open':'Secured'}</span></button>`;
+  if(expanded===n.ssid){
+   const row=document.createElement('div');
+   row.className='net-connect';
+   row.innerHTML=`<input type="password" id="rowpwd" autocomplete="off" `+
+    `placeholder="${n.open?'No password needed':'WiFi password'}">`+
+    `<button type="button" id="rowgo">Connect</button>`;
+   div.appendChild(row);
+  }
+  list.appendChild(div);
+ });
+ list.querySelectorAll('.net-row').forEach(btn=>{
+  btn.onclick=()=>{
+   expanded=(expanded===btn.dataset.ssid)?null:btn.dataset.ssid;
+   if(expanded){manualOpen=false;$('manualRow').style.display='none';}
+   renderList();
+  };
+ });
+ const rowgo=$('rowgo');
+ if(rowgo) rowgo.onclick=()=>save(expanded,$('rowpwd').value);
+}
+
 async function scan(){
  $('msg').textContent='Scanning...';
- $('ssid').innerHTML='';
+ nets=[];
+ renderList();
  for (let i=0; i<30; i++){
   const r=await fetch('/api/scan');
   if (r.status===200){
-   const nets=await r.json();
-   nets.sort((a,b)=>b.rssi-a.rssi).forEach(n=>{
-    const o=document.createElement('option');
-    o.value=n.ssid;
-    o.textContent=`${n.ssid} (${n.rssi} dBm)${n.open?' [open]':''}`;
-    $('ssid').appendChild(o);
+   const found=await r.json();
+   // De-dupe by SSID (strongest wins), drop hidden/empty, sort by signal —
+   // same as the settings UI's network list.
+   const best=new Map();
+   found.forEach(n=>{
+    if(!n.ssid)return;
+    const prev=best.get(n.ssid);
+    if(!prev||n.rssi>prev.rssi)best.set(n.ssid,n);
    });
-   $('msg').textContent=nets.length?'':'No networks found';
+   nets=[...best.values()].sort((a,b)=>b.rssi-a.rssi);
+   $('msg').textContent='';
+   renderList();
    return;
   }
   await new Promise(res=>setTimeout(res,1000));
@@ -94,16 +170,23 @@ function afterSaved(ssid,host){
   }catch(e){/* not reachable yet */}
  },retrySecs*1000);
 }
-$('scan').onclick=scan;
-$('go').onclick=async()=>{
- $('go').disabled=true;
+async function save(ssid,password){
+ if(!ssid)return;
  $('msg').textContent='Saving...';
- const ssid=$('ssid').value, host=$('host').value;
+ const host=$('host').value;
  const r=await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({ssid,password:$('pwd').value,hostname:host})});
+  body:JSON.stringify({ssid,password,hostname:host})});
  if(r.ok){afterSaved(ssid,host);}
- else{$('msg').textContent='Error: '+await r.text();$('go').disabled=false;}
+ else{$('msg').textContent='Error: '+await r.text();}
+}
+$('scan').onclick=scan;
+$('manualToggle').onclick=()=>{
+ manualOpen=!manualOpen;
+ $('manualRow').style.display=manualOpen?'block':'none';
+ $('manualToggle').textContent=manualOpen?'Cancel':'Enter network manually';
+ if(manualOpen){expanded=null;renderList();}
 };
+$('manualGo').onclick=()=>save($('manualSsid').value,$('manualPwd').value);
 scan();
 </script>
 </body></html>)HTML";

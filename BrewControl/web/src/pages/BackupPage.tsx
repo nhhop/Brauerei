@@ -1,6 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { downloadBackup, restoreBackup } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ReloadRetry } from '../components/ReloadRetry';
 import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
@@ -17,15 +18,9 @@ export function BackupPage(_: { path?: string }) {
 
   if (done) {
     return (
-      <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
-        <div class="max-w-md text-center">
-          <h1 class="text-xl font-medium tracking-tight">Neustart…</h1>
-          <p class="mt-3 text-sm text-muted">
-            Konfiguration wiederhergestellt. Das Gerät startet neu — die Seite in
-            ein paar Sekunden neu laden.
-          </p>
-        </div>
-      </div>
+      <ReloadRetry title="Neustart…"
+        body="Konfiguration wiederhergestellt. Das Gerät startet neu."
+        targetUrl={location.origin} />
     );
   }
 

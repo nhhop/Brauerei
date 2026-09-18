@@ -5,6 +5,7 @@ import {
   uploadFirmware, uploadAssets, updateSettings,
 } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ReloadRetry } from '../components/ReloadRetry';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { Spinner } from '../components/Spinner';
@@ -19,7 +20,11 @@ export function FirmwarePage(_: { path?: string }) {
   const [st, setSt] = useState<UpdateStatus | null>(null);
   const [confirmInstall, setConfirmInstall] = useState(false);
   const [fwPct, setFwPct] = useState<number | null>(null);
+  const [fwErr, setFwErr] = useState<string | null>(null);
   const [tarPct, setTarPct] = useState<number | null>(null);
+  const [tarErr, setTarErr] = useState<string | null>(null);
+  const [tarOk, setTarOk] = useState(false);
+  const [rebooting, setRebooting] = useState(false);
   const poll = useRef<number | null>(null);
 
   const refresh = () => getUpdateStatus().then(setSt).catch(() => {});
@@ -29,6 +34,12 @@ export function FirmwarePage(_: { path?: string }) {
     poll.current = window.setInterval(refresh, 1500);
     return () => { if (poll.current) clearInterval(poll.current); };
   }, []);
+
+  if (rebooting) return (
+    <ReloadRetry title="Update wird installiert…"
+      body="Das Gerät flasht die neue Firmware und startet neu."
+      targetUrl={location.origin} />
+  );
 
   const header = (
     <header>
@@ -101,10 +112,21 @@ export function FirmwarePage(_: { path?: string }) {
 
           <SettingsCard title="Manueller Upload" icon={Upload} desc="Firmware- oder UI-Paket direkt hochladen">
             <div class="space-y-4 pl-9">
-              <FileUpload label="Firmware (.bin)" accept=".bin" pct={fwPct}
-                onPick={(f) => { setFwPct(0); uploadFirmware(f, setFwPct).then(() => setFwPct(100)).catch(() => setFwPct(null)); }} />
-              <FileUpload label="UI-Paket (.tar)" accept=".tar" pct={tarPct}
-                onPick={(f) => { setTarPct(0); uploadAssets(f, setTarPct).then(() => setTarPct(100)).catch(() => setTarPct(null)); }} />
+              <FileUpload label="Firmware (.bin)" accept=".bin" pct={fwPct} err={fwErr}
+                onPick={(f) => {
+                  setFwPct(0); setFwErr(null);
+                  uploadFirmware(f, setFwPct)
+                    .then(() => { if (poll.current) clearInterval(poll.current); setRebooting(true); })
+                    .catch((e) => { setFwPct(null); setFwErr(String(e)); });
+                }} />
+              <FileUpload label="UI-Paket (.tar)" accept=".tar" pct={tarPct} err={tarErr}
+                ok={tarOk ? 'UI-Paket installiert.' : null}
+                onPick={(f) => {
+                  setTarPct(0); setTarErr(null); setTarOk(false);
+                  uploadAssets(f, setTarPct)
+                    .then(() => { setTarPct(null); setTarOk(true); })
+                    .catch((e) => { setTarPct(null); setTarErr(String(e)); });
+                }} />
             </div>
           </SettingsCard>
         </SettingsGroup>
@@ -113,7 +135,13 @@ export function FirmwarePage(_: { path?: string }) {
       <ConfirmModal open={confirmInstall} title="Update installieren?"
         confirmLabel="Installieren" cancelLabel="Abbrechen" destructive
         onCancel={() => setConfirmInstall(false)}
-        onConfirm={() => { setConfirmInstall(false); installUpdate(channel).then(refresh); }}>
+        onConfirm={() => {
+          setConfirmInstall(false);
+          installUpdate(channel).then(() => {
+            if (poll.current) clearInterval(poll.current);
+            setRebooting(true);
+          });
+        }}>
         Firmware <span class="font-mono">{st.available?.version}</span> wird geflasht und das Gerät startet neu.
       </ConfirmModal>
     </PageShell>
@@ -131,8 +159,9 @@ function ProgressBar({ label, pct }: { label: string; pct: number }) {
   );
 }
 
-function FileUpload({ label, accept, pct, onPick }: {
-  label: string; accept: string; pct: number | null; onPick: (f: File) => void;
+function FileUpload({ label, accept, pct, err, ok, onPick }: {
+  label: string; accept: string; pct: number | null; err?: string | null; ok?: string | null;
+  onPick: (f: File) => void;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [name, setName] = useState<string | null>(null);
@@ -153,6 +182,8 @@ function FileUpload({ label, accept, pct, onPick }: {
           }} />
       </div>
       {pct !== null && <ProgressBar label="Upload" pct={pct} />}
+      {err && <p class="mt-1 text-sm text-critical">Fehler: {err}</p>}
+      {ok && <p class="mt-1 text-sm text-success">{ok}</p>}
     </div>
   );
 }

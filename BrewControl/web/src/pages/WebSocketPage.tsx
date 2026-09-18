@@ -3,6 +3,7 @@ import { useState, useEffect } from 'preact/hooks';
 import type { WebSocketSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ReloadRetry } from '../components/ReloadRetry';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -55,12 +56,9 @@ export function WebSocketPage(_: { path?: string }) {
   const hubClients = settings.hubClients ?? 0;
 
   if (rebooting) return (
-    <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
-      <div class="max-w-md text-center">
-        <h1 class="text-xl font-medium tracking-tight">WebSocket-Einstellungen werden übernommen…</h1>
-        <p class="mt-3 text-sm text-muted">Das Gerät startet neu und baut die Verbindung mit den neuen Einstellungen auf.</p>
-      </div>
-    </div>
+    <ReloadRetry title="WebSocket-Einstellungen werden übernommen…"
+      body="Das Gerät startet neu und baut die Verbindung mit den neuen Einstellungen auf."
+      targetUrl={location.origin} />
   );
 
   const header = (

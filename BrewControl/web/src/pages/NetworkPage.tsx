@@ -4,6 +4,7 @@ import type { ComponentChildren } from 'preact';
 import type { NetworkStatus, ScanNetwork } from '../types';
 import { getNetwork, scanNetworks, setNetwork, setHostname, wifiReset } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ReloadRetry } from '../components/ReloadRetry';
 import { PageShell } from '../components/PageShell';
 import { Spinner } from '../components/Spinner';
 import { SkeletonList } from '../components/Skeleton';
@@ -92,7 +93,7 @@ export function NetworkPage(_: { path?: string }) {
   // Shared action state
   const [pending, setPending] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
-  const [reboot, setReboot] = useState<{ title: string; body: ComponentChildren } | null>(null);
+  const [reboot, setReboot] = useState<{ title: string; body: ComponentChildren; targetUrl?: string } | null>(null);
 
   useEffect(() => {
     getNetwork()
@@ -118,6 +119,7 @@ export function NetworkPage(_: { path?: string }) {
             <code class="mx-1 rounded bg-fg/10 px-1 font-mono">BrewControl-Setup</code>.
           </p>
         ),
+        targetUrl: `http://${host}.local/`,
       });
     } catch (e) {
       setActErr(String(e));
@@ -140,6 +142,7 @@ export function NetworkPage(_: { path?: string }) {
             erreichbar.
           </p>
         ),
+        targetUrl: `http://${h}.local/`,
       });
     } catch (e) {
       setActErr(String(e));
@@ -173,12 +176,7 @@ export function NetworkPage(_: { path?: string }) {
   const hostChanged = status != null && host.trim().toLowerCase() !== status.hostname;
 
   if (reboot) return (
-    <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
-      <div class="max-w-md text-center">
-        <h1 class="text-xl font-medium tracking-tight">{reboot.title}</h1>
-        <div class="mt-3 text-sm text-muted">{reboot.body}</div>
-      </div>
-    </div>
+    <ReloadRetry title={reboot.title} body={reboot.body} targetUrl={reboot.targetUrl} />
   );
 
   const header = (

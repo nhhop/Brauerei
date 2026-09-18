@@ -3440,3 +3440,67 @@ Aufräumen weiter, `pnpm typecheck` + `build` grün, `redocly lint` sauber.
 alter `publishEnabled` auf den LilyGo ist aus; S2 Mini ist an ihn gekoppelt und
 hat den Testsensor `wstest`; esp32dev hat die Remote-Items `lolin_wstest` und
 `lolin_ids1`.
+
+## 2026-09-18 — Captive-Portal-UX angeglichen + Reload-mit-Retry in Preact übernommen
+
+Zwei getrennte, aber verwandte Änderungen: (1) Captive Portal
+(`WiFiSetupPortal.cpp`) und die Preact-Netzwerk-Settings-Seite
+(`NetworkPage.tsx`) machten denselben WiFi-Connect-Flow mit unterschiedlicher
+UX — echtes Code-Sharing würde bedeuten, dass der Portal-Server die gebaute
+SPA aus dem (zum Portal-Zeitpunkt bereits gemounteten) Filesystem ausliefert;
+bewusst verworfen (größerer Umbau, Risiko in restriktiven Captive-Portal-
+WebViews, zusätzlicher Flash-Bedarf auf der knappen 256-KB-LittleFS-Partition).
+Stattdessen die Netzwerkliste im Captive Portal von Hand an NetworkPage
+angeglichen: Listen-Darstellung mit Signalbalken statt `<select>` (gleiche
+RSSI-Bucket-Schwellen: ≥-55/-65/-75/-85 dBm → 4/3/2/1/0 Balken), Dedupe nach
+SSID (stärkster Treffer gewinnt) + Sortierung nach Signal, "Enter network
+manually"-Fallback — alles weiterhin reines Vanilla-JS/Inline-CSS ohne
+Build-Schritt, nur `kSetupHtml` in `WiFiSetupPortal.cpp` geändert, Server-
+Handler unangetastet.
+
+(2) Die Reload-mit-Retry-Anzeige des Captive Portals (`afterSaved()`:
+Countdown, periodischer `fetch(url,{mode:'no-cors'})`-Probe, Auto-Redirect
+beim ersten Erfolg, garantierter Fallback-Link) als `ReloadRetry`-Komponente
+nach Preact übernommen (`web/src/components/ReloadRetry.tsx`) und an die
+Stelle der bisherigen statischen "Gerät startet neu…"-Blöcke gesetzt:
+`NetworkPage.tsx` (WLAN-Wechsel/Hostname-Wechsel mit `{host}.local`-Ziel,
+WLAN-Reset bewusst ohne Ziel — Board wird zum AP, nicht mehr über die
+aktuelle Verbindung erreichbar), `EspNowPage.tsx`, `MqttPage.tsx`,
+`WebhookPage.tsx`, `WebSocketPage.tsx`, `BackupPage.tsx` sowie neu
+`FirmwarePage.tsx` (hatte bisher nach Update-Install gar keine Neustart-
+Anzeige). Bei Ziel-Origin gleich der aktuellen Seite lädt `ReloadRetry` per
+`location.reload()` (Pfad bleibt erhalten), bei Hostname-Wechsel per
+`location.href` auf die neue `.local`-Adresse.
+
+**Verifiziert:** `pio run -e esp32dev` kompiliert (Flash 88.3 %, RAM 18.2 %),
+`pnpm typecheck` grün, alle geänderten Preact-Seiten im Dev-Server gegen ein
+echtes Testboard ohne Konsolenfehler geladen (Netzwerk-, MQTT-, Backup- und
+Firmware-Seite) — reboot-auslösende Aktionen dabei bewusst nicht angeklickt,
+um das laufende physische Gerät nicht neu zu starten. Der tatsächliche
+Auto-Reconnect-Erfolgsfall (Board antwortet nach echtem Reboot wieder) ist
+damit nicht E2E getestet, die Logik ist aber ein direkter Port der bereits
+produktiv laufenden Captive-Portal-Implementierung.
+
+## 2026-09-18 — Fix: manueller Firmware-/UI-Upload zeigte weder Erfolg noch Fehler an
+
+Nutzer-Nachfrage, ob das manuelle Hochladen des UI-Pakets einen Neustart
+braucht, deckte einen Bug in `FirmwarePage.tsx` auf: der `.catch()`-Handler
+beider Uploads (`Firmware (.bin)`/`UI-Paket (.tar)`) setzte den Fortschritt
+bei einem Fehler auf `null` — der Ladebalken verschwand dabei kommentarlos,
+ohne jede Fehlermeldung. Bei Erfolg blieb er dauerhaft bei „100%" hängen,
+ebenfalls ohne Bestätigung. Laut `docs/openapi.yaml` reboottet nur der
+Firmware-Upload (`POST /api/update/firmware`, ~500 ms nach der Antwort);
+der UI-Paket-Upload (`POST /api/update/assets`) explizit **nicht** — der
+Swap auf `/www` passiert im nächsten Main-Loop-Tick.
+
+Fix: Firmware-Upload-Erfolg nutzt jetzt denselben `rebooting`-State/
+`ReloadRetry` wie der GitHub-Install-Flow (Polling wird vorher gestoppt).
+UI-Paket-Upload zeigt bei Erfolg eine grüne "UI-Paket installiert."-Zeile
+(kein Reboot). Beide zeigen bei Fehler jetzt den tatsächlichen Server-Text
+(z. B. `Bad Size` bzw. `extract failed: …`) statt stillschweigend zu
+verschwinden.
+
+**Verifiziert:** `pnpm typecheck` grün, Seite im Dev-Server gegen das
+Testboard ohne Konsolenfehler geladen. Kein echter Upload getestet — Risiko,
+über den echten Firmware-/Asset-Update-Endpoint des laufenden Geräts eine
+kaputte Datei zu flashen.
