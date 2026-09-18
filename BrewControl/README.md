@@ -282,7 +282,9 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/controllers/<id>/setpoint` | POST | Sollwert setzen |
 | `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
 | `/api/bus/scan` | GET | 1-Wire-Bus nach Geräten scannen |
-| `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW suchen (async: erst `202`, dann `200`) |
+| `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |
+| `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |
+| `/api/remote/pair` | GET, POST | Kopplungsergebnis lesen / ein Board an den eigenen Hub koppeln |
 | `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items |
 | `/api/dashboards` | GET, POST | Dashboards auflisten / anlegen |
 | `/api/dashboards/<id>` | POST, DELETE | Dashboard ändern / löschen |
@@ -334,6 +336,37 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 
 Erfolgreiche Schreib-Requests antworten mit `204` ohne Body, Fehler mit
 `text/plain` und der nackten Meldung (kein JSON-Error-Objekt).
+
+### Boards im LAN finden und koppeln (WebSocket)
+
+Jedes Board kündigt sich per mDNS als `_sensactctrl._tcp` auf Port 80 an — dem
+Port seiner HTTP-API — mit den TXT-Records `dev` (Device-Id), `prefix`
+(Topic-Prefix), `ver` (Firmware) und `ws` (eigener Hub-Port, `0` wenn kein Hub
+läuft). Damit finden sich Boards gegenseitig, und Fremdsysteme finden sie
+ebenfalls.
+
+Ablauf in der UI (Einstellungen → Geräte → „Geräte suchen"):
+
+1. `GET /api/remote/peers` durchsucht das LAN und listet die gefundenen Boards.
+2. „Koppeln" schickt `POST /api/remote/pair`. Das Gerät ruft daraufhin die
+   **eigene** `POST /api/settings` des Ziel-Boards auf und setzt dort
+   `websocket.publishEnabled` und `websocket.hubUrl` auf
+   `ws://<eigener-hostname>.local:<hubPort>`. Das Ziel-Board persistiert das,
+   startet neu und verbindet sich von selbst.
+3. Beim nächsten Scan liefert
+   `GET /api/remote/discover?transport=websocket` die Sensoren und Aktoren des
+   gekoppelten Boards, aus denen sich `Remote`-Items anlegen lassen.
+
+Die Richtung ist bewusst so: konfiguriert wird auf dem Gerät mit der UI, aber
+gewählt wird die TCP-Verbindung weiterhin vom Sensor-Board — `WebSocketsClient`
+verbindet blockierend, und dieser Stall soll nicht auf dem Board mit dem Regler
+landen. Die gespeicherte Hub-Adresse ist ein `.local`-Name, ein DHCP-Wechsel
+bricht sie also nicht.
+
+Voraussetzung: auf dem koppelnden Gerät muss der Hub aktiv sein (Einstellungen
+→ Konnektivität → WebSocket), sonst antwortet `/api/remote/pair` mit `409`. Ist
+das Ziel-Board passwortgeschützt, antwortet es mit `401`; die UI fragt dann nach
+dessen Passwort.
 
 ### Push-Benachrichtigungen (optional, standardmäßig aus)
 

@@ -3271,3 +3271,104 @@ Charts/Programme, Scrollen mit klebenden Köpfen, Light- und Dark-Theme,
 auf Sensor (Rolle wechselt pro Klick, kein Hängenbleiben).
 Abschließend mit „Abbrechen“ verlassen — keine Config auf dem Gerät
 verändert. Keine Konsolenfehler.
+---
+
+## 2026-09-18 — WebSocket-Autodiscovery per mDNS + Kopplung durch Rückruf
+
+**Ausgangslage:** Eine WebSocket-Remote-Verbindung musste an zwei Stellen von
+Hand eingerichtet werden — die Hub-URL auf dem Sensor-Board, das Remote-Item auf
+dem Gerät mit der UI. Eine wechselnde DHCP-IP brach sie.
+
+**Verworfene Alternative — Rollentausch.** Naheliegend war, die Topologie
+umzudrehen (Datenbesitzer = Server, Konsument = Client pro Peer). Die Library
+könnte das sofort: `WebSocketTransport.h:23-25` hält ausdrücklich fest, dass die
+Rollen nur bestimmen, *wer* verbindet, und die Retain-Emulation läuft
+symmetrisch. Dagegen sprach der blockierende Connect: `WebSocketsClient::loop()`
+verbindet synchron (bis `WEBSOCKETS_TCP_TIMEOUT`, hier 1 s) und wiederholt das
+alle 5 s je unerreichbarem Peer — beim Rollentausch zahlt das genau das Board
+mit dem Regler. Begrenzbar wäre es (Round-Robin über getrennte Peers), aber
+belegen ließe sich das erst am Gerät.
+
+**Umsetzung — Rückruf.** Die Topologie bleibt, wie sie ist; nur die
+*Konfiguration* wandert auf das Gerät mit der UI:
+
+1. **Jedes Board kündigt sich an.** `startMDNS()` in `main.cpp` inseriert
+   zusätzlich `_sensactctrl._tcp` auf Port 80 — dem Port der HTTP-API, die jedes
+   Board tatsächlich bedient — mit TXT `dev`, `prefix`, `ver` und `ws`
+   (eigener Hub-Port, `0` = kein Hub). Der initiale `startMDNS()`-Aufruf
+   wanderte dafür hinter `settingsStore.loadFromSD()`, weil die TXT-Records aus
+   den Settings kommen; der Re-Announce bei `STA_GOT_IP` blieb unverändert.
+2. **`MdnsBrowser`** (neu, `MdnsBrowser.h/.cpp`) durchsucht das LAN. Gleiche
+   Zustandsmaschine wie `SensActCtrl::DiscoveryScanner` (3-s-Fenster, 30-s-TTL,
+   `requestScan()`/`takeResults()` unter Mutex), damit der HTTP-Handler nur
+   armen und abholen kann und die Query aus `loop()` läuft. Bewusst die
+   asynchrone IDF-API (`mdns_query_async_new` + `mdns_query_async_get_results`
+   mit Timeout 0), **nicht** `MDNS.queryService()` — das blockiert das ganze
+   Suchfenster.
+3. **`GET /api/remote/peers`** liefert die Boards im 202-Poll-Muster der
+   übrigen Scans. Ob ein Board schon benutzt wird, berechnet das Frontend aus
+   `GET /api/config`, das es für den Scan ohnehin lädt — dafür braucht die
+   Firmware nichts zu wissen.
+4. **`POST /api/remote/pair`** schickt dem Ziel-Board dessen eigene
+   `POST /api/settings` mit `websocket.publishEnabled` + `hubUrl`. Kein neuer
+   Endpoint auf der Empfängerseite: Validierung, Persistenz und Reboot sind
+   dort schon implementiert. Der Aufruf läuft über `HTTPClient` aus
+   `WebUI::tick()`, nicht aus dem Handler — der async_tcp-Task bedient jeden
+   Request und den SSE-Stream, der darf für einen Netz-Roundtrip nicht stehen.
+   Deshalb antwortet die Route `202` und `GET /api/remote/pair` liefert das
+   Ergebnis (`200` gekoppelt, `401` Passwort nötig, `502` nicht erreichbar,
+   `409` ohne eigenen Hub). Passwortgeschützte Ziele werden vorher über
+   `/api/auth/login` angemeldet und das `bcsid`-Cookie mitgeschickt.
+   Timeout 2 s, weil jede Sekunde davon eine Sekunde ohne Sensor-Tick ist.
+5. **Item-Suche für WebSocket** ist damit die triviale Verdrahtung, die in
+   PLAN.md stand: ein dritter `DiscoveryScanner` in `RemoteDiscovery` über
+   `webSocketService.hubTransport()`, plus `websocket` im Transport-Enum von
+   `/api/remote/discover`.
+
+**Frontend:** `DiscoverDevicesCard` hat jetzt zwei Stufen — die Gruppe „Boards
+im Netz" (Koppeln-Button, „dieses Gerät" beim eigenen Board, „gekoppelt" wenn
+schon ein Item darauf zeigt, Passwortfeld erst wenn das Ziel `401` antwortet)
+und darunter wie bisher die gefundenen Items, nun auch aus dem
+WebSocket-Transport. `ItemPrefill.transport` kennt `websocket`; im
+`AddItemModal` brauchte es kein neues Feld, weil der Hub geräteweit ist. Die
+Hub-URL bleibt auf der WebSocket-Seite als Fallback stehen, mit einem Hinweis,
+dass normalerweise vom Hub aus gekoppelt wird.
+
+**Zwei Dinge fielen beim Selbst-Review auf und wurden gleich mit erledigt:**
+
+- Die Pairing-Felder in `WebUI` werden vom async_tcp-Task gelesen und von
+  loopTask geschrieben. Bei `int`/`bool` wäre das wie bei `rebootAtMs_`
+  tolerierbar, bei `String` nicht: eine Zuweisung gibt den alten Puffer frei und
+  kann dem Leser einen Dangling-Pointer hinterlassen — genau der Grund, warum
+  `WebSocketTransport::lastError_` ein nacktes Literal ist. Jetzt unter
+  `pairMutex_`, mit zwei Flags (`pairArmed_` = wartet auf tick(), `pairBusy_` =
+  armiert oder unterwegs) und **ohne** gehaltene Sperre während des
+  HTTP-Roundtrips, damit der GET-Poll nicht 2 s blockiert.
+- `startMDNS()` läuft auf dem WiFi-Event-Task und ruft `MDNS.end()`; `mdns_free()`
+  gibt dabei auch ein offenes Such-Objekt frei. Ein WLAN-Reconnect mitten im
+  3-s-Scan wäre ein Use-after-free gewesen. `MdnsBrowser::abandonSearch()` wird
+  jetzt vor `MDNS.end()` gerufen, `tick()` lässt den Zeiger daraufhin fallen
+  (ohne `delete`) und fällt auf Idle zurück — der nächste Poll startet einfach
+  neu.
+
+**Keine Library-Änderung** — SensActCtrl blieb unangetastet.
+
+**Verifiziert:** `pio test -e native` 224/224 grün (Regression),
+`pio run` baut alle drei Envs (esp32dev 88.1 % Flash, lolin_s2_mini 84.9 %,
+lilygo_t_display_s3_amoled 24.4 %),
+`pnpm typecheck` + `pnpm build` grün, `redocly lint` sauber (nur die
+vorbestehende `info-license`-Warnung). Der ganze UI-Ablauf gegen einen
+HTTP-Mock im Scratchpad durchgespielt: Scan listet drei Boards (eigenes als
+„dieses Gerät"), Koppeln setzt die Zeile auf „gekoppelt" und meldet „Board
+gekoppelt, es startet jetzt neu", das geschützte Board antwortet `401` →
+Passwortfeld → Erfolg, danach erscheint die Gruppe „WebSocket · kessel2" mit
+ihren Items, und ein Klick darauf öffnet den Dialog mit `device=kessel2`,
+`remote_id=kessel_temp`, Prefix und Transport-Schalter auf WebSocket.
+MQTT/ESP-NOW-`409` werden weiterhin still übersprungen.
+
+**Offen (in PLAN.md):** die Hardware-Verifikation am echten Board — insbesondere
+ob `.local` in der gespeicherten `hubUrl` auflöst
+(`CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES=y` ist bisher nur aus der
+Framework-Config belegt, nicht am Gerät). Neu notiert wurden außerdem der
+`/set`-Broadcast im Hub (Unicast wäre ~15 Zeilen in der Library) und
+„zuletzt gesehen" pro Remote-Item als Ersatz für den fehlenden Peer-Status.
