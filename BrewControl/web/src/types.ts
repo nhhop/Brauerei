@@ -134,6 +134,24 @@ export interface ConfigSnapshot {
 // absence from the *Modes map already means 'normal'.
 export type WidgetMode = 'normal' | 'compact' | 'gauge';
 
+// Dashboard layout: the elements live in a tree of resizable areas. A leaf holds
+// one or more item refs - several refs render as a flowing card grid, a lone ref
+// fills its area. Refs carry a kind prefix because charts, programs and timers
+// have their own id namespaces (same slash form the alarm refs use).
+export type LayoutNode = LayoutSplit | LayoutLeaf;
+
+export interface LayoutSplit {
+  split: 'row' | 'col';
+  sizes: number[];          // one weight per child, summing to 1
+  children: LayoutNode[];
+}
+
+export interface LayoutLeaf {
+  // "sensor/<baseId>" | "actuator/<id>" | "controller/<id>" | "chart/<logId>"
+  // | "program/<id>" | "timer/<id>"
+  items: string[];
+}
+
 // Wire format of GET /api/dashboards
 export interface DashboardConfig {
   id: string;
@@ -143,6 +161,7 @@ export interface DashboardConfig {
   controllers: string[];
   charts: string[];       // referenced log/chart IDs (see LogConfig); always present, may be empty
   programs: string[];     // referenced setpoint-program IDs (see ProgramConfig); always present, may be empty
+  layout?: LayoutNode;    // saved arrangement; absent means the derived default
   timers: string[];       // referenced timer IDs (see TimerConfig); always present, may be empty
   sensorModes: Record<string, WidgetMode>;      // sensor base-id -> display mode, may be empty
   controllerModes: Record<string, WidgetMode>;  // controller id -> display mode, may be empty

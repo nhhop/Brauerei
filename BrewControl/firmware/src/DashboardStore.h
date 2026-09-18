@@ -51,6 +51,10 @@ class DashboardStore {
     std::vector<std::pair<std::string, std::string>> sensorModes;
     std::vector<std::pair<std::string, std::string>> controllerModes;
     std::vector<std::pair<std::string, std::string>> timerModes;
+    // How the widgets are arranged (tree of areas). Written and read by the
+    // frontend only; the firmware stores and returns it verbatim. Null when a
+    // dashboard has never been arranged, which makes the UI derive a default.
+    JsonDocument layout;
   };
 
   std::vector<DashboardCfg> dashboards_;

@@ -2823,9 +2823,45 @@ components:
         present in a *Modes map — an id absent from the map means "normal".
       enum: [compact, gauge]
 
+    DashboardLayoutNode:
+      description: >
+        One node of a dashboard's arrangement: either a split into two or more
+        areas, or a leaf holding the item refs shown in one area
+        ("sensor/<baseId>", "actuator/<id>", "controller/<id>", "chart/<logId>",
+        "program/<id>", "timer/<id>"). A leaf with a single ref fills its area,
+        several refs flow as a card grid. Written and interpreted by the UI only
+        — the firmware stores and returns the tree verbatim.
+      oneOf:
+        - type: object
+          title: Split
+          required: [split, sizes, children]
+          properties:
+            split:
+              type: string
+              enum: [row, col]
+              description: row = areas side by side, col = stacked.
+            sizes:
+              type: array
+              description: One weight per child, summing to 1.
+              items: { type: number }
+            children:
+              type: array
+              minItems: 2
+              items: { $ref: "#/components/schemas/DashboardLayoutNode" }
+        - type: object
+          title: Leaf
+          required: [items]
+          properties:
+            items:
+              type: array
+              description: Item refs shown in this area.
+              items: { type: string }
+
     DashboardInput:
       type: object
-      description: Every key is optional; absent lists/maps default to empty.
+      description: >
+        Every key is optional; absent lists/maps default to empty and an absent
+        `layout` clears the stored arrangement (the UI then derives a default).
       properties:
         name: { type: string, default: Dashboard }
         sensors: { type: array, items: { type: string } }
@@ -2846,6 +2882,7 @@ components:
           type: object
           description: Timer id -> display mode.
           additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
+        layout: { $ref: "#/components/schemas/DashboardLayoutNode" }
 
     Dashboard:
       type: object
@@ -2868,6 +2905,7 @@ components:
         timerModes:
           type: object
           additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
+        layout: { $ref: "#/components/schemas/DashboardLayoutNode" }
 
     # ── Data logs ────────────────────────────────────────────────────────────
     CompAlgo:

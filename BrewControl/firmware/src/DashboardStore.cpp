@@ -37,6 +37,7 @@ void DashboardStore::loadFromSD(fs::FS& sd) {
       if (const char* v = kv.value().as<const char*>()) d.controllerModes.push_back({kv.key().c_str(), v});
     for (JsonPair kv : obj["timerModes"].as<JsonObject>())
       if (const char* v = kv.value().as<const char*>()) d.timerModes.push_back({kv.key().c_str(), v});
+    if (obj["layout"].is<JsonObject>()) d.layout.set(obj["layout"]);
     dashboards_.push_back(std::move(d));
   }
 }
@@ -77,6 +78,9 @@ String DashboardStore::serialize() const {
     for (const auto& kv : d.controllerModes) cm[kv.first.c_str()] = kv.second.c_str();
     JsonObject tmo = obj["timerModes"].to<JsonObject>();
     for (const auto& kv : d.timerModes)      tmo[kv.first.c_str()] = kv.second.c_str();
+    // Omitted entirely when unset, so an un-arranged dashboard stays as small
+    // as before and the UI can tell "never arranged" from "arranged".
+    if (!d.layout.isNull()) obj["layout"] = d.layout;
   }
   String out;
   serializeJson(doc, out);
@@ -102,6 +106,7 @@ void DashboardStore::fillFromJson(DashboardCfg& d, const JsonObject& cfg) {
   d.sensorModes.clear();
   d.controllerModes.clear();
   d.timerModes.clear();
+  d.layout.clear();
   for (JsonVariant v : cfg["sensors"].as<JsonArray>())
     if (const char* s = v.as<const char*>()) d.sensors.push_back(s);
   for (JsonVariant v : cfg["actuators"].as<JsonArray>())
@@ -120,6 +125,8 @@ void DashboardStore::fillFromJson(DashboardCfg& d, const JsonObject& cfg) {
     if (const char* v = kv.value().as<const char*>()) d.controllerModes.push_back({kv.key().c_str(), v});
   for (JsonPair kv : cfg["timerModes"].as<JsonObject>())
     if (const char* v = kv.value().as<const char*>()) d.timerModes.push_back({kv.key().c_str(), v});
+  // Replace semantics like every list above: a body without "layout" clears it.
+  if (cfg["layout"].is<JsonObject>()) d.layout.set(cfg["layout"]);
 }
 
 String DashboardStore::add(const JsonObject& cfg) {

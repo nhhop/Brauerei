@@ -3504,3 +3504,93 @@ verschwinden.
 Testboard ohne Konsolenfehler geladen. Kein echter Upload getestet — Risiko,
 über den echten Firmware-/Asset-Update-Endpoint des laufenden Geräts eine
 kaputte Datei zu flashen.
+
+## 2026-09-19 — Dashboard: Elemente per Drag & Drop anordnen
+
+Die Dashboard-Anordnung war fest verdrahtet (Programm-Spalte, Chart-Bereich,
+Karten-Grid in fester Reihenfolge). Jetzt liegt sie als Baum von Bereichen im
+Dashboard selbst und ist im Bearbeiten-Modus per Drag & Drop veränderbar —
+Vorbild war ein Docking-System im IDE-Stil (Nutzer-Referenz: Video zu
+„Dynamix Layout").
+
+**Entscheidungen (mit dem Nutzer geklärt):** Docking-Bereiche mit ziehbaren
+Trennern statt eines festen Rasters; beliebig viele Kartengruppen, eine Karte
+darf auch allein einen Bereich belegen; Speicherung am Gerät pro Dashboard; die
+automatische Kopplung „erster Regler eines Programms steht über dem
+Programm-Widget" entfällt ersatzlos (der Regler ist jetzt frei platzierbar); ein
+Mehrkanal-Sensor bleibt eine Einheit (Ref über die Base-Id, Kanal-Cards
+untereinander). Anordnen und Trenner nur im Bearbeiten-Modus; mobil (<1024 px)
+wird der Baum in Lesereihenfolge linearisiert und ist dort nicht editierbar.
+
+**Keine neue Dependency.** `dockview-core` (+85 KB gz) hätte das Bundle fast
+verdoppelt, `@dynamix-layout/core` (7,5 KB gz) rechnet nur Geometrie, ist
+Tab-zentriert und dokumentiert keinen Touch-Support. Die eigene Umsetzung kostet
+**+3,9 KB gz** (JS 105,20 → 109,07 KB, gegen denselben Commit gemessen).
+
+**Datenmodell:** `LayoutNode` = `{split:'row'|'col', sizes, children}` oder
+`{items:[ref]}`; Refs tragen einen Typ-Präfix (`sensor/<baseId>`, `actuator/`,
+`controller/`, `chart/`, `program/`, `timer/`), weil Charts, Programme und Timer
+eigene Id-Räume haben. Ein Ref allein im Blatt füllt seinen Bereich (Chart und
+Programm mit `fill`), mehrere fließen als Karten-Raster, in dem Chart und
+Programm die ganze Zeile nehmen.
+
+**`web/src/dashboardLayout.ts` (neu, reine Funktionen):** `memberRefs`,
+`defaultLayout` (bildet die bisherige Anordnung nach, damit bestehende
+Dashboards unverändert aussehen), `reconcile`, `normalize`, `moveRef`,
+`resizeSplit`, `renameRef`, `linearize`. `moveRef` markiert die gezogene Ref
+zuerst mit einem Platzhalter gleicher Länge, fügt dann am Ziel ein und entfernt
+den Platzhalter erst danach — so bleiben Zielpfad und Einfüge-Index gültig,
+unabhängig davon, woher die Karte kommt. `reconcile` läuft bei jedem Render:
+tote Refs raus, neue kleine Karten an die letzte Kartengruppe, neue Charts und
+Programme in einen eigenen Bereich, kaputtes JSON → Default-Anordnung.
+
+**`web/src/components/DashboardLayout.tsx` (neu):** rekursives Flex-Rendering,
+Trenner mit Pointer-Capture (Live-Entwurf im lokalen State, Commit erst bei
+`pointerup`), Drag am Griff über der Karte (ab 4 px Bewegung), Hit-Test über die
+Rects der `data-path`-Elemente, Overlay für Zielbereich und Einfüge-Marke,
+Abbruch per Escape. Die Container tragen bewusst kein `transform`/`filter`:
+`ConfirmModal` und die übrigen Dialoge rendern `fixed` ohne Portal und würden
+sonst am Bereich statt am Fenster ausgerichtet (am laufenden UI gegengeprüft).
+Die Render-Helfer sind einfache Funktionen statt verschachtelter Komponenten —
+als Komponenten hätten sie bei jedem Snapshot (1 Hz) eine neue Identität und den
+uPlot-Chart sekündlich neu aufgebaut.
+
+**Firmware:** `DashboardStore::DashboardCfg` bekommt ein `JsonDocument layout`,
+das die Firmware nur durchreicht (laden, serialisieren, in `fillFromJson`
+ersetzen); fehlt der Schlüssel im Body, wird die Anordnung gelöscht — dieselbe
+Replace-Semantik wie bei allen Listen. Damit das Frontend nie versehentlich ein
+Feld verliert, schickt `Dashboard.tsx` jedes Update über ein neues `dashBody()`,
+das immer den vollständigen Datensatz sendet (die Feldliste war seit den
+Darstellungsmodi ohnehin an zwei Stellen dupliziert). `GET /api/backup` nutzt
+`store_.serialize()`, das Layout ist damit automatisch im Backup;
+`docs/openapi.yaml` kennt jetzt `DashboardLayoutNode`.
+
+**Verifikation:** 22 Checks der reinen Layout-Funktionen per Wegwerf-Skript
+(u.a. Verschieben in dieselbe Gruppe, letztes Item verlässt einen Bereich,
+Kanten-Andocken im gleichgerichteten Split, kaputtes JSON, keine Duplikate);
+`pnpm typecheck` grün; `pio run -e esp32dev` grün; Redocly valide (nur die
+bekannte `license`-Warnung). Im Browser gegen einen lokalen Mock-Server geprüft
+(das Testboard läuft noch ohne das Feld, und ein Schreibzugriff auf die echte
+Gerätekonfiguration wäre für einen UI-Test zu invasiv): Default-Anordnung
+identisch zur bisherigen, Andocken an eine Kante, Einsortieren an eine bestimmte
+Position einer Gruppe, Trenner ziehen (Chart skaliert per ResizeObserver mit),
+Persistenz über Reload, **genau ein POST pro Aktion**, ConfirmModal zentriert
+über der ganzen Seite, Dashboard mit toter Chart-Referenz ohne leeren Bereich,
+Entfernen klappt den Bereich zu, mobile Linearisierung inklusive
+Programm-Bottom-Sheet.
+
+**Unterwegs gefixt:** Die Andock-Zone war als 25 % der Bereichsgröße definiert —
+bei 990 px Breite ein 247-px-Band, das die linke Hälfte der ersten Karte
+verschluckte und die erste Position einer Gruppe unerreichbar machte. Jetzt
+höchstens 64 px (und weiterhin maximal ein Viertel, damit kleine Bereiche eine
+Mitte behalten).
+
+**Bewusst so:** Das Entfernen einer Karte filtert deren Ref nur beim Rendern
+heraus, die gespeicherte Anordnung behält sie bis zum nächsten Anordnen. Eine
+später wieder hinzugefügte Karte landet dadurch an ihrem alten Platz (am UI
+beobachtet und so belassen — Positionsgedächtnis ist hier das nützlichere
+Verhalten); wirklich neue Karten hängen sich an die letzte Kartengruppe.
+
+**Offen:** Der Escape-Abbruch ließ sich nicht automatisiert prüfen (die
+Browser-Automatisierung kann keinen gedrückten Mausknopf halten). Die Persistenz
+am echten Gerät steht bis zum nächsten Flash aus, siehe PLAN.md.

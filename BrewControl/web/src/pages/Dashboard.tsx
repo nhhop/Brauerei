@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity, WidgetMode } from '../types';
+import type { VNode } from 'preact';
+import type { LayoutNode, Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity, WidgetMode } from '../types';
 import {
   resetSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard, moveDashboard,
@@ -15,7 +16,8 @@ import { ChartCard } from '../components/ChartCard';
 import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
 import { TimerCard } from '../components/TimerCard';
-import { programIds } from '../program';
+import { DashboardLayout } from '../components/DashboardLayout';
+import { isCardRef, linearize, memberRefs, reconcile, refId, refKind, renameRef } from '../dashboardLayout';
 import { AddItemModal } from '../components/AddItemModal';
 import { NameModal } from '../components/NameModal';
 import { TabBtn } from '../components/TabBtn';
@@ -163,22 +165,29 @@ export function Dashboard({ snap, err, alarmByRef }: {
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
 
+  // POST /api/dashboards/<id> replaces every field, so a key left out of the
+  // body is cleared on the device — the layout included. Every writer goes
+  // through here to send a complete dashboard.
+  function dashBody(d: DashboardConfig): Omit<DashboardConfig, 'id'> {
+    return {
+      name: d.name,
+      sensors: d.sensors,
+      actuators: d.actuators,
+      controllers: d.controllers,
+      charts: d.charts ?? [],
+      programs: d.programs ?? [],
+      timers: d.timers ?? [],
+      sensorModes: d.sensorModes ?? {},
+      controllerModes: d.controllerModes ?? {},
+      timerModes: d.timerModes ?? {},
+      layout: d.layout,
+    };
+  }
+
   // Merge a partial change into the active dashboard and persist it.
   async function patchActiveDash(patch: Partial<DashboardConfig>) {
     if (!activeDash) return;
-    const updated = {
-      name: activeDash.name,
-      sensors: activeDash.sensors,
-      actuators: activeDash.actuators,
-      controllers: activeDash.controllers,
-      charts: activeDash.charts ?? [],
-      programs: activeDash.programs ?? [],
-      timers: activeDash.timers ?? [],
-      sensorModes: activeDash.sensorModes ?? {},
-      controllerModes: activeDash.controllerModes ?? {},
-      timerModes: activeDash.timerModes ?? {},
-      ...patch,
-    };
+    const updated = { ...dashBody(activeDash), ...patch };
     await updateDashboard(activeDash.id, updated);
     setDashboards(ds => ds.map(d => d.id === activeDash.id ? { ...d, ...updated } : d));
   }
@@ -213,12 +222,12 @@ export function Dashboard({ snap, err, alarmByRef }: {
     for (const d of dashboards) {
       if (!d[key].includes(oldId)) continue;
       const updated = {
-        name: d.name,
-        sensors: d.sensors, actuators: d.actuators, controllers: d.controllers,
-        charts: d.charts ?? [], programs: d.programs ?? [], timers: d.timers ?? [],
+        ...dashBody(d),
         sensorModes: role === 'sensor' ? remapMode(d.sensorModes, oldId, newId) : (d.sensorModes ?? {}),
         controllerModes: role === 'controller' ? remapMode(d.controllerModes, oldId, newId) : (d.controllerModes ?? {}),
-        timerModes: d.timerModes ?? {},
+        // Without this the card would lose its place: reconcile() drops the old
+        // ref and appends the new one at the end.
+        layout: renameRef(d.layout, role + '/' + oldId, role + '/' + newId),
         [key]: d[key].map(x => x === oldId ? newId : x),
       };
       await updateDashboard(d.id, updated);
@@ -306,21 +315,157 @@ export function Dashboard({ snap, err, alarmByRef }: {
     : null;
   const displaySnap = snap && activeDash ? filterSnap(snap, activeDash) : snap;
 
-  // Pro Programm: der erste Regler, den es referenziert (programIds-Reihenfolge),
-  // sofern er Teil dieses Dashboards ist — wird über statt neben dem
-  // Programm-Widget gezeigt. Nur einmal vergeben, falls mehrere Programme
-  // denselben Regler referenzieren.
-  const claimedControllerIds = new Set<string>();
-  const featuredControllerId = new Map<string, string>(); // programId -> controllerId
-  if (displaySnap && activeDash) {
-    for (const pid of activeDash.programs ?? []) {
-      const prog = programs.find((p) => p.id === pid);
-      if (!prog) continue;
-      const id = programIds(prog.steps).find(
-        (cid) => !claimedControllerIds.has(cid) && displaySnap.controllers.some((c) => c.id === cid)
-      );
-      if (id) { featuredControllerId.set(pid, id); claimedControllerIds.add(id); }
+  // ── Layout ────────────────────────────────────────────────────────────────
+  // What this dashboard shows, and the arrangement holding it. The stored tree
+  // is reconciled on every render: membership changes (content dialog, deleted
+  // or renamed items) must not leave holes or orphans behind.
+  const refs = activeDash ? memberRefs(activeDash, snap, logs, programs, timers) : [];
+  const layout = activeDash ? reconcile(activeDash.layout, refs) : null;
+
+  function labelOf(ref: string): string {
+    const id = refId(ref);
+    switch (refKind(ref)) {
+      case 'chart':   return logs.find((l) => l.id === id)?.name ?? id;
+      case 'program': return programs.find((p) => p.id === id)?.name ?? id;
+      case 'timer':   return timers.find((t) => t.id === id)?.name ?? id;
+      default:        return id;
     }
+  }
+
+  // Optimistic: a drop should feel immediate, the request is the slow part. On
+  // failure the device stays the source of truth and the view is reloaded.
+  async function saveLayout(next: LayoutNode) {
+    if (!activeDash) return;
+    const id = activeDash.id;
+    const body = { ...dashBody(activeDash), layout: next };
+    setDashboards((ds) => ds.map((d) => (d.id === id ? { ...d, layout: next } : d)));
+    try {
+      await updateDashboard(id, body);
+    } catch {
+      getDashboards().then(setDashboards).catch(() => {});
+    }
+  }
+
+  // One layout ref -> its card(s). `fill` means the item is alone in its area.
+  function renderItem(ref: string, fill: boolean): VNode | null {
+    const id = refId(ref);
+    switch (refKind(ref)) {
+      case 'sensor': {
+        // A multi-channel sensor moves as one unit, so all its channel cards
+        // render together under the single "sensor/<baseId>" ref.
+        const channels = (displaySnap?.sensors ?? []).filter(
+          (s) => (s.id.includes('.') ? s.id.split('.')[0] : s.id) === id);
+        if (channels.length === 0) return null;
+        const mode = activeDash?.sensorModes?.[id] ?? 'normal';
+        return (
+          <div class={channels.length > 1 ? 'space-y-4' : ''}>
+            {channels.map((s) => (
+              <SensorCard key={s.id} sensor={s}
+                alarm={alarmByRef?.get(`sensor/${s.id}`)}
+                viewMode={mode}
+                onEdit={editMode ? () => startEdit('sensor', id) : undefined}
+                onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
+                onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
+                  ? () => resetSensor(id) : undefined}
+                onCycleMode={editMode ? () => cycleMode('sensorModes', id, mode) : undefined}
+              />
+            ))}
+          </div>
+        );
+      }
+      case 'controller': {
+        const c = (displaySnap?.controllers ?? []).find((x) => x.id === id);
+        if (!c) return null;
+        const mode = activeDash?.controllerModes?.[id] ?? 'normal';
+        return (
+          <ControllerCard controller={c}
+            sensors={snap?.sensors ?? []}
+            actuators={snap?.actuators ?? []}
+            programs={programs}
+            viewMode={mode}
+            onEdit={editMode ? () => startEdit('controller', id) : undefined}
+            onDelete={editMode ? () => removeFromDashboard('controller', id) : undefined}
+            onCycleMode={editMode ? () => cycleMode('controllerModes', id, mode) : undefined}
+          />
+        );
+      }
+      case 'actuator': {
+        const a = (displaySnap?.actuators ?? []).find((x) => x.id === id);
+        if (!a) return null;
+        return (
+          <ActuatorCard actuator={a}
+            controllers={snap?.controllers ?? []}
+            programs={programs}
+            alarm={alarmByRef?.get(`actuator/${id}`)}
+            onEdit={editMode ? () => startEdit('actuator', id) : undefined}
+            onDelete={editMode ? () => removeFromDashboard('actuator', id) : undefined}
+          />
+        );
+      }
+      case 'chart': {
+        const log = logs.find((l) => l.id === id);
+        if (!log) return null;
+        // Only a chart that owns its area can stretch; in a card group it keeps
+        // its fixed height.
+        return (
+          <ChartRow log={log} snap={snap} isDesktop={isDesktop && fill}
+            editMode={editMode} onRemove={() => removeChartRef(id)} />
+        );
+      }
+      case 'program': {
+        const prog = programs.find((x) => x.id === id);
+        if (!prog) return null;
+        return (
+          <ProgramCard program={prog} snap={snap}
+            onChanged={refreshPrograms}
+            onEdit={editMode ? () => openEditProgram(prog) : undefined}
+            onDelete={editMode ? () => removeProgramRef(id) : undefined}
+            fill={fill}
+            onSheetHeight={setSheetH}
+          />
+        );
+      }
+      case 'timer': {
+        const timer = timers.find((t) => t.id === id);
+        if (!timer) return null;
+        const mode = activeDash?.timerModes?.[id] ?? 'normal';
+        return (
+          <TimerCard timer={timer} programs={programs} viewMode={mode}
+            onChanged={refreshTimers}
+            onEdit={editMode ? () => openEditTimer(timer) : undefined}
+            onDelete={editMode ? () => removeTimerRef(id) : undefined}
+            onCycleMode={editMode ? () => cycleMode('timerModes', id, mode) : undefined}
+          />
+        );
+      }
+      default: return null;
+    }
+  }
+
+  // Mobile: the areas collapse to one column in the desktop layout's reading
+  // order. Runs of small cards keep the familiar responsive grid, large widgets
+  // get a row of their own.
+  function mobileBlocks(order: string[]): VNode[] {
+    const out: VNode[] = [];
+    let group: string[] = [];
+    const flush = () => {
+      if (group.length === 0) return;
+      out.push(
+        <div key={`group${out.length}`}
+          class="grid grid-cols-1 gap-4 [grid-auto-flow:dense] [grid-auto-rows:minmax(72px,auto)] sm:grid-cols-2 md:grid-cols-3">
+          {group.map((r) => <div key={r}>{renderItem(r, false)}</div>)}
+        </div>,
+      );
+      group = [];
+    };
+    for (const ref of order) {
+      if (isCardRef(ref)) { group.push(ref); continue; }
+      flush();
+      // A lone program keeps its fixed bottom sheet, as before.
+      out.push(<div key={ref}>{renderItem(ref, refKind(ref) === 'program' && hasProgramSheet)}</div>);
+    }
+    flush();
+    return out;
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -503,11 +648,6 @@ export function Dashboard({ snap, err, alarmByRef }: {
   );
 
   const hasProgramSheet = (activeDash?.programs?.length ?? 0) === 1;
-  // Resolved, not just referenced — a dangling chart id (deleted log) must not
-  // reserve chart space (the fixed min-height + flex-1 below).
-  const chartLogs = (activeDash?.charts ?? [])
-    .map((cid) => logs.find((l) => l.id === cid))
-    .filter((l): l is LogConfig => l != null);
 
   return (
     <div class="min-h-full bg-bg p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
@@ -515,115 +655,20 @@ export function Dashboard({ snap, err, alarmByRef }: {
       {tabBar}
       {editMode && (
         <p class="mt-3 shrink-0 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-muted lg:mt-4">
-          Bearbeiten-Modus aktiv — Karten mit dem Stift konfigurieren, mit × entfernen. Inhalte über „Hinzufügen“; Name & Löschen über den Stift am Tab.
+          Bearbeiten-Modus aktiv — Karten am Griff oben verschieben (an eine Kante andocken oder in eine Gruppe einsortieren), Trenner ziehen ändert die Größe. Mit dem Stift konfigurieren, mit × entfernen. Inhalte über „Hinzufügen“; Name & Löschen über den Stift am Tab.
         </p>
       )}
-      <div class={`flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:grid lg:items-stretch ${
-        activeDash && (activeDash.programs?.length ?? 0) > 0 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
-      }`}>
-        {activeDash && (activeDash.programs?.length ?? 0) > 0 && (
-          <div class="max-lg:contents lg:h-full lg:space-y-4 lg:overflow-y-auto lg:pt-4 lg:pb-6">
-            {activeDash.programs!.map((pid) => {
-              const prog = programs.find((p) => p.id === pid);
-              if (!prog) return null;
-              const featured = displaySnap.controllers.find((c) => c.id === featuredControllerId.get(pid));
-              const soleProgram = activeDash.programs!.length === 1;
-              return (
-                <div key={pid}
-                  class={`space-y-4 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-4 ${soleProgram ? 'lg:h-full' : ''}`}>
-                  {featured && (
-                    <div class="lg:shrink-0">
-                      <ControllerCard controller={featured}
-                        sensors={snap!.sensors}
-                        actuators={snap!.actuators}
-                        programs={programs}
-                        viewMode={activeDash?.controllerModes?.[featured.id] ?? 'normal'}
-                        onEdit={editMode ? () => startEdit('controller', featured.id) : undefined}
-                        onDelete={editMode ? () => removeFromDashboard('controller', featured.id) : undefined}
-                        onCycleMode={editMode ? () => cycleMode('controllerModes', featured.id, activeDash?.controllerModes?.[featured.id] ?? 'normal') : undefined}
-                      />
-                    </div>
-                  )}
-                  <ProgramCard program={prog}
-                    snap={snap}
-                    onChanged={refreshPrograms}
-                    onEdit={editMode ? () => openEditProgram(prog) : undefined}
-                    onDelete={editMode ? () => removeProgramRef(pid) : undefined}
-                    fill={soleProgram}
-                    onSheetHeight={setSheetH}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <div class="min-w-0 space-y-4 lg:col-span-3 lg:-mr-6 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-4 lg:overflow-y-auto lg:pt-4 lg:pr-6 lg:pb-6">
-          {chartLogs.length > 0 && (
-            <div class="flex flex-col gap-4 lg:min-h-[240px] lg:flex-1">
-              {chartLogs.map((log) => (
-                <ChartRow key={log.id} log={log} snap={snap} isDesktop={isDesktop}
-                  editMode={editMode} onRemove={() => removeChartRef(log.id)} />
-              ))}
-            </div>
-          )}
-          <div class="grid grid-cols-1 gap-4 [grid-auto-flow:dense] [grid-auto-rows:minmax(72px,auto)] sm:grid-cols-2 md:grid-cols-3 lg:shrink-0">
-            {displaySnap.sensors.map((s) => {
-              const baseId = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-              const mode = activeDash?.sensorModes?.[baseId] ?? 'normal';
-              return (
-                <SensorCard key={s.id} sensor={s}
-                  alarm={alarmByRef?.get(`sensor/${s.id}`)}
-                  viewMode={mode}
-                  onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
-                  onDelete={editMode ? () => removeFromDashboard('sensor', baseId) : undefined}
-                  onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
-                    ? () => resetSensor(baseId) : undefined}
-                  onCycleMode={editMode ? () => cycleMode('sensorModes', baseId, mode) : undefined}
-                />
-              );
-            })}
-            {displaySnap.controllers.filter((c) => !claimedControllerIds.has(c.id)).map((c) => {
-              const mode = activeDash?.controllerModes?.[c.id] ?? 'normal';
-              return (
-                <ControllerCard key={c.id} controller={c}
-                  sensors={snap!.sensors}
-                  actuators={snap!.actuators}
-                  programs={programs}
-                  viewMode={mode}
-                  onEdit={editMode ? () => startEdit('controller', c.id) : undefined}
-                  onDelete={editMode ? () => removeFromDashboard('controller', c.id) : undefined}
-                  onCycleMode={editMode ? () => cycleMode('controllerModes', c.id, mode) : undefined}
-                />
-              );
-            })}
-            {displaySnap.actuators.map((a) => (
-              <ActuatorCard key={a.id} actuator={a}
-                controllers={snap!.controllers}
-                programs={programs}
-                alarm={alarmByRef?.get(`actuator/${a.id}`)}
-                onEdit={editMode ? () => startEdit('actuator', a.id) : undefined}
-                onDelete={editMode ? () => removeFromDashboard('actuator', a.id) : undefined}
-              />
-            ))}
-            {(activeDash?.timers ?? []).map((tid) => {
-              const timer = timers.find((t) => t.id === tid);
-              if (!timer) return null;
-              const mode = activeDash?.timerModes?.[tid] ?? 'normal';
-              return (
-                <TimerCard key={tid} timer={timer}
-                  programs={programs}
-                  viewMode={mode}
-                  onChanged={refreshTimers}
-                  onEdit={editMode ? () => openEditTimer(timer) : undefined}
-                  onDelete={editMode ? () => removeTimerRef(tid) : undefined}
-                  onCycleMode={editMode ? () => cycleMode('timerModes', tid, mode) : undefined}
-                />
-              );
-            })}
-          </div>
-          {hasProgramSheet && <div aria-hidden class="lg:hidden" style={{ height: sheetH }} />}
+      {layout != null && (isDesktop ? (
+        <div class="flex min-h-0 flex-1 flex-col pt-4 pb-6">
+          <DashboardLayout layout={layout} editMode={editMode}
+            renderItem={renderItem} labelOf={labelOf} onChange={saveLayout} />
         </div>
-      </div>
+      ) : (
+        <div class="mt-4 flex flex-col gap-4">
+          {mobileBlocks(linearize(layout))}
+          {hasProgramSheet && <div aria-hidden style={{ height: sheetH }} />}
+        </div>
+      ))}
       {modals}
     </div>
   );
