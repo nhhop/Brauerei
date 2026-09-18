@@ -6,6 +6,7 @@
 #include <SensActCtrl.h>
 
 #include <memory>
+#include <mutex>
 
 #include "AlarmStore.h"
 #include "AuthService.h"
@@ -14,6 +15,7 @@
 #include "EspNowPublishService.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
+#include "MdnsBrowser.h"
 #include "MqttService.h"
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
@@ -97,9 +99,14 @@ namespace BrewControl {
 //   POST /api/profile-categories/<id>      — rename profile category
 //   DELETE /api/profile-categories/<id>    — remove category and its profiles
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
-//   GET  /api/remote/discover?transport=mqtt|espnow
+//   GET  /api/remote/discover?transport=mqtt|espnow|websocket
 //                                          — async discovery of remote items
 //                                            (202 while scanning → 200+JSON)
+//   GET  /api/remote/peers                 — async mDNS browse for other
+//                                            boards (202 → 200+JSON)
+//   POST /api/remote/pair                  — {"host"[,"password"]} tell that
+//                                            board to connect to our hub
+//   GET  /api/remote/pair                  — result of the last pairing
 //   GET  /api/files?path=<dir>             — list directory entries (JSON)
 //   GET  /api/files/download?path=<file>   — download one file (attachment)
 //   POST /api/files/upload?path=<dir>      — multipart upload into <dir> (field "f")
@@ -126,7 +133,7 @@ class WebUI {
         AlarmStore& alarms, ProfileStore& profiles, MqttService& mqtt,
         WebhookService& webhook, WebSocketService& websocket,
         EspNowPublishService& espnow, RemoteDiscovery& discovery,
-        PushService& push, uint16_t port = 80);
+        MdnsBrowser& peers, PushService& push, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
   void begin();
@@ -147,6 +154,11 @@ class WebUI {
   bool validFilePath_(String& path, bool forMutation, AsyncWebServerRequest* req);
   // Recursively deletes a file or directory. Also used by swapAssets_.
   void removeRecursive_(const char* path);
+  // Runs a pending POST /api/remote/pair from tick(), i.e. from loopTask:
+  // HTTPClient is synchronous, and the async_tcp task must not be blocked for
+  // the length of a network round trip (it serves every request and the SSE
+  // stream). Same deferral as rebootAtMs_ below.
+  void runPendingPairing_();
 
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
@@ -164,6 +176,7 @@ class WebUI {
   WebSocketService& websocket_;
   EspNowPublishService& espnow_;
   RemoteDiscovery& discovery_;
+  MdnsBrowser& peers_;
   PushService& push_;
   AuthService auth_;
   AsyncWebServer server_;
@@ -171,6 +184,22 @@ class WebUI {
   uint32_t lastPushMs_ = 0;
   uint32_t lastAlarmMs_ = 0;
   uint32_t rebootAtMs_ = 0;
+
+  // Pairing job, handed from the route handler (async_tcp task) to
+  // runPendingPairing_() (loopTask). Guarded by pairMutex_ because these are
+  // written on one task and read on the other, and a String assignment would
+  // otherwise be able to hand the reader a freed buffer (same hazard that
+  // keeps SensActCtrl's WebSocketTransport::lastError_ a bare literal).
+  // pairArmed_: a job is waiting to be run. pairBusy_: armed or in flight —
+  // what makes the route reject a second job and report "running".
+  std::mutex pairMutex_;
+  String pairHost_;
+  String pairPassword_;
+  bool pairArmed_ = false;
+  bool pairBusy_ = false;
+  bool pairDone_ = false;
+  int pairCode_ = 0;          // HTTP status we report back, 0 = nothing yet
+  String pairMessage_;
 
   std::unique_ptr<SdTarSink> assetSink_;
   std::unique_ptr<TarExtractor> assetTar_;

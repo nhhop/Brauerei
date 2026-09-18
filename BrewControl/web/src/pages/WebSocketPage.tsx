@@ -121,7 +121,8 @@ export function WebSocketPage(_: { path?: string }) {
                   </span>
                 } />
 
-              <SettingsCard title="Hub-URL" icon={Cable} desc="Adresse des Hubs, mit dem sich dieses Gerät verbindet">
+              <SettingsCard title="Hub-URL" icon={Cable}
+                desc="Adresse des Hubs, mit dem sich dieses Gerät verbindet. Wird normalerweise nicht hier eingetippt: auf dem Hub-Gerät unter Geräte → „Geräte suchen“ dieses Board koppeln, dann trägt der Hub die Adresse selbst ein.">
                 <div class="pl-9">
                   <input type="text" class={`${inp} w-full`} value={settings.hubUrl}
                     placeholder="ws://192.168.1.50:8081"

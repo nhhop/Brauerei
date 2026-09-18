@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -492,7 +492,9 @@ export async function scanOneWireBus(pin: number): Promise<BusScanResult> {
 // Asks every device on the transport which items it publishes. Same polling
 // shape as scanNetworks: 202 while the ~3 s scan window runs, 200 + JSON after.
 // Non-202 errors (e.g. 409 "mqtt not available") abort immediately.
-export async function discoverRemote(transport: 'mqtt' | 'espnow'): Promise<DiscoveredItem[]> {
+export async function discoverRemote(
+  transport: 'mqtt' | 'espnow' | 'websocket',
+): Promise<DiscoveredItem[]> {
   for (let i = 0; i < 15; i++) {
     const r = await fetch(`/api/remote/discover?transport=${transport}`);
     if (r.status === 200) return ((await r.json()) as { items: DiscoveredItem[] }).items;
@@ -500,6 +502,40 @@ export async function discoverRemote(transport: 'mqtt' | 'espnow'): Promise<Disc
     await new Promise((res) => setTimeout(res, 1000));
   }
   throw new Error('Such-Timeout');
+}
+
+// Browses the LAN for other boards (mDNS _sensactctrl._tcp). Same 202-polling
+// shape as discoverRemote.
+export async function discoverPeers(): Promise<DiscoveredPeer[]> {
+  for (let i = 0; i < 15; i++) {
+    const r = await fetch('/api/remote/peers');
+    if (r.status === 200) return ((await r.json()) as { peers: DiscoveredPeer[] }).peers;
+    if (r.status !== 202) await failed(r);
+    await new Promise((res) => setTimeout(res, 1000));
+  }
+  throw new Error('Such-Timeout');
+}
+
+// Tells `host` to connect to this device's WebSocket hub. The firmware runs the
+// call from its main loop, so this arms the job (202) and then polls the
+// outcome; `password` is only needed when the target board is protected.
+// Resolves with the finished result — the caller decides how to present
+// code 401 (password needed) versus 200.
+export async function pairPeer(host: string, password?: string): Promise<PairResult> {
+  const r = await fetch('/api/remote/pair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(password ? { host, password } : { host }),
+  });
+  if (r.status !== 202) await failed(r);
+  for (let i = 0; i < 15; i++) {
+    await new Promise((res) => setTimeout(res, 500));
+    const p = await fetch('/api/remote/pair');
+    if (!p.ok) await failed(p);
+    const result = (await p.json()) as PairResult;
+    if (result.state === 'done') return result;
+  }
+  throw new Error('Kopplung: Zeitüberschreitung');
 }
 
 // ── App Settings ─────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@
 #include "EspNowPublishService.h"
 #include "FirmwareUpdater.h"
 #include "LogStore.h"
+#include "MdnsBrowser.h"
 #include "MqttService.h"
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
@@ -77,7 +78,8 @@ BrewControl::WebSocketService webSocketService;
 BrewControl::EspNowPublishService espNowPublishService;
 BrewControl::PushService pushService;
 BrewControl::RemoteDiscovery remoteDiscovery;
-WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, pushService);
+BrewControl::MdnsBrowser mdnsBrowser;
+WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -92,9 +94,28 @@ String hostname_;
 // (Re-)start the mDNS responder. ESP32 mDNS typically does not survive a WiFi
 // reconnect, so this runs on every STA_GOT_IP event, not just at boot.
 static void startMDNS() {
+  // Runs on the WiFi event task as well — tell the browser to let go of any
+  // search object before mdns_free() takes it away underneath it.
+  mdnsBrowser.abandonSearch();
   MDNS.end();
   if (MDNS.begin(hostname_.c_str())) {
     MDNS.addService("http", "tcp", 80);
+    // Every board announces itself, not just the ones publishing data: this is
+    // what MdnsBrowser looks for, and it lets third-party tools find the HTTP
+    // API too. Port 80 = that API; the WebSocket hub port rides in the TXT
+    // record, because the hub is optional and on a different port.
+    const String device = settingsStore.websocketClientId().isEmpty()
+                              ? hostname_
+                              : settingsStore.websocketClientId();
+    MDNS.addService(BrewControl::kServiceType, BrewControl::kServiceProto, 80);
+    MDNS.addServiceTxt(BrewControl::kServiceType, BrewControl::kServiceProto, "dev", device.c_str());
+    MDNS.addServiceTxt(BrewControl::kServiceType, BrewControl::kServiceProto, "prefix",
+                       settingsStore.websocketTopicPrefix().c_str());
+    MDNS.addServiceTxt(BrewControl::kServiceType, BrewControl::kServiceProto, "ver", BREWCTL_VERSION);
+    MDNS.addServiceTxt(BrewControl::kServiceType, BrewControl::kServiceProto, "ws",
+                       settingsStore.websocketHubEnabled()
+                           ? String(settingsStore.websocketHubPort()).c_str()
+                           : "0");
     Serial.printf("mDNS up: http://%s.local/\n", hostname_.c_str());
   } else {
     Serial.println(F("mDNS start failed"));
@@ -227,15 +248,18 @@ void setup() {
   espNowTransport = std::make_unique<EspNowTransport>();
 
   // Re-announce mDNS on every STA_GOT_IP (it doesn't survive reconnects). The
-  // initial GOT_IP already fired during connectStation, so also start it once now.
+  // initial GOT_IP already fired during connectStation, so also start it once
+  // below — after the settings are loaded, because the announced TXT records
+  // carry the WebSocket hub port and the device id from there.
   WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t) { startMDNS(); },
                ARDUINO_EVENT_WIFI_STA_GOT_IP);
-  startMDNS();
 
   if (fsOk) {
     settingsStore.loadFromSD(deviceFs);  // ahead of dynamicItems: mqttService.begin()
                                           // below needs it before actuators load
   }
+  startMDNS();
+  mdnsBrowser.begin(hostname_);
 
   mqttService.begin(hostname_);  // creates the transport (if enabled) before
                                   // dynamicItems.loadFromSD() constructs any
@@ -253,7 +277,10 @@ void setup() {
       mqttService.transport(),
       settingsStore.mqttClientId().isEmpty() ? hostname_ : settingsStore.mqttClientId(),
       espNowTransport.get(),
-      settingsStore.espnowClientId().isEmpty() ? hostname_ : settingsStore.espnowClientId());
+      settingsStore.espnowClientId().isEmpty() ? hostname_ : settingsStore.espnowClientId(),
+      webSocketService.hubTransport(),
+      settingsStore.websocketClientId().isEmpty() ? hostname_
+                                                  : settingsStore.websocketClientId());
 
   if (fsOk) {
     dynamicItems.loadFromSD(deviceFs, registry);
@@ -321,6 +348,7 @@ void loop() {
   if (espNowTransport) espNowTransport->tick();
   espNowPublishService.tick();
   remoteDiscovery.tick();
+  mdnsBrowser.tick(millis());
   pushService.tick();
   maintainWiFi();
   delay(5);

@@ -95,6 +95,6 @@ export type ItemPrefill =
   | { role: 'sensor'; type: 'DS18B20'; id: string; pin: number; address: string }
   | {
       role: 'sensor' | 'actuator'; type: 'Remote'; id: string;
-      transport: 'mqtt' | 'espnow'; device: string; remoteId: string;
+      transport: 'mqtt' | 'espnow' | 'websocket'; device: string; remoteId: string;
       prefix: string; channelKey: string;
     };

@@ -477,11 +477,16 @@ paths:
         are not listed). This device's own items are filtered out. Use the
         entry's `device`, `id`, `prefix` and `channel_key` for a `Remote`
         item's `device`, `remote_id`, `prefix` and `channel_key`.
+
+        `websocket` scans the hub this device runs, so it only reaches boards
+        already connected to it. Pair a board first — `POST /api/remote/pair`
+        after finding it with `GET /api/remote/peers` — then its items appear
+        here.
       parameters:
         - name: transport
           in: query
           required: true
-          schema: { type: string, enum: [mqtt, espnow] }
+          schema: { type: string, enum: [mqtt, espnow, websocket] }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -500,8 +505,109 @@ paths:
             text/plain: { schema: { type: string } }
         "409":
           description: |
-            Body is `mqtt not available` — MQTT was disabled at boot, so there
-            is no transport to scan.
+            Body is `<transport> not available` — that transport was disabled
+            at boot (MQTT, or the WebSocket hub), so there is nothing to scan.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/remote/peers:
+    get:
+      tags: [Remote Discovery]
+      operationId: discoverPeers
+      summary: Find other BrewControl boards on the LAN
+      description: |
+        Asynchronous, same polling contract as `/api/remote/discover`: the
+        first call arms an mDNS browse for `_sensactctrl._tcp` and answers
+        `202`, the search window is about 3 s, results are consumed on read and
+        expire after 30 s if nobody picks them up.
+
+        Every board announces that service on port 80 (its HTTP API) with TXT
+        records `dev`, `prefix`, `ver` and `ws` (its WebSocket hub port, `0`
+        when it runs no hub). This device is reported too, marked `self`, so a
+        UI can grey it out instead of silently dropping it.
+
+        Finding a board does not connect it — hand it this device's hub URL
+        with `POST /api/remote/pair`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Browse finished (an empty `peers` array if nobody answered).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RemotePeersResult" }
+        "202":
+          description: Browse armed or in progress — poll again. Body is always `{}`.
+          content:
+            application/json:
+              schema: { type: object, maxProperties: 0 }
+
+  /api/remote/pair:
+    get:
+      tags: [Remote Discovery]
+      operationId: getPairResult
+      summary: Outcome of the last pairing attempt
+      description: |
+        `state` is `idle` until the first `POST`, `running` while the outbound
+        call is in flight, and `done` afterwards — `code` and `message` are
+        present only then. The result stays readable until the next `POST`.
+      responses:
+        "200":
+          description: Current pairing state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PairResult" }
+    post:
+      tags: [Remote Discovery]
+      operationId: pairPeer
+      summary: Tell another board to connect to this device's hub
+      description: |
+        Hands this device's hub URL (`ws://<own hostname>.local:<hubPort>`) to
+        the board at `host` by driving that board's own `POST /api/settings`
+        with `websocket.publishEnabled` and `websocket.hubUrl`. The target
+        validates, persists and reboots, then dials in by itself — so its items
+        become visible via `GET /api/remote/discover?transport=websocket` a few
+        seconds later.
+
+        `host` may be an IP or an mDNS name; the URL the target *stores* always
+        uses this device's `.local` name, so a DHCP lease change does not break
+        the connection.
+
+        Answers `202`: the outbound HTTP round trip runs from the main loop,
+        not from the request handler. Poll `GET /api/remote/pair` for the
+        outcome — including `code: 401` when the target board is password
+        protected and `password` was missing or wrong.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host]
+              properties:
+                host:
+                  type: string
+                  description: Hostname or IP of the board to pair.
+                  example: brew-kessel2.local
+                password:
+                  type: string
+                  description: |
+                    The target board's device password, needed only when it has
+                    access protection enabled.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "202":
+          description: Pairing armed — poll `GET /api/remote/pair`. Body is always `{}`.
+          content:
+            application/json:
+              schema: { type: object, maxProperties: 0 }
+        "400":
+          description: Body is `invalid JSON`, `missing body` or `missing host`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: |
+            Body is `websocket hub not enabled` — without a hub there is no URL
+            to hand out — or `pairing already running`.
           content:
             text/plain: { schema: { type: string } }
 
@@ -2649,7 +2755,7 @@ components:
       type: object
       required: [transport, items]
       properties:
-        transport: { type: string, enum: [mqtt, espnow] }
+        transport: { type: string, enum: [mqtt, espnow, websocket] }
         items:
           type: array
           items:
@@ -2668,6 +2774,47 @@ components:
         items:
           - { device: node-a, prefix: brewcontrol, kind: sensor, id: mash_temp, channel_key: "", quantity: Temperature, unit: "°C" }
           - { device: node-a, prefix: brewcontrol, kind: actuator, id: heater, channel_key: "", quantity: None, unit: "" }
+
+    RemotePeersResult:
+      type: object
+      required: [peers]
+      properties:
+        peers:
+          type: array
+          items:
+            type: object
+            required: [hostname, ip, device, prefix, ws_port, self]
+            properties:
+              hostname: { type: string, description: 'mDNS hostname without the ".local" suffix.' }
+              ip: { type: string, description: "First IPv4 address, empty if the answer carried none." }
+              device: { type: string, description: 'TXT "dev" — device id that board publishes under.' }
+              prefix: { type: string, description: 'TXT "prefix" — its topic prefix (may be empty).' }
+              ws_port:
+                type: integer
+                description: 'TXT "ws" — its own WebSocket hub port, 0 when it runs no hub.'
+              self: { type: boolean, description: This device itself. }
+      example:
+        peers:
+          - { hostname: brewcontrol, ip: 192.168.1.40, device: brewcontrol, prefix: brewcontrol, ws_port: 8081, self: true }
+          - { hostname: brew-kessel2, ip: 192.168.1.41, device: kessel2, prefix: brewcontrol, ws_port: 0, self: false }
+
+    PairResult:
+      type: object
+      required: [state, host]
+      properties:
+        state: { type: string, enum: [idle, running, done] }
+        host: { type: string, description: "Host of the last pairing attempt, empty before the first." }
+        code:
+          type: integer
+          description: |
+            Only with state `done`: 200 paired, 401 the board needs (another)
+            password, 502 unreachable, otherwise the board's own status.
+        message: { type: string, description: "Only with state `done`: German one-liner for the UI." }
+      example:
+        state: done
+        host: brew-kessel2.local
+        code: 200
+        message: Board gekoppelt, es startet jetzt neu
 
     # ── Dashboards ───────────────────────────────────────────────────────────
     WidgetMode:

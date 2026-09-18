@@ -1,6 +1,7 @@
 #include "WebUI.h"
 
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <Preferences.h>
 #include <Update.h>
 #include <WiFi.h>
@@ -21,6 +22,11 @@ namespace {
 
 constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
+
+// Timeout for the outbound pairing calls (see WebUI::runPendingPairing_).
+// Deliberately short: it runs from loopTask, so every second of it is a second
+// in which sensors are not sampled and controllers do not update.
+constexpr uint16_t kPairTimeoutMs = 2000;
 
 // Upper bound for a buffered request body (see collectBody). Sized for the
 // largest realistic payload, the backup bundle: the whole /config tree as one
@@ -404,11 +410,13 @@ WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
              TimerStore& timers, AlarmStore& alarms, ProfileStore& profiles,
              MqttService& mqtt, WebhookService& webhook,
              WebSocketService& websocket, EspNowPublishService& espnow,
-             RemoteDiscovery& discovery, PushService& push, uint16_t port)
+             RemoteDiscovery& discovery, MdnsBrowser& peers, PushService& push,
+             uint16_t port)
     : reg_(reg), fs_(fs), items_(items), store_(store), settings_(settings),
       updater_(updater), logs_(logs), programs_(programs), timers_(timers),
       alarms_(alarms), profiles_(profiles), mqtt_(mqtt), webhook_(webhook),
-      websocket_(websocket), espnow_(espnow), discovery_(discovery), push_(push),
+      websocket_(websocket), espnow_(espnow), discovery_(discovery), peers_(peers),
+      push_(push),
       server_(port),
       events_("/api/events") {}
 
@@ -773,7 +781,7 @@ void WebUI::begin() {
   });
 
   // ── Remote discovery ──────────────────────────────────────────────────────
-  // GET /api/remote/discover?transport=mqtt|espnow — same async shape as
+  // GET /api/remote/discover?transport=mqtt|espnow|websocket — same async shape as
   // /api/network/scan: the first call arms a scan (202), 202 while it runs
   // (~3 s window), then 200 + the collected items once, after which the next
   // call starts a fresh scan. The request itself goes out from loop()
@@ -781,7 +789,7 @@ void WebUI::begin() {
   server_.on("/api/remote/discover", HTTP_GET, [this](AsyncWebServerRequest* req) {
     if (!req->hasParam("transport")) { req->send(400, "text/plain", "missing transport"); return; }
     const String transport = req->getParam("transport")->value();
-    if (transport != "mqtt" && transport != "espnow") {
+    if (transport != "mqtt" && transport != "espnow" && transport != "websocket") {
       req->send(400, "text/plain", "unsupported transport");
       return;
     }
@@ -812,6 +820,86 @@ void WebUI::begin() {
     serializeJson(doc, out);
     req->send(200, "application/json", out);
   });
+
+  // GET /api/remote/peers — async mDNS browse for other boards on the LAN.
+  // Same 202-poll contract as the discovery above, and for the same reason:
+  // the query itself is issued and collected from loop() (MdnsBrowser::tick).
+  // Whether a board is already in use is not reported here — the UI knows that
+  // from GET /api/config, which it fetches for the scan anyway.
+  server_.on("/api/remote/peers", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    using Status = MdnsBrowser::Status;
+    if (peers_.status() != Status::Done) {
+      peers_.requestScan();  // no-op while one is already running
+      req->send(202, "application/json", "{}");
+      return;
+    }
+    const auto found = peers_.takeResults();
+    JsonDocument doc;
+    JsonArray arr = doc["peers"].to<JsonArray>();
+    for (const auto& p : found) {
+      JsonObject o = arr.add<JsonObject>();
+      o["hostname"] = p.hostname;
+      o["ip"] = p.ip;
+      o["device"] = p.device;
+      o["prefix"] = p.prefix;
+      o["ws_port"] = p.wsPort;
+      o["self"] = p.self;
+    }
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
+  });
+
+  // GET /api/remote/pair — outcome of the last POST below. Registered before
+  // it because PostJsonHandler matches the path for every method.
+  server_.on("/api/remote/pair", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    String out;
+    {
+      std::lock_guard<std::mutex> lock(pairMutex_);
+      JsonDocument doc;
+      doc["state"] = pairBusy_ ? "running" : (pairDone_ ? "done" : "idle");
+      doc["host"] = pairHost_;
+      if (pairDone_) {
+        doc["code"] = pairCode_;
+        doc["message"] = pairMessage_;
+      }
+      serializeJson(doc, out);
+    }
+    req->send(200, "application/json", out);
+  });
+
+  // POST /api/remote/pair — {"host":"<board>.local"[,"password":"…"]}
+  // Hands this device's hub URL to another board so that it dials in by
+  // itself. We drive that board's own POST /api/settings, which already
+  // validates the URL, persists it and reboots — hence no new endpoint on the
+  // receiving side, and hence the target's password when it has one.
+  //
+  // Answers 202: the HTTP round trip is synchronous and therefore runs from
+  // tick(), never from this async_tcp handler. Poll GET for the result.
+  server_.addHandler(new PostJsonHandler("/api/remote/pair",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+        JsonObject o = json.as<JsonObject>();
+        const char* host = o["host"] | "";
+        if (!host[0]) { req->send(400, "text/plain", "missing host"); return; }
+        if (!settings_.websocketHubEnabled()) {
+          // No hub means no URL to hand out — the leaf would have nowhere to go.
+          req->send(409, "text/plain", "websocket hub not enabled");
+          return;
+        }
+        {
+          std::lock_guard<std::mutex> lock(pairMutex_);
+          if (pairBusy_) { req->send(409, "text/plain", "pairing already running"); return; }
+          pairHost_ = host;
+          pairPassword_ = o["password"] | "";
+          pairCode_ = 0;
+          pairMessage_ = "";
+          pairDone_ = false;
+          pairArmed_ = true;
+          pairBusy_ = true;
+        }
+        req->send(202, "application/json", "{}");
+      }));
 
   // ── Config (original cfgJson for all dynamic items — used by edit UI) ────
   server_.on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* req) {
@@ -1895,6 +1983,109 @@ void WebUI::begin() {
   server_.begin();
 }
 
+// Drives another board's POST /api/settings so it connects to our hub. Runs
+// from tick(), i.e. loopTask: HTTPClient is synchronous, and blocking the
+// async_tcp task would freeze every request and the SSE stream for the length
+// of the round trip. loopTask pays instead, bounded by kPairTimeoutMs, and
+// only for this one user-triggered action.
+void WebUI::runPendingPairing_() {
+  String host, password;
+  {
+    std::lock_guard<std::mutex> lock(pairMutex_);
+    if (!pairArmed_) return;
+    // Consume the job but keep pairBusy_ set: it is what makes a second POST
+    // answer 409 and GET report "running" while we are on the network below.
+    pairArmed_ = false;
+    host = pairHost_;
+    password = pairPassword_;
+    pairPassword_ = "";
+  }
+
+  Preferences prefs;
+  prefs.begin("brewctrl", true);
+  const String ownHost = prefs.getString("hostname", "brewcontrol");
+  prefs.end();
+
+  // Our hub, addressed by mDNS name rather than by IP: the leaf stores this
+  // string permanently, and a DHCP lease change must not break it.
+  const String hubUrl =
+      "ws://" + ownHost + ".local:" + String(settings_.websocketHubPort());
+
+  int code = 0;
+  String message;
+
+  // A protected board only accepts the settings write with a session cookie,
+  // so log in first when a password came with the request.
+  String cookie;
+  bool loginFailed = false;
+  if (!password.isEmpty()) {
+    WiFiClient client;
+    HTTPClient http;
+    http.setConnectTimeout(kPairTimeoutMs);
+    http.setTimeout(kPairTimeoutMs);
+    if (!http.begin(client, "http://" + host + "/api/auth/login")) {
+      code = 502;
+      message = "Board " + host + " nicht erreichbar";
+      loginFailed = true;
+    } else {
+      const char* wanted[] = {"Set-Cookie"};
+      http.collectHeaders(wanted, 1);
+      http.addHeader("Content-Type", "application/json");
+      const int login = http.POST("{\"password\":\"" + password + "\"}");
+      if (login == 200 || login == 204) {
+        const String setCookie = http.header("Set-Cookie");
+        const int at = setCookie.indexOf("bcsid=");
+        if (at >= 0) {
+          int semi = setCookie.indexOf(';', at);
+          if (semi < 0) semi = setCookie.length();
+          cookie = setCookie.substring(at, semi);
+        }
+      } else {
+        code = login == 401 ? 401 : (login > 0 ? login : 502);
+        message = login == 401 ? "Falsches Passwort" : "Anmeldung fehlgeschlagen";
+        loginFailed = true;
+      }
+      http.end();
+    }
+  }
+
+  if (!loginFailed) {
+    WiFiClient client;
+    HTTPClient http;
+    http.setConnectTimeout(kPairTimeoutMs);
+    http.setTimeout(kPairTimeoutMs);
+    if (!http.begin(client, "http://" + host + "/api/settings")) {
+      code = 502;
+      message = "Board " + host + " nicht erreichbar";
+    } else {
+      http.addHeader("Content-Type", "application/json");
+      if (!cookie.isEmpty()) http.addHeader("Cookie", cookie);
+      const int res = http.POST(
+          "{\"websocket\":{\"publishEnabled\":true,\"hubUrl\":\"" + hubUrl + "\"}}");
+      http.end();
+      if (res == 200 || res == 204) {
+        code = 200;
+        message = "Board gekoppelt, es startet jetzt neu";
+      } else if (res == 401) {
+        code = 401;
+        message = "Board " + host + " ist passwortgeschützt";
+      } else if (res > 0) {
+        code = res;
+        message = "Board antwortete mit HTTP " + String(res);
+      } else {
+        code = 502;
+        message = "Board " + host + " nicht erreichbar";
+      }
+    }
+  }
+
+  std::lock_guard<std::mutex> lock(pairMutex_);
+  pairCode_ = code;
+  pairMessage_ = message;
+  pairDone_ = true;
+  pairBusy_ = false;
+}
+
 void WebUI::tick() {
   if (assetSwapPending_) {
     assetSwapPending_ = false;
@@ -1902,6 +2093,7 @@ void WebUI::tick() {
   }
   uint32_t now = millis();
   if (rebootAtMs_ != 0 && now >= rebootAtMs_) ESP.restart();
+  runPendingPairing_();
   logs_.tick(reg_, fs_, time(nullptr), now);
   programs_.tick(reg_, fs_, time(nullptr));
   timers_.tick(reg_, programs_, fs_, time(nullptr));

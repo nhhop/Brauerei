@@ -385,6 +385,26 @@ export interface DiscoveredItem {
   unit: string;
 }
 
+// One entry of GET /api/remote/peers — another board found via mDNS
+// (_sensactctrl._tcp). ws_port is its WebSocket hub port, 0 when it runs none.
+export interface DiscoveredPeer {
+  hostname: string;
+  ip: string;
+  device: string;
+  prefix: string;
+  ws_port: number;
+  self: boolean;
+}
+
+// GET /api/remote/pair — outcome of the last pairing attempt. code/message are
+// only present once state is "done".
+export interface PairResult {
+  state: 'idle' | 'running' | 'done';
+  host: string;
+  code?: number;
+  message?: string;
+}
+
 export interface ThemeSettings {
   mode: 'light' | 'dark' | 'system';
   accent: string;
