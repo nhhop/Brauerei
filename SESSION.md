@@ -3859,3 +3859,36 @@ Verifikation: `pio test -e native` für `test_hcsr04`/`test_yf_s201` (neue
 Maskentests), `pio run -e esp32dev` und `pnpm typecheck` grün,
 `redocly lint` valide. Hardware-Test durch den Nutzer erfolgreich (Kanalauswahl
 beim Anlegen, einzelne Kanalkarten im Dashboard).
+
+## 2026-09-20 — Persistenz-Verifikation am Gerät: Darstellungsmodi, Layout, Sekundärfarbe
+
+Firmware `50f199c` (HEAD, sauberer Tree) per OTA (`POST /api/update/firmware`, kein
+Serial) auf `brewcontrol-esp32dev` geflasht. Das Board hat lokal keine Aktoren,
+nur ein Remote-Item auf das S2 (Ziel 0, nie beschrieben), keine Regler/Programme
+und keinen Sud. Alle Reboots liefen über `POST /api/network` mit unverändertem
+Hostnamen; Beleg jeweils über die Messzeit des lokalen Sensors (`t` fiel z. B.
+von 36462 auf 18912).
+
+Ergebnis: (1) `sensorModes`/`controllerModes`/`timerModes` und (2) `layout`
+(verschachtelter Split) sind nach Speichern und echtem Reboot bytegleich
+wieder da, auch in `GET /api/backup` und in der Roh-Datei
+`/config/dashboards.json`. Ein Dashboard im Altformat (Backup-Restore ohne
+Modi/Layout) lädt fehlerfrei, liefert leere Modi und kein `layout`-Feld.
+Die UI (`pnpm dev` per `VITE_ESP_HOST`-Umgebungsvariable gegen das Board,
+`.env.local` zeigt aufs LilyGo und blieb unangetastet) rendert Gauge/Kompakt und
+die gespeicherte Anordnung nach Reload. (3) `theme.secondary`: eine alte
+`settings.json` ohne das Feld fällt auf `#22c55e` zurück, `#ff8800` übersteht
+Reboot, steht in `GET /api/settings`, `GET /api/backup` und der Roh-Datei;
+`red`, `#12345`, `#1234567`, `22c55e0` liefern 400 `invalid secondary`.
+
+Escape-Abbruch: Drag aktiv (Karte gedimmt), nach Escape weg, danach `pointerup`
+ohne Request und ohne Layoutänderung; Kontrolllauf ohne Escape committete.
+Beides mit synthetischen `PointerEvent`s und `setPointerCapture` als No-op
+(echte Pointer-IDs lassen sich im Browser-Pane nicht erzeugen), die
+Handler-Logik ist also echt, die Browser-Pointer-Erfassung nicht. Ein Drag mit
+echtem Finger am Tablet bleibt offen (PLAN.md).
+
+Befund: `POST /api/settings` prüft Farben nur auf Länge 7 und `#`; `#gggggg`
+wurde angenommen und persistiert (PLAN.md, Bugs). Aufgeräumt: Testdashboard
+gelöscht, `secondary` auf den Default zurückgesetzt, Registry unverändert zum
+Backup vor dem Test.
