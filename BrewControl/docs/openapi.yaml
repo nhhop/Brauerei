@@ -341,8 +341,11 @@ paths:
         output inactive without forgetting its target value, and pauses every
         currently running or awaiting setpoint program and every running timer,
         so a later program step can't re-enable an actuator while the stop is
-        in effect. Not a persisted mode of its own: after a reboot everything
-        starts normally again. Re-enabling is manual, per item, via the normal
+        in effect. Not a persisted mode of its own: the actuator stop is held
+        in RAM only, so actuators are enabled again after a reboot. The
+        program/timer pause is saved deliberately, so a reboot does not
+        recreate the situation that led to the stop — they stay `paused` until
+        resumed manually. Re-enabling is manual, per item, via the normal
         actuator/program/timer controls.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2615,14 +2618,14 @@ components:
         miso: { type: integer }
         mosi: { type: integer }
         wires: { type: integer, enum: [2, 3, 4], description: MAX31865 wiring. }
-        rtd: { type: number }
+        rtd: { type: string, enum: [PT100, PT1000], default: PT100, description: MAX31865 RTD type. }
         rref: { type: number }
         trig: { type: integer, description: HC-SR04 trigger pin. }
         echo: { type: integer, description: HC-SR04 echo pin. }
         dout: { type: integer, description: HX711 data pin. }
         sck: { type: integer, description: HX711 clock pin. }
         scale: { type: number }
-        calibration: { type: array, items: { type: number } }
+        calibration: { type: number, description: "YF-S201 pulse frequency in Hz per L/min; must be > 0." }
         factor: { type: number }
         offset: { type: number }
         unit: { type: string }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
-import { ChevronLeft } from 'lucide-preact';
+import { Check } from 'lucide-preact';
 import type { Snapshot, ScannedDevice, ItemConfig } from '../types';
 import {
   createSensor, createActuator, createController,
@@ -8,9 +8,12 @@ import {
 } from '../api';
 import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
-import { ITEM_TYPES, ROLE_LABEL, type ItemPrefill } from '../itemTypes';
+import {
+  ITEM_TYPES, ROLE_LABEL, ROLE_META, CATEGORY_ICON,
+  type ItemPrefill, type ItemTypeEntry,
+} from '../itemTypes';
 import { AutotuneProgress } from './AutotuneProgress';
-import { ItemTypePicker } from './ItemTypePicker';
+import { AddItemWizard, ChoiceCard, type WizardStep } from './AddItemWizard';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -24,8 +27,20 @@ type RtdType = 'PT100' | 'PT1000';
 type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'PulseOutput' | 'IDS1' | 'IDS2' | 'MqttGeneric' | 'Remote';
 type MqttKind = 'Binary' | 'Continuous';
 type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
+type Step = 1 | 2 | 3 | 4;
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
+
+const STEP_TEXT: Record<Step, { label: string; title: string; sub: string }> = {
+  1: { label: 'Art des Geräts', title: 'Was möchtest du hinzufügen?',
+       sub: 'Sensoren messen, Aktoren schalten, Regler verbinden beides.' },
+  2: { label: 'Kategorie', title: 'Welche Kategorie?',
+       sub: 'Grenzt die Liste der Gerätetypen im nächsten Schritt ein.' },
+  3: { label: 'Gerätetyp', title: 'Welcher Gerätetyp?',
+       sub: 'Bestimmt, welche Anschlüsse und Parameter du gleich einstellst.' },
+  4: { label: 'Konfiguration', title: 'Gerät einrichten',
+       sub: 'Name und Anschluss festlegen — danach ist das Gerät sofort aktiv.' },
+};
 
 export function AddItemModal({ open, snap, onClose, editConfig, editRole, initialRole, prefill, onCreated, onRenamed }: {
   open: boolean;
@@ -47,8 +62,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 }) {
   const isEdit = !!(editConfig && editRole);
 
-  // 1 = type picker, 2 = fields. Edit and prefill open straight at 2.
-  const [step, setStep] = useState<1 | 2>(1);
+  // Wizard state — only used for "create from scratch"; edit and prefill render
+  // the compact single pane instead. Steps: 1 Art, 2 Kategorie, 3 Typ, 4 Konfig.
+  const [step, setStep] = useState<Step>(1);
+  const [maxStep, setMaxStep] = useState<Step>(1);
+  const [category, setCategory] = useState('');
+  // sensorType & co. always hold a default, so "has the user picked a type yet?"
+  // cannot be read off them.
+  const [typeChosen, setTypeChosen] = useState(false);
+  const [created, setCreated] = useState<{ role: Role; id: string } | null>(null);
   const [role, setRole] = useState<Role>('sensor');
 
   // shared
@@ -426,24 +448,56 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         }
       }
     }
-    setStep(isEdit || prefill ? 2 : 1);
+    setStep(1); setMaxStep(1); setCategory(''); setTypeChosen(false); setCreated(null);
   }, [open]);
 
   if (!open) return null;
 
-  if (step === 1) return (
-    <ItemTypePicker role={role} onRole={setRole} onClose={onClose}
-      onPick={(e) => {
-        if (e.role === 'sensor') setSensorType(e.type as SensorType);
-        else if (e.role === 'actuator') setActuatorType(e.type as ActuatorType);
-        else setCtrlType(e.type as ControllerType);
-        setErr(null);
-        setStep(2);
-      }} />
-  );
-
   const currentType = role === 'sensor' ? sensorType : role === 'actuator' ? actuatorType : ctrlType;
   const typeLabel = ITEM_TYPES.find((t) => t.role === role && t.type === currentType)?.label ?? currentType;
+
+  // Editing and a discovery prefill both know the type already — they get the
+  // compact pane, the wizard is the "create from scratch" path only.
+  const wizard = !isEdit && !prefill;
+
+  // Categories of the current role, in ITEM_TYPES order.
+  const categories = ITEM_TYPES.reduce<{ group: string; count: number }[]>((acc, t) => {
+    if (t.role !== role) return acc;
+    const hit = acc.find((c) => c.group === t.group);
+    if (hit) hit.count++; else acc.push({ group: t.group, count: 1 });
+    return acc;
+  }, []);
+  const typesInCategory = ITEM_TYPES.filter((t) => t.role === role && t.group === category);
+
+  function applyType(e: ItemTypeEntry) {
+    if (e.role === 'sensor') setSensorType(e.type as SensorType);
+    else if (e.role === 'actuator') setActuatorType(e.type as ActuatorType);
+    else setCtrlType(e.type as ControllerType);
+    setTypeChosen(true);
+    setErr(null);
+  }
+
+  // Picking further up invalidates everything below it.
+  function pickRole(r: Role) {
+    if (r === role) return;
+    setRole(r); setCategory(''); setTypeChosen(false); setMaxStep(1); setErr(null);
+  }
+
+  function pickCategory(g: string) {
+    if (g === category) return;
+    setCategory(g); setMaxStep(2);
+    const list = ITEM_TYPES.filter((t) => t.role === role && t.group === g);
+    // Most sensor categories hold exactly one type — preselect it so step 3 is
+    // a "Weiter" instead of a click with no alternative.
+    if (list.length === 1) applyType(list[0]); else setTypeChosen(false);
+  }
+
+  const canNext = step === 1 ? true
+    : step === 2 ? category !== ''
+    : step === 3 ? typeChosen
+    : id.trim() !== '' && !pending;
+
+  const closeWizard = () => { setCreated(null); onClose(); };
 
   const liveController = isEdit && editRole === 'controller' && id
     ? snap?.controllers.find((c) => c.id === id)
@@ -714,9 +768,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         await createController(cfg);
       }
 
-      onClose();
-      if (!isEdit) onCreated?.(role, trimId, createdIds);
-      else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId);
+      if (wizard) {
+        // Fire onCreated as soon as the item exists, so the parent stays
+        // consistent even if the success screen is dismissed via the backdrop.
+        onCreated?.(role, trimId, createdIds);
+        setCreated({ role: role, id: trimId });
+      } else {
+        onClose();
+        if (!isEdit) onCreated?.(role, trimId, createdIds);
+        else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId);
+      }
     } catch (e) { setErr(String(e)); }
     setPending(false);
   }
@@ -773,34 +834,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
     );
   }
 
-  return (
-    <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={() => { if (!pending) onClose(); }}
-    >
-      <div
-        class={`max-h-[90vh] w-full max-w-md ${dialogFrame}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <form onSubmit={handleSubmit} class="flex min-h-0 flex-col">
-          <div class="min-h-0 space-y-4 overflow-y-auto p-5">
-          {/* Step-2 header — the subline is the only place the chosen type is
-              still named, which matters most in edit mode (type is immutable). */}
-          <div class="flex items-center gap-2">
-            {!isEdit && (
-              <button type="button" onClick={() => setStep(1)} title="Zurück"
-                class="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-subtle-hover hover:text-fg">
-                <ChevronLeft size={16} />
-              </button>
-            )}
-            <div class="min-w-0">
-              <h2 class="text-base font-medium text-fg">
-                {isEdit ? 'Item bearbeiten' : 'Gerät hinzufügen'}
-              </h2>
-              <p class="truncate text-xs text-muted">{ROLE_LABEL[role]} · {typeLabel}</p>
-            </div>
-          </div>
-
+  // Every field block of the chosen type — identical in step 4 of the
+  // wizard and in the compact edit pane. Expects a `space-y-4` container.
+  function fieldBlocks() {
+    return (<>
           {/* ID field (all roles) */}
           <div>
             <label class={lbl}>ID</label>
@@ -1684,6 +1721,108 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           )}
 
           {err && <p class="text-xs text-critical">{err}</p>}
+    </>);
+  }
+
+  if (wizard) {
+    const wizardSteps: WizardStep[] = [
+      { label: STEP_TEXT[1].label, value: ROLE_LABEL[role] },
+      { label: STEP_TEXT[2].label, value: category },
+      { label: STEP_TEXT[3].label, value: typeChosen ? typeLabel : '' },
+      { label: STEP_TEXT[4].label, value: id.trim() },
+    ];
+
+    if (created) return (
+      <AddItemWizard steps={wizardSteps} step={5} maxStep={4} onStep={() => {}}
+        title="Gerät hinzugefügt" subtitle=""
+        next={{ label: 'Fertig' }} onNext={closeWizard}>
+        <div class="flex h-full flex-col items-center justify-center px-8 text-center">
+          <span class="flex size-16 items-center justify-center rounded-full bg-accent text-accent-fg">
+            <Check size={32} />
+          </span>
+          <h4 class="mt-6 text-base font-medium text-fg">Gerät hinzugefügt</h4>
+          <p class="mt-1 text-sm text-muted">
+            {ROLE_LABEL[created.role]} „{created.id}“ wurde angelegt.
+          </p>
+        </div>
+      </AddItemWizard>
+    );
+
+    return (
+      <form onSubmit={(e) => { if (step !== 4) { e.preventDefault(); return; } void handleSubmit(e); }}>
+        <AddItemWizard
+          steps={wizardSteps} step={step} maxStep={maxStep}
+          onStep={(s) => { if (!pending) setStep(s as Step); }}
+          title={STEP_TEXT[step].title} subtitle={STEP_TEXT[step].sub}
+          onCancel={() => { if (!pending) closeWizard(); }}
+          onBack={() => setStep((s) => Math.max(1, s - 1) as Step)}
+          backDisabled={step === 1 || pending}
+          next={{
+            label: step === 4 ? (pending ? 'Hinzufügen…' : 'Hinzufügen') : 'Weiter',
+            disabled: !canNext,
+            submit: step === 4,
+          }}
+          onNext={() => { const n = (step + 1) as Step; setStep(n); setMaxStep((m) => (n > m ? n : m)); }}
+        >
+          {step === 1 && (
+            <div role="radiogroup" aria-label="Art des Geräts"
+              class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {(['sensor', 'actuator', 'controller'] as Role[]).map((r) => (
+                <ChoiceCard key={r} icon={ROLE_META[r].icon} label={ROLE_LABEL[r]}
+                  desc={ROLE_META[r].desc} selected={role === r} onPick={() => pickRole(r)} />
+              ))}
+            </div>
+          )}
+
+          {step === 2 && (
+            <div role="radiogroup" aria-label="Kategorie"
+              class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+              {categories.map((c) => (
+                <ChoiceCard key={c.group} icon={CATEGORY_ICON[c.group] ?? ROLE_META[role].icon}
+                  label={c.group} desc={`${c.count} ${c.count === 1 ? 'Typ' : 'Typen'}`}
+                  selected={category === c.group} onPick={() => pickCategory(c.group)} />
+              ))}
+            </div>
+          )}
+
+          {step === 3 && (
+            <div role="radiogroup" aria-label="Gerätetyp" class="space-y-2">
+              {typesInCategory.map((t) => (
+                <ChoiceCard key={t.type} row icon={CATEGORY_ICON[t.group] ?? ROLE_META[role].icon}
+                  label={t.label} desc={t.hint}
+                  selected={typeChosen && currentType === t.type} onPick={() => applyType(t)} />
+              ))}
+            </div>
+          )}
+
+          {step === 4 && <div class="space-y-4">{fieldBlocks()}</div>}
+        </AddItemWizard>
+      </form>
+    );
+  }
+
+  return (
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={() => { if (!pending) onClose(); }}
+    >
+      <div
+        class={`max-h-[90vh] w-full max-w-md ${dialogFrame}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <form onSubmit={handleSubmit} class="flex min-h-0 flex-col">
+          <div class="min-h-0 space-y-4 overflow-y-auto p-5">
+          {/* Compact header — the subline is the only place the chosen type is
+              named. There is no back affordance: editing cannot change the type,
+              and a discovered device has its type fixed by the scan. */}
+          <div class="min-w-0">
+            <h2 class="text-base font-medium text-fg">
+              {isEdit ? 'Item bearbeiten' : 'Gerät hinzufügen'}
+            </h2>
+            <p class="truncate text-xs text-muted">{ROLE_LABEL[role]} · {typeLabel}</p>
+          </div>
+
+          {fieldBlocks()}
           </div>
 
           <div class={dialogFooter}>

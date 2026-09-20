@@ -3860,6 +3860,24 @@ Maskentests), `pio run -e esp32dev` und `pnpm typecheck` grün,
 `redocly lint` valide. Hardware-Test durch den Nutzer erfolgreich (Kanalauswahl
 beim Anlegen, einzelne Kanalkarten im Dashboard).
 
+## 2026-09-20 — Quick-Wins: Notfall-Seite, ConfirmModal, OpenAPI, Kanalbezeichnung
+
+Vier kleine Punkte aus PLAN.md abgearbeitet. (1) `onNotFound` in `WebUI.cpp`
+liefert SPA-/Notfall-Seite nur noch für Pfade ohne Dateiendung; `/assets/x.js`
+& Co. bekommen 404 statt HTML — ein SD-Lesefehler kann so keinem
+`<script>`-Tag mehr die Notfall-Seite unterschieben. (2) `ConfirmModal`:
+Abbrechen/Bestätigen stehen nebeneinander, der Extra-Button liegt volle Breite
+darunter (Labels unverändert, brechen nicht mehr um). (3) `SensorCreate` in
+`openapi.yaml`: `calibration` ist `number` (YF-S201, Hz je L/min), `rtd` ein
+String `PT100`/`PT1000`. (4) `SensorCard` zeigt die Kanalbezeichnung
+(`meta.quantity`) unter dem Titel; im Kompakt-Modus bleibt sie rechts, weil dort
+die Höhe knapp ist.
+
+Verifikation: `pnpm typecheck`, `pio run -e esp32dev`, `redocly lint` grün;
+Sensorkarten im Browser gegen `pnpm dev` geprüft (kein Überlauf). Nicht
+geprüft: `ConfirmModal` mit Extra-Button im Browser und die Notfall-Seite am
+Gerät.
+
 ## 2026-09-20 — Persistenz-Verifikation am Gerät: Darstellungsmodi, Layout, Sekundärfarbe
 
 Firmware `50f199c` (HEAD, sauberer Tree) per OTA (`POST /api/update/firmware`, kein
@@ -3892,3 +3910,85 @@ Befund: `POST /api/settings` prüft Farben nur auf Länge 7 und `#`; `#gggggg`
 wurde angenommen und persistiert (PLAN.md, Bugs). Aufgeräumt: Testdashboard
 gelöscht, `secondary` auf den Default zurückgesetzt, Registry unverändert zum
 Backup vor dem Test.
+
+## 2026-09-20 — „Gerät hinzufügen“ als 4-Schritt-Wizard (nach Design-Entwurf)
+
+Grundlage waren zwei Entwürfe (Desktop + Mobile) für einen mehrschrittigen
+Anlege-Dialog. Der bestehende Dialog ist darin integriert: seine per-Typ-Felder
+sind jetzt Schritt 4.
+
+**Umsetzung:**
+
+- Neue Hülle `AddItemWizard.tsx` (~185 Z.) mit `ChoiceCard`: Scrim, responsives
+  Panel, Desktop-Schrittleiste (240 px, Haken + gewählter Wert als Unterzeile,
+  anklickbar bis `maxStep`), mobile Segmentleiste mit „Schritt X von 4“,
+  Schritt-Titel und Footer. Responsive rein über Tailwind `md:` — kein
+  `matchMedia`; DOM-Reihenfolge [Rail, Mobil-Header, Pane] ergibt mit
+  `hidden md:flex` / `md:hidden` in beiden Layouts die richtige Abfolge.
+  Mobil vollflächig ohne Scrim, ab `md` ein zentriertes 880×640-Panel.
+- Schritte: 1 Art → 2 Kategorie → 3 Gerätetyp → 4 Konfiguration, danach ein
+  Erfolgs-Screen. Kein Zusammenfassungs-Schritt (war im Entwurf, bewusst
+  verworfen). Kategorien sind unverändert die `group`-Werte aus `itemTypes.ts`;
+  eine Kategorie mit genau einem Typ wählt diesen vor, damit Schritt 3 dort ein
+  „Weiter“ statt eines Klicks ohne Alternative ist.
+- `itemTypes.ts` bekommt `ROLE_META` (Icon + Beschreibung je Rolle) und
+  `CATEGORY_ICON` (Icon je Kategorie); `ITEM_TYPES` selbst unverändert,
+  Reihenfolge und Anzahl der Kategorien werden daraus abgeleitet.
+- **Bearbeiten und Discovery-Prefill nutzen den Wizard nicht** — sie behalten
+  den kompakten Ein-Pane-Dialog. Dessen Zurück-Chevron ist entfallen: beim
+  Bearbeiten gab es nie einen, und bei einem Discovery-Treffer steht der Typ
+  durch den Scan fest. `ItemTypePicker.tsx` ist damit verwaist und gelöscht.
+- Die ~880 Zeilen per-Typ-Feld-JSX wurden **byte-identisch** in eine lokale
+  `fieldBlocks()` verschoben (mit `git diff -w` gegengeprüft) und werden von
+  beiden Darstellungen aufgerufen. Eine Kindkomponente hätte ~70 Werte plus ~70
+  Setter als Props gebraucht; die lokale Funktion schließt alles gratis ein.
+- Form-Semantik: ein einziges `<form>` bleibt, aber der Primärbutton ist nur in
+  Schritt 4 `type="submit"`, alle Karten/Rail-Buttons sind `type="button"`, und
+  `onSubmit` bricht auf Schritt 1–3 ab. Es wird immer nur der aktive Schritt
+  gerendert — ein verstecktes `required`-Feld würde den Submit sonst unsichtbar
+  blockieren.
+- `handleSubmit` schließt im Wizard nicht mehr sofort, sondern feuert
+  `onCreated` (sobald das Item existiert) und zeigt den Erfolgs-Screen; jedes
+  Schließen läuft über `closeWizard()`, das `created` vorher räumt — sonst
+  blitzt der alte Screen beim nächsten Öffnen auf, weil der Reset-Effect erst
+  nach dem Paint läuft.
+
+**Verifiziert:** `pnpm typecheck`, `pnpm build`, `pnpm test` (25/25) grün.
+Live gegen esp32dev: Wizard über Aktor→GPIO→DigitalOutput inkl. Singular
+„1 Typ“ / „3 Typen“, MQTT-Kategorie wählt ihren einzigen Typ vor,
+Rollenwechsel aus Schritt 4 heraus leert Schritte 2–4 und sperrt sie wieder,
+Anlegen → Erfolgs-Screen → Fertig → Gerät in der Liste. Kompakter Pane beim
+Bearbeiten (kein Chevron, AutoTune vorhanden). Verschachtelt aus
+„Dashboard-Inhalte“: Wizard startet auf Schritt 1 mit vorgewähltem Sensor, nach
+„Fertig“ ist das Content-Modal noch offen und der neue Sensor angehakt.
+Mobil 375×812 wie im Entwurf. Testgeräte danach wieder gelöscht.
+
+**Nebenbefund:** Enter im Formular löst im Browser-Pane keinen Submit aus —
+auch im unveränderten kompakten Dialog nicht. Das ist die synthetische
+Tastatureingabe der Automatisierung, keine Regression; am echten Gerät
+unverändert.
+
+## 2026-09-20 — Not-Aus am Gerät verifiziert (esp32dev)
+
+Hardware-Verifikation von `POST /api/estop` am esp32dev (`192.168.178.74`, lokal
+keine echten Aktoren; nur HTTP, kein Serial). Aufbau: `DigitalOutput`
+`estop_led` (GPIO 16), `TwoPoint`-Regler darauf (Sensor: Remote-Binärwert
+`lolin_wstest` = 1, Sollwert 10 — der Regler schreibt dadurch dauerhaft
+`target=1`), Programm mit zwei 600-s-Schritten und ein 600-s-Timer, beide
+gestartet. Vorher Backup + Snapshot gesichert.
+
+**Ergebnis:** (a) nach dem Not-Aus `enabled=false` und `state.v=0` am Aktor,
+obwohl der Regler weiter aktiv blieb und `target=1` schrieb — über drei
+Messungen im Abstand von 4 s stabil. (b) Programm und Timer wechselten auf
+`paused` und standen bei 591 s fest. (c) Nach dem Reboot (`POST /api/network`
+mit unverändertem Hostnamen, `sensors[].state.t` sprang zurück) sind alle
+Aktoren wieder `enabled=true`, der LED-Ausgang liegt wieder bei `v=1` — der
+Aktor-Teil des Not-Aus ist nicht persistiert.
+
+**Kein Befund:** Programm und Timer bleiben nach dem Reboot `paused` (Not-Aus
+speichert sie per `saveToSD`) — beabsichtigt: nach einem Neustart soll nicht
+dieselbe Situation, die den Not-Aus ausgelöst hat, von selbst wieder entstehen.
+Die Aktor-Deaktivierung ist dagegen nicht persistiert. Die Aussage in
+`openapi.yaml` („starts normally again“) wurde entsprechend präzisiert.
+Testobjekte danach gelöscht, das Board ist wie vorher (`lolin_ids1`, `test`,
+`lolin_wstest`).

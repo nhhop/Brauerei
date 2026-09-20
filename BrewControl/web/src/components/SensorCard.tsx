@@ -23,9 +23,12 @@ export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onRes
   return (
     <div class={`${widgetSizeClass[viewMode]} rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8`}>
       <div class="flex items-center justify-between gap-2">
-        <h3 class="font-medium text-fg">{id}</h3>
+        <div class="min-w-0">
+          <h3 class="font-medium text-fg">{id}</h3>
+          {viewMode !== 'compact' && <div class="text-xs text-muted">{meta.quantity}</div>}
+        </div>
         <div class="flex items-center gap-2">
-          <span class="text-xs text-muted">{meta.quantity}</span>
+          {viewMode === 'compact' && <span class="text-xs text-muted">{meta.quantity}</span>}
           {onCycleMode && <CardModeButton mode={viewMode} onCycle={onCycleMode} />}
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"

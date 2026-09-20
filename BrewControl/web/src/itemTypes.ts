@@ -1,3 +1,9 @@
+import {
+  Gauge, Zap, SlidersHorizontal, Thermometer, Droplets, Waves, Ruler, Scale,
+  ToggleLeft, ToggleRight, Radio, Cpu, CircuitBoard, Flame, Activity,
+  type LucideIcon,
+} from 'lucide-preact';
+
 // Catalog of the item types AddItemModal can create — plain data, shared by the
 // type picker (step 1 of the add dialog) and the add dialog's step-2 header.
 // The authoritative list of config keys per type stays in the firmware's
@@ -86,6 +92,34 @@ export const ITEM_TYPES: ItemTypeEntry[] = [
 
 export const ROLE_LABEL: Record<Role, string> = {
   sensor: 'Sensor', actuator: 'Aktor', controller: 'Regler',
+};
+
+// Step 1 of the add wizard — one card per role. The icons are the ones the
+// devices page and the dashboard content picker already use for these roles.
+export const ROLE_META: Record<Role, { icon: LucideIcon; desc: string }> = {
+  sensor: { icon: Gauge,
+    desc: 'Misst etwas — Temperatur, Durchfluss, Füllstand, Gewicht oder einen Schaltzustand.' },
+  actuator: { icon: Zap,
+    desc: 'Schaltet oder stellt etwas — Relais, SSR, PWM/DAC oder ein Induktionsfeld.' },
+  controller: { icon: SlidersHorizontal,
+    desc: 'Regelt einen Aktor auf den Messwert eines Sensors.' },
+};
+
+// Step 2 — one icon per `group`. MQTT and Remote exist for both sensors and
+// actuators and share their icon, so a flat key is enough.
+export const CATEGORY_ICON: Record<string, LucideIcon> = {
+  'Temperatur': Thermometer,
+  'Feuchte / Druck': Droplets,
+  'Durchfluss': Waves,
+  'Distanz': Ruler,
+  'Gewicht': Scale,
+  'Digital / Schalter': ToggleLeft,
+  'MQTT': Radio,
+  'Remote': Cpu,
+  'GPIO': CircuitBoard,
+  'Induktion': Flame,
+  'Zweipunktregler': ToggleRight,
+  'PID': Activity,
 };
 
 // What the discovery dialog hands to AddItemModal — exactly the two shapes a

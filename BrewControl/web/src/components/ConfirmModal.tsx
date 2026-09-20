@@ -25,14 +25,16 @@ export function ConfirmModal({
           <div class="mt-2 text-sm text-muted">{children}</div>
         </div>
         <div class={dialogFooter}>
-          <div class={`w-full ${dialogBtnRow}`}>
-            <button type="button" onClick={onCancel} disabled={pending} class={btnSecondary}>
-              {cancelLabel}
-            </button>
-            <button type="button" onClick={onConfirm} disabled={pending}
-              class={destructive ? btnDanger : btnPrimary}>
-              {pending ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />{confirmLabel}</> : confirmLabel}
-            </button>
+          <div class="flex w-full flex-col gap-2">
+            <div class={dialogBtnRow}>
+              <button type="button" onClick={onCancel} disabled={pending} class={btnSecondary}>
+                {cancelLabel}
+              </button>
+              <button type="button" onClick={onConfirm} disabled={pending}
+                class={destructive ? btnDanger : btnPrimary}>
+                {pending ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />{confirmLabel}</> : confirmLabel}
+              </button>
+            </div>
             {extraLabel && onExtra && (
               <button type="button" onClick={onExtra} disabled={pending} class={btnSecondary}>
                 {extraLabel}

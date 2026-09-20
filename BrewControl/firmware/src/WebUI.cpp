@@ -1969,8 +1969,13 @@ void WebUI::begin() {
       .setCacheControl("max-age=600");
 
   // SPA fallback: serve index.html for unknown GET paths so client-side routes work
+  // Only navigation-style paths get the SPA/recovery page; anything with a file
+  // extension (/assets/x.js, /favicon.ico) is an asset request and answers 404 —
+  // otherwise an SD hiccup would hand HTML to a <script> tag.
   server_.onNotFound([this](AsyncWebServerRequest* req) {
-    if (req->method() == HTTP_GET && !req->url().startsWith("/api/")) {
+    const String url = req->url();
+    const bool isAsset = url.indexOf('.', url.lastIndexOf('/')) >= 0;
+    if (req->method() == HTTP_GET && !url.startsWith("/api/") && !isAsset) {
       bool haveUi;
       {
         SdLock lock;
