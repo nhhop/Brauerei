@@ -1,8 +1,8 @@
 // BrewControl/web/src/app.tsx
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Router } from 'preact-router';
-import type { Alert, AlarmConfig, Severity, Snapshot } from './types';
-import { getSnapshot, subscribeEvents, getSettings, getAlarms, getAlerts, clearAlerts, emergencyStop } from './api';
+import type { Alert, AlarmConfig, AuthStatus, Severity, Snapshot } from './types';
+import { getSnapshot, subscribeEvents, getSettings, getAlarms, getAlerts, clearAlerts, getAuthStatus, logout, emergencyStop } from './api';
 import { applyTheme, loadCachedTheme } from './theme';
 import { NavShell } from './components/NavShell';
 import { LoginModal } from './components/LoginModal';
@@ -118,6 +118,7 @@ export function App() {
   const { snap, err, alarms, alerts, toasts, dropToast, clearHistory } = useLiveState();
   const [locked, setLocked] = useState(false);
   const [centerOpen, setCenterOpen] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
 
   // Active threshold alarms keyed by the ref they watch, for the card badges.
   // Critical wins when two rules point at the same value.
@@ -143,6 +144,17 @@ export function App() {
     return () => window.removeEventListener('bc:unauthorized', onUnauthorized);
   }, []);
 
+  // Refetched whenever the login modal closes (successful login, or dismissed
+  // while still unauthenticated), so the nav's logout button stays in sync.
+  useEffect(() => {
+    getAuthStatus().then(setAuthStatus).catch(() => {});
+  }, [locked]);
+
+  async function handleLogout() {
+    try { await logout(); } catch { /* session may already be gone */ }
+    setLocked(true);
+  }
+
   // The SSE-driven actuator/program/timer cards show the result on their own
   // (disabled/paused) — no extra confirmation UI here.
   async function handleEmergencyStop() {
@@ -159,7 +171,8 @@ export function App() {
 
   return (
     <NavShell alertCount={activeCount} onBell={() => setCenterOpen(true)}
-      onEmergencyStop={handleEmergencyStop}>
+      showLogout={!!authStatus?.enabled && authStatus.uiProtected && authStatus.authenticated}
+      onLogout={handleLogout} onEmergencyStop={handleEmergencyStop}>
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
         <ProfilesPage path="/profiles" snap={snap} />

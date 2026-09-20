@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route, useRouter } from 'preact-router';
-import { LayoutDashboard, ListChecks, Calculator, Settings, Menu, Bell, Maximize, Minimize, OctagonX, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -36,11 +36,13 @@ const footerItems: NavItem[] = [
   { href: '/settings', label: 'Einstellungen', icon: Settings, match: (p) => p.startsWith('/settings') },
 ];
 
-export function NavShell({ children, alertCount = 0, onBell, onEmergencyStop }: {
+export function NavShell({ children, alertCount = 0, onBell, showLogout = false, onLogout, onEmergencyStop }: {
   children: ComponentChildren;
   // Optional so the shell stays usable on its own; App supplies both.
   alertCount?: number;
   onBell?: () => void;
+  showLogout?: boolean;
+  onLogout?: () => void;
   onEmergencyStop?: () => void;
 }) {
   const [expanded, setExpanded] = useState(loadExpanded);
@@ -148,6 +150,14 @@ export function NavShell({ children, alertCount = 0, onBell, onEmergencyStop }: 
             </button>
           )}
           {footerItems.map(renderItem)}
+          {showLogout && onLogout && (
+            <button type="button" onClick={() => { setMobileOpen(false); onLogout(); }}
+              title="Sperren"
+              class="flex items-center gap-3 rounded px-3 py-2 text-sm text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
+              <LogOut size={20} class="shrink-0" />
+              {showLabels && <span class="truncate">Sperren</span>}
+            </button>
+          )}
         </div>
       </nav>
       <main class="min-w-0 flex-1 overflow-y-auto pb-[var(--safe-b)] pr-[var(--safe-r)] max-md:pl-[var(--safe-l)]">
