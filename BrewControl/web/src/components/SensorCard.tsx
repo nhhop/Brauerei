@@ -58,16 +58,12 @@ export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onRes
       {viewMode === 'gauge' && (
         <>
           <div class="mt-1 flex flex-col items-center">
-            <Gauge value={live ? v : meta.min} min={meta.min} max={meta.max} size={220}>
+            <Gauge value={live ? v : meta.min} min={meta.min} max={meta.max} size={220} rangeLabels>
               <div class="flex flex-col items-center">
                 <span class="font-mono text-2xl tabular-nums text-fg">{live ? v.toFixed(2) : '—'}</span>
                 <span class="text-sm text-muted">{meta.unit}</span>
               </div>
             </Gauge>
-            <div class="-mt-1 flex w-[220px] justify-between text-[10px] text-faint">
-              <span>{meta.min}</span>
-              <span>{meta.max}</span>
-            </div>
           </div>
           {sensor.fault && (
             <span class={`mt-1 ${badgeCaution}`}>

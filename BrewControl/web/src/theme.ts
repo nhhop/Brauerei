@@ -2,6 +2,10 @@ import type { ThemeSettings } from './types';
 
 const STORAGE_KEY = 'brewctl-theme';
 
+// Mirrors --secondary in styles.css: what a device that predates the setting
+// (or a cleared value) falls back to.
+export const DEFAULT_SECONDARY = '#22c55e';
+
 export function applyTheme(settings: ThemeSettings): void {
   const root = document.documentElement;
 
@@ -15,6 +19,10 @@ export function applyTheme(settings: ThemeSettings): void {
 
   root.style.setProperty('--accent', settings.accent);
   root.style.setProperty('--accent-fg', contrastColor(settings.accent));
+
+  const secondary = settings.secondary || DEFAULT_SECONDARY;
+  root.style.setProperty('--secondary', secondary);
+  root.style.setProperty('--secondary-fg', contrastColor(secondary));
 
   if (settings.background !== 'neutral') {
     root.setAttribute('data-tint', settings.background);

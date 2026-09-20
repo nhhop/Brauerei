@@ -1544,7 +1544,8 @@ paths:
         "400":
           description: |
             Validation failed. Body is one of `invalid JSON`, `invalid mode`,
-            `invalid background`, `invalid accent`, `invalid channel`,
+            `invalid background`, `invalid accent`, `invalid secondary`,
+            `invalid channel`,
             `invalid utcOffsetSec`, `invalid dstOffsetSec`, `invalid timeFormat`,
             `invalid dateFormat`, `invalid mqtt mode`,
             `embedded broker not supported on this board`, `invalid mqtt port`,
@@ -3382,10 +3383,14 @@ components:
     # ── Settings ─────────────────────────────────────────────────────────────
     ThemeSettings:
       type: object
-      required: [mode, accent, background]
+      required: [mode, accent, secondary, background]
       properties:
         mode: { type: string, enum: [light, dark, system] }
         accent: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        secondary:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+          description: Second series color, used for controller output bars.
         background: { type: string, enum: [neutral, warm, cool] }
 
     FirmwareSettings:

@@ -2,13 +2,22 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { ThemeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
-import { applyTheme } from '../theme';
+import { applyTheme, DEFAULT_SECONDARY } from '../theme';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
 import { Contrast, Palette, PaintBucket } from 'lucide-preact';
+
+const SECONDARY_PRESETS: { label: string; value: string }[] = [
+  { label: 'Grün',     value: '#22c55e' },
+  { label: 'Limette',  value: '#84cc16' },
+  { label: 'Türkis',   value: '#14b8a6' },
+  { label: 'Bernstein', value: '#f59e0b' },
+  { label: 'Magenta',  value: '#d946ef' },
+  { label: 'Grau',     value: '#94a3b8' },
+];
 
 const ACCENT_PRESETS: { label: string; value: string }[] = [
   { label: 'Windows-Blau', value: '#0078d4' },
@@ -23,6 +32,7 @@ export function AppearancePage(_: { path?: string }) {
   const [settings, setSettings] = useState<ThemeSettings>({
     mode: 'system',
     accent: '#0078d4',
+    secondary: DEFAULT_SECONDARY,
     background: 'neutral',
   });
   const [loading, setLoading] = useState(true);
@@ -77,6 +87,25 @@ export function AppearancePage(_: { path?: string }) {
               ))}
               <input type="color" value={settings.accent}
                 onInput={(e) => update({ accent: (e.target as HTMLInputElement).value })}
+                class="h-6 w-6 cursor-pointer rounded border border-border" title="Eigene Farbe" />
+            </div>
+          } />
+
+        <SettingsCard title="Sekundärfarbe" icon={Palette} desc="Zweite Reihe: Reglerausgang auf den Karten"
+          control={
+            <div class="flex flex-wrap items-center gap-2">
+              {SECONDARY_PRESETS.map((p) => (
+                <button key={p.value} type="button" title={p.label}
+                  onClick={() => update({ secondary: p.value })}
+                  class="h-6 w-6 rounded-full transition-transform hover:scale-110"
+                  style={{
+                    background: p.value,
+                    boxShadow: (settings.secondary ?? DEFAULT_SECONDARY) === p.value
+                      ? `0 0 0 2px var(--surface), 0 0 0 4px ${p.value}` : 'none',
+                  }} />
+              ))}
+              <input type="color" value={settings.secondary ?? DEFAULT_SECONDARY}
+                onInput={(e) => update({ secondary: (e.target as HTMLInputElement).value })}
                 class="h-6 w-6 cursor-pointer rounded border border-border" title="Eigene Farbe" />
             </div>
           } />

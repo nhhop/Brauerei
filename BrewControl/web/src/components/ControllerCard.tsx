@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X } from 'lucide-preact';
-import type { Controller, Sensor, Actuator, ProgramConfig, WidgetMode } from '../types';
+import type { Actuator, Controller, ProgramConfig, Sensor, WidgetMode } from '../types';
 import { setControllerSetpoint, enableController, writeActuator, controlProgram } from '../api';
 import { ToggleSwitch } from './ToggleSwitch';
 import { ConfirmModal } from './ConfirmModal';
@@ -20,6 +20,15 @@ interface Props {
   onDelete?: () => void;
   onEdit?: () => void;
   onCycleMode?: () => void;
+}
+
+// How far an actuator is driven, 0..100. The bar and the percentage read the
+// same number in every view, whatever the actuator's own range happens to be.
+function outputPct(a: Actuator | undefined): number | null {
+  if (!a || a.state.v == null || !isFinite(a.state.v)) return null;
+  const { min, max } = a.meta;
+  if (max <= min) return null;
+  return Math.max(0, Math.min(100, ((a.state.v - min) / (max - min)) * 100));
 }
 
 export function ControllerCard({ controller, sensors, actuators, programs = [], viewMode = 'normal', onDelete, onEdit, onCycleMode }: Props) {
@@ -50,15 +59,20 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
   const hasExplicitRange = params?.rangeMin != null && params?.rangeMax != null && params.rangeMax > params.rangeMin;
   const rangeMin = hasExplicitRange ? params!.rangeMin! : (linkedSensor?.meta.min ?? 0);
   const rangeMax = hasExplicitRange ? params!.rangeMax! : (linkedSensor?.meta.max ?? 100);
-  const spUnit = linkedSensor?.meta.unit ?? '';
+  const unit = linkedSensor?.meta.unit ?? '';
 
-  // Fill bar: red while below setpoint (still heating up), blue at/above it
-  // (reached or overshot).
   const istVal = linkedSensor?.state.v;
   const istOk = istVal != null && isFinite(istVal);
   const spNum = parseFloat(sp);
-  const sliderColor = istOk && !isNaN(spNum) && istVal! < spNum
-    ? 'var(--critical)' : 'var(--accent)';
+
+  // Outputs, in the order they are shown. A dual-output controller drives both
+  // stages at once, so both get their own bar.
+  const outputs: { label: string; pct: number | null }[] = dualOutput
+    ? [
+        ...(params?.heatActuator ? [{ label: 'Heizen', pct: outputPct(linkedHeat) }] : []),
+        ...(params?.coolActuator ? [{ label: 'Kühlen', pct: outputPct(linkedCool) }] : []),
+      ]
+    : (linkedActuator ? [{ label: 'Ausgang', pct: outputPct(linkedActuator) }] : []);
 
   async function applySp(v?: number) {
     // Accept the value directly rather than always re-reading `sp`: called
@@ -99,14 +113,14 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
     finally { setConfirmOpen(false); }
   }
 
-  function fmtActuatorOut(v: number | null, max: number): string {
-    if (v == null || !isFinite(v)) return '—';
-    return max <= 1 ? `${(v * 100).toFixed(0)}%` : v.toFixed(2);
-  }
+  const fmt = (v: number | null | undefined, digits = 1) =>
+    v != null && isFinite(v) ? v.toFixed(digits) : '—';
 
-  // Click-to-edit Sollwert value — identical across all three view modes,
-  // just the input width differs to fit tighter layouts.
-  function sollwertValue(narrow?: boolean) {
+  // Click-to-edit setpoint. The value carries the accent color in every view;
+  // the unit sits outside so it stays small and muted next to the input too.
+  function sollwert(size: 'lg' | 'md' | 'sm') {
+    const valueClass = size === 'lg' ? 'text-3xl' : size === 'md' ? 'text-xl' : 'text-base';
+    const inputWidth = size === 'lg' ? 'w-28' : size === 'md' ? 'w-24' : 'w-20';
     return editingSp ? (
       <input type="number" step="any" value={sp} autoFocus
         onInput={(e) => setSp((e.target as HTMLInputElement).value)}
@@ -115,22 +129,73 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
           if (e.key === 'Enter') { applySp(); setEditingSp(false); }
           else if (e.key === 'Escape') { setSp(setpoint.toString()); setEditingSp(false); }
         }}
-        class={`${inp} ${narrow ? 'w-20' : 'w-24'} font-mono text-right`} />
+        class={`${inp} ${inputWidth} ${valueClass} font-mono tabular-nums text-right`} />
     ) : (
       <span onClick={() => setEditingSp(true)} title="Klicken zum Bearbeiten"
-        class="cursor-pointer font-mono text-fg hover:text-accent">
-        {isNaN(spNum) ? sp : spNum.toFixed(1)} {spUnit}
+        class={`${valueClass} cursor-pointer font-mono font-semibold tabular-nums text-fg hover:opacity-80`}>
+        {isNaN(spNum) ? sp : spNum.toFixed(1)}
       </span>
     );
   }
+
+  function label(text: string, tight?: boolean) {
+    return <span class={`${tight ? 'text-[10px]' : 'text-xs'} text-muted`}>{text}</span>;
+  }
+
+  function istBlock(size: 'lg' | 'sm') {
+    return (
+      <div class="flex items-baseline gap-1">
+        <span class={`${size === 'lg' ? 'text-3xl' : 'text-base'} font-mono font-semibold tabular-nums text-accent`}>
+          {fmt(istOk ? istVal : null, 2)}
+        </span>
+        <span class="text-xs text-muted">{unit}</span>
+      </div>
+    );
+  }
+
+  // Label + percentage + bar, in the configurable secondary color.
+  function outputBar(o: { label: string; pct: number | null }) {
+    return (
+      <div key={o.label} class="mt-3">
+        <div class="flex items-baseline justify-between gap-2">
+          {label(o.label)}
+          <span class="font-mono text-sm font-medium tabular-nums text-secondary">
+            {o.pct == null ? '—' : `${o.pct.toFixed(0)} %`}
+          </span>
+        </div>
+        <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-fg/10">
+          <div class="h-full rounded-full bg-secondary transition-[width] duration-300"
+            style={{ width: `${o.pct ?? 0}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  const setpointSlider = (
+    <Slider value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax} step="any"
+      color="var(--accent)" fillValue={istOk ? istVal : undefined}
+      onInput={(v) => setSp(v.toString())}
+      onChange={(v) => { setSp(v.toString()); applySp(v); }} />
+  );
+
+  // Rate-limited controllers ramp towards the setpoint — worth a line, since
+  // the number on the card is the target, not what the controller acts on.
+  const rampNote = params?.maxRatePerSec != null && (
+    <p class="mt-2 text-[11px] text-muted">
+      Ziel <span class="font-mono text-fg">{setpoint.toFixed(1)}</span>
+      {' · aktuell '}
+      <span class="font-mono text-fg">{(params.effectiveSetpoint ?? setpoint).toFixed(1)}</span>
+      {Math.abs((params.effectiveSetpoint ?? setpoint) - setpoint) > 0.05 && ' (rampt)'}
+    </p>
+  );
 
   return (
     <div class={`${widgetSizeClass[viewMode]} rounded-lg border bg-card p-4 shadow-elev-2 transition-[opacity,box-shadow] duration-200 hover:shadow-elev-8 ${
       enabled ? 'border-card-border' : 'border-card-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">
-        <h3 class="font-medium text-fg">{id}</h3>
-        <div class="flex items-center gap-1.5">
+        <h3 class="truncate font-medium text-fg">{id}</h3>
+        <div class="flex shrink-0 items-center gap-1.5">
           <ToggleSwitch checked={enabled} disabled={toggling} mixed={!!progOwner}
             title={progOwner ? `Wird von Programm „${progOwner.id}“ gesteuert`
               : (enabled ? 'Regler deaktivieren' : 'Regler aktivieren')}
@@ -147,93 +212,94 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
         </div>
       </div>
 
-      {(linkedSensor || linkedActuator || dualOutput || params?.maxRatePerSec != null) && (
-        <div class="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
-          {linkedSensor && (
-            <span>Ist:{' '}
-              <span class="font-mono text-fg">
-                {linkedSensor.state.v != null && isFinite(linkedSensor.state.v)
-                  ? linkedSensor.state.v.toFixed(2) : '—'}
-              </span>{' '}{linkedSensor.meta.unit}
-            </span>
-          )}
-          {!dualOutput && linkedActuator && (
-            <span>Ausgang:{' '}
-              <span class="font-mono text-fg">
-                {fmtActuatorOut(linkedActuator.state.v, linkedActuator.meta.max)}
-              </span>
-            </span>
-          )}
-          {dualOutput && linkedHeat && (
-            <span>Heizen:{' '}
-              <span class="font-mono text-fg">
-                {fmtActuatorOut(linkedHeat.state.v, linkedHeat.meta.max)}
-              </span>
-            </span>
-          )}
-          {dualOutput && linkedCool && (
-            <span>Kühlen:{' '}
-              <span class="font-mono text-fg">
-                {fmtActuatorOut(linkedCool.state.v, linkedCool.meta.max)}
-              </span>
-            </span>
-          )}
-          {params?.maxRatePerSec != null && (
-            <span>Ziel: <span class="font-mono text-fg">{setpoint.toFixed(1)}</span>
-              {' · aktuell: '}
-              <span class="font-mono text-fg">
-                {(params.effectiveSetpoint ?? setpoint).toFixed(1)}
-              </span>
-              {Math.abs((params.effectiveSetpoint ?? setpoint) - setpoint) > 0.05 && ' (rampt)'}
-            </span>
-          )}
-        </div>
-      )}
-
-      {viewMode === 'compact' && (
-        <div class="mt-3 flex items-center justify-between">
-          <span class="text-xs text-muted">Sollwert</span>
-          {sollwertValue(true)}
-        </div>
+      {viewMode === 'normal' && (
+        <>
+          <div class="mt-2 flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              {label('Ist')}
+              {istBlock('lg')}
+            </div>
+            <div class="text-right">
+              {label('Soll')}
+              <div class="flex items-baseline justify-end gap-1">
+                {sollwert('lg')}
+                <span class="text-xs text-muted">{unit}</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2">{setpointSlider}</div>
+          <div class="mt-1 flex justify-between text-[10px] text-faint">
+            <span>{rangeMin}</span>
+            <span>{rangeMax}</span>
+          </div>
+          {rampNote}
+          {outputs.map(outputBar)}
+        </>
       )}
 
       {viewMode === 'gauge' && (
         <div class="mt-1 flex flex-col items-center">
           <Gauge value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax}
-            fillValue={istOk ? istVal : undefined} color={sliderColor} interactive
+            fillValue={istOk ? istVal : undefined} color="var(--accent)" interactive rangeLabels
             ariaLabel={`Sollwert ${id}`}
             onInput={(val) => setSp(val.toString())}
             onChange={(val) => { setSp(val.toString()); applySp(val); }}
             size={220}>
-            <div class="pointer-events-auto flex flex-col items-center gap-0.5">
-              <span class="text-[10px] uppercase tracking-wide text-faint">Soll</span>
-              {sollwertValue(true)}
+            <div class="pointer-events-auto flex flex-col items-center leading-tight">
+              {label('Soll', true)}
+              <div class="flex items-baseline gap-1">
+                {sollwert('md')}
+                <span class="text-xs text-muted">{unit}</span>
+              </div>
+              <div class="mt-1.5">{label('Ist', true)}</div>
+              {istBlock('lg')}
+              {outputs.length > 0 && (
+                <div class="mt-1.5 flex flex-col items-center">
+                  {label(outputs.length > 1 ? 'Ausgänge' : outputs[0].label, true)}
+                  <div class="flex items-baseline gap-2">
+                    {outputs.map((o) => (
+                      <span key={o.label} class="font-mono text-sm tabular-nums text-secondary">
+                        {o.pct == null ? '—' : `${o.pct.toFixed(0)} %`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </Gauge>
-          <div class="-mt-1 flex w-[220px] justify-between text-[10px] text-faint">
-            <span>{rangeMin}</span>
-            <span>{rangeMax}</span>
-          </div>
+          {rampNote}
         </div>
       )}
 
-      {viewMode === 'normal' && (
-        <div class="mt-3">
-          <div class="flex items-center justify-between">
-            <span class="text-xs text-muted">Sollwert</span>
-            {sollwertValue()}
+      {viewMode === 'compact' && (
+        <>
+          <div class="mt-1.5 flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              {label('Ist', true)}
+              {istBlock('sm')}
+            </div>
+            <div>
+              {label('Soll', true)}
+              <div class="flex items-baseline gap-1">
+                {sollwert('sm')}
+                <span class="text-[10px] text-muted">{unit}</span>
+              </div>
+            </div>
+            {outputs.length > 0 && (
+              <div class="text-right">
+                {label(outputs.length > 1 ? 'Ausgänge' : outputs[0].label)}
+                <div class="flex items-baseline justify-end gap-2">
+                  {outputs.map((o) => (
+                    <span key={o.label} class="font-mono text-base font-semibold tabular-nums text-secondary">
+                      {o.pct == null ? '—' : `${o.pct.toFixed(0)} %`}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          <div class="mt-1.5">
-            <Slider value={isNaN(spNum) ? setpoint : spNum} min={rangeMin} max={rangeMax} step="any"
-              color={sliderColor} fillValue={istOk ? istVal : undefined}
-              onInput={(v) => setSp(v.toString())}
-              onChange={(v) => { setSp(v.toString()); applySp(v); }} />
-          </div>
-          <div class="mt-1 flex justify-between text-[10px] text-faint">
-            <span>{rangeMin}</span>
-            <span>{rangeMax}</span>
-          </div>
-        </div>
+          <div class="mt-1.5">{setpointSlider}</div>
+        </>
       )}
 
       {viewMode !== 'compact' && isPid && autotuneState && (

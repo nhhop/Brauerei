@@ -1463,6 +1463,11 @@ void WebUI::begin() {
               req->send(400, "text/plain", "invalid background"); return;
             }
           }
+          if (const char* s = theme["secondary"]) {
+            if (strlen(s) != 7 || s[0] != '#') {
+              req->send(400, "text/plain", "invalid secondary"); return;
+            }
+          }
           if (const char* a = theme["accent"]) {
             if (strlen(a) != 7 || a[0] != '#') {
               req->send(400, "text/plain", "invalid accent"); return;

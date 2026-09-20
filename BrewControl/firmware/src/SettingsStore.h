@@ -65,6 +65,7 @@ class SettingsStore {
  private:
   String mode_       = "system";   // "light" | "dark" | "system"
   String accent_     = "#0078d4";  // hex color (Windows accent blue)
+  String secondary_  = "#22c55e";  // hex color (second series: controller output)
   String background_ = "neutral";  // "neutral" | "warm" | "cool"
   String fwChannel_   = "stable";  // "stable" | "preview"
   bool   fwAutoCheck_ = true;

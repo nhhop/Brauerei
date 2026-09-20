@@ -7,7 +7,7 @@ import type { WidgetMode } from './types';
 export const widgetSizeClass: Record<WidgetMode, string> = {
   normal: 'min-h-[160px] row-span-2',
   compact: 'min-h-[72px] row-span-1',
-  gauge: 'min-h-[336px] row-span-4',
+  gauge: 'min-h-[248px] row-span-3',
 };
 
 // Shared Fluent-style button classes for dialog footers — reused across

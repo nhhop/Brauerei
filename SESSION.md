@@ -3594,3 +3594,49 @@ Verhalten); wirklich neue Karten hängen sich an die letzte Kartengruppe.
 **Offen:** Der Escape-Abbruch ließ sich nicht automatisiert prüfen (die
 Browser-Automatisierung kann keinen gedrückten Mausknopf halten). Die Persistenz
 am echten Gerät steht bis zum nächsten Flash aus, siehe PLAN.md.
+
+## 2026-09-20 — Regler-Karten nach Vorlage + frei wählbare Sekundärfarbe
+
+Nutzer-Vorlagen für alle drei Größen der Regler-Card. **Groß:** Ist links und
+Soll rechts nebeneinander groß, darunter der Slider mit Min/Max, darunter
+„Ausgang" mit Prozentwert und Balken. **Gauge:** Soll, Ist und Ausgang
+untereinander im Kreis. **Kompakt:** dieselben drei Werte in einer Zeile über
+einem schmalen Slider. Der Klick auf den Sollwert macht daraus in allen drei
+Größen ein Eingabefeld (unverändert, nur die Schriftgröße passt sich an).
+
+**Farben.** Der Sollwert ist weiß, der Istwert trägt die Akzentfarbe, und die
+Füllung von Slider und Bogen ist **immer** Akzent — die bisherige Rotfärbung
+unterhalb des Sollwerts entfällt (ausdrücklicher Wunsch: keine Zustandsfarbe an
+dieser Stelle). Ausgangsbalken und -prozentwert nutzen eine neue
+**Sekundärfarbe**, die wie die Akzentfarbe am Gerät liegt (`SettingsStore`,
+`theme.ts` setzt `--secondary`/`--secondary-fg`, Einstellungen → Darstellung mit
+sechs Vorgaben plus freier Wahl, Default `#22c55e`). Damit gilt sie geräteweit
+und ist über `GET /api/backup` gesichert; `WebUI.cpp` validiert sie wie den
+Akzent (`invalid secondary`), `docs/openapi.yaml` ist nachgezogen. Ältere Geräte
+ohne das Feld fallen auf den Default zurück (`secondary?` in `ThemeSettings`).
+
+**Ausgang in Prozent.** Der Wert wird jetzt einheitlich als Prozent des
+Aktorbereichs gezeigt (vorher der Rohwert, sobald `max > 1`) — passend zum
+Balken. Regler mit getrenntem Heiz-/Kühlausgang bekommen zwei Balken.
+
+**Gauge aufgeräumt.** Min/Max sitzen jetzt in der Lücke des Bogens statt in
+einer eigenen Zeile darunter (neuer `rangeLabels`-Schalter, auch von der
+SensorCard genutzt). Die Gauge reservierte bisher ein **quadratisches** Feld,
+obwohl der Bogen wegen der 90°-Lücke schon bei rund 80 % der Höhe endet — der
+tote Streifen darunter ist weg, das Feld endet knapp unter den Bogenenden (aus
+der Bogengeometrie gerechnet, nicht geschätzt: 185 statt 220 px bei `size=220`).
+Dadurch passt die Gauge-Karte in `row-span-3` statt `row-span-4`
+(`widgetSizeClass`, 248 statt 336 px) — 55 px toter Raum weniger pro Karte.
+Linienstärke und Knopf sind auf die Maße des linearen Sliders umgerechnet
+(6 px Spur, 18 px Knopf aus `styles.css`), vorher 15,4 bzw. 21,6 px.
+
+**Verifikation:** `pnpm typecheck` grün, `pio run -e esp32dev` grün, Redocly
+valide (nur die bekannte `license`-Warnung). Im Browser gegen den lokalen Mock
+geprüft: alle drei Ansichten inklusive Klick-Edit am Sollwert, Umschalten der
+Sekundärfarbe färbt Balken und Prozentwert sofort um und erreicht die API als
+`theme.secondary`, Kartenhöhen nachgemessen (Gauge-Karte 251 px bei 250 px
+Inhalt, vorher 336 bei 281), Bogenstärke 6 px und Knopf 18 px exakt wie beim
+Slider.
+
+**Offen:** Persistenz der Sekundärfarbe am echten Gerät, siehe PLAN.md — das
+Testboard läuft weiter mit einer Firmware ohne das Feld.
