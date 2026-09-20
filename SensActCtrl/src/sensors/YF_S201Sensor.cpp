@@ -104,7 +104,9 @@ void YF_S201Sensor::tick() {
 // ── channel() ────────────────────────────────────────────────────────────────
 
 Channel YF_S201Sensor::channel(size_t idx) const {
-  if (idx == 0) {
+  // Map the exposed index to the physical channel (0 = rate, 1 = volume).
+  const size_t phys = (channelMask_ & kChannelRate) ? idx : 1;
+  if (phys == 0) {
     return {"rate",
             SensorMeta{ValueKind::Continuous, Quantity::FlowRate,
                        "L/min", 0.0f, 120.0f, 0.1f},

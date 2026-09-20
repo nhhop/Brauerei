@@ -24,6 +24,31 @@ void test_channel_count_and_keys() {
   TEST_ASSERT_EQUAL_STRING("volume", s.channel(1).key);
 }
 
+void test_channel_mask_rate_only() {
+  YF_S201Sensor s("flow", 4);
+  s.setChannelMask(YF_S201Sensor::kChannelRate);
+  TEST_ASSERT_EQUAL(1u, s.channelCount());
+  TEST_ASSERT_EQUAL_STRING("rate", s.channel(0).key);
+}
+
+void test_channel_mask_volume_only() {
+  YF_S201Sensor s("flow", 4);
+  s.setChannelMask(YF_S201Sensor::kChannelVolume);
+  s.begin();
+  TEST_ASSERT_EQUAL(1u, s.channelCount());
+  TEST_ASSERT_EQUAL_STRING("volume", s.channel(0).key);
+  pulse(s, 450);
+  s.tick();
+  TEST_ASSERT_TRUE(s.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, s.channel(0).reading.value);
+}
+
+void test_channel_mask_zero_is_ignored() {
+  YF_S201Sensor s("flow", 4);
+  s.setChannelMask(0);
+  TEST_ASSERT_EQUAL(2u, s.channelCount());
+}
+
 void test_channel_meta() {
   YF_S201Sensor s("flow", 4);
   Channel rate = s.channel(0);
@@ -112,6 +137,9 @@ void tearDown() {}
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_channel_count_and_keys);
+  RUN_TEST(test_channel_mask_rate_only);
+  RUN_TEST(test_channel_mask_volume_only);
+  RUN_TEST(test_channel_mask_zero_is_ignored);
   RUN_TEST(test_channel_meta);
   RUN_TEST(test_default_readings_invalid_before_tick);
   RUN_TEST(test_rate_calculates_correctly);

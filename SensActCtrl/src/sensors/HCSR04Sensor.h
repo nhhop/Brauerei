@@ -19,8 +19,15 @@ class HCSR04Sensor : public Sensor {
   // channel(1).reading.valid stays false until this is called.
   void setScale(float factor, float offset = 0.0f, const char* unit = "");
 
+  // Expose only a subset of the channels (bit 0 = "distance", bit 1 = "derived").
+  // The measurement itself always runs; the mask only filters channelCount() /
+  // channel(). Default: both. A mask without any valid bit is ignored.
+  static constexpr uint8_t kChannelDistance = 1;
+  static constexpr uint8_t kChannelDerived  = 2;
+  void setChannelMask(uint8_t mask) { if (mask & 3) channelMask_ = mask & 3; }
+
   const char* id()           const override { return id_; }
-  size_t      channelCount() const override { return 2; }
+  size_t      channelCount() const override { return (channelMask_ & 1) + ((channelMask_ >> 1) & 1); }
   Channel     channel(size_t idx) const override;
 
   void begin() override;
@@ -52,6 +59,7 @@ class HCSR04Sensor : public Sensor {
   int         trigPin_;
   int         echoPin_;
   int         slotIdx_    = -1;
+  uint8_t     channelMask_ = kChannelDistance | kChannelDerived;
 
   volatile State    state_      = State::Idle;
   volatile uint32_t startUs_    = 0;

@@ -22,11 +22,18 @@ class YF_S201Sensor : public Sensor {
   YF_S201Sensor(const char* id, int pin);
 
   const char* id()                const override { return id_; }
-  size_t      channelCount()      const override { return 2; }
+  size_t      channelCount()      const override { return (channelMask_ & 1) + ((channelMask_ >> 1) & 1); }
   Channel     channel(size_t idx) const override;
 
   void begin() override;
   void tick()  override;
+
+  // Expose only a subset of the channels (bit 0 = "rate", bit 1 = "volume").
+  // Counting always runs; the mask only filters channelCount() / channel().
+  // Default: both. A mask without any valid bit is ignored.
+  static constexpr uint8_t kChannelRate   = 1;
+  static constexpr uint8_t kChannelVolume = 2;
+  void setChannelMask(uint8_t mask) { if (mask & 3) channelMask_ = mask & 3; }
 
   // Override calibration (pulses/s per L/min). Default: kHzPerLiterPerMin.
   void setCalibration(float hzPerLiterPerMin);
@@ -63,6 +70,7 @@ class YF_S201Sensor : public Sensor {
   int         pinIdx_         = -1;
   bool        ownsIsr_        = false;
   float       hzPerLPerMin_   = kHzPerLiterPerMin;
+  uint8_t     channelMask_    = kChannelRate | kChannelVolume;
 
   uint32_t    volumeBaseCount_ = 0;
   uint32_t    lastWindowMs_    = 0;

@@ -82,20 +82,18 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
 
   if (!open) return null;
 
-  // A multi-channel sensor (e.g. "bme.temp") joins the dashboard as its base id,
-  // so the rows are deduped on that — the detail then names the channel count
-  // instead of a single reading.
+  // Every channel of a multi-channel sensor (e.g. "flow.rate") is its own row and
+  // its own card. A dashboard saved before that may still hold the bare base id
+  // (all channels together); it stays listed so it can be unchecked.
   const snapSensors = snap?.sensors ?? [];
   const baseId = (id: string) => (id.includes('.') ? id.split('.')[0] : id);
-  const sensorRows: Row[] = [...new Set(snapSensors.map((s) => baseId(s.id)))].map((id) => {
-    const chans = snapSensors.filter((s) => baseId(s.id) === id);
-    return {
-      id, label: id,
-      detail: chans.length === 1
-        ? fmtValue(chans[0].state, chans[0].meta.unit)
-        : `${chans.length} Kanäle`,
-    };
-  });
+  const sensorRows: Row[] = snapSensors.map((s) => ({
+    id: s.id, label: s.id, detail: fmtValue(s.state, s.meta.unit),
+  }));
+  for (const id of new Set(snapSensors.map((s) => baseId(s.id)))) {
+    if (sensors.has(id) && !sensorRows.some((r) => r.id === id))
+      sensorRows.push({ id, label: id, detail: 'alle Kanäle' });
+  }
 
   const actuatorRows: Row[] = (snap?.actuators ?? []).map((a) => ({
     id: a.id, label: a.id,
@@ -237,8 +235,8 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
 
     <AddItemModal open={subAddOpen} snap={snap} initialRole={addRole}
       onClose={() => setSubAddOpen(false)}
-      onCreated={(role, id) => {
-        if (role === 'sensor') toggle(sensors, setSensors, id);
+      onCreated={(role, id, dashboardIds) => {
+        if (role === 'sensor') setSensors(new Set([...sensors, ...dashboardIds]));
         else if (role === 'actuator') toggle(actuators, setActuators, id);
         else toggle(controllers, setControllers, id);
       }} />

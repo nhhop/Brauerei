@@ -139,7 +139,9 @@ void HCSR04Sensor::tick() {
 // ── channel() ────────────────────────────────────────────────────────────────
 
 Channel HCSR04Sensor::channel(size_t idx) const {
-  if (idx == 0) {
+  // Map the exposed index to the physical channel (0 = distance, 1 = derived).
+  const size_t phys = (channelMask_ & kChannelDistance) ? idx : 1;
+  if (phys == 0) {
     return {"distance",
             SensorMeta{ValueKind::Continuous, Quantity::Distance,
                        "cm", 2.0f, 400.0f, 0.1f},

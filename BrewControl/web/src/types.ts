@@ -147,7 +147,7 @@ export interface LayoutSplit {
 }
 
 export interface LayoutLeaf {
-  // "sensor/<baseId>" | "actuator/<id>" | "controller/<id>" | "chart/<logId>"
+  // "sensor/<baseId>" | "sensor/<baseId>.<channel>" | "actuator/<id>" | "controller/<id>" | "chart/<logId>"
   // | "program/<id>" | "timer/<id>"
   items: string[];
 }
@@ -156,7 +156,7 @@ export interface LayoutLeaf {
 export interface DashboardConfig {
   id: string;
   name: string;
-  sensors: string[];      // base IDs (without sub-channel suffix)
+  sensors: string[];      // base IDs (all channels) or channel IDs ("tank.distance")
   actuators: string[];
   controllers: string[];
   charts: string[];       // referenced log/chart IDs (see LogConfig); always present, may be empty

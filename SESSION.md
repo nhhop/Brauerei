@@ -3829,3 +3829,33 @@ genau die beiden Zustände mit Inhalt.
 Altbestand, kein Folgefehler der Karten-Überarbeitung: vorher lagen unter dem
 Bogen ohnehin die Min/Max-Zeile und rund 55 px toter Raum, seit die Karte eng
 sitzt steht die Linie frei. `pnpm typecheck` grün.
+
+## 2026-09-20 — Multi-Channel-Sensoren: Kanäle einzeln anlegen und platzieren
+
+Auslöser: HCSR04 und YF-S201 erzeugten immer beide Kanäle, im Dashboard saßen sie
+als gestapelter Block (Ref `sensor/<base>`) und rissen Leerraum ins Raster.
+Ursache: ein Multi-Channel-Sensor ist ein `Sensor`-Objekt mit einem
+Registry-Eintrag, die Kanäle entstehen erst im Snapshot (`RegistrySnapshot.cpp`).
+Entscheidung: keine gruppierte Karte, stattdessen einzelne Kanalkarten; die
+Gruppenkarte steht als eigener PLAN-Eintrag.
+
+Umsetzung: `HCSR04Sensor`/`YF_S201Sensor` bekommen `setChannelMask()`
+(Messung/ISR laufen unverändert, nur `channelCount()`/`channel()` filtern;
+Default = alle, Maske ohne gültiges Bit wird ignoriert). `DynamicItems.cpp`
+liest `channels` aus dem POST-Body (unbekannter Key, leeres Array und
+`derived` ohne `factor` → 400; fehlt `channels`, bleiben alle Kanäle —
+alte Configs laden unverändert), der Reset-Callback hängt nur noch am
+`volume`-Kanal. `removeSensor` prüft Controller-Referenzen jetzt auch gegen
+Kanal-IDs (`tank.derived`), vorher blockierte nur die nackte Basis-ID.
+Frontend: Kanal-Häkchen im Add-Dialog (HCSR04: Distanz/Ableitung, YF-S201:
+Durchfluss/Volumen; Ableitung braucht Faktor), Dashboard-Inhalte listen jeden
+Kanal einzeln, `sensor/<base>.<channel>`-Refs rendern nur diesen Kanal,
+Edit/Reset laufen weiter über die Basis-ID, ein Umbenennen zieht auch
+Kanal-Refs mit. Bestehende Dashboards mit Basis-Ref rendern unverändert
+gestapelt (kein Auto-Migrieren), der Eintrag bleibt im Dialog abwählbar.
+`channels` ist in `openapi.yaml` dokumentiert.
+
+Verifikation: `pio test -e native` für `test_hcsr04`/`test_yf_s201` (neue
+Maskentests), `pio run -e esp32dev` und `pnpm typecheck` grün,
+`redocly lint` valide. Hardware-Test durch den Nutzer erfolgreich (Kanalauswahl
+beim Anlegen, einzelne Kanalkarten im Dashboard).

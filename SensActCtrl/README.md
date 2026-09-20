@@ -53,7 +53,10 @@ Beispiele:
 Jede Sensor-Instanz kann mehrere **Kanäle** haben (`channelCount()` +
 `channel(idx)`, `Channel`-Struct aus `key`+`SensorMeta`+`Reading`) — z.B.
 liefert `YF_S201Sensor` einen `"rate"`- und einen `"volume"`-Kanal aus
-derselben Instanz. Einkanalige Sensoren melden `channelCount()==1` mit
+derselben Instanz. `YF_S201Sensor` und `HCSR04Sensor` lassen per
+`setChannelMask()` nur einen Teil ihrer Kanäle nach außen zeigen (Messung
+und ISR laufen unverändert; `channelCount()`/`channel()` liefern nur die
+gewählten). Einkanalige Sensoren melden `channelCount()==1` mit
 leerem Key (transparent für Flat-Topic-Konsumenten wie MQTT).
 
 ## Mini-Beispiel

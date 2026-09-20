@@ -73,8 +73,11 @@ export function memberRefs(
   const baseIds = new Set(
     (snap?.sensors ?? []).map((s) => (s.id.includes('.') ? s.id.split('.')[0] : s.id)),
   );
+  // A sensor entry is either a base id (all its channels together) or a single
+  // channel id such as "tank.distance".
+  const sensorIds = new Set((snap?.sensors ?? []).map((s) => s.id));
   for (const id of dash.sensors ?? []) {
-    if (baseIds.has(id)) refs.push('sensor/' + id);
+    if (baseIds.has(id) || sensorIds.has(id)) refs.push('sensor/' + id);
   }
   for (const id of dash.controllers ?? []) {
     if ((snap?.controllers ?? []).some((c) => c.id === id)) refs.push('controller/' + id);

@@ -2626,6 +2626,17 @@ components:
         factor: { type: number }
         offset: { type: number }
         unit: { type: string }
+        channels:
+          type: array
+          items: { type: string }
+          minItems: 1
+          description: |
+            Channels to expose, for the multi-channel types `YF-S201`
+            (`rate`, `volume`) and `HCSR04` (`distance`, `derived`). Absent →
+            all channels. The measurement itself always runs; the array only
+            decides which channels appear in the snapshot (as `<id>.<channel>`).
+            `derived` requires `factor`. An unknown key, an empty array or
+            `derived` without `factor` is rejected with 400.
         pullup: { type: boolean }
         invert: { type: boolean }
         debounce_ms: { type: integer }

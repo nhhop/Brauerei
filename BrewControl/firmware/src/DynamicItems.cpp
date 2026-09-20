@@ -41,6 +41,27 @@ DynamicItems::Result DynamicItems::resolveRemoteTransport(const JsonObject& cfg,
 
 // ── Sensor ────────────────────────────────────────────────────────────────
 
+// Parses the optional "channels" array of a multi-channel sensor config into a
+// bit mask (bit 0 = key0, bit 1 = key1). Absent → both channels. Returns false
+// with err set on a non-array, empty array or unknown key.
+static bool parseChannelMask(const JsonObject& cfg, const char* key0,
+                             const char* key1, uint8_t& mask,
+                             const char*& err) {
+  mask = 3;
+  if (cfg["channels"].isNull()) return true;
+  JsonArrayConst arr = cfg["channels"].as<JsonArrayConst>();
+  if (arr.isNull()) { err = "channels must be an array"; return false; }
+  mask = 0;
+  for (JsonVariantConst v : arr) {
+    const char* k = v | "";
+    if (strcmp(k, key0) == 0)      mask |= 1;
+    else if (strcmp(k, key1) == 0) mask |= 2;
+    else { err = "unknown channel"; return false; }
+  }
+  if (!mask) { err = "channels must not be empty"; return false; }
+  return true;
+}
+
 DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
                                                      Registry& reg) {
   const char* type = cfg["type"] | "";
@@ -103,17 +124,29 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     if (pin < 0) return {false, "missing pin"};
     float cal = cfg["calibration"] | YF_S201Sensor::kHzPerLiterPerMin;
     if (cal <= 0.0f) return {false, "invalid calibration"};
+    uint8_t     mask;
+    const char* err = nullptr;
+    if (!parseChannelMask(cfg, "rate", "volume", mask, err)) return {false, err};
     auto sensor = std::make_unique<YF_S201Sensor>(e->id.c_str(), pin);
     if (cal != YF_S201Sensor::kHzPerLiterPerMin) sensor->setCalibration(cal);
+    sensor->setChannelMask(mask);
     YF_S201Sensor* rawPtr = sensor.get();
     e->ptr = std::move(sensor);
-    e->resetFn = [rawPtr]() { rawPtr->resetVolume(); };
+    if (mask & YF_S201Sensor::kChannelVolume)
+      e->resetFn = [rawPtr]() { rawPtr->resetVolume(); };
   } else if (strcmp(type, "HCSR04") == 0) {
     int trig = cfg["trig"] | -1;
     int echo = cfg["echo"] | -1;
     if (trig < 0) return {false, "missing trig"};
     if (echo < 0) return {false, "missing echo"};
+    uint8_t     mask;
+    const char* err = nullptr;
+    if (!parseChannelMask(cfg, "distance", "derived", mask, err)) return {false, err};
+    if ((mask & HCSR04Sensor::kChannelDerived) && cfg["factor"].isNull() &&
+        !cfg["channels"].isNull())
+      return {false, "derived channel needs factor"};
     auto sensor = std::make_unique<HCSR04Sensor>(e->id.c_str(), trig, echo);
+    sensor->setChannelMask(mask);
     if (!cfg["factor"].isNull()) {
       float       factor = cfg["factor"].as<float>();
       float       offset = cfg["offset"] | 0.0f;
@@ -449,7 +482,11 @@ DynamicItems::Result DynamicItems::addController(const JsonObject& cfg,
 
 DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
   for (auto& e : controllers_) {
-    if (e->sensorId == id)
+    // sensorId may name a channel ("tank.derived") of the sensor being removed.
+    const size_t n = strlen(id);
+    if (e->sensorId == id ||
+        (e->sensorId.compare(0, n, id) == 0 && e->sensorId.size() > n &&
+         e->sensorId[n] == '.'))
       return {false, "sensor is referenced by a controller"};
   }
   for (auto it = sensors_.begin(); it != sensors_.end(); ++it) {

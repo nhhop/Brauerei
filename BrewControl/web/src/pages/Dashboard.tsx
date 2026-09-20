@@ -40,7 +40,7 @@ function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
   return {
     sensors: snap.sensors.filter(s => {
       const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-      return si.has(base);
+      return si.has(base) || si.has(s.id);
     }),
     actuators: snap.actuators.filter(a => ai.has(a.id)),
     controllers: snap.controllers.filter(c => ci.has(c.id)),
@@ -219,16 +219,27 @@ export function Dashboard({ snap, err, alarmByRef }: {
 
   async function handleRenamed(role: Role, oldId: string, newId: string) {
     const key = role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers';
+    // A sensor can sit on a dashboard as its base id or as single channel ids
+    // ("<old>.distance"); both follow the rename.
+    const affected = (x: string) => x === oldId || (role === 'sensor' && x.startsWith(oldId + '.'));
+    const renamed = (x: string) => newId + x.slice(oldId.length);
     for (const d of dashboards) {
-      if (!d[key].includes(oldId)) continue;
-      const updated = {
-        ...dashBody(d),
-        sensorModes: role === 'sensor' ? remapMode(d.sensorModes, oldId, newId) : (d.sensorModes ?? {}),
-        controllerModes: role === 'controller' ? remapMode(d.controllerModes, oldId, newId) : (d.controllerModes ?? {}),
+      const hits = d[key].filter(affected);
+      if (hits.length === 0) continue;
+      let sensorModes = d.sensorModes ?? {};
+      let layout = d.layout;
+      for (const x of hits) {
+        if (role === 'sensor') sensorModes = remapMode(sensorModes, x, renamed(x));
         // Without this the card would lose its place: reconcile() drops the old
         // ref and appends the new one at the end.
-        layout: renameRef(d.layout, role + '/' + oldId, role + '/' + newId),
-        [key]: d[key].map(x => x === oldId ? newId : x),
+        layout = renameRef(layout, role + '/' + x, role + '/' + renamed(x));
+      }
+      const updated = {
+        ...dashBody(d),
+        sensorModes,
+        controllerModes: role === 'controller' ? remapMode(d.controllerModes, oldId, newId) : (d.controllerModes ?? {}),
+        layout,
+        [key]: d[key].map(x => affected(x) ? renamed(x) : x),
       };
       await updateDashboard(d.id, updated);
       setDashboards(ds => ds.map(x => x.id === d.id ? { ...x, ...updated } : x));
@@ -351,11 +362,13 @@ export function Dashboard({ snap, err, alarmByRef }: {
     const id = refId(ref);
     switch (refKind(ref)) {
       case 'sensor': {
-        // A multi-channel sensor moves as one unit, so all its channel cards
-        // render together under the single "sensor/<baseId>" ref.
+        // "sensor/<baseId>" renders all channel cards of a sensor together
+        // (legacy refs); "sensor/<baseId>.<channel>" renders just that channel.
+        // Edit/reset act on the sensor (base id), delete on the ref itself.
         const channels = (displaySnap?.sensors ?? []).filter(
-          (s) => (s.id.includes('.') ? s.id.split('.')[0] : s.id) === id);
+          (s) => s.id === id || (s.id.includes('.') ? s.id.split('.')[0] : s.id) === id);
         if (channels.length === 0) return null;
+        const baseId = id.includes('.') ? id.split('.')[0] : id;
         const mode = activeDash?.sensorModes?.[id] ?? 'normal';
         return (
           <div class={channels.length > 1 ? 'space-y-4' : ''}>
@@ -363,10 +376,10 @@ export function Dashboard({ snap, err, alarmByRef }: {
               <SensorCard key={s.id} sensor={s}
                 alarm={alarmByRef?.get(`sensor/${s.id}`)}
                 viewMode={mode}
-                onEdit={editMode ? () => startEdit('sensor', id) : undefined}
+                onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
                 onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
                 onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
-                  ? () => resetSensor(id) : undefined}
+                  ? () => resetSensor(baseId) : undefined}
                 onCycleMode={editMode ? () => cycleMode('sensorModes', id, mode) : undefined}
               />
             ))}

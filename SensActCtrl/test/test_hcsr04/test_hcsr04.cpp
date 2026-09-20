@@ -21,6 +21,34 @@ void test_channel_count_and_keys() {
   TEST_ASSERT_EQUAL_STRING("derived",  s.channel(1).key);
 }
 
+void test_channel_mask_distance_only() {
+  HCSR04Sensor s("tank", 5, 18);
+  s.setChannelMask(HCSR04Sensor::kChannelDistance);
+  TEST_ASSERT_EQUAL(1u, s.channelCount());
+  TEST_ASSERT_EQUAL_STRING("distance", s.channel(0).key);
+}
+
+void test_channel_mask_derived_only() {
+  HCSR04Sensor s("tank", 5, 18);
+  s.setScale(2.0f, 5.0f, "L");
+  s.setChannelMask(HCSR04Sensor::kChannelDerived);
+  s.begin();
+  TEST_ASSERT_EQUAL(1u, s.channelCount());
+  TEST_ASSERT_EQUAL_STRING("derived", s.channel(0).key);
+  HCSR04Sensor::advanceMillisForTest(60);
+  s.tick();
+  s.injectEchoForTest(580);  // 10 cm -> derived 25 (measurement still runs)
+  s.tick();
+  TEST_ASSERT_TRUE(s.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 25.0f, s.channel(0).reading.value);
+}
+
+void test_channel_mask_zero_is_ignored() {
+  HCSR04Sensor s("tank", 5, 18);
+  s.setChannelMask(0);
+  TEST_ASSERT_EQUAL(2u, s.channelCount());
+}
+
 void test_channel_meta_distance() {
   HCSR04Sensor s("tank", 5, 18);
   Channel ch = s.channel(0);
@@ -121,6 +149,9 @@ void tearDown() {}
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_channel_count_and_keys);
+  RUN_TEST(test_channel_mask_distance_only);
+  RUN_TEST(test_channel_mask_derived_only);
+  RUN_TEST(test_channel_mask_zero_is_ignored);
   RUN_TEST(test_channel_meta_distance);
   RUN_TEST(test_derived_invalid_without_scale);
   RUN_TEST(test_readings_invalid_before_first_measurement);

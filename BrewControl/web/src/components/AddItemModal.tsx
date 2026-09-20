@@ -41,7 +41,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // (the hydration effect keys on `open` alone), so the caller must set it in
   // the same handler that opens the dialog and clear it in onClose.
   prefill?: ItemPrefill;
-  onCreated?: (role: Role, id: string) => void;
+  // dashboardIds: what to add to a dashboard (channel ids for multi-channel sensors).
+  onCreated?: (role: Role, id: string, dashboardIds: string[]) => void;
   onRenamed?: (role: Role, oldId: string, newId: string) => void;
 }) {
   const isEdit = !!(editConfig && editRole);
@@ -71,7 +72,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // HCSR04
   const [trigPin, setTrigPin] = useState('');
   const [echoPin, setEchoPin] = useState('');
+  // Channel selection: showScale = "derived" channel enabled (needs factor).
+  const [chDistance, setChDistance] = useState(true);
   const [showScale, setShowScale] = useState(false);
+  // YF-S201 channel selection
+  const [chRate, setChRate] = useState(true);
+  const [chVolume, setChVolume] = useState(true);
   const [scaleFactor, setScaleFactor] = useState('');
   const [scaleOffset, setScaleOffset] = useState('');
   const [scaleUnit, setScaleUnit] = useState('');
@@ -215,6 +221,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setMosiPin(hasCustomSpi ? String(editConfig.mosi) : '');
         } else if (t === 'YF-S201') {
           setPin(String(editConfig.pin ?? ''));
+          const chs = editConfig.channels as string[] | undefined;
+          setChRate(!chs || chs.includes('rate'));
+          setChVolume(!chs || chs.includes('volume'));
         } else if (t === 'BME280') {
           setI2cAddr((editConfig.address ?? 0x76) as number);
         } else if (t === 'HX711') {
@@ -224,8 +233,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         } else if (t === 'HCSR04') {
           setTrigPin(String(editConfig.trig ?? ''));
           setEchoPin(String(editConfig.echo ?? ''));
+          const chs = editConfig.channels as string[] | undefined;
+          setChDistance(!chs || chs.includes('distance'));
           const hasDeriv = editConfig.factor != null;
-          setShowScale(hasDeriv);
+          setShowScale(chs ? chs.includes('derived') : hasDeriv);
           setScaleFactor(hasDeriv ? String(editConfig.factor) : '');
           setScaleOffset(hasDeriv ? String(editConfig.offset ?? '0') : '');
           setScaleUnit(hasDeriv ? String(editConfig.unit ?? '') : '');
@@ -364,6 +375,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       setRref(DEFAULT_RREF.PT100); setRrefTouched(false);
       setShowCustomSpi(false); setClkPin(''); setMisoPin(''); setMosiPin('');
       setTrigPin(''); setEchoPin('');
+      setChDistance(true); setChRate(true); setChVolume(true);
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
       setHx711Dout(''); setHx711Sck(''); setHx711Scale('');
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
@@ -465,6 +477,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
     try {
       let cfg: Record<string, unknown>;
+      // Dashboard entries a new sensor brings along: one per selected channel.
+      let createdIds = [trimId];
 
       if (role === 'sensor') {
         if (sensorType === 'DS18B20') {
@@ -486,7 +500,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         } else if (sensorType === 'YF-S201') {
           const p = parseInt(pin, 10);
           if (isNaN(p) || p < 0) throw new Error('Ungültiger Pin');
-          cfg = { type: 'YF-S201', id: trimId, pin: p };
+          const channels = [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
+          if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
+          cfg = { type: 'YF-S201', id: trimId, pin: p, channels };
         } else if (sensorType === 'BME280') {
           cfg = { type: 'BME280', id: trimId, address: i2cAddr };
         } else if (sensorType === 'HX711') {
@@ -540,8 +556,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           const echo = parseInt(echoPin, 10);
           if (isNaN(trig) || trig < 0) throw new Error('TRIG Pin ungültig');
           if (isNaN(echo) || echo < 0) throw new Error('ECHO Pin ungültig');
-          cfg = { type: 'HCSR04', id: trimId, trig, echo };
-          if (scaleFactor !== '') {
+          const channels = [chDistance && 'distance', showScale && 'derived'].filter(Boolean) as string[];
+          if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
+          if (showScale && scaleFactor === '') throw new Error('Faktor für die Ableitung erforderlich');
+          cfg = { type: 'HCSR04', id: trimId, trig, echo, channels };
+          if (showScale) {
             const f = parseFloat(scaleFactor);
             if (isNaN(f)) throw new Error('Faktor ungültig');
             cfg.factor = f;
@@ -551,6 +570,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         }
         if (isEdit) await deleteSensor(String(editConfig!.id));
         await createSensor(cfg);
+        if (Array.isArray(cfg.channels)) createdIds = (cfg.channels as string[]).map((c) => `${trimId}.${c}`);
 
       } else if (role === 'actuator') {
         if (actuatorType === 'IDS1' || actuatorType === 'IDS2') {
@@ -695,7 +715,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       }
 
       onClose();
-      if (!isEdit) onCreated?.(role, trimId);
+      if (!isEdit) onCreated?.(role, trimId, createdIds);
       else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId);
     } catch (e) { setErr(String(e)); }
     setPending(false);
@@ -904,9 +924,18 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
               </div>
-              <p class="text-xs text-faint">
-                Liefert zwei Kanäle: <strong>flow.rate</strong> (L/min) und <strong>flow.volume</strong> (L).
-              </p>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                  <input type="checkbox" checked={chRate} class="accent-accent"
+                    onChange={(e) => setChRate((e.target as HTMLInputElement).checked)} />
+                  Durchfluss (L/min)
+                </label>
+                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                  <input type="checkbox" checked={chVolume} class="accent-accent"
+                    onChange={(e) => setChVolume((e.target as HTMLInputElement).checked)} />
+                  Volumen (L)
+                </label>
+              </div>
             </div>
           )}
 
@@ -1081,11 +1110,19 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     placeholder="z.B. 18" class={inp} required />
                 </div>
               </div>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                  <input type="checkbox" checked={chDistance} class="accent-accent"
+                    onChange={(e) => setChDistance((e.target as HTMLInputElement).checked)} />
+                  Distanz (cm)
+                </label>
+                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                  <input type="checkbox" checked={showScale} class="accent-accent"
+                    onChange={(e) => setShowScale((e.target as HTMLInputElement).checked)} />
+                  Ableitung
+                </label>
+              </div>
               <div>
-                <button type="button" onClick={() => setShowScale(!showScale)}
-                  class="text-xs text-muted hover:text-fg">
-                  {showScale ? '▼' : '▶'} Ableitung (optional)
-                </button>
                 {showScale && (
                   <div class="mt-2 grid grid-cols-3 gap-2">
                     <div>
