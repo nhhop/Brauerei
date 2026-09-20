@@ -9,7 +9,7 @@ import type {
 import { fmtDuration } from '../format';
 import type { Role } from '../itemTypes';
 import { AddItemModal } from './AddItemModal';
-import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, inp } from '../ui';
 
 export interface DashboardMembers {
   sensors: string[]; actuators: string[]; controllers: string[]; charts: string[]; programs: string[]; timers: string[];
@@ -44,11 +44,6 @@ interface Section {
   add?: { label: string; onClick: () => void };
 }
 
-// Show the search field only once scrolling actually becomes a burden.
-const SEARCH_THRESHOLD = 8;
-
-const rowBase = 'flex items-center gap-3 border-b border-border px-5 py-2.5 text-left transition-colors';
-
 function fmtValue(state: ItemState, unit: string): string {
   const v = state.v;
   if (!state.ok || v == null || !isFinite(v)) return '—';
@@ -65,6 +60,7 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
   const [progs, setProgs] = useState<Set<string>>(new Set());
   const [timerIds, setTimerIds] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
+  const [cat, setCat] = useState('all');
   const [subAddOpen, setSubAddOpen] = useState(false);
   const [addRole, setAddRole] = useState<Role>('sensor');
 
@@ -77,6 +73,7 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
       setProgs(new Set(dash.programs ?? []));
       setTimerIds(new Set(dash.timers ?? []));
       setQuery('');
+      setCat('all');
     }
   }, [open, dash]);
 
@@ -144,12 +141,31 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
   const total = sections.reduce((n, s) => n + s.rows.length, 0);
   const selected = sections.reduce((n, s) => n + s.rows.filter((r) => s.sel.has(r.id)).length, 0);
 
+  // Delta against what the dashboard held when the dialog opened.
+  const baseSets: Record<string, string[]> = {
+    sensors: dash.sensors, actuators: dash.actuators, controllers: dash.controllers,
+    charts: dash.charts ?? [], programs: dash.programs ?? [], timers: dash.timers ?? [],
+  };
+  let added = 0, removed = 0;
+  for (const s of sections) {
+    const base = new Set(baseSets[s.key]);
+    for (const id of s.sel) if (!base.has(id)) added++;
+    for (const id of base) if (!s.sel.has(id)) removed++;
+  }
+  const noChanges = added === 0 && removed === 0;
+
   const q = query.trim().toLowerCase();
-  const visible = q
-    ? sections
-        .map((s) => ({ ...s, rows: s.rows.filter((r) => r.label.toLowerCase().includes(q)) }))
-        .filter((s) => s.rows.length > 0)
-    : sections;
+  const visible = sections
+    .filter((s) => cat === 'all' || s.key === cat)
+    .map((s) => ({ ...s, rows: q ? s.rows.filter((r) => r.label.toLowerCase().includes(q)) : s.rows }))
+    // While filtering, groups without hits disappear; otherwise an empty
+    // group stays so its "+ Neu" button remains reachable.
+    .filter((s) => !q || s.rows.length > 0);
+
+  const tabs = [{ key: 'all', title: 'Alle', on: selected, of: total }].concat(
+    sections.map((s) => ({
+      key: s.key, title: s.title, on: s.rows.filter((r) => s.sel.has(r.id)).length, of: s.rows.length,
+    })));
 
   function toggle(set: Set<string>, setFn: (s: Set<string>) => void, id: string) {
     const next = new Set(set);
@@ -168,67 +184,90 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
   return (
     <>
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`flex max-h-[85vh] w-full max-w-md flex-col ${dialogFrame}`}>
-        <div class="shrink-0 px-5 pb-3 pt-5">
-          <h2 class="text-base font-medium text-fg">Dashboard-Inhalte</h2>
-          <p class="mt-0.5 text-xs text-muted">{selected} von {total} ausgewählt</p>
-          {total > SEARCH_THRESHOLD && (
-            <div class="relative mt-3">
-              <Search size={14} class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
-              <input type="search" value={query} placeholder="Suchen"
-                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-                class={`${inp} w-full pl-8`} />
-            </div>
-          )}
-        </div>
+      <form onSubmit={handleSubmit} class={`flex h-[640px] max-h-[90vh] w-full max-w-[720px] flex-col ${dialogFrame}`}>
+        <div class="flex min-h-0 flex-1 flex-col px-6 pt-6">
+          <h2 class="text-xl font-semibold text-fg">Widgets zum Dashboard hinzufügen</h2>
+          <p class="mt-1.5 text-sm text-muted">Wähle die Widgets aus, die auf dem Dashboard angezeigt werden sollen.</p>
 
-        <div class="min-h-0 flex-1 overflow-y-auto border-t border-border">
-          {visible.map((sec) => {
-            const Icon = sec.icon;
-            const hits = sec.rows.filter((r) => sec.sel.has(r.id)).length;
-            return (
-              <div key={sec.key}>
-                <div class="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-surface px-5 py-1.5">
-                  <span class="text-xs font-medium uppercase tracking-wide text-muted">{sec.title}</span>
-                  <span class="text-xs tabular-nums text-faint">{hits}/{sec.rows.length}</span>
-                </div>
-                {sec.rows.map((r) => {
-                  const on = sec.sel.has(r.id);
-                  return (
-                    <label key={r.id}
-                      class={`${rowBase} cursor-pointer ${on ? 'bg-accent/10' : 'hover:bg-subtle-hover'}`}>
-                      <Icon size={18} class={on ? 'text-accent' : 'text-faint'} />
-                      <span class="min-w-0 flex-1 truncate text-sm text-fg">{r.label}</span>
-                      {r.detail && (
-                        <span class="shrink-0 font-mono text-xs tabular-nums text-muted">{r.detail}</span>
-                      )}
-                      <input type="checkbox" class="size-4 shrink-0 accent-accent"
-                        checked={on} onChange={() => toggle(sec.sel, sec.setSel, r.id)} />
-                    </label>
-                  );
-                })}
-                {/* Creating is not a search result — hide it while filtering. */}
-                {!q && sec.add && (
-                  <button type="button" onClick={sec.add.onClick}
-                    class={`${rowBase} w-full text-sm text-fg hover:bg-subtle-hover`}>
-                    <Plus size={18} class="text-faint" />
-                    {sec.add.label}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-
-          {visible.length === 0 && (
-            <p class="px-5 py-8 text-center text-sm text-muted">Keine Treffer</p>
-          )}
-        </div>
-
-        <div class={`${dialogFooter} justify-end`}>
-          <div class={dialogBtnRow}>
-            <button type="button" onClick={onClose} class={btnSecondary}>Abbrechen</button>
-            <button type="submit" class={btnPrimary}>Speichern</button>
+          <div class="relative mt-5">
+            <input type="search" value={query} placeholder="Widgets durchsuchen" aria-label="Widgets durchsuchen"
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+              class={`${inp} h-9 w-full pr-10`} />
+            <Search size={16} class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
           </div>
+
+          <div role="tablist" class="mt-3.5 flex overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {tabs.map((t) => {
+              const active = cat === t.key;
+              return (
+                <button key={t.key} type="button" role="tab" aria-selected={active}
+                  onClick={() => setCat(t.key)}
+                  class={`relative flex h-10 shrink-0 items-center gap-1.5 rounded-t-md px-2.5 text-sm transition-colors hover:text-fg ${
+                    active ? 'font-semibold text-fg' : 'text-muted'
+                  }`}>
+                  <span>{t.title}</span>
+                  <span class="font-mono text-[11px] font-normal text-faint">{t.on}/{t.of}</span>
+                  {active && <span class="absolute bottom-0 left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full bg-accent" />}
+                </button>
+              );
+            })}
+          </div>
+
+          <div class="flex items-center justify-between px-1 pb-1.5 pt-2.5 text-xs text-muted">
+            <span>{selected} von {total} ausgewählt</span>
+            <span>{[added && `${added} hinzugefügt`, removed && `${removed} entfernt`].filter(Boolean).join(' · ')}</span>
+          </div>
+
+          <div class="-mx-2 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+            {visible.map((sec) => {
+              const Icon = sec.icon;
+              const hits = sec.rows.filter((r) => sec.sel.has(r.id)).length;
+              return (
+                <section key={sec.key}>
+                  <div class="mb-1 mt-2.5 flex items-center justify-between pl-2">
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-sm font-semibold text-fg">{sec.title}</span>
+                      <span class="text-xs text-faint">{hits} von {sec.rows.length}</span>
+                    </div>
+                    {/* Creating is not a search result — hide it while filtering. */}
+                    {!q && sec.add && (
+                      <button type="button" onClick={sec.add.onClick}
+                        class="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-accent transition-colors hover:bg-subtle-hover">
+                        <Plus size={14} />
+                        {sec.add.label}
+                      </button>
+                    )}
+                  </div>
+                  {sec.rows.map((r) => {
+                    const on = sec.sel.has(r.id);
+                    return (
+                      <label key={r.id}
+                        class={`mb-0.5 flex h-11 cursor-pointer items-center gap-3 rounded-md px-3 transition-colors ${
+                          on ? 'bg-subtle-hover' : 'hover:bg-subtle-hover'
+                        }`}>
+                        <input type="checkbox" class="size-4 shrink-0 accent-accent"
+                          checked={on} onChange={() => toggle(sec.sel, sec.setSel, r.id)} />
+                        <Icon size={18} class="shrink-0 text-muted" />
+                        <span class="min-w-0 flex-1 truncate text-sm text-fg">{r.label}</span>
+                        {r.detail && (
+                          <span class="shrink-0 font-mono text-xs tabular-nums text-faint">{r.detail}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </section>
+              );
+            })}
+
+            {visible.length === 0 && (
+              <p class="px-5 py-14 text-center text-sm text-muted">Keine Widgets gefunden.</p>
+            )}
+          </div>
+        </div>
+
+        <div class="flex shrink-0 gap-2 border-t border-border bg-bg/60 p-6">
+          <button type="submit" disabled={noChanges} class={`${btnPrimary} h-10 flex-1`}>Übernehmen</button>
+          <button type="button" onClick={onClose} class={`${btnSecondary} h-10 flex-1`}>Abbrechen</button>
         </div>
       </form>
     </div>
