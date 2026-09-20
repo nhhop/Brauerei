@@ -69,6 +69,10 @@ class ProgramRunner {
   // invalid for the current state (400).
   Result control(const char* id, const char* action, SensActCtrl::Registry& reg);
 
+  // Pause every currently running or awaiting program (emergency stop).
+  // Best-effort: programs that are neither are simply skipped.
+  void pauseAllRunning(SensActCtrl::Registry& reg);
+
   // Advance running programs whose step has ended, apply targets, and persist
   // on transitions. nowEpoch is the wall-clock time (Unix s). No-op
   // until nowEpoch is a real (post-2000) time.

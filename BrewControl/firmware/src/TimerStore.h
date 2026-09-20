@@ -68,6 +68,10 @@ class TimerStore {
   // (re)computes durationSec from the current wall clock.
   Result control(const char* id, const char* action);
 
+  // Pause every currently running timer (emergency stop). Best-effort: timers
+  // that are not running are simply skipped.
+  void pauseAllRunning();
+
   // Advance running timers past their duration: fire the notification
   // callback and the optional onExpire action against reg/programs, then
   // either re-arm (repeat) or transition to "done". Persists on any

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Router } from 'preact-router';
 import type { Alert, AlarmConfig, Severity, Snapshot } from './types';
-import { getSnapshot, subscribeEvents, getSettings, getAlarms, getAlerts, clearAlerts } from './api';
+import { getSnapshot, subscribeEvents, getSettings, getAlarms, getAlerts, clearAlerts, emergencyStop } from './api';
 import { applyTheme, loadCachedTheme } from './theme';
 import { NavShell } from './components/NavShell';
 import { LoginModal } from './components/LoginModal';
@@ -143,6 +143,12 @@ export function App() {
     return () => window.removeEventListener('bc:unauthorized', onUnauthorized);
   }, []);
 
+  // The SSE-driven actuator/program/timer cards show the result on their own
+  // (disabled/paused) — no extra confirmation UI here.
+  async function handleEmergencyStop() {
+    try { await emergencyStop(); } catch (e) { console.error('Not-Aus fehlgeschlagen', e); }
+  }
+
   useEffect(() => {
     const cached = loadCachedTheme();
     if (cached) applyTheme(cached);
@@ -152,7 +158,8 @@ export function App() {
   }, []);
 
   return (
-    <NavShell alertCount={activeCount} onBell={() => setCenterOpen(true)}>
+    <NavShell alertCount={activeCount} onBell={() => setCenterOpen(true)}
+      onEmergencyStop={handleEmergencyStop}>
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
         <ProfilesPage path="/profiles" snap={snap} />

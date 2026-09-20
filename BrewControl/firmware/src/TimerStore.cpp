@@ -265,6 +265,14 @@ TimerStore::Result TimerStore::control(const char* id, const char* action) {
   return {false, "unknown action"};
 }
 
+void TimerStore::pauseAllRunning() {
+  ScopedLock lk(mutex_);
+  std::vector<std::string> ids;
+  for (const auto& t : timers_)
+    if (t.status == Status::Running) ids.push_back(t.id);
+  for (const auto& id : ids) control(id.c_str(), "pause");
+}
+
 // ── Tick ─────────────────────────────────────────────────────────────────────────
 
 void TimerStore::tick(SensActCtrl::Registry& reg, ProgramRunner& programs,

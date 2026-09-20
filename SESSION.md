@@ -3727,3 +3727,37 @@ genannt, Standard 1,03 laut Quelle, angewendet als Division Bgc=Bg/BCF),
 der ausschließlich in den Refraktometer-Rechnern (11, 13) zum Tragen
 kommt und dort jetzt korrekt als eigener, einstellbarer Eingabewert
 vorhanden ist.
+
+## 2026-09-19 — Not-Aus-Funktion (Hauptschalter)
+
+Backlog-Punkt aus PLAN.md umgesetzt: ein Not-Aus-Button, persistent im
+Nav-Fußbereich (Desktop-Sidebar + mobiler Header), unabhängig von der
+aktuellen Seite erreichbar. Architekturfrage vorab mit dem Nutzer geklärt
+(Scope, Persistenz, Reset, Platzierung), siehe Plan.
+
+**Scope:** `POST /api/estop` (neuer Endpoint, `WebUI.cpp`) deaktiviert jeden
+Aktor (`setEnabled(false)`) und pausiert jedes laufende/wartende Programm
+sowie jeden laufenden Timer (neue `pauseAllRunning()`-Methoden auf
+`ProgramRunner`/`TimerStore`, die intern über die bestehenden Ids die
+vorhandene `control(id, "pause", …)`-Logik aufrufen — kein neuer Aktor-Code
+in SensActCtrl nötig, `Actuator::setEnabled(false)` hält die Hardware-Ausgabe
+bereits sicher inaktiv, selbst wenn ein Controller weiterschreibt). Bewusst
+**nicht persistent** (reiner Laufzeit-Zustand, nach Reboot startet alles
+normal) und **kein Sammel-Reset** — jeder Aktor/jedes Programm/jeder Timer
+wird einzeln über die bestehenden Controls wieder aktiviert.
+
+Frontend: `emergencyStop()` in `api.ts`, neuer `OctagonX`-Button (kritisch
+eingefärbt, `text-critical`/`hover:bg-critical/10`) in `NavShell.tsx` an
+beiden Stellen, ohne Confirm-Dialog (ein echter Not-Aus muss sofort wirken).
+Erfolg ist über die SSE-getriebenen Karten sichtbar, kein zusätzlicher
+globaler Banner-State.
+
+`pio test -e native` (224/224), `pio run -e esp32dev` und `pnpm typecheck`
+grün; OpenAPI-Lint sauber (`POST /api/estop` in `docs/openapi.yaml`
+dokumentiert). Im Browser gegen ein Testboard geprüft: Klick löst korrekt
+`POST /api/estop` aus (404 dort, weil das Board die alte Firmware ohne den
+neuen Endpoint fährt — erwartet, kein Seiteneffekt), Fehler wird sauber
+abgefangen. Echte Hardware-Verifikation (Aktor + laufendes Programm/Timer,
+tatsächliches Abschalten/Pausieren, Reboot-Verhalten) steht noch aus —
+absichtlich nicht an einem Board mit echten Aktoren/laufendem Sud
+ausprobiert, siehe PLAN.md → Hardware-Verifikation offen.

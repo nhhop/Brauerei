@@ -331,6 +331,23 @@ paths:
           content:
             text/plain: { schema: { type: string } }
 
+  /api/estop:
+    post:
+      tags: [Dynamic Items]
+      operationId: emergencyStop
+      summary: Emergency stop — disable every actuator and pause running programs/timers
+      description: |
+        Disables every actuator (`setEnabled(false)`), which holds its hardware
+        output inactive without forgetting its target value, and pauses every
+        currently running or awaiting setpoint program and every running timer,
+        so a later program step can't re-enable an actuator while the stop is
+        in effect. Not a persisted mode of its own: after a reboot everything
+        starts normally again. Re-enabling is manual, per item, via the normal
+        actuator/program/timer controls.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+
   /api/controllers:
     post:
       tags: [Dynamic Items]

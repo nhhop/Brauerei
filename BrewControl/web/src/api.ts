@@ -71,6 +71,13 @@ export function setActuatorInterval(id: string, onSec: number, periodSec: number
   return postJson(`/api/actuators/${encodeURIComponent(id)}`, { interval: { onSec, periodSec } });
 }
 
+// Disables every actuator and pauses every running program/timer. Not
+// persisted — a reboot starts normally again. Re-enabling is manual, per item.
+export async function emergencyStop(): Promise<void> {
+  const r = await fetch('/api/estop', { method: 'POST' });
+  if (!r.ok) await failed(r);
+}
+
 export function setControllerSetpoint(id: string, v: number): Promise<void> {
   return postJson(`/api/controllers/${encodeURIComponent(id)}/setpoint`, { v });
 }

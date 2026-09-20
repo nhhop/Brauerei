@@ -347,6 +347,14 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
   return {false, "unknown action"};
 }
 
+void ProgramRunner::pauseAllRunning(SensActCtrl::Registry& reg) {
+  ScopedLock lk(mutex_);
+  std::vector<std::string> ids;
+  for (const auto& p : programs_)
+    if (p.status == Status::Running || p.status == Status::Awaiting) ids.push_back(p.id);
+  for (const auto& id : ids) control(id.c_str(), "pause", reg);
+}
+
 // ── Tick ─────────────────────────────────────────────────────────────────────────
 
 void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,

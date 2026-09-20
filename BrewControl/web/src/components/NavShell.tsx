@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route, useRouter } from 'preact-router';
-import { LayoutDashboard, ListChecks, Calculator, Settings, Menu, Bell, Maximize, Minimize, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, Calculator, Settings, Menu, Bell, Maximize, Minimize, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -36,11 +36,12 @@ const footerItems: NavItem[] = [
   { href: '/settings', label: 'Einstellungen', icon: Settings, match: (p) => p.startsWith('/settings') },
 ];
 
-export function NavShell({ children, alertCount = 0, onBell }: {
+export function NavShell({ children, alertCount = 0, onBell, onEmergencyStop }: {
   children: ComponentChildren;
   // Optional so the shell stays usable on its own; App supplies both.
   alertCount?: number;
   onBell?: () => void;
+  onEmergencyStop?: () => void;
 }) {
   const [expanded, setExpanded] = useState(loadExpanded);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -125,6 +126,14 @@ export function NavShell({ children, alertCount = 0, onBell }: {
           {mainItems.map(renderItem)}
         </div>
         <div class="mt-auto flex flex-col gap-1 p-2">
+          {onEmergencyStop && (
+            <button type="button" onClick={() => { setMobileOpen(false); onEmergencyStop(); }}
+              title="Not-Aus — alle Aktoren abschalten"
+              class="flex items-center gap-3 rounded px-3 py-2 text-sm text-critical transition-colors hover:bg-critical/10 active:bg-critical/15">
+              <OctagonX size={20} class="shrink-0" />
+              {showLabels && <span class="truncate">Not-Aus</span>}
+            </button>
+          )}
           {onBell && (
             <button type="button" onClick={() => { setMobileOpen(false); onBell(); }}
               title={alertCount > 0 ? `Meldungen (${alertCount} aktiv)` : 'Meldungen'}
@@ -147,6 +156,12 @@ export function NavShell({ children, alertCount = 0, onBell }: {
             class="flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
             <Menu size={20} />
           </button>
+          {onEmergencyStop && (
+            <button type="button" onClick={onEmergencyStop} title="Not-Aus — alle Aktoren abschalten"
+              class="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-critical transition-colors hover:bg-critical/10 active:bg-critical/15">
+              <OctagonX size={20} />
+            </button>
+          )}
           {canFullscreen && (
             <button type="button" onClick={toggleFullscreen}
               title={fullscreen ? 'Vollbild verlassen' : 'Vollbild'}

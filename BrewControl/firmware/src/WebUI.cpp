@@ -598,6 +598,22 @@ void WebUI::begin() {
         req->send(204);
       }));
 
+  // ── Emergency stop ────────────────────────────────────────────────────────
+  // Disables every actuator (setEnabled(false) holds the hardware output
+  // inactive without forgetting its target, see Actuator.h) and pauses every
+  // running program/timer, so a later step can't quietly re-enable one while
+  // the stop is in effect. Not persisted as its own flag: after a reboot
+  // everything starts normally again.
+  server_.on("/api/estop", HTTP_POST, [this](AsyncWebServerRequest* req) {
+    for (auto* a : reg_.actuators()) a->setEnabled(false);
+    programs_.pauseAllRunning(reg_);
+    programs_.saveToSD(fs_);
+    timers_.pauseAllRunning();
+    timers_.saveToSD(fs_);
+    pushSnapshot_();
+    req->send(204);
+  });
+
   // ── Write controller setpoint / params (prefix, body) ────────────────────
   server_.addHandler(new BodyPrefixHandler("/api/controllers/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
