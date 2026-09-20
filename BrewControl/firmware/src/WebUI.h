@@ -47,6 +47,8 @@ namespace BrewControl {
 //   POST /api/actuators/<id>               — {"v":<float>} → Actuator::write
 //   POST /api/controllers/<id>/setpoint    — {"v":<float>}
 //   POST /api/controllers/<id>/params      — raw controller-params JSON
+//   POST /api/estop                        — latch the emergency stop
+//   DELETE /api/estop                      — release the latch (auth required)
 //   POST /api/admin/wifi-reset             — clear WiFi creds, reboot
 //   GET  /api/auth/status                  — {enabled, authenticated}
 //   POST /api/auth/login                   — {"password":…} → session cookie
@@ -159,6 +161,12 @@ class WebUI {
   // the length of a network round trip (it serves every request and the SSE
   // stream). Same deferral as rebootAtMs_ below.
   void runPendingPairing_();
+  // Emergency-stop latch, persisted to /config/estop.json so a reboot can't
+  // quietly undo a stop. loadEstop_() runs from begin(), i.e. after
+  // registry.begin() has put every item into its default state, and disables
+  // actuators and controllers again when the latch survived the boot.
+  void loadEstop_();
+  void saveEstop_() const;
 
   SensActCtrl::Registry& reg_;
   fs::FS& fs_;
@@ -181,6 +189,7 @@ class WebUI {
   AuthService auth_;
   AsyncWebServer server_;
   AsyncEventSource events_;
+  bool estop_ = false;  // latched emergency stop, mirrored in the snapshot
   uint32_t lastPushMs_ = 0;
   uint32_t lastAlarmMs_ = 0;
   uint32_t rebootAtMs_ = 0;

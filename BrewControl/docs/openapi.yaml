@@ -335,18 +335,33 @@ paths:
     post:
       tags: [Dynamic Items]
       operationId: emergencyStop
-      summary: Emergency stop — disable every actuator and pause running programs/timers
+      summary: Emergency stop — latch, disabling every actuator and controller
       description: |
-        Disables every actuator (`setEnabled(false)`), which holds its hardware
-        output inactive without forgetting its target value, and pauses every
-        currently running or awaiting setpoint program and every running timer,
-        so a later program step can't re-enable an actuator while the stop is
-        in effect. Not a persisted mode of its own: the actuator stop is held
-        in RAM only, so actuators are enabled again after a reboot. The
-        program/timer pause is saved deliberately, so a reboot does not
-        recreate the situation that led to the stop — they stay `paused` until
-        resumed manually. Re-enabling is manual, per item, via the normal
-        actuator/program/timer controls.
+        Disables every actuator (`setEnabled(false)`, which holds its hardware
+        output inactive without forgetting its target value) and every
+        controller, and pauses every currently running or awaiting setpoint
+        program and every running timer. Controllers are disabled too so that
+        re-enabling a single actuator afterwards does not immediately hand it
+        back to a controller that kept computing in the meantime.
+
+        The stop **latches**: it is persisted and re-applied on the next boot,
+        so a reboot — including an unplanned one — cannot quietly undo it. It
+        stays engaged until `DELETE /api/estop` releases it. The latch state is
+        reported as `estop` in `GET /api/snapshot`.
+
+        Deliberately unauthenticated even when a password is configured:
+        stopping must work from a locked UI. Releasing does require auth.
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+    delete:
+      tags: [Dynamic Items]
+      operationId: releaseEmergencyStop
+      summary: Release the emergency-stop latch
+      description: |
+        Clears the latch so the device boots normally again. Turns nothing back
+        on by itself: actuators, controllers, programs and timers stay where the
+        stop left them and are re-enabled one by one through the normal
+        controls. Idempotent — releasing when no stop is latched succeeds.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
@@ -2578,7 +2593,7 @@ components:
 
     Snapshot:
       type: object
-      required: [sensors, actuators, controllers]
+      required: [sensors, actuators, controllers, estop]
       properties:
         sensors:
           type: array
@@ -2595,6 +2610,12 @@ components:
           description: |
             Device wall-clock as Unix epoch seconds. Present only once NTP has
             synced.
+        estop:
+          type: boolean
+          description: |
+            True while the emergency-stop latch is engaged (see
+            `POST /api/estop`). Always present, so "off" is never confused with
+            a firmware that does not report it.
 
     # ── Item creation ────────────────────────────────────────────────────────
     SensorCreate:

@@ -281,6 +281,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/controllers/<id>` | DELETE | Regler entfernen |
 | `/api/controllers/<id>/setpoint` | POST | Sollwert setzen |
 | `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
+| `/api/estop` | POST, DELETE | Not-Aus auslösen (rastet ein, überlebt Neustart) / Verriegelung aufheben |
 | `/api/bus/scan` | GET | 1-Wire-Bus nach Geräten scannen |
 | `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |
 | `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |

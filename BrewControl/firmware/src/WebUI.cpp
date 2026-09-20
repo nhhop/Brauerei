@@ -71,7 +71,8 @@ bool littleFsHasRoomFor(uint32_t fileSize) {
 }
 #endif
 
-std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen) {
+std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, bool estop,
+                                     size_t* outLen) {
   auto buf = std::unique_ptr<char[]>(new (std::nothrow) char[kSnapshotCap]);
   if (!buf) { *outLen = 0; return buf; }
   size_t n = SensActCtrl::serializeRegistry(reg, buf.get(), kSnapshotCap);
@@ -85,6 +86,16 @@ std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, size_t* outLen)
     char suffix[40];
     int slen = snprintf(suffix, sizeof(suffix), ",\"serverTime\":%ld}", (long)now);
     if (slen > 0 && n - 1 + (size_t)slen + 1 <= kSnapshotCap) {
+      memcpy(buf.get() + n - 1, suffix, slen + 1);  // overwrites closing '}'
+      n = n - 1 + slen;
+    }
+  }
+  // Always emitted, unlike serverTime: a safety state must not be ambiguous
+  // between "off" and "this firmware doesn't report it".
+  if (n >= 2) {
+    const char* suffix = estop ? ",\"estop\":true}" : ",\"estop\":false}";
+    size_t slen = strlen(suffix);
+    if (n - 1 + slen + 1 <= kSnapshotCap) {
       memcpy(buf.get() + n - 1, suffix, slen + 1);  // overwrites closing '}'
       n = n - 1 + slen;
     }
@@ -428,10 +439,14 @@ WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
       events_("/api/events") {}
 
 void WebUI::begin() {
+  // Before the first snapshot can be served: a latched stop must already be
+  // back in force when the UI (or a controller's first tick) sees the device.
+  loadEstop_();
+
   // ── Snapshot ─────────────────────────────────────────────────────────────
   server_.on("/api/snapshot", HTTP_GET, [this](AsyncWebServerRequest* req) {
     size_t n = 0;
-    auto buf = makeSnapshot(reg_, &n);
+    auto buf = makeSnapshot(reg_, estop_, &n);
     if (!buf) { req->send(503, "text/plain", "snapshot unavailable"); return; }
     auto* resp = req->beginResponseStream("application/json", n);
     resp->write(reinterpret_cast<const uint8_t*>(buf.get()), n);
@@ -607,16 +622,37 @@ void WebUI::begin() {
 
   // ── Emergency stop ────────────────────────────────────────────────────────
   // Disables every actuator (setEnabled(false) holds the hardware output
-  // inactive without forgetting its target, see Actuator.h) and pauses every
-  // running program/timer, so a later step can't quietly re-enable one while
-  // the stop is in effect. Not persisted as its own flag: after a reboot
-  // everything starts normally again.
+  // inactive without forgetting its target, see Actuator.h) and every
+  // controller, and pauses every running program/timer — so neither a later
+  // program step nor a controller that kept computing can drive an actuator
+  // the moment it is re-enabled individually.
+  //
+  // The stop latches: estop_ is persisted, and loadEstop_() applies it again
+  // on the next boot. Like a mechanical E-stop it stays engaged until it is
+  // released deliberately via DELETE /api/estop. Deliberately unauthenticated
+  // — stopping must work from a locked UI; releasing must not.
   server_.on("/api/estop", HTTP_POST, [this](AsyncWebServerRequest* req) {
     for (auto* a : reg_.actuators()) a->setEnabled(false);
+    for (auto* c : reg_.controllers()) c->setEnabled(false);
     programs_.pauseAllRunning(reg_);
     programs_.saveToSD(fs_);
     timers_.pauseAllRunning();
     timers_.saveToSD(fs_);
+    estop_ = true;
+    saveEstop_();
+    pushSnapshot_();
+    req->send(204);
+  });
+
+  // Releases the latch without turning anything back on: actuators,
+  // controllers, programs and timers stay where the stop left them and are
+  // re-enabled one by one through the normal controls. After an emergency
+  // stop, coming back up is a deliberate act, not a side effect of
+  // acknowledging it.
+  server_.on("/api/estop", HTTP_DELETE, [this](AsyncWebServerRequest* req) {
+    if (!requireAuth(req)) return;
+    estop_ = false;
+    saveEstop_();
     pushSnapshot_();
     req->send(204);
   });
@@ -2220,16 +2256,47 @@ bool WebUI::validFilePath_(String& path, bool forMutation, AsyncWebServerRequest
   return true;
 }
 
+void WebUI::loadEstop_() {
+  JsonDocument doc;
+  bool ok = false;
+  {  // Lock scoped to the read alone, per SdLock's contract.
+    SdLock sdLock;
+    File f = fs_.open("/config/estop.json");
+    if (!f) return;  // never stopped, or no filesystem — both mean "not latched"
+    ok = deserializeJson(doc, f) == DeserializationError::Ok;
+    f.close();
+  }
+  if (!ok || !(doc["active"] | false)) return;
+
+  estop_ = true;
+  // Re-apply what POST /api/estop did to the hardware. Programs and timers
+  // need no second pass: their paused state was persisted by the stop itself.
+  for (auto* a : reg_.actuators()) a->setEnabled(false);
+  for (auto* c : reg_.controllers()) c->setEnabled(false);
+  Serial.println(F("emergency stop still latched — actuators and controllers held off"));
+}
+
+void WebUI::saveEstop_() const {
+  // Runs on the AsyncTCP task while loopTask logs to the same card.
+  SdLock sdLock;
+  File f = fs_.open("/config/estop.json", FILE_WRITE);
+  if (!f) return;
+  JsonDocument doc;
+  doc["active"] = estop_;
+  serializeJson(doc, f);
+  f.close();
+}
+
 void WebUI::pushSnapshot_() {
   size_t n = 0;
-  auto buf = makeSnapshot(reg_, &n);
+  auto buf = makeSnapshot(reg_, estop_, &n);
   if (!buf) return;
   events_.send(buf.get(), "snapshot", millis());
 }
 
 void WebUI::sendSnapshotTo_(AsyncEventSourceClient* c) {
   size_t n = 0;
-  auto buf = makeSnapshot(reg_, &n);
+  auto buf = makeSnapshot(reg_, estop_, &n);
   if (!buf) return;
   c->send(buf.get(), "snapshot", millis());
 }

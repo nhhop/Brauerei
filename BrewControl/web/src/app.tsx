@@ -7,6 +7,7 @@ import { applyTheme, loadCachedTheme } from './theme';
 import { NavShell } from './components/NavShell';
 import { LoginModal } from './components/LoginModal';
 import { AlertCenter } from './components/AlertCenter';
+import { EmergencyStopBanner } from './components/EmergencyStopBanner';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
 import { SettingsIndex } from './pages/SettingsIndex';
@@ -173,6 +174,7 @@ export function App() {
     <NavShell alertCount={activeCount} onBell={() => setCenterOpen(true)}
       showLogout={!!authStatus?.enabled && authStatus.uiProtected && authStatus.authenticated}
       onLogout={handleLogout} onEmergencyStop={handleEmergencyStop}>
+      <EmergencyStopBanner active={!!snap?.estop} />
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
         <ProfilesPage path="/profiles" snap={snap} />

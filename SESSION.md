@@ -4076,6 +4076,52 @@ Dashboard-`sensors` Basis- **und** Kanal-IDs enthalten und welche Schlüssel in
 **Nebenbefund:** `web/src/types.ts` kennt `Quantity` `Distance` nicht, obwohl
 `Quantity.h` und `openapi.yaml` ihn führen (PLAN.md).
 
+## 2026-09-20 — Not-Aus rastet ein und überlebt den Reboot
+
+**Problem** (PLAN.md): `POST /api/estop` deaktivierte nur Aktoren, und zwar
+ausschließlich im RAM. Nach einem Reboot regelten Regler sofort wieder — war
+ein durchgehender Regler der Auslöser, entstand dieselbe Situation erneut,
+obwohl Programme/Timer bewusst pausiert blieben. Beim Aufarbeiten fiel ein
+zweites Loch ohne Reboot auf: Regler wurden gar nicht deaktiviert, liefen also
+weiter und hätten einen einzeln wieder freigegebenen Aktor sofort getrieben.
+
+**Umsetzung.** Der Not-Aus deaktiviert jetzt zusätzlich alle Regler und
+*rastet ein*: `WebUI` führt ein `estop_`-Flag, persistiert es nach
+`/config/estop.json` und wendet es in `loadEstop_()` aus `WebUI::begin()`
+wieder an — also nach `registry.begin()`, bevor die erste Snapshot-Antwort
+oder der erste Regler-Tick das Gerät sehen. Gelöst wird er über das neue
+`DELETE /api/estop` (mit `requireAuth`; der POST bleibt bewusst offen, damit
+ein Not-Aus auch aus gesperrter UI funktioniert). Die Freigabe schaltet
+*nichts* wieder ein — Aktoren, Regler, Programme und Timer bleiben, wo der
+Stopp sie hinterlassen hat, und werden einzeln über die normalen Bedienelemente
+freigegeben. Der Snapshot trägt `estop` immer (nicht nur wenn aktiv), damit
+„aus“ nicht mit „alte Firmware“ verwechselt wird; `EmergencyStopBanner`
+zeigt daraufhin auf jeder Seite ein Banner mit Erklärung und Aufheben-Button.
+`GET /api/backup` bleibt unberührt — ein Restore soll keinen fremden Not-Aus
+einspielen.
+
+**Verifikation.** `pio run -e esp32dev` grün, `pnpm typecheck` grün, Redocly
+lint sauber. E2E am `brewcontrol-esp32dev` (OTA geflasht) mit einem
+Wegwerf-Paar (`DigitalOutput` auf Pin 2 + `TwoPoint`-Regler, danach gelöscht):
+Not-Aus → beide Aktoren und der Regler `enabled:false`, `estop:true`,
+`/config/estop.json` = `{"active":true}`; Reboot über `POST /api/network` mit
+unverändertem Hostnamen → nach 18 s Uptime unverändert alles abgeschaltet und
+`estop:true`; `DELETE /api/estop` → `estop:false`, nichts wieder eingeschaltet;
+erneuter Reboot → normaler Start (`lolin_ids1` und Regler wieder `enabled`).
+Banner im Browser gegen dasselbe Board geprüft (Desktop + 375 px), Aufheben per
+Klick lässt es über SSE verschwinden; auf dem Handy brach der Text neben dem
+Button in eine schmale Spalte um → `basis-64` als Umbruchschwelle ergänzt.
+Beim Diff-Review fiel auf, dass `saveEstop_()`/`loadEstop_()` den globalen
+`SdLock` nicht nahmen, obwohl sie vom AsyncTCP-Task auf dieselbe Karte
+schreiben wie loopTasks Logging — nachgezogen (Lock eng um die Datei-Operation,
+nicht um das Abschalten) und der Stopp-/Reboot-/Freigabe-Zyklus danach auf dem
+finalen Build noch einmal am Gerät durchlaufen.
+
+**Nebenbefund** (in PLAN.md aufgenommen): `POST /api/estop` hat keinen
+`requireAuth`-Aufruf, `openapi.yaml` versprach dort aber bisher einen `401`.
+Das Verhalten ist so gewollt, die Spec war falsch — der `401` ist jetzt nur
+noch beim DELETE dokumentiert.
+
 ## 2026-09-20 — Sammel-Commit: Farbvalidierung, `Distance`-Typ, `pio ci`-Flags
 
 Drei kleine Punkte aus PLAN.md. (1) `POST /api/settings` prüft `theme.secondary`

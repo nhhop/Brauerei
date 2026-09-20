@@ -120,6 +120,9 @@ export interface Snapshot {
   actuators: Actuator[];
   controllers: Controller[];
   serverTime?: number;  // Unix timestamp (seconds), present only when NTP synced
+  // Emergency-stop latch. Always sent by the firmware; optional here so an
+  // older build (or the dev mock) simply reads as "not stopped".
+  estop?: boolean;
 }
 
 // Wire format of GET /api/config
