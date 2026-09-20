@@ -10,6 +10,8 @@ import { AlertCenter } from './components/AlertCenter';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
 import { SettingsIndex } from './pages/SettingsIndex';
+import { RechnerIndex } from './pages/RechnerIndex';
+import { RechnerDetail } from './pages/RechnerDetail';
 import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
 import { DevicesPage } from './pages/DevicesPage';
@@ -154,6 +156,8 @@ export function App() {
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
         <ProfilesPage path="/profiles" snap={snap} />
+        <RechnerIndex path="/rechner" />
+        <RechnerDetail path="/rechner/:calc" />
         <SettingsIndex path="/settings" />
         <AppearancePage path="/settings/appearance" />
         <DevicesPage path="/settings/devices" snap={snap} />

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "build:sd": "vite build && node scripts/gzip-dist.js"
   },
   "devDependencies": {
@@ -16,7 +17,8 @@
     "@types/react": "^19.2.18",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
   },
   "dependencies": {
     "lucide-preact": "^1.24.0",

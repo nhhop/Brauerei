@@ -3640,3 +3640,90 @@ Slider.
 
 **Offen:** Persistenz der Sekundärfarbe am echten Gerät, siehe PLAN.md — das
 Testboard läuft weiter mit einer Firmware ohne das Feld.
+
+## 2026-09-19 — Neue Menü-Seite „Rechner" (Brauprozess-Rechner)
+
+Neue Hauptseite (`/rechner`, NavShell-Eintrag) mit 14 kleinen
+Brauprozess-Rechnern in 6 Kategorien (Einheiten, Volumen, Mischen,
+Effizienz, Karbonisierung, Messen) — bewusst ohne Rezept-Design-Rechner
+(IBU, Farbe, Wasserchemie), die sind für eine spätere
+„Rezeptentwicklung"-Funktion vorgesehen. Formeln zentral in
+`web/src/gravityUnits.ts` (Plato/SG/Brix-Kern) und `web/src/brewMath.ts`
+(restliche Formeln) als reine, ungetypte UI-freie TS-Funktionen — damit
+später wiederverwendbar. `vitest` neu als Test-Runner eingeführt (bisher
+keiner im Web-Frontend), 22 Tests für beide Module. Navigation:
+Index-Seite mit Kategorie-Karten (`/rechner`, Muster wie `SettingsIndex`)
+plus eine parametrisierte Detail-Seite (`/rechner/:calc`, Muster wie
+`ArchivePage`s `:id`-Route) statt 14 einzelner Routen. Zwei zusätzliche
+Shared-Components über den ursprünglichen Plan hinaus: `NumberField`
+(beschriftete Zahlen-Eingabezeile, bei der Umsetzung als eindeutig fehlend
+erkannt — jeder der 14 Rechner hätte sie sonst dupliziert) und
+`GravityInput`/`CalcResult` wie geplant.
+
+**Beim Verifizieren im Browser gefunden und korrigiert:** Der ursprünglich
+geplante Zusatzmodus „ABV bei unbekannter Stammwürze" (Refraktometer +
+Spindel kombiniert, ohne bekannte Stammwürze) lieferte bei realistischen
+Testwerten (Brix 8, FG 1.010) negative Ergebnisse (−23,5 °P, −11,8 % vol)
+— die zugrundeliegenden Koeffizienten (vermutlich mit der Balling-Formel
+verwechselt statt der tatsächlichen Novotny-Formel) waren falsch. Statt
+mit TODO-Markierung auszuliefern, wurde der Modus komplett entfernt; der
+ABV-Rechner bietet in v1 nur den soliden, getesteten Modus mit bekannter
+Stammwürze. Die Refraktometer-Korrektur selbst (Rechner 11) nutzt
+dieselben verdächtigen Koeffizienten und bleibt mit TODO(verify)-Hinweis
+drin, da ihr Ergebnis zumindest plausibel im Wertebereich liegt (siehe
+PLAN.md „Bugs & bekannte Einschränkungen" für alle unverifizierten
+Formelkonstanten). Alle anderen Formeln gegen Handrechnung/Referenzwerte
+verifiziert (Zylinder-/Kegelstumpf-Volumen exakt hergeleitet und getestet,
+Karbonisierung stöchiometrisch aus Molmassen abgeleitet statt aus
+erinnerten Tabellenwerten).
+
+## 2026-09-19 — Rechner: Novotny-Formel korrigiert (Refraktometer/ABV/Endvergärungsgrad)
+
+Nutzer stellte die Excel-Datei
+`StammwuerzeErmittlungAusBrixUndEsNachNovotnyLinear_V02.xlsx` (Weiß, O.,
+V02, 2024) bereit — eine dokumentierte, quellenbasierte Umsetzung der
+Novotný-Formel (Novotný, P. (2017), Zymurgy 40(4), 49–54; Ascher, T.,
+BrauCampus Graz (2021)). Per `openpyxl` (musste erst installiert werden,
+war entgegen der xlsx-Skill-Doku nicht vorhanden) Formeln und Werte aus
+allen drei Tabs extrahiert und gegen die vorherige, aus Erinnerung
+zusammengesetzte Implementierung abgeglichen — bestätigte den in der
+Vorsession dokumentierten Verdacht: Die alte Formel wandte die
+Balling-Koeffizienten (0.1808/0.8192) direkt auf den rohen Brix-Wert an,
+statt die tatsächliche Novotný-Beziehung zu nutzen
+(`SG = 1 + 0,006276·Bgc − 0,002349·Bwc`, mit Bgc = BCF-korrigierter
+Brix-Wert). Ersetzt:
+
+- `gravityUnits.ts`: `platoToSg`/`sgToPlato` sind jetzt exakte algebraische
+  Inversen derselben Quadratik (`SG = (668−√(668²−820·(463+P)))/410`),
+  statt zwei unabhängig gefitteter Näherungsformeln. Gegen das
+  Excel-Rechenbeispiel exakt verifiziert (Es=3 → SG=1,0117373721335001,
+  auf 9 Nachkommastellen getroffen).
+- `brewMath.ts`: neue `apparentExtractFromRefractometer` (Tool A: OG
+  bekannt, aktuellen Wert nur per Refraktometer schätzen) und
+  `originalExtractFromDualMeasurement` (Tool B: OG unbekannt, aus
+  Refraktometer+Spindel rekonstruieren — algebraische Auflösung derselben
+  Gleichung nach der anderen Unbekannten) sowie `ballingBeerAnalysis`
+  (Alc %w/w, %v/v, Ew, scheinbarer/realer Vergärungsgrad, nach Balling,
+  gleiche Quelle). Alle vier gegen das Excel-Rechenbeispiel exakt
+  verifiziert (bis auf Rundung in der letzten Dezimale).
+- Der in der Vorsession entfernte Zusatzmodus „ABV bei unbekannter
+  Stammwürze" (Refraktometer+Spindel-Doppelmessung) ist mit der jetzt
+  korrekten Formel wieder in `CalcAbv.tsx` enthalten.
+- Im Browser nachgeprüft: Refraktometer-Korrektur zeigt für OE 12°P/Brix
+  6,4/BCF 1,03 jetzt plausibel 2,8°P (vorher fälschlich 9,0°P — höher als
+  der rohe Brix-Wert, was für eine Alkoholkorrektur unmöglich ist).
+
+`pnpm typecheck` und `pnpm test` grün (25 Tests, u. a. alle vier neuen
+Referenzwerte exakt aus dem Excel-Beispiel). Offene TODO(verify)-Marker
+für Einmaischtemperatur, Effizienz-Checkpoints und Karbonisierung bleiben
+bestehen — siehe PLAN.md.
+
+**Zur Nutzeranmerkung „Brix/Plato-Faktor 0,96":** Der allgemeine
+Einheiten-Umrechner behandelt °Brix und °Plato bewusst 1:1 (beides
+sucrose-äquivalente Massenprozent-Skalen, per Definition praktisch
+identisch) — das ist korrekt und unverändert. Der vom Nutzer gemeinte
+Faktor ist der geräteabhängige Refraktometer-Korrekturfaktor (hier „BCF"
+genannt, Standard 1,03 laut Quelle, angewendet als Division Bgc=Bg/BCF),
+der ausschließlich in den Refraktometer-Rechnern (11, 13) zum Tragen
+kommt und dort jetzt korrekt als eigener, einstellbarer Eingabewert
+vorhanden ist.
