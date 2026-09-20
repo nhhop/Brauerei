@@ -35,6 +35,17 @@ export function isCardRef(ref: string): boolean {
   return CARD_KINDS.includes(ref.slice(0, ref.indexOf('/')));
 }
 
+// Areas made of nothing but cards cannot use extra height: every card kind
+// renders at a fixed height, only a chart or a program stretches. Stacked
+// vertically such an area takes its content height and leaves the rest to a
+// flexible sibling instead of claiming a share it would only pad with air.
+// An empty area counts as flexible — a zero-height slot would be undroppable.
+export function isRigid(n: LayoutNode): boolean {
+  return isSplit(n)
+    ? n.children.every(isRigid)
+    : n.items.length > 0 && n.items.every(isCardRef);
+}
+
 export function isSplit(n: LayoutNode): n is LayoutSplit {
   return (n as LayoutSplit).split !== undefined;
 }

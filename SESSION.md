@@ -3595,6 +3595,60 @@ Verhalten); wirklich neue Karten hängen sich an die letzte Kartengruppe.
 Browser-Automatisierung kann keinen gedrückten Mausknopf halten). Die Persistenz
 am echten Gerät steht bis zum nächsten Flash aus, siehe PLAN.md.
 
+## 2026-09-19 — Dashboard-Layout: Kartenbereiche wachsen nicht mehr ins Leere
+
+Nutzer-Feedback zum frisch gebauten Drag-&-Drop-Layout: die Ansicht im
+Bearbeiten-Modus deckt sich nicht mit der danach. Ein Bereich, den man im
+Bearbeiten-Modus so weit zusammenzieht, dass eine Scrollbar erscheint, ist
+nach „Fertig“ zu groß für seine zwei Karten.
+
+**Gemessen** (Maischen-Tab, 1600x1000): Layout-Gesamthöhe 851 px normal
+gegen 801 px im Bearbeiten-Modus — das eingeblendete Hinweisfeld unter den
+Tabs kostet 50 px. Dazu pro Bereich im Bearbeiten-Modus 2 px Rahmen +
+16 px `p-2`, also 18 px weniger Inhaltshöhe. Da `sizes` reine Anteile sind
+(Summe 1), skaliert derselbe Anteil auf zwei verschiedene Gesamthöhen —
+der Inhalt darin aber nicht.
+
+**Eigentliche Ursache** (Nutzer-Beobachtung, bestätigt): `fill` wird nur
+von `ChartRow` und `ProgramCard` ausgewertet. Sensor-, Aktor-, Regler- und
+Timer-Karten ignorieren es und behalten ihre `widgetSizeClass`-Höhe. Ein
+Bereich aus reinen Karten kann zusätzliche Höhe also gar nicht nutzen —
+sie wird immer zu Luft unter der letzten Karte.
+
+Umsetzung:
+
+- Neues `isRigid(node)` in `dashboardLayout.ts`: ein Teilbaum ist starr,
+  wenn er nur Karten-Refs enthält (leerer Bereich zählt als flexibel, ein
+  0-px-Slot wäre nicht mehr bedropbar).
+- In `DashboardLayout` bekommt ein starres Kind einer **Spalten**-Teilung
+  `flex: 0 1 auto` statt eines Anteils, nimmt also seine Inhaltshöhe und
+  überlässt den Rest den flexiblen Geschwistern. Zeilen-Teilungen bleiben
+  unverändert: die Breite entscheidet, wie viele Karten pro Reihe passen.
+- Die Grow-Faktoren der flexiblen Kinder werden auf ihre Summe
+  normalisiert. Ohne das blieb im Test Platz ungenutzt (Chart 379 statt
+  631 px): Anteile summieren zu 1, fällt eines aus dem Wachsen heraus,
+  verteilt Flexbox nur noch den entsprechenden Bruchteil des freien
+  Platzes.
+- Flexible Geschwister eines starren Bereichs bekommen `MIN_AREA_PX` als
+  Untergrenze — sonst schrumpft bei zu kleinem Fenster ausschließlich der
+  starre Bereich (Basis `auto`), und der flexible fiele auf 0 px.
+- Ein Trenner neben einem starren Bereich hätte nichts zu verschieben und
+  ist deshalb inert: keine Handler, kein Resize-Cursor, kein Hover — die
+  Lücke bleibt gleich groß.
+
+**Verifiziert** am LilyGo (1600x1000, Maischen): Kartenbereich 204 px =
+exakt Inhaltshöhe, Chart 631 px, zusammen mit dem 16-px-Trenner genau die
+851 px des Layouts. Im Bearbeiten-Modus 220 px Inhaltshöhe bei 220 px
+Inhalt — keine Scrollbar mehr, der Unterschied sind nur noch die 16 px
+Bearbeiten-Polsterung. Trenner-Klassen geprüft: der senkrechte behält
+`cursor-col-resize` + Hover, der waagerechte über dem Kartenbereich ist
+leer. Tabs Vorbereitung/Kochen gegengesehen, `pnpm typecheck` grün.
+
+**Bewusst offen:** Das Hinweisfeld verkürzt weiterhin die flexiblen
+Bereiche um 50 px, solange der Bearbeiten-Modus läuft (siehe PLAN.md) —
+für Kartenbereiche ist der Effekt jetzt weg, Charts und Programme
+skalieren dabei sauber mit.
+
 ## 2026-09-20 — Regler-Karten nach Vorlage + frei wählbare Sekundärfarbe
 
 Nutzer-Vorlagen für alle drei Größen der Regler-Card. **Groß:** Ist links und

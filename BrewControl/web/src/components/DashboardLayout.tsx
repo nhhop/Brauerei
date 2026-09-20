@@ -3,7 +3,7 @@ import type { VNode } from 'preact';
 import { GripHorizontal } from 'lucide-preact';
 import type { LayoutNode } from '../types';
 import type { DropTarget, DropZone } from '../dashboardLayout';
-import { isSplit, moveRef, nodeAt, refKind, resizeSplit } from '../dashboardLayout';
+import { isRigid, isSplit, moveRef, nodeAt, refKind, resizeSplit } from '../dashboardLayout';
 
 interface Props {
   layout: LayoutNode;
@@ -269,24 +269,40 @@ export function DashboardLayout({ layout, editMode, renderItem, labelOf, onChang
     }
 
     const horizontal = node.split === 'row';
+    // Only heights follow the content: an area's width still decides how many
+    // cards fit per row, so a row split keeps its stored weights throughout.
+    const rigid = node.children.map((child) => !horizontal && isRigid(child));
+    // A content-sized area shrinks before a flexible one does, so once cards
+    // alone are taller than the column the flexible sibling would be squeezed
+    // to nothing. Floor it at the same minimum a divider may leave behind.
+    const floor = rigid.some(Boolean) ? MIN_AREA_PX : undefined;
+    // Weights sum to 1 across all children, so dropping one out of the growing
+    // leaves grow factors summing to less than 1 — and flex would hand out
+    // only that fraction of the free space. Renormalise over those that grow.
+    const flexSum = node.sizes.reduce((n, size, i) => (rigid[i] ? n : n + size), 0) || 1;
     const kids: VNode[] = [];
     node.children.forEach((child, i) => {
       if (i > 0) {
-        // Same size in both modes so toggling edit mode doesn't shift the layout.
+        // Same size in both modes so toggling edit mode doesn't shift the
+        // layout. Next to a content-sized area there is nothing to resize.
+        const inert = rigid[i - 1] || rigid[i];
         kids.push(
           <div key={`d${i}`}
-            onPointerDown={(e) => onDividerDown(e as unknown as PointerEvent, path, i)}
-            onPointerMove={(e) => onDividerMove(e as unknown as PointerEvent)}
-            onPointerUp={onDividerUp}
-            onPointerCancel={onDividerUp}
+            onPointerDown={inert ? undefined : (e) => onDividerDown(e as unknown as PointerEvent, path, i)}
+            onPointerMove={inert ? undefined : (e) => onDividerMove(e as unknown as PointerEvent)}
+            onPointerUp={inert ? undefined : onDividerUp}
+            onPointerCancel={inert ? undefined : onDividerUp}
             class={`shrink-0 touch-none ${horizontal ? 'w-4' : 'h-4'} ${
-              editMode
+              editMode && !inert
                 ? `${horizontal ? 'cursor-col-resize' : 'cursor-row-resize'} rounded hover:bg-accent/30`
                 : ''}`} />,
         );
       }
       kids.push(
-        <div key={`c${i}`} class="flex min-h-0 min-w-0 flex-col" style={{ flex: `${node.sizes[i]} 1 0` }}>
+        <div key={`c${i}`} class="flex min-h-0 min-w-0 flex-col"
+          style={rigid[i]
+            ? { flex: '0 1 auto' }
+            : { flex: `${node.sizes[i] / flexSum} 1 0`, minHeight: floor }}>
           {renderNode(child, [...path, i])}
         </div>,
       );
