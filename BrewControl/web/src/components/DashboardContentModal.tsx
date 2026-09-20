@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'preact/hooks';
-import type { Snapshot, DashboardConfig, LogConfig, ProgramConfig, TimerConfig } from '../types';
+import {
+  Gauge, Zap, SlidersHorizontal, LineChart, ListChecks, Timer as TimerIcon,
+  Plus, Search, type LucideIcon,
+} from 'lucide-preact';
+import type {
+  Snapshot, DashboardConfig, LogConfig, ProgramConfig, TimerConfig, ItemState,
+} from '../types';
+import { fmtDuration } from '../format';
+import type { Role } from '../itemTypes';
 import { AddItemModal } from './AddItemModal';
-import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
 
 export interface DashboardMembers {
   sensors: string[]; actuators: string[]; controllers: string[]; charts: string[]; programs: string[]; timers: string[];
@@ -20,6 +28,33 @@ interface Props {
   onClose: () => void;
 }
 
+// One selectable entry: `id` is what gets stored in the dashboard config,
+// `detail` the right-aligned secondary text that tells two similar ids apart.
+interface Row { id: string; label: string; detail?: string }
+
+interface Section {
+  key: string;
+  title: string;
+  icon: LucideIcon;
+  rows: Row[];
+  sel: Set<string>;
+  setSel: (s: Set<string>) => void;
+  // "+ Neuer ..." row at the end of this group. Charts have none: a chart is
+  // configured on its own page, not from here.
+  add?: { label: string; onClick: () => void };
+}
+
+// Show the search field only once scrolling actually becomes a burden.
+const SEARCH_THRESHOLD = 8;
+
+const rowBase = 'flex items-center gap-3 border-b border-border px-5 py-2.5 text-left transition-colors';
+
+function fmtValue(state: ItemState, unit: string): string {
+  const v = state.v;
+  if (!state.ok || v == null || !isFinite(v)) return '—';
+  return `${v.toFixed(1)} ${unit}`.trim();
+}
+
 // Content picker: check which sensors / actuators / controllers / charts /
 // programs the dashboard shows. Name & delete live in NameModal.
 export function DashboardContentModal({ open, snap, logs, programs, timers, dash, onSave, onNewProgram, onNewTimer, onClose }: Props) {
@@ -29,7 +64,9 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
   const [charts, setCharts] = useState<Set<string>>(new Set());
   const [progs, setProgs] = useState<Set<string>>(new Set());
   const [timerIds, setTimerIds] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState('');
   const [subAddOpen, setSubAddOpen] = useState(false);
+  const [addRole, setAddRole] = useState<Role>('sensor');
 
   useEffect(() => {
     if (open) {
@@ -39,16 +76,82 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
       setCharts(new Set(dash.charts ?? []));
       setProgs(new Set(dash.programs ?? []));
       setTimerIds(new Set(dash.timers ?? []));
+      setQuery('');
     }
   }, [open, dash]);
 
   if (!open) return null;
 
-  const sensorIds = [...new Set(
-    (snap?.sensors ?? []).map((s) => s.id.includes('.') ? s.id.split('.')[0] : s.id)
-  )];
-  const actuatorIds = (snap?.actuators ?? []).map((a) => a.id);
-  const controllerIds = (snap?.controllers ?? []).map((c) => c.id);
+  // A multi-channel sensor (e.g. "bme.temp") joins the dashboard as its base id,
+  // so the rows are deduped on that — the detail then names the channel count
+  // instead of a single reading.
+  const snapSensors = snap?.sensors ?? [];
+  const baseId = (id: string) => (id.includes('.') ? id.split('.')[0] : id);
+  const sensorRows: Row[] = [...new Set(snapSensors.map((s) => baseId(s.id)))].map((id) => {
+    const chans = snapSensors.filter((s) => baseId(s.id) === id);
+    return {
+      id, label: id,
+      detail: chans.length === 1
+        ? fmtValue(chans[0].state, chans[0].meta.unit)
+        : `${chans.length} Kanäle`,
+    };
+  });
+
+  const actuatorRows: Row[] = (snap?.actuators ?? []).map((a) => ({
+    id: a.id, label: a.id,
+    detail: a.meta.kind === 'Binary'
+      ? (a.enabled ? 'An' : 'Aus')
+      : fmtValue(a.state, a.meta.unit),
+  }));
+
+  const controllerRows: Row[] = (snap?.controllers ?? []).map((c) => {
+    const unit = snapSensors.find((s) => s.id === c.params?.sensor)?.meta.unit ?? '';
+    return { id: c.id, label: c.id, detail: `→ ${c.setpoint.toFixed(1)} ${unit}`.trim() };
+  });
+
+  const chartRows: Row[] = (logs ?? []).map((l) => ({
+    id: l.id, label: l.name,
+    detail: l.series.length === 1 ? '1 Serie' : `${l.series.length} Serien`,
+  }));
+
+  const programRows: Row[] = (programs ?? []).map((p) => ({
+    id: p.id, label: p.name,
+    detail: p.steps.length === 1 ? '1 Schritt' : `${p.steps.length} Schritte`,
+  }));
+
+  const timerRows: Row[] = (timers ?? []).map((t) => ({
+    id: t.id, label: t.name,
+    detail: t.mode === 'clock' ? (t.timeOfDay ?? '') : fmtDuration(t.durationSec),
+  }));
+
+  const openAdd = (role: Role) => { setAddRole(role); setSubAddOpen(true); };
+
+  const sections: Section[] = ([
+    { key: 'sensors',     title: 'Sensoren',  icon: Gauge,             rows: sensorRows,     sel: sensors,     setSel: setSensors,
+      add: { label: 'Neuer Sensor', onClick: () => openAdd('sensor') } },
+    { key: 'actuators',   title: 'Aktoren',   icon: Zap,               rows: actuatorRows,   sel: actuators,   setSel: setActuators,
+      add: { label: 'Neuer Aktor', onClick: () => openAdd('actuator') } },
+    { key: 'controllers', title: 'Regler',    icon: SlidersHorizontal, rows: controllerRows, sel: controllers, setSel: setControllers,
+      add: { label: 'Neuer Regler', onClick: () => openAdd('controller') } },
+    { key: 'charts',      title: 'Charts',    icon: LineChart,         rows: chartRows,      sel: charts,      setSel: setCharts },
+    { key: 'programs',    title: 'Programme', icon: ListChecks,        rows: programRows,    sel: progs,       setSel: setProgs,
+      add: onNewProgram && { label: 'Neues Programm', onClick: onNewProgram } },
+    { key: 'timers',      title: 'Timer',     icon: TimerIcon,         rows: timerRows,      sel: timerIds,    setSel: setTimerIds,
+      add: onNewTimer && { label: 'Neuer Timer', onClick: onNewTimer } },
+  ] as Section[])
+    // An empty group stays visible when it can be filled from here, so the
+    // first sensor of a fresh device is one click away.
+    .filter((s) => s.rows.length > 0 || s.add);
+
+  const total = sections.reduce((n, s) => n + s.rows.length, 0);
+  const selected = sections.reduce((n, s) => n + s.rows.filter((r) => s.sel.has(r.id)).length, 0);
+
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? sections
+        .map((s) => ({ ...s, rows: s.rows.filter((r) => r.label.toLowerCase().includes(q)) }))
+        .filter((s) => s.rows.length > 0)
+    : sections;
 
   function toggle(set: Set<string>, setFn: (s: Set<string>) => void, id: string) {
     const next = new Set(set);
@@ -68,117 +171,59 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
     <>
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <form onSubmit={handleSubmit} class={`flex max-h-[85vh] w-full max-w-md flex-col ${dialogFrame}`}>
-        <div class="min-h-0 flex-1 overflow-y-auto p-6">
-          <h2 class="mb-4 text-base font-medium text-fg">Dashboard-Inhalte</h2>
-
-          {sensorIds.length > 0 && (
-            <fieldset class="mb-3">
-              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Sensoren</legend>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-                {sensorIds.map((id) => (
-                  <label key={id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
-                    <input type="checkbox" class="accent-accent"
-                      checked={sensors.has(id)} onChange={() => toggle(sensors, setSensors, id)} />
-                    {id}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+        <div class="shrink-0 px-5 pb-3 pt-5">
+          <h2 class="text-base font-medium text-fg">Dashboard-Inhalte</h2>
+          <p class="mt-0.5 text-xs text-muted">{selected} von {total} ausgewählt</p>
+          {total > SEARCH_THRESHOLD && (
+            <div class="relative mt-3">
+              <Search size={14} class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+              <input type="search" value={query} placeholder="Suchen"
+                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+                class={`${inp} w-full pl-8`} />
+            </div>
           )}
+        </div>
 
-          {actuatorIds.length > 0 && (
-            <fieldset class="mb-3">
-              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Aktoren</legend>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-                {actuatorIds.map((id) => (
-                  <label key={id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
-                    <input type="checkbox" class="accent-accent"
-                      checked={actuators.has(id)} onChange={() => toggle(actuators, setActuators, id)} />
-                    {id}
-                  </label>
-                ))}
+        <div class="min-h-0 flex-1 overflow-y-auto border-t border-border">
+          {visible.map((sec) => {
+            const Icon = sec.icon;
+            const hits = sec.rows.filter((r) => sec.sel.has(r.id)).length;
+            return (
+              <div key={sec.key}>
+                <div class="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-surface px-5 py-1.5">
+                  <span class="text-xs font-medium uppercase tracking-wide text-muted">{sec.title}</span>
+                  <span class="text-xs tabular-nums text-faint">{hits}/{sec.rows.length}</span>
+                </div>
+                {sec.rows.map((r) => {
+                  const on = sec.sel.has(r.id);
+                  return (
+                    <label key={r.id}
+                      class={`${rowBase} cursor-pointer ${on ? 'bg-accent/10' : 'hover:bg-subtle-hover'}`}>
+                      <Icon size={18} class={on ? 'text-accent' : 'text-faint'} />
+                      <span class="min-w-0 flex-1 truncate text-sm text-fg">{r.label}</span>
+                      {r.detail && (
+                        <span class="shrink-0 font-mono text-xs tabular-nums text-muted">{r.detail}</span>
+                      )}
+                      <input type="checkbox" class="size-4 shrink-0 accent-accent"
+                        checked={on} onChange={() => toggle(sec.sel, sec.setSel, r.id)} />
+                    </label>
+                  );
+                })}
+                {/* Creating is not a search result — hide it while filtering. */}
+                {!q && sec.add && (
+                  <button type="button" onClick={sec.add.onClick}
+                    class={`${rowBase} w-full text-sm text-fg hover:bg-subtle-hover`}>
+                    <Plus size={18} class="text-faint" />
+                    {sec.add.label}
+                  </button>
+                )}
               </div>
-            </fieldset>
-          )}
+            );
+          })}
 
-          {controllerIds.length > 0 && (
-            <fieldset class="mb-3">
-              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Regler</legend>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-                {controllerIds.map((id) => (
-                  <label key={id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
-                    <input type="checkbox" class="accent-accent"
-                      checked={controllers.has(id)} onChange={() => toggle(controllers, setControllers, id)} />
-                    {id}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+          {visible.length === 0 && (
+            <p class="px-5 py-8 text-center text-sm text-muted">Keine Treffer</p>
           )}
-
-          {logs && logs.length > 0 && (
-            <fieldset class="mb-3">
-              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Charts</legend>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-                {logs.map((l) => (
-                  <label key={l.id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
-                    <input type="checkbox" class="accent-accent"
-                      checked={charts.has(l.id)} onChange={() => toggle(charts, setCharts, l.id)} />
-                    {l.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
-
-          {programs && programs.length > 0 && (
-            <fieldset class="mb-3">
-              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Programme</legend>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-                {programs.map((p) => (
-                  <label key={p.id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
-                    <input type="checkbox" class="accent-accent"
-                      checked={progs.has(p.id)} onChange={() => toggle(progs, setProgs, p.id)} />
-                    {p.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
-
-          {timers && timers.length > 0 && (
-            <fieldset class="mb-3">
-              <legend class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Timer</legend>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-                {timers.map((t) => (
-                  <label key={t.id} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
-                    <input type="checkbox" class="accent-accent"
-                      checked={timerIds.has(t.id)} onChange={() => toggle(timerIds, setTimerIds, t.id)} />
-                    {t.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
-
-          <div class="mt-1 flex flex-col items-start gap-1">
-            <button type="button" onClick={() => setSubAddOpen(true)}
-              class="text-xs text-faint hover:text-fg">
-              + Neues Gerät erstellen
-            </button>
-            {onNewProgram && (
-              <button type="button" onClick={onNewProgram}
-                class="text-xs text-faint hover:text-fg">
-                + Neues Programm erstellen
-              </button>
-            )}
-            {onNewTimer && (
-              <button type="button" onClick={onNewTimer}
-                class="text-xs text-faint hover:text-fg">
-                + Neuen Timer erstellen
-              </button>
-            )}
-          </div>
         </div>
 
         <div class={`${dialogFooter} justify-end`}>
@@ -190,7 +235,7 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
       </form>
     </div>
 
-    <AddItemModal open={subAddOpen} snap={snap}
+    <AddItemModal open={subAddOpen} snap={snap} initialRole={addRole}
       onClose={() => setSubAddOpen(false)}
       onCreated={(role, id) => {
         if (role === 'sensor') toggle(sensors, setSensors, id);
