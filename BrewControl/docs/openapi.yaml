@@ -2896,7 +2896,13 @@ components:
         `layout` clears the stored arrangement (the UI then derives a default).
       properties:
         name: { type: string, default: Dashboard }
-        sensors: { type: array, items: { type: string } }
+        sensors:
+          type: array
+          description: >
+            Sensor base ids ("tank" — every channel of that sensor on one card)
+            and/or channel ids ("tank.distance" — that channel alone). Both may
+            appear for the same sensor.
+          items: { type: string }
         actuators: { type: array, items: { type: string } }
         controllers: { type: array, items: { type: string } }
         charts: { type: array, items: { type: string }, description: Log ids. }
@@ -2904,7 +2910,11 @@ components:
         timers: { type: array, items: { type: string }, description: Timer ids. }
         sensorModes:
           type: object
-          description: Sensor base-id -> display mode.
+          description: >
+            Sensor id -> display mode. The key is either a channel id
+            ("tank.distance", the mode of that channel's card or of its row in
+            the group card) or a sensor base id ("tank"), which a single-channel
+            sensor uses and which a group card's rows fall back to.
           additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
         controllerModes:
           type: object
@@ -2922,7 +2932,13 @@ components:
       properties:
         id: { type: string, pattern: "^[0-9a-f]{6}$" }
         name: { type: string }
-        sensors: { type: array, items: { type: string } }
+        sensors:
+          type: array
+          description: >
+            Sensor base ids ("tank" — every channel of that sensor on one card)
+            and/or channel ids ("tank.distance" — that channel alone). Both may
+            appear for the same sensor.
+          items: { type: string }
         actuators: { type: array, items: { type: string } }
         controllers: { type: array, items: { type: string } }
         charts: { type: array, items: { type: string } }

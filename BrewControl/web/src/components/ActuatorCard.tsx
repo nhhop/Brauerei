@@ -66,7 +66,7 @@ export function ActuatorCard({ actuator, controllers = [], programs = [], alarm,
   }
 
   return (
-    <div class="row-span-2 min-h-[160px] rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
+    <div class="min-h-[160px] rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
       <div class="flex items-center justify-between gap-2">
         <h3 class="font-medium text-fg">{id}</h3>
         <div class="flex items-center gap-2">

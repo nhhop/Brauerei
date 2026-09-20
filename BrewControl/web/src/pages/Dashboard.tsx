@@ -10,6 +10,7 @@ import {
   getProfiles, createProfile,
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
+import { SensorGroupCard, rowMode } from '../components/SensorGroupCard';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
@@ -333,6 +334,36 @@ export function Dashboard({ snap, err, alarmByRef }: {
   const refs = activeDash ? memberRefs(activeDash, snap, logs, programs, timers) : [];
   const layout = activeDash ? reconcile(activeDash.layout, refs) : null;
 
+  // The snapshot rows behind a sensor ref: every channel for a base id, the one
+  // channel for a channel id.
+  function sensorChannels(id: string) {
+    return (displaySnap?.sensors ?? []).filter(
+      (s) => s.id === id || (s.id.includes('.') ? s.id.split('.')[0] : s.id) === id);
+  }
+
+  // A group row's mode is stored under the channel id — the same key a
+  // separately placed channel card uses. Falling back to the base id keeps a
+  // dashboard that set the mode on the old stacked block looking the same.
+  function channelMode(channelId: string, baseId: string): WidgetMode {
+    const modes = activeDash?.sensorModes;
+    return modes?.[channelId] ?? modes?.[baseId] ?? 'normal';
+  }
+
+  // Flips one row of a group card between normal and compact. Writing every
+  // channel's effective mode and dropping the base key migrates the legacy
+  // whole-sensor mode on first touch, so no row depends on it afterwards.
+  function toggleRowMode(channelId: string) {
+    const baseId = channelId.split('.')[0];
+    const modes = { ...(activeDash?.sensorModes ?? {}) };
+    delete modes[baseId];
+    for (const s of sensorChannels(baseId)) {
+      const current = rowMode(channelMode(s.id, baseId));
+      const next = s.id === channelId ? (current === 'normal' ? 'compact' : 'normal') : current;
+      if (next === 'normal') delete modes[s.id]; else modes[s.id] = next;
+    }
+    patchActiveDash({ sensorModes: modes });
+  }
+
   function labelOf(ref: string): string {
     const id = refId(ref);
     switch (refKind(ref)) {
@@ -362,28 +393,38 @@ export function Dashboard({ snap, err, alarmByRef }: {
     const id = refId(ref);
     switch (refKind(ref)) {
       case 'sensor': {
-        // "sensor/<baseId>" renders all channel cards of a sensor together
-        // (legacy refs); "sensor/<baseId>.<channel>" renders just that channel.
+        // "sensor/<baseId>" is the whole sensor: one card with a row per
+        // channel once there are several. "sensor/<baseId>.<channel>" is a
+        // single channel and stays a plain card, as does a one-channel sensor.
         // Edit/reset act on the sensor (base id), delete on the ref itself.
-        const channels = (displaySnap?.sensors ?? []).filter(
-          (s) => s.id === id || (s.id.includes('.') ? s.id.split('.')[0] : s.id) === id);
+        const channels = sensorChannels(id);
         if (channels.length === 0) return null;
         const baseId = id.includes('.') ? id.split('.')[0] : id;
+        if (channels.length > 1) {
+          return (
+            <SensorGroupCard baseId={baseId} channels={channels}
+              modeOf={(cid) => channelMode(cid, baseId)}
+              alarmOf={(cid) => alarmByRef?.get(`sensor/${cid}`)}
+              onToggleMode={editMode ? toggleRowMode : undefined}
+              onReset={channels.some((s) => s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass')
+                ? () => resetSensor(baseId) : undefined}
+              onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+              onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
+            />
+          );
+        }
+        const s = channels[0];
         const mode = activeDash?.sensorModes?.[id] ?? 'normal';
         return (
-          <div class={channels.length > 1 ? 'space-y-4' : ''}>
-            {channels.map((s) => (
-              <SensorCard key={s.id} sensor={s}
-                alarm={alarmByRef?.get(`sensor/${s.id}`)}
-                viewMode={mode}
-                onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
-                onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
-                onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
-                  ? () => resetSensor(baseId) : undefined}
-                onCycleMode={editMode ? () => cycleMode('sensorModes', id, mode) : undefined}
-              />
-            ))}
-          </div>
+          <SensorCard sensor={s}
+            alarm={alarmByRef?.get(`sensor/${s.id}`)}
+            viewMode={mode}
+            onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+            onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
+            onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
+              ? () => resetSensor(baseId) : undefined}
+            onCycleMode={editMode ? () => cycleMode('sensorModes', id, mode) : undefined}
+          />
         );
       }
       case 'controller': {

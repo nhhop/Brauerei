@@ -4014,3 +4014,64 @@ mit BOM zurückgeschrieben (Mojibake in allen Umlauten/Gedankenstrichen,
 vor dem Schaden (`b2be3a1`) plus diesem Eintrag; UTF-8 ohne BOM. Für
 Doku-Edits Python mit explizitem `encoding="utf-8"` oder das Edit-Tool nutzen,
 nicht die PS-5.1-Cmdlets.
+
+## 2026-09-20 — Gruppenkarte für Multi-Channel-Sensoren + gemessene Raster-Spans
+
+Auslöser: Seit dem Umbau auf einzelne Kanalkarten (50f199c) war die Basis-Ref
+`sensor/tank` nur noch ein Stapel aus zwei vollen Karten und riss Leerraum ins
+Raster. Gewünscht war eine Karte pro logischem Sensor mit einer Zeile je Kanal.
+
+**Unterwegs gefunden — die eigentliche Ursache des Leerraums:** Die Zeilen-Spans
+`row-span-1/2/3` (`ui.ts` → `widgetSizeClass`, `ActuatorCard`) sitzen auf der
+Karte. Seit dem Drag-&-Drop-Umbau (3ddcaf6) ist das Grid-Kind aber der
+`itemBox`-Wrapper in `DashboardLayout` — die Klassen waren seither wirkungslos.
+Jede Karte belegte eine Auto-Zeile, deren Höhe die höchste Karte der Reihe
+bestimmte; unter einer kompakten Karte (94 px) neben einer Gauge-Karte (263 px)
+standen so ~170 px Luft. Der Versuch, die Spans wieder zu deklarieren, scheiterte
+an den Zahlen selbst: die 72-px-Raster-Annahme stimmt für keine Karte mehr
+(Regler-Karte 213 px statt 160). Statt einer Höhentabelle, die beim nächsten
+Karten-Redesign wieder still veraltet, **misst** die Layout-Komponente jetzt:
+ein `ResizeObserver` je Karte setzt `grid-row: span ceil((Höhe + 16) / 8)`, das
+Kartenraster läuft auf 8-px-Zeilen ohne Zeilen-Gap (der Abstand steckt als
+`pb-4` in der Karte — ein `row-gap` läge sonst zwischen *jeder* der kleinen
+Zeilen). Ein Kartenbereich endet dadurch einen Abstand unter seiner letzten
+Karte; die Spans in `widgetSizeClass` sind ersatzlos raus, die `min-h`-Böden
+bleiben. Das gilt für das Desktop-Layout; die mobile Linearisierung
+(`Dashboard.tsx` → `mobileBlocks`) behält ihr bisheriges Raster — einspaltig
+gibt es nichts zu packen, ab `sm:` bleibt der alte Zustand.
+
+**Gruppenkarte:** Neue `SensorGroupCard.tsx` — Titel = Basis-ID, je Kanal eine
+Zeile (Label aus dem Kanalschlüssel, Wert/Einheit, im Modus „normal" Balken +
+Min/Max, im Modus „kompakt" nur die Wertzeile), Reset-Knopf nur in der Zeile
+eines kumulativen Kanals (ruft weiter `resetSensor(<Basis-ID>)`), Stift/× im
+Kopf, `fault` einmal unter den Zeilen. Gauge gibt es pro Zeile bewusst nicht —
+dafür bleibt der Kanal einzeln platzierbar. `Dashboard.tsx` rendert die
+Gruppenkarte für eine Basis-Ref mit mehr als einem Kanal, sonst unverändert
+`SensorCard`; bestehende `sensor/<base>`-Refs wechseln damit ohne Migration.
+Der Zeilen-Modus liegt unter der Kanal-ID (`sensorModes['tank.distance']`) —
+derselbe Schlüssel wie bei einer einzeln platzierten Kanalkarte, kein
+Schema-Zusatz. Gelesen wird mit Rückfall auf die Basis-ID, ein Umschalten
+materialisiert alle Kanäle und wirft den Basis-Schlüssel weg (Migration bei der
+ersten Berührung). Im Inhalte-Dialog steht die Basis-ID jetzt als regulärer
+Eintrag „Gruppenkarte · N Kanäle" über ihren Kanälen; Gruppe und Einzelkanal
+dürfen gleichzeitig auf einem Dashboard liegen (bewusst, der Kanal erscheint
+dann zweimal).
+
+**Verifikation** im Browser-Pane gegen einen Wegwerf-Mock (Snapshot mit HCSR04-
+und YF-S201-Kanälen, Regler, Aktoren, Chart; kein Zugriff auf ein echtes Board,
+`.env.local` unangetastet): Gruppenkarte statt Stapel, gemessene Abstände
+zwischen allen Karten 16–21 px und **kein** Loch mehr; Kartenbereich ohne
+Phantom-Scrollbar (`scrollHeight == clientHeight`); Zeilen-Modus umschalten →
+genau ein POST, Karte wächst 155→182 px, Span 20→23, übersteht den Reload;
+Reset nur in der `volume`-Zeile und auf die Basis-ID; Drag der Gruppenkarte und
+eines Charts in die Kartengruppe je ein POST, Chart weiter volle Breite;
+Inhalte-Dialog mit Gruppen- und Kanal-Einträgen; Dark/Light und 375×812 (eine
+Karte je Zeile, kein horizontales Scrollen). `pnpm typecheck`, `pnpm test` (25)
+und `pnpm build` grün, `redocly lint` valide (nur die bekannte
+`license`-Warnung). Firmware unverändert — `DashboardStore` behandelt
+`sensorModes` als opake Key→String-Map; `openapi.yaml` beschreibt jetzt, dass
+Dashboard-`sensors` Basis- **und** Kanal-IDs enthalten und welche Schlüssel in
+`sensorModes` stehen. Am Gerät steht die Verifikation aus (PLAN.md).
+
+**Nebenbefund:** `web/src/types.ts` kennt `Quantity` `Distance` nicht, obwohl
+`Quantity.h` und `openapi.yaml` ihn führen (PLAN.md).

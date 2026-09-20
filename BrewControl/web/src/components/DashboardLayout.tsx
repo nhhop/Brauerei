@@ -27,6 +27,15 @@ const ROOT_EDGE_PX = 16;
 const MIN_AREA_PX = 120;
 // Pointer travel before a grip press turns into a drag.
 const DRAG_START_PX = 4;
+// Row unit of a card group's grid. Cards have no common height (a compact
+// sensor is 94px, a controller 213px), so a card claims as many rows as it
+// measures — the unit is small on purpose, it is the precision with which a
+// card fits.
+const SPAN_ROW_PX = 8;
+// Vertical space below a card. It rides along as the card's own padding
+// instead of a row gap, which would land between every one of those tiny
+// rows; a card area therefore ends one gap below its last card.
+const CARD_GAP_PX = 16;
 
 interface Rect { left: number; top: number; width: number; height: number }
 
@@ -95,6 +104,30 @@ export function DashboardLayout({ layout, editMode, renderItem, labelOf, onChang
   >(null);
 
   const tree = draft ?? layout;
+
+  // Each card claims `ceil((height + gap) / row)` grid rows, so cards of
+  // different heights pack without holes: a short card no longer inherits the
+  // row height of a tall neighbour, and the group card of a multi-channel
+  // sensor simply takes the rows it needs. Measured rather than declared —
+  // a table of card heights drifts the moment a card changes.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const apply = (card: Element) => {
+      const box = card.parentElement;
+      if (!box) return;
+      const rows = Math.max(1, Math.ceil((card.getBoundingClientRect().height + CARD_GAP_PX) / SPAN_ROW_PX));
+      box.style.gridRow = `span ${rows}`;
+    };
+    const ro = new ResizeObserver((entries) => { for (const e of entries) apply(e.target); });
+    for (const box of Array.from(root.querySelectorAll<HTMLElement>('[data-ref][data-grid]'))) {
+      const card = box.firstElementChild?.tagName === 'BUTTON' ? box.children[1] : box.firstElementChild;
+      if (!card) continue;
+      apply(card);
+      ro.observe(card);
+    }
+    return () => ro.disconnect();
+  });
 
   // Escape aborts a drag in progress.
   useEffect(() => {
@@ -231,8 +264,8 @@ export function DashboardLayout({ layout, editMode, renderItem, labelOf, onChang
     // grid column it would be unreadable.
     const wide = !fill && (kind === 'chart' || kind === 'program');
     return (
-      <div key={ref} data-ref={ref}
-        class={`relative ${wide ? 'col-span-full' : ''} ${fill ? 'flex h-full min-h-0 flex-col' : ''} ${
+      <div key={ref} data-ref={ref} data-grid={fill ? undefined : ''}
+        class={`relative ${wide ? 'col-span-full' : ''} ${fill ? 'flex h-full min-h-0 flex-col' : 'pb-4'} ${
           drag?.ref === ref ? 'opacity-40' : ''}`}>
         {editMode && (
           <button type="button"
@@ -260,7 +293,7 @@ export function DashboardLayout({ layout, editMode, renderItem, labelOf, onChang
           class={`min-h-0 min-w-0 flex-1 overflow-y-auto ${
             editMode ? 'rounded-lg border border-dashed border-border/60 p-2' : ''}`}>
           {single ? itemBox(node.items[0], true) : (
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4 [grid-auto-flow:dense] [grid-auto-rows:minmax(72px,auto)]">
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] items-start gap-x-4 [grid-auto-flow:dense] [grid-auto-rows:8px]">
               {node.items.map((r) => itemBox(r, false))}
             </div>
           )}

@@ -4,7 +4,7 @@ import {
   Plus, Search, type LucideIcon,
 } from 'lucide-preact';
 import type {
-  Snapshot, DashboardConfig, LogConfig, ProgramConfig, TimerConfig, ItemState,
+  Snapshot, DashboardConfig, LogConfig, ProgramConfig, TimerConfig, ItemState, Sensor,
 } from '../types';
 import { fmtDuration } from '../format';
 import type { Role } from '../itemTypes';
@@ -44,6 +44,17 @@ interface Section {
   add?: { label: string; onClick: () => void };
 }
 
+// Snapshot sensors grouped by their base id, in snapshot order.
+function groupByBase(sensors: Sensor[], baseId: (id: string) => string): Map<string, Sensor[]> {
+  const out = new Map<string, Sensor[]>();
+  for (const s of sensors) {
+    const base = baseId(s.id);
+    const list = out.get(base);
+    if (list) list.push(s); else out.set(base, [s]);
+  }
+  return out;
+}
+
 function fmtValue(state: ItemState, unit: string): string {
   const v = state.v;
   if (!state.ok || v == null || !isFinite(v)) return '—';
@@ -79,17 +90,21 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
 
   if (!open) return null;
 
-  // Every channel of a multi-channel sensor (e.g. "flow.rate") is its own row and
-  // its own card. A dashboard saved before that may still hold the bare base id
-  // (all channels together); it stays listed so it can be unchecked.
+  // Every channel of a multi-channel sensor (e.g. "flow.rate") is its own row
+  // and its own card. The bare base id is offered alongside them: it puts all
+  // channels of that sensor on one group card. Both may be picked at once.
   const snapSensors = snap?.sensors ?? [];
   const baseId = (id: string) => (id.includes('.') ? id.split('.')[0] : id);
-  const sensorRows: Row[] = snapSensors.map((s) => ({
-    id: s.id, label: s.id, detail: fmtValue(s.state, s.meta.unit),
-  }));
-  for (const id of new Set(snapSensors.map((s) => baseId(s.id)))) {
-    if (sensors.has(id) && !sensorRows.some((r) => r.id === id))
-      sensorRows.push({ id, label: id, detail: 'alle Kanäle' });
+  const sensorRows: Row[] = [];
+  for (const [base, chs] of groupByBase(snapSensors, baseId)) {
+    if (chs.length > 1) {
+      sensorRows.push({ id: base, label: base, detail: `Gruppenkarte · ${chs.length} Kanäle` });
+    }
+    for (const s of chs) sensorRows.push({ id: s.id, label: s.id, detail: fmtValue(s.state, s.meta.unit) });
+    // A sensor that lost channels (channel mask, edit) can leave a selected
+    // base id without a group behind — keep it listed so it can be unchecked.
+    if (chs.length <= 1 && sensors.has(base) && !chs.some((s) => s.id === base))
+      sensorRows.push({ id: base, label: base, detail: 'alle Kanäle' });
   }
 
   const actuatorRows: Row[] = (snap?.actuators ?? []).map((a) => ({

@@ -1,13 +1,13 @@
 import type { WidgetMode } from './types';
 
-// Dashboard card height per display variant — `row-span-N` for the grid's
-// dense packing (base row unit 72px, see Dashboard.tsx's grid classes) plus a
-// matching `min-h` floor so a card that outgrows its row-span budget (e.g. a
-// wrapped fault badge) still grows instead of clipping.
+// Dashboard card height per display variant — a floor, not a fixed height: a
+// card that outgrows it (a wrapped fault badge, a group card with many rows)
+// simply gets taller. How many grid rows it then claims is measured by
+// DashboardLayout, not declared here.
 export const widgetSizeClass: Record<WidgetMode, string> = {
-  normal: 'min-h-[160px] row-span-2',
-  compact: 'min-h-[72px] row-span-1',
-  gauge: 'min-h-[248px] row-span-3',
+  normal: 'min-h-[160px]',
+  compact: 'min-h-[72px]',
+  gauge: 'min-h-[248px]',
 };
 
 // Shared Fluent-style button classes for dialog footers — reused across
