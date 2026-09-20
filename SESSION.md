@@ -3815,3 +3815,17 @@ abgefangen. Echte Hardware-Verifikation (Aktor + laufendes Programm/Timer,
 tatsächliches Abschalten/Pausieren, Reboot-Verhalten) steht noch aus —
 absichtlich nicht an einem Board mit echten Aktoren/laufendem Sud
 ausprobiert, siehe PLAN.md → Hardware-Verifikation offen.
+
+## 2026-09-20 — Fix: leere AutoTune-Trennlinie auf der Regler-Karte
+
+Nutzer-Fund an der neuen Gauge-Karte: unter dem Bogen stand eine freie
+Trennlinie. Ursache ist der AutoTune-Block in `ControllerCard.tsx`, dessen
+Container schon rendert, sobald ein PID überhaupt einen `autotuneState` trägt —
+Inhalt gibt es aber nur bei `running` (Fortschrittsanzeige) und `done`
+(übernommene Kp/Ki/Kd). Im Normalfall `idle` blieb dadurch ein leerer Kasten mit
+oberer Trennlinie und zweimal 12 px Polsterung stehen. Die Bedingung prüft jetzt
+genau die beiden Zustände mit Inhalt.
+
+Altbestand, kein Folgefehler der Karten-Überarbeitung: vorher lagen unter dem
+Bogen ohnehin die Min/Max-Zeile und rund 55 px toter Raum, seit die Karte eng
+sitzt steht die Linie frei. `pnpm typecheck` grün.

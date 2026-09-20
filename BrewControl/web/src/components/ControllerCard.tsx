@@ -302,7 +302,9 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
         </>
       )}
 
-      {viewMode !== 'compact' && isPid && autotuneState && (
+      {/* Only the two states that actually render something — a PID sitting at
+          'idle' would otherwise draw an empty bordered strip under the card. */}
+      {viewMode !== 'compact' && isPid && (autotuneState === 'running' || autotuneState === 'done') && (
         <div class="mt-3 border-t border-border/50 pt-3">
           {autotuneState === 'running' && <AutotuneProgress params={params} />}
           {autotuneState === 'done' && (
