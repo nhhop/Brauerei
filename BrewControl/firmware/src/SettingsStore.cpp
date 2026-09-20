@@ -16,6 +16,7 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
   if (!theme.isNull()) {
     if (const char* m = theme["mode"])       mode_       = m;
     if (const char* a = theme["accent"])     accent_     = a;
+    if (const char* s = theme["secondary"])  secondary_  = s;
     if (const char* b = theme["background"]) background_ = b;
   }
   JsonObject fw = doc["firmware"].as<JsonObject>();
@@ -82,6 +83,7 @@ String SettingsStore::serialize() const {
   JsonObject theme = doc["theme"].to<JsonObject>();
   theme["mode"]       = mode_.c_str();
   theme["accent"]     = accent_.c_str();
+  theme["secondary"]  = secondary_.c_str();
   theme["background"] = background_.c_str();
   JsonObject fw = doc["firmware"].to<JsonObject>();
   fw["channel"]   = fwChannel_.c_str();
@@ -134,6 +136,7 @@ void SettingsStore::update(const JsonObject& patch) {
   if (!theme.isNull()) {
     if (const char* m = theme["mode"])       mode_       = m;
     if (const char* a = theme["accent"])     accent_     = a;
+    if (const char* s = theme["secondary"])  secondary_  = s;
     if (const char* b = theme["background"]) background_ = b;
   }
   JsonObject fw = patch["firmware"].as<JsonObject>();

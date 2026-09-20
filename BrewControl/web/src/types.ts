@@ -428,6 +428,9 @@ export interface PairResult {
 export interface ThemeSettings {
   mode: 'light' | 'dark' | 'system';
   accent: string;
+  // Second series color — controller output bar and percentage. Older devices
+  // omit it; the UI falls back to the default green.
+  secondary?: string;
   background: 'neutral' | 'warm' | 'cool';
 }
 

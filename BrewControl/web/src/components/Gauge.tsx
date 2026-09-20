@@ -9,9 +9,19 @@ import type { ComponentChildren } from 'preact';
 const SIZE = 200;
 const CENTER = SIZE / 2;
 const RADIUS = 82;
-const STROKE = 14;
+// Track and thumb match the linear Slider — 6px track, 18px thumb (styles.css,
+// `.range-slider`) — at the size the cards render the gauge in. Both are given
+// in viewBox units, so they scale with the `size` prop from there.
+const REF_SIZE = 220;
+const STROKE = (6 * SIZE) / REF_SIZE;
+const THUMB_R = (9 * SIZE) / REF_SIZE;
 const START_DEG = 135;
 const SWEEP_DEG = 270;
+// The arc ends well above the bottom of its square box (the 90° gap sits at the
+// bottom), so a square box would leave a dead strip under the gauge. The box is
+// cropped just below the arc ends — far enough down to keep the thumb and the
+// range labels, which is all that lives there.
+const BOX_HEIGHT = (CENTER + RADIUS * Math.sin((START_DEG * Math.PI) / 180) + THUMB_R + 2) / SIZE;
 
 function polarToXY(deg: number, r: number) {
   const rad = (deg * Math.PI) / 180;
@@ -24,7 +34,7 @@ const ARC_PATH = (() => {
   return `M ${start.x} ${start.y} A ${RADIUS} ${RADIUS} 0 1 1 ${end.x} ${end.y}`;
 })();
 
-export function Gauge({ value, min, max, color = 'var(--accent)', fillValue, size = 200, interactive, step, ariaLabel, onInput, onChange, children }: {
+export function Gauge({ value, min, max, color = 'var(--accent)', fillValue, size = 200, interactive, step, ariaLabel, rangeLabels, onInput, onChange, children }: {
   value: number;
   min: number;
   max: number;
@@ -37,6 +47,9 @@ export function Gauge({ value, min, max, color = 'var(--accent)', fillValue, siz
   interactive?: boolean;
   step?: number;
   ariaLabel?: string;
+  // Puts min/max into the arc's bottom gap, level with its ends, instead of
+  // leaving them to a separate row under the gauge.
+  rangeLabels?: boolean;
   onInput?: (v: number) => void;
   onChange?: (v: number) => void;
   children?: ComponentChildren;
@@ -130,7 +143,7 @@ export function Gauge({ value, min, max, color = 'var(--accent)', fillValue, siz
   const thumb = polarToXY(START_DEG + (clampPct(local) / 100) * SWEEP_DEG, RADIUS);
 
   return (
-    <div class="relative" style={{ width: size, height: size }}>
+    <div class="relative overflow-hidden" style={{ width: size, height: Math.round(size * BOX_HEIGHT) }}>
       <svg ref={svgRef} viewBox={`0 0 ${SIZE} ${SIZE}`} width={size} height={size}
         class={interactive ? 'touch-none' : undefined}
         style={{ cursor: interactive ? 'pointer' : undefined }}
@@ -156,12 +169,20 @@ export function Gauge({ value, min, max, color = 'var(--accent)', fillValue, siz
         <path d={ARC_PATH} fill="none" stroke={color} stroke-width={STROKE} stroke-linecap="round"
           pathLength={100} stroke-dasharray={`${pct} 1000`} />
         {interactive && (
-          <circle cx={thumb.x} cy={thumb.y} r={STROKE * 0.7} fill="#fff" stroke="rgba(0,0,0,0.15)" stroke-width={1} />
+          <circle cx={thumb.x} cy={thumb.y} r={THUMB_R} fill="#fff" stroke="rgba(0,0,0,0.15)" stroke-width={1} />
         )}
       </svg>
-      <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+      {/* Centred on the arc, not on the cropped box — hence the explicit height. */}
+      <div class="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-center"
+        style={{ height: size }}>
         {children}
       </div>
+      {rangeLabels && (
+        <>
+          <span class="pointer-events-none absolute bottom-0 left-0 text-[10px] text-faint">{min}</span>
+          <span class="pointer-events-none absolute bottom-0 right-0 text-[10px] text-faint">{max}</span>
+        </>
+      )}
     </div>
   );
 }

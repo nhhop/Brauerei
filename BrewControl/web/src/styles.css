@@ -12,6 +12,8 @@
   --border:     #e5e5e5;   /* Win11 ControlStrokeColorDefault (light) */
   --accent:     #0078d4;   /* Windows accent blue — default (overridden by theme.ts) */
   --accent-fg:  #ffffff;   /* contrast on accent (overridden by theme.ts) */
+  --secondary:    #22c55e; /* second series (controller output) — overridden by theme.ts */
+  --secondary-fg: #000000; /* contrast on secondary (overridden by theme.ts) */
 
   /* Fluent 2 card tokens — semi-transparent so they composite over --bg (incl.
      tint). CardBackgroundFillColorDefault + CardStrokeColorDefault (light). */
@@ -121,6 +123,8 @@ html { background: var(--bg); }
   --color-subtle-pressed: var(--subtle-pressed);
   --color-accent:     var(--accent);
   --color-accent-fg:  var(--accent-fg);
+  --color-secondary:    var(--secondary);
+  --color-secondary-fg: var(--secondary-fg);
   --color-surface-acrylic: var(--acrylic);
   --color-success:    var(--success);
   --color-caution:    var(--caution);
