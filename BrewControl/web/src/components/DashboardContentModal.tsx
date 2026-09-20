@@ -196,7 +196,7 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
             <Search size={16} class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
           </div>
 
-          <div role="tablist" class="mt-3.5 flex overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div role="tablist" class="mt-3.5 flex overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]">
             {tabs.map((t) => {
               const active = cat === t.key;
               return (
