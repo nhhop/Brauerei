@@ -4075,3 +4075,16 @@ Dashboard-`sensors` Basis- **und** Kanal-IDs enthalten und welche Schlüssel in
 
 **Nebenbefund:** `web/src/types.ts` kennt `Quantity` `Distance` nicht, obwohl
 `Quantity.h` und `openapi.yaml` ihn führen (PLAN.md).
+
+## 2026-09-20 — Sammel-Commit: Farbvalidierung, `Distance`-Typ, `pio ci`-Flags
+
+Drei kleine Punkte aus PLAN.md. (1) `POST /api/settings` prüft `theme.secondary`
+und `theme.accent` jetzt auf `#` plus sechs Hex-Ziffern (`isHexColor()` in
+`WebUI.cpp`), wie `openapi.yaml` es zusagt; `#gggggg` wird mit
+`invalid secondary`/`invalid accent` abgewiesen. (2) `Quantity` in
+`web/src/types.ts` kennt `Distance`. (3) Die `pio ci`-Aufrufe in den READMEs
+von Beispiel 08–10 und im `platformio.ini`-Kommentar tragen die
+C++17-Flags (`-std=gnu++17`, `build_unflags=-std=gnu++11`).
+
+Verifikation: `pio run -e esp32dev` und `pnpm typecheck` grün. Nicht geprüft:
+die Farbablehnung am laufenden Gerät.

@@ -7,9 +7,11 @@ controller is itself published, so it can be retuned over MQTT.
 
 ## Build
 
+The library needs C++17 (`pio ci` defaults to gnu++11), hence the `-O` flags.
+
 ```powershell
-pio ci examples/08_remote_mqtt/publisher --lib . --board esp32dev
-pio ci examples/08_remote_mqtt/consumer  --lib . --board esp32dev
+pio ci examples/08_remote_mqtt/publisher --lib . --board esp32dev -O "build_flags=-std=gnu++17" -O "build_unflags=-std=gnu++11"
+pio ci examples/08_remote_mqtt/consumer  --lib . --board esp32dev -O "build_flags=-std=gnu++17" -O "build_unflags=-std=gnu++11"
 ```
 
 ## Run

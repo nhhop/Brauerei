@@ -16,6 +16,7 @@ export type Quantity =
   | 'Mass'
   | 'Volume'
   | 'FlowRate'
+  | 'Distance'
   | 'Frequency'
   | 'Duration'
   | 'DutyCycle'

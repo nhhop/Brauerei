@@ -402,6 +402,13 @@ class PostJsonHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
+// "#rrggbb" — the shape openapi.yaml promises for theme colors.
+bool isHexColor(const char* s) {
+  if (strlen(s) != 7 || s[0] != '#') return false;
+  for (int i = 1; i < 7; ++i) if (!isxdigit(static_cast<unsigned char>(s[i]))) return false;
+  return true;
+}
+
 }  // namespace
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
@@ -1480,12 +1487,12 @@ void WebUI::begin() {
             }
           }
           if (const char* s = theme["secondary"]) {
-            if (strlen(s) != 7 || s[0] != '#') {
+            if (!isHexColor(s)) {
               req->send(400, "text/plain", "invalid secondary"); return;
             }
           }
           if (const char* a = theme["accent"]) {
-            if (strlen(a) != 7 || a[0] != '#') {
+            if (!isHexColor(a)) {
               req->send(400, "text/plain", "invalid accent"); return;
             }
           }
