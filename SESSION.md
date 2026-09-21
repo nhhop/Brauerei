@@ -4134,3 +4134,15 @@ C++17-Flags (`-std=gnu++17`, `build_unflags=-std=gnu++11`).
 
 Verifikation: `pio run -e esp32dev` und `pnpm typecheck` grün. Nicht geprüft:
 die Farbablehnung am laufenden Gerät.
+
+## 2026-09-21 — Log-Chart: Zoom bleibt bei Live-Updates erhalten
+
+Drag-Zoom (uPlot-Standard) sprang beim nächsten Snapshot zurück, weil
+`ChartCard.tsx` bei jedem Live-Punkt `setData(data)` mit dem Default
+`resetScales=true` aufrief. Jetzt wird vor dem Anhängen geprüft, ob die
+X-Skala noch alle Daten umfasst (`isZoomed`); nur dann läuft der Graph
+automatisch mit, sonst bleibt der gezoomte Ausschnitt stehen. Doppelklick
+setzt den Zoom zurück (uPlot-Standard).
+
+Verifikation: `pnpm typecheck` grün. Nicht geprüft: Verhalten im Browser
+mit Live-Daten.

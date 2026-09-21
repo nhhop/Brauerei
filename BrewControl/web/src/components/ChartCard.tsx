@@ -42,6 +42,15 @@ function interpAt(u: uPlot, si: number, cx: number): number | null {
   return x1 === x0 ? y1 : y0 + (y1 - y0) * ((cx - x0) / (x1 - x0));
 }
 
+// True when the user zoomed in (drag-select; double-click resets), i.e. the x
+// scale no longer spans all data. Must be checked before new points are appended,
+// since u.data shares the array with the caller.
+function isZoomed(u: uPlot): boolean {
+  const xs = u.data[0] as number[];
+  const { min, max } = u.scales.x;
+  return xs.length > 0 && min != null && max != null && (min > xs[0] || max < xs[xs.length - 1]);
+}
+
 function fmtNum(v: number | null): string {
   return v == null ? '--' : String(Math.round(v * 1000) / 1000);
 }
@@ -221,6 +230,8 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
     if (ts <= lastTsRef.current) return;  // monotonic / dedupe
     const refs = refsRef.current;
     const data = dataRef.current;
+    const u = uRef.current;
+    const resetScales = !isZoomed(u);   // keep a user zoom across live updates
     const wasEnabled = enabledRef.current;
     enabledRef.current = log.enabled;
     if (!log.enabled) {
@@ -230,14 +241,14 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
         lastTsRef.current = ts;
         data[0].push(ts);
         refs.forEach((_ref, i) => data[i + 1].push(null));
-        uRef.current.setData(data as uPlot.AlignedData);
+        u.setData(data as uPlot.AlignedData, resetScales);
       }
       return;
     }
     lastTsRef.current = ts;
     data[0].push(ts);
     refs.forEach((ref, i) => data[i + 1].push(resolveRef(snap, ref)));
-    uRef.current.setData(data as uPlot.AlignedData);
+    u.setData(data as uPlot.AlignedData, resetScales);
   }, [snap]);
 
   return <div ref={elRef} class={fill ? 'h-full w-full' : 'w-full'} />;
