@@ -6,7 +6,7 @@ import {
   deleteSensor, deleteActuator, deleteController,
   scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
-import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
 import {
   ITEM_TYPES, ROLE_LABEL, ROLE_META, CATEGORY_ICON,
@@ -1860,15 +1860,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
   return (
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      class={dialogScrim}
       onClick={() => { if (!pending) onClose(); }}
     >
       <div
-        class={`max-h-[90vh] w-full max-w-md ${dialogFrame}`}
+        class={`max-h-[90vh] w-full max-w-md ${dialogFrame} ${dialogSheet}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSubmit} class="flex min-h-0 flex-col">
-          <div class="min-h-0 space-y-4 overflow-y-auto p-5">
+        <form onSubmit={handleSubmit} class="flex min-h-0 flex-1 flex-col">
+          <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           {/* Compact header — the subline is the only place the chosen type is
               named. There is no back affordance: editing cannot change the type,
               and a discovered device has its type fixed by the scan. */}

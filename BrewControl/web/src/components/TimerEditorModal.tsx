@@ -2,7 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import type {
   TimerConfig, TimerMode, TimerTargetKind, TimerTargetAction, TimerExpireAction, Snapshot, ProgramConfig,
 } from '../types';
-import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
+import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp } from '../ui';
 import { Segmented } from './Segmented';
 
 type SaveCfg = Pick<TimerConfig, 'name' | 'mode' | 'durationSec' | 'timeOfDay' | 'repeat' | 'onExpire'>;
@@ -96,9 +96,9 @@ export function TimerEditorModal({ open, initial, snap, programs, onSave, onDele
   }
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-sm ${dialogFrame}`}>
-        <div class="min-h-0 overflow-y-auto p-6">
+    <div class={dialogScrim}>
+      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-sm ${dialogFrame} ${dialogSheet}`}>
+        <div class="min-h-0 flex-1 overflow-y-auto p-6">
           <h2 class="mb-4 text-base font-medium text-fg">{initial ? 'Timer bearbeiten' : 'Neuer Timer'}</h2>
           <label class="block">
             <span class="text-xs text-muted">Name</span>

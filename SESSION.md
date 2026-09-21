@@ -4243,3 +4243,14 @@ Alarm-Historie bleiben außen vor. Push-Abos bleiben bewusst draußen; die Folge
 
 Verifikation: `pio run -e esp32dev` und Redocly-Lint grün. Nicht geprüft:
 Export/Restore-Roundtrip am Gerät.
+
+## 2026-09-22 — BrewControl: Formular-Dialoge mobil als Vollbild
+
+Timer-/Programm-/Profil-/Log-/Alarm-Editor, Dashboard-Inhalt, Kalibrierung und
+„Item bearbeiten“ sind unter `md` (768 px) jetzt ein Vollbild-Sheet wie der
+„Gerät hinzufügen“-Wizard, darüber unverändert zentriert. Zentral über
+`dialogScrim`/`dialogSheet` in `web/src/ui.ts`; die Scroll-Zone bekam `flex-1`,
+damit der Footer unten klebt. Confirm-/Name-/Login-Dialog bleiben bewusst klein.
+
+Verifikation: `pnpm typecheck` und `pnpm build` grün, `max-md:`-Klassen im
+CSS-Bundle. Nicht geprüft: Sicht am Handy bzw. im Mobil-Viewport.

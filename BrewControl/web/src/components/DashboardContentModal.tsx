@@ -9,7 +9,7 @@ import type {
 import { fmtDuration } from '../format';
 import type { Role } from '../itemTypes';
 import { AddItemModal } from './AddItemModal';
-import { btnPrimary, btnSecondary, dialogFrame, inp } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 
 export interface DashboardMembers {
   sensors: string[]; actuators: string[]; controllers: string[]; charts: string[]; programs: string[]; timers: string[];
@@ -198,8 +198,8 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
 
   return (
     <>
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`flex h-[640px] max-h-[90vh] w-full max-w-[720px] flex-col ${dialogFrame}`}>
+    <div class={dialogScrim}>
+      <form onSubmit={handleSubmit} class={`flex h-[640px] max-h-[90vh] w-full max-w-[720px] flex-col ${dialogFrame} ${dialogSheet}`}>
         <div class="flex min-h-0 flex-1 flex-col px-6 pt-6">
           <h2 class="text-xl font-semibold text-fg">Widgets zum Dashboard hinzufügen</h2>
           <p class="mt-1.5 text-sm text-muted">Wähle die Widgets aus, die auf dem Dashboard angezeigt werden sollen.</p>

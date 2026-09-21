@@ -69,6 +69,14 @@ export const panelFrame =
 // in the zones so the footer spans the full width.
 export const dialogFrame =
   'flex flex-col overflow-hidden rounded-lg bg-surface shadow-elev-64';
+// Scrim + sheet modifier for form dialogs: full-bleed sheet below md (like the
+// "Gerät hinzufügen" wizard), centred card from md up. Use `dialogScrim` on the
+// backdrop and append `dialogSheet` to the panel's `dialogFrame` classes.
+export const dialogScrim =
+  'fixed inset-0 z-50 flex bg-black/40 md:items-center md:justify-center md:p-4';
+export const dialogSheet =
+  'max-md:h-full max-md:max-h-none max-md:max-w-none max-md:rounded-none max-md:shadow-none ' +
+  'max-md:pt-[var(--safe-t)] max-md:pb-[var(--safe-b)] max-md:pl-[var(--safe-l)] max-md:pr-[var(--safe-r)]';
 // Separated footer strip (ContentDialog command area) — sits below the scroll
 // area, so it stays visible.
 export const dialogFooter =

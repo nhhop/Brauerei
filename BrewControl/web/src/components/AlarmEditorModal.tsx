@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, AlarmConfig, CondOp, Severity } from '../types';
-import { btnPrimary, btnSecondary, dialogFrame, dialogFooter, dialogBtnRow, inp, linkDanger } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp, linkDanger } from '../ui';
 import { Segmented } from './Segmented';
 import { ConditionFields } from './ConditionFields';
 
@@ -66,9 +66,9 @@ export function AlarmEditorModal({ open, snap, initial, onSave, onDelete, onClos
   }
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-md ${dialogFrame}`}>
-        <div class="min-h-0 overflow-y-auto p-6">
+    <div class={dialogScrim}>
+      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-md ${dialogFrame} ${dialogSheet}`}>
+        <div class="min-h-0 flex-1 overflow-y-auto p-6">
           <h2 class="mb-4 text-base font-medium text-fg">
             {initial ? 'Alarm bearbeiten' : 'Neuer Alarm'}
           </h2>

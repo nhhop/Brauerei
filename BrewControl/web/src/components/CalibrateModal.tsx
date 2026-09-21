@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CalibrationChannel, CalibrationInfo, CalibrationMode } from '../types';
 import { calibrateSensor, clearCalibration, getCalibration } from '../api';
-import { btnPrimary, btnSecondary, dialogBtnRow, dialogFooter, dialogFrame, inp } from '../ui';
+import { btnPrimary, btnSecondary, dialogBtnRow, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 import { Spinner } from './Spinner';
 
 const lbl = 'mb-1 block text-xs text-muted';
@@ -138,9 +138,9 @@ export function CalibrateModal({ open, sensorId, onClose }: {
   const busy = pending || measuring !== null;
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    <div class={dialogScrim}
       onClick={() => { if (!busy) onClose(); }}>
-      <div class={`max-h-[90vh] w-full max-w-lg ${dialogFrame}`} onClick={(e) => e.stopPropagation()}>
+      <div class={`max-h-[90vh] w-full max-w-lg ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
         <div class="min-h-0 flex-1 overflow-y-auto p-5">
           <h2 class="text-base font-medium text-fg">„{sensorId}“ kalibrieren</h2>
 

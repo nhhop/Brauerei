@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { Snapshot, ProgramConfig, ProgramStep, ProfileLibrary } from '../types';
-import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogFooter, dialogBtnRow, inp } from '../ui';
+import { btnPrimary, btnSecondary, linkDanger, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp } from '../ui';
 import { ConfirmModal } from './ConfirmModal';
 import {
   ProgramStepsEditor, draftFromSteps, stepsFromDraft, draftHasContent, draftProblem,
@@ -88,9 +88,9 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
   );
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-2xl ${dialogFrame}`}>
-        <div class="min-h-0 overflow-y-auto p-6">
+    <div class={dialogScrim}>
+      <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-2xl ${dialogFrame} ${dialogSheet}`}>
+        <div class="min-h-0 flex-1 overflow-y-auto p-6">
         <h2 class="mb-4 text-base font-medium text-fg">
           {initial ? 'Programm bearbeiten' : 'Neues Programm'}
         </h2>
