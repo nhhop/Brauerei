@@ -38,6 +38,7 @@
 #include "sensors/HCSR04Sensor.h"
 #include "sensors/HX711LoadCellSensor.h"
 #include "sensors/MqttGenericSensor.h"
+#include "sensors/CalibratedSensor.h"
 
 #include "transport/ITransport.h"
 #include "transport/MqttTransport.h"

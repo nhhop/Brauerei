@@ -95,7 +95,12 @@ void loop() {
 `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss +
 Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei
-konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte).
+konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),
+`CalibratedSensor` (Decorator: umhüllt einen beliebigen Sensor und rechnet
+pro Kanal `wert = valRef + gain · (roh − rawRef)` — Ein-Punkt-Offset,
+Ein-Punkt-Faktor oder Zwei-Punkt; „roh" ist der unkalibrierte Wert des
+Sensors, `rawValue()` liefert ihn für Kalibrier-Oberflächen. Binary/Discrete-
+Kanäle sind nicht kalibrierbar, Cumulative nur per Faktor).
 
 **Aktoren** (`src/actuators/`): `DigitalOutputActuator` (binär oder
 Time-Proportional/SSR), `PulseOutputActuator` (nicht-blockierende

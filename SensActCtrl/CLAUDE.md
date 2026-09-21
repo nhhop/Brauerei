@@ -13,7 +13,7 @@ SensActCtrl ist eine wiederverwendbare ESP32-Library (PlatformIO, Arduino, C++17
 ```
 src/
 ├── core/         Reading, Quantity, ValueKind, Registry, RegistrySnapshot
-├── sensors/      DS18B20, BME280, AnalogInput, DigitalInput, PulseCounter
+├── sensors/      DS18B20, BME280, AnalogInput, DigitalInput, PulseCounter, CalibratedSensor (Decorator)
 ├── actuators/    DigitalOutput (Binary + TPO), PulseOutput
 ├── controllers/  TwoPoint, PID (AutoTune-Wrapper)
 ├── transport/    ITransport, MqttTransport, EspNowTransport, WebhookTransport, WebSocketTransport
