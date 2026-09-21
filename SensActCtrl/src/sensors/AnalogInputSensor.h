@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <string>
 
 #include "core/Sensor.h"
 
@@ -44,6 +45,7 @@ class AnalogInputSensor : public Sensor {
   void setAttenuation(int attenuation) { attenuation_ = attenuation; }
 
   // Advertise this sensor's physical meaning to the registry / web frontend.
+  // The unit string is copied, so a temporary buffer is fine.
   void setMeta(Quantity q, const char* unit, float minPhys, float maxPhys,
                float resolution);
 
@@ -68,6 +70,7 @@ class AnalogInputSensor : public Sensor {
   uint8_t sampleIdx_ = 0;
   uint8_t sampleCount_ = 0;
 
+  std::string unitStorage_;
   SensorMeta meta_{ValueKind::Continuous, Quantity::Voltage, "V",
                    0.0f, 3.3f, 0.001f};
   Reading last_{};

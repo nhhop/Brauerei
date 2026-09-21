@@ -31,7 +31,8 @@ void AnalogInputSensor::setSmoothing(uint8_t windowN) {
 void AnalogInputSensor::setMeta(Quantity q, const char* unit, float minPhys,
                                 float maxPhys, float resolution) {
   meta_.quantity = q;
-  meta_.unit = unit;
+  unitStorage_ = unit ? unit : "";
+  meta_.unit = unitStorage_.c_str();
   meta_.min = minPhys;
   meta_.max = maxPhys;
   meta_.resolution = resolution;

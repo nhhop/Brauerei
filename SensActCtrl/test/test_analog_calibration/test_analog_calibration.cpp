@@ -1,3 +1,4 @@
+#include <string.h>
 #include <unity.h>
 
 #include "sensors/AnalogInputSensor.h"
@@ -35,6 +36,16 @@ void test_extrapolation_outside_calibration_range() {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 4.5f, a.rawToValue(6142.5f));
 }
 
+void test_setmeta_copies_unit() {
+  // Callers may hand in a temporary buffer (e.g. a string out of a JSON
+  // document that is freed right after) — the sensor must own its copy.
+  AnalogInputSensor a("u", /*pin=*/34);
+  char buf[8] = "bar";
+  a.setMeta(Quantity::Pressure, buf, 0.0f, 3.0f, 0.01f);
+  memset(buf, 'x', sizeof(buf) - 1);
+  TEST_ASSERT_EQUAL_STRING("bar", a.channel(0).meta.unit);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -43,5 +54,6 @@ int main(int, char**) {
   RUN_TEST(test_default_passthrough);
   RUN_TEST(test_ph_calibration);
   RUN_TEST(test_extrapolation_outside_calibration_range);
+  RUN_TEST(test_setmeta_copies_unit);
   return UNITY_END();
 }
