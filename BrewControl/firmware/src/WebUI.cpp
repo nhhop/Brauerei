@@ -420,6 +420,25 @@ bool isHexColor(const char* s) {
   return true;
 }
 
+// Re-serializes a store's JSON array without the given runtime keys. With
+// resetProgramState, a program is also put back to idle at step 0.
+String definitionsOnly(const String& json, std::initializer_list<const char*> drop,
+                       bool resetProgramState = false) {
+  JsonDocument doc;
+  if (deserializeJson(doc, json) != DeserializationError::Ok) return "[]";
+  for (JsonObject o : doc.as<JsonArray>()) {
+    for (const char* k : drop) o.remove(k);
+    if (resetProgramState) {
+      o["status"] = "idle";
+      o["currentStep"] = 0;
+      o["reachedStep"] = 0;
+    }
+  }
+  String out;
+  serializeJson(doc, out);
+  return out;
+}
+
 }  // namespace
 
 WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
@@ -1851,7 +1870,10 @@ void WebUI::begin() {
         if (!writeSection_("/config/registry.json",   o["registry"]) ||
             !writeSection_("/config/dashboards.json",  o["dashboards"]) ||
             !writeSection_("/config/settings.json",    o["settings"]) ||
-            (hasProfiles && !writeSection_("/config/profiles.json", o["profiles"]))) {
+            (hasProfiles && !writeSection_("/config/profiles.json", o["profiles"])) ||
+            (!o["logs"].isNull()     && !writeSection_("/config/logs.json",     o["logs"])) ||
+            (!o["programs"].isNull() && !writeSection_("/config/programs.json", o["programs"])) ||
+            (!o["alarms"].isNull()   && !writeSection_("/config/alarms.json",   o["alarms"]))) {
           req->send(500, "text/plain",
                     "write failed — config may be partially restored, re-import to recover");
           return;
@@ -1862,6 +1884,17 @@ void WebUI::begin() {
 
   // ── SD file manager ─────────────────────────────────────────────────────────
   // GET /api/files (list) and GET /api/files/download run the same handler,
+    // Definitions only: runtime state is stripped, so a restore — possibly onto
+    // another device — never resumes a running program or a log session whose
+    // CSV is not part of the bundle.
+    out += ",\"logs\":";
+    out += definitionsOnly(logs_.serialize(), {"session"});
+    out += ",\"programs\":";
+    out += definitionsOnly(programs_.serialize(),
+                           {"stepRemainingSec", "stepStartedEpoch", "elapsedAtPauseSec"},
+                           /*resetProgramState=*/true);
+    out += ",\"alarms\":";
+    out += definitionsOnly(alarms_.serialize(), {"active", "since", "resolved"});
   // dispatched by url(). Registered as exact matches (not a prefix) so that
   // GET /api/files/mkdir and GET /api/files/rename fall through to their
   // POST-only PostJsonHandlers and get a 405 instead of landing here.
@@ -1890,6 +1923,13 @@ void WebUI::begin() {
         doc["path"] = path;
         JsonArray arr = doc["entries"].to<JsonArray>();
         bool ok = false;
+        // Same for logs/programs/alarms, added later.
+        for (const char* k : {"logs", "programs", "alarms"}) {
+          if (!o[k].isNull() && !o[k].is<JsonArray>()) {
+            req->send(400, "text/plain", String("invalid ") + k); return;
+          }
+        }
+
         {
           SdLock lock;
           File dir = fs_.open(path);

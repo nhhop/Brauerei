@@ -1816,9 +1816,16 @@ paths:
       summary: Export the full device configuration
       description: |
         Bundles `/config/registry.json`, `/config/dashboards.json`,
-        `/config/settings.json` and `/config/profiles.json` into one
-        downloadable file. `firmwareVersion` and `variant` are informational —
-        they are ignored on import.
+        `/config/settings.json`, `/config/profiles.json`, `/config/logs.json`,
+        `/config/programs.json` and `/config/alarms.json` into one downloadable
+        file. `firmwareVersion` and `variant` are informational — they are
+        ignored on import.
+
+        Logs, programs and alarms carry definitions only: runtime state is
+        stripped (log `session`, program progress — every program is exported
+        as `idle` at step 0 — and alarm `active`/`since`/`resolved`), so a
+        restore never resumes a running program. Log CSV files, push
+        subscriptions and the alert history are not part of the bundle.
 
         Unlike every other read this one is gated once a device password is
         configured: the bundle embeds `/config/settings.json`, which carries
@@ -1857,7 +1864,8 @@ paths:
           description: |
             Body is `invalid JSON`, `not a brewcontrol backup`,
             `unsupported backup version`, `missing registry`,
-            `missing dashboards`, `missing settings` or `invalid profiles`.
+            `missing dashboards`, `missing settings`, `invalid profiles`,
+            `invalid logs`, `invalid programs` or `invalid alarms`.
             Nothing was written.
           content:
             text/plain: { schema: { type: string } }
@@ -3716,3 +3724,22 @@ components:
       required: [id]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{6}$" }
+        logs:
+          type: array
+          items: { type: object }
+          description: |
+            Optional, like `profiles`: shape of `GET /api/logs` minus runtime
+            state. A missing section leaves `/config/logs.json` untouched.
+        programs:
+          type: array
+          items: { type: object }
+          description: |
+            Optional. Shape of `GET /api/programs`; on export every program is
+            `idle` at step 0. A missing section leaves `/config/programs.json`
+            untouched.
+        alarms:
+          type: array
+          items: { type: object }
+          description: |
+            Optional. Rule definitions of `GET /api/alarms` without the live
+            state. A missing section leaves `/config/alarms.json` untouched.

@@ -4185,3 +4185,17 @@ deaktivieren das neue Item, solange `estop_` gesetzt ist.
 
 Verifikation: `pio run -e esp32dev` grün. Nicht geprüft: Anlegen am Gerät
 während eines aktiven Not-Aus.
+
+## 2026-09-21 — Backup: Logs, Programme, Alarme; Push-Abos dokumentiert
+
+`GET /api/backup` enthält jetzt zusätzlich `logs`, `programs` und `alarms`
+(optionale Sektionen, ältere Bundles bleiben importierbar; Restore validiert sie
+als Arrays). Exportiert werden nur Definitionen: Log-`session`, Programm-Fortschritt
+(jedes Programm als `idle` auf Schritt 0) und Alarm-Livezustand werden entfernt,
+damit ein Restore — ggf. auf einem anderen Gerät — kein laufendes Programm
+wieder anstößt und keine Log-Session auf eine fehlende CSV zeigt. Log-CSVs und
+Alarm-Historie bleiben außen vor. Push-Abos bleiben bewusst draußen; die Folge
+(nach Restore neu einrichten) steht jetzt in der README. `openapi.yaml` nachgezogen.
+
+Verifikation: `pio run -e esp32dev` und Redocly-Lint grün. Nicht geprüft:
+Export/Restore-Roundtrip am Gerät.

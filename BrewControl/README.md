@@ -408,7 +408,8 @@ abonnieren — und würde damit allen anderen Geräten ihr Abo entziehen.
 
 Keypair und Abos liegen in NVS und bewusst **nicht** in `/config/*.json` — so
 bleiben sie aus `GET /api/backup` heraus. Eine Endpoint-URL ist das Einzige, was
-zwischen einem Fremden und den eigenen Benachrichtigungen steht.
+zwischen einem Fremden und den eigenen Benachrichtigungen steht. Folge: Nach einem
+Restore auf ein anderes Gerät müssen Benachrichtigungen neu eingerichtet werden.
 
 Einrichten: Einstellungen → Benachrichtigungen → „Auf diesem Gerät aktivieren".
 Danach prüft „Testmeldung senden", ob es wirklich ankommt.
