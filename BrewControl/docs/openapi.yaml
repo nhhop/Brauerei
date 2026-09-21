@@ -2630,7 +2630,7 @@ components:
       properties:
         type:
           type: string
-          enum: [DS18B20, MAX31865, BME280, YF-S201, HCSR04, HX711, DigitalInput, MqttGeneric, Remote]
+          enum: [DS18B20, MAX31865, BME280, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, MqttGeneric, Remote]
         id: { type: string }
         pin: { type: integer }
         address: { type: string, description: "DS18B20 ROM address, 16 lowercase hex chars." }
@@ -2664,9 +2664,14 @@ components:
         pullup: { type: boolean }
         invert: { type: boolean }
         debounce_ms: { type: integer }
-        value_min: { type: number }
+        value_min: { type: number, description: "Display range lower bound (AnalogInput: required, must be < value_max)." }
         value_max: { type: number }
         resolution: { type: number }
+        smoothing: { type: integer, minimum: 1, maximum: 32, default: 1, description: "AnalogInput moving-average window (samples)." }
+        cal_raw1: { type: integer, description: "AnalogInput calibration point 1, raw ADC count. All four cal_* keys or none; without them the full ADC range 0..4095 maps onto value_min..value_max." }
+        cal_value1: { type: number, description: "AnalogInput calibration point 1, physical value." }
+        cal_raw2: { type: integer, description: "AnalogInput calibration point 2, raw ADC count; must differ from cal_raw1." }
+        cal_value2: { type: number, description: "AnalogInput calibration point 2, physical value." }
         topic: { type: string, description: MQTT topic (MqttGeneric). }
         json_field: { type: string }
         device: { type: string }

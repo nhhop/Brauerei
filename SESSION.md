@@ -4135,6 +4135,34 @@ C++17-Flags (`-std=gnu++17`, `build_unflags=-std=gnu++11`).
 Verifikation: `pio run -e esp32dev` und `pnpm typecheck` grün. Nicht geprüft:
 die Farbablehnung am laufenden Gerät.
 
+## 2026-09-21 — AnalogInput als Sensortyp in BrewControl
+
+`SensActCtrl::AnalogInputSensor` (ADC, Zwei-Punkt-Kalibrierung, Glättung)
+existierte schon; es fehlte nur die Anbindung. Neuer Typ `AnalogInput` in
+`DynamicItems.cpp` (Keys `pin`, `value_min`/`value_max` als Anzeigebereich,
+`unit`, `resolution`, `smoothing`, optional `cal_raw1/cal_value1/cal_raw2/
+cal_value2`), in `openapi.yaml` und im Hinzufügen-Dialog (`AddItemModal.tsx`,
+`itemTypes.ts`). Ohne Kalibrierung wird der volle ADC-Bereich 0..4095 auf
+`value_min..value_max` abgebildet, damit direkt nach dem Anlegen Werte in der
+richtigen Größenordnung statt Rohcounts erscheinen. `rawMin/rawMax` der Library
+sind die Rohwerte der zwei Kalibrierpunkte, keine Bereichsgrenzen — die Gerade
+gilt auch außerhalb. Kein Clamping, ADC bleibt bei 12 Bit.
+
+Der Hardware-Test deckte einen Library-Fehler auf: `AnalogInputSensor::setMeta`
+speicherte nur den Zeiger auf die Einheit, der in das nach dem Anlegen
+freigegebene JSON zeigte (Anzeige „xV��“). Jetzt wird der String kopiert
+(`unitStorage_`, wie bei `MqttGenericSensor`); Regressionstest
+`test_setmeta_copies_unit` (vorher rot, jetzt grün).
+
+Verifikation: `pio test -e native` (231 Tests), `pio run -e esp32dev`,
+`pnpm typecheck`, Redocly-Lint grün (Flash 89 %); Dialog im Browser gegen einen
+Mock (Validierung, Anlegen, Bearbeiten-Vorbelegung). Am Board
+`brewcontrol-esp32dev` (OTA) mit `AnalogOutput` (DAC, GPIO 25) → `AnalogInput`
+(GPIO 34) verkabelt: ohne Kalibrierung liest der ADC 10–12 % zu niedrig
+(ESP32-Nichtlinearität); mit Zwei-Punkt-Kalibrierung (0,5 V / 2,5 V) stimmen
+1,0 / 1,65 V auf ≤ 0,012 V, an den Rändern 0 V → 0,085 V und 3,0 V → 3,12 V
+(ADC-Totbereich/Sättigung). Sensor samt Kalibrierung überlebt einen Reboot.
+
 ## 2026-09-21 — Log-Chart: Zoom bleibt bei Live-Updates erhalten
 
 Drag-Zoom (uPlot-Standard) sprang beim nächsten Snapshot zurück, weil

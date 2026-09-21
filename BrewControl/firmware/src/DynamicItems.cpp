@@ -173,6 +173,37 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     uint32_t debounce = cfg["debounce_ms"] | 0u;
     e->ptr = std::make_unique<DigitalInputSensor>(
         e->id.c_str(), pin, pullup, invert, debounce);
+  } else if (strcmp(type, "AnalogInput") == 0) {
+    int pin = cfg["pin"] | -1;
+    if (pin < 0) return {false, "missing pin"};
+    if (cfg["value_min"].isNull() || cfg["value_max"].isNull())
+      return {false, "missing value_min/value_max"};
+    float vmin = cfg["value_min"].as<float>();
+    float vmax = cfg["value_max"].as<float>();
+    if (vmin >= vmax) return {false, "value_min must be < value_max"};
+    int smoothing = cfg["smoothing"] | 1;
+    if (smoothing < 1 || smoothing > 32) return {false, "invalid smoothing"};
+    static const char* const kCal[] = {"cal_raw1", "cal_value1", "cal_raw2", "cal_value2"};
+    int calKeys = 0;
+    for (const char* k : kCal) if (!cfg[k].isNull()) ++calKeys;
+    if (calKeys != 0 && calKeys != 4) return {false, "calibration needs cal_raw1/cal_value1/cal_raw2/cal_value2"};
+
+    auto sensor = std::make_unique<AnalogInputSensor>(e->id.c_str(), pin);
+    sensor->setMeta(Quantity::Custom, cfg["unit"] | "", vmin, vmax,
+                    cfg["resolution"] | 0.01f);
+    if (calKeys == 4) {
+      int raw1 = cfg["cal_raw1"].as<int>();
+      int raw2 = cfg["cal_raw2"].as<int>();
+      if (raw1 == raw2) return {false, "cal_raw1 must differ from cal_raw2"};
+      sensor->setCalibration(raw1, raw2, cfg["cal_value1"].as<float>(),
+                             cfg["cal_value2"].as<float>());
+    } else {
+      // No calibration yet: full-scale ADC range onto the display range, so the
+      // card shows values of the right magnitude instead of raw counts.
+      sensor->setCalibration(0, 4095, vmin, vmax);
+    }
+    sensor->setSmoothing(static_cast<uint8_t>(smoothing));
+    e->ptr = std::move(sensor);
   } else if (strcmp(type, "MqttGeneric") == 0) {
     if (!mqttTransport_) return {false, "mqtt not available"};
     const char* topic = cfg["topic"] | "";
