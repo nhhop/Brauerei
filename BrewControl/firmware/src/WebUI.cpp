@@ -703,6 +703,10 @@ void WebUI::begin() {
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addActuator(json.as<JsonObject>(), reg_);
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        // A latched stop must not be bypassed by a fresh item's default.
+        if (estop_) {
+          if (auto* a = reg_.findActuator(json["id"] | "")) a->setEnabled(false);
+        }
         items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);
@@ -712,6 +716,9 @@ void WebUI::begin() {
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addController(json.as<JsonObject>(), reg_);
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        if (estop_) {
+          if (auto* c = reg_.findController(json["id"] | "")) c->setEnabled(false);
+        }
         items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);

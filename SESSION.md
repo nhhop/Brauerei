@@ -4146,3 +4146,14 @@ setzt den Zoom zurück (uPlot-Standard).
 
 Verifikation: `pnpm typecheck` grün. Nicht geprüft: Verhalten im Browser
 mit Live-Daten.
+
+## 2026-09-21 — Not-Aus: neue Items starten nicht freigegeben
+
+Root Cause: `loadEstop_()` und `POST /api/estop` schalten nur die zum Zeitpunkt
+vorhandenen Aktoren/Regler ab; ein bei eingerastetem Not-Aus per
+`POST /api/actuators` bzw. `/api/controllers` angelegtes Item kam mit seinem
+Default (meist `enabled:true`) hoch. Fix in `WebUI.cpp`: beide Add-Handler
+deaktivieren das neue Item, solange `estop_` gesetzt ist.
+
+Verifikation: `pio run -e esp32dev` grün. Nicht geprüft: Anlegen am Gerät
+während eines aktiven Not-Aus.
