@@ -43,6 +43,17 @@ class DynamicItems {
   // Returns {false, reason} if sensor not found or does not support reset.
   Result resetSensor(const char* id);
 
+  // Calibration (SensActCtrl::CalibratedSensor — every dynamic sensor is
+  // wrapped). Values are persisted as the "calibrations" array of the sensor's
+  // config; callers save afterwards (saveToSD).
+  // getCalibration fills out["channels"] with the live raw/calibrated value
+  // per channel. calibrateSensor takes {channel, mode: offset|gain|twopoint,
+  // points: [{raw?, value}]}; an omitted raw means "the current live raw".
+  // clearCalibration resets one channel, or all when channelKey is nullptr.
+  Result getCalibration(const char* id, JsonDocument& out) const;
+  Result calibrateSensor(const char* id, const JsonObjectConst& body);
+  Result clearCalibration(const char* id, const char* channelKey);
+
   // Parse /config/registry.json and register items WITHOUT calling begin().
   // Call before registry.begin() so registry.begin() handles all items.
   void loadFromSD(fs::FS& sd, SensActCtrl::Registry& reg);
@@ -108,9 +119,21 @@ class DynamicItems {
   struct SensorEntry {
     std::string id;
     std::string cfgJson;
+    // innerPtr holds the concrete sensor; ptr is the CalibratedSensor wrapped
+    // around it and is what's registered with the Registry (cal points at it).
+    // Declared inner-first so the wrapper is destroyed before what it wraps.
+    std::unique_ptr<SensActCtrl::Sensor> innerPtr;
     std::unique_ptr<SensActCtrl::Sensor> ptr;
+    SensActCtrl::CalibratedSensor* cal = nullptr;
     std::function<void()> resetFn;  // non-null only for sensors that support reset
   };
+
+  // Rewrites e.cfgJson: drops the legacy per-sensor calibration keys (HX711
+  // scale, YF-S201 calibration, AnalogInput cal_*) and stores the current
+  // calibration as the "calibrations" array.
+  static void syncCalibrationConfig(SensorEntry& e);
+  const SensorEntry* findSensorEntry(const char* id) const;
+  SensorEntry* findSensorEntry(const char* id);
   struct ActuatorEntry {
     std::string id;
     std::string cfgJson;

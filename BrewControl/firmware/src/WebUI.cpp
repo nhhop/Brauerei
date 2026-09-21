@@ -565,6 +565,17 @@ void WebUI::begin() {
   server_.addHandler(new DeletePrefixHandler("/api/sensors/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/sensors/"));
+        // DELETE /api/sensors/:id/calibration[?channel=key] — back to identity
+        if (id.endsWith("/calibration")) {
+          id.remove(id.length() - strlen("/calibration"));
+          const String channel = req->hasParam("channel") ? req->getParam("channel")->value() : String();
+          auto r = items_.clearCalibration(id.c_str(), req->hasParam("channel") ? channel.c_str() : nullptr);
+          if (!r.ok) { req->send(strcmp(r.error, "sensor not found") == 0 ? 404 : 400, "text/plain", r.error); return; }
+          items_.saveToSD(fs_);
+          pushSnapshot_();
+          req->send(204);
+          return;
+        }
         auto r = items_.removeSensor(id.c_str(), reg_);
         if (!r.ok) { req->send(405, "text/plain", r.error); return; }
         items_.saveToSD(fs_);
@@ -592,10 +603,42 @@ void WebUI::begin() {
         req->send(204);
       }));
 
-  // ── Reset sensor accumulated state (e.g. YF-S201 volume) ──────────────────
-  server_.addHandler(new BodyPrefixHandler("/api/sensors/",
-      [this](AsyncWebServerRequest* req, const uint8_t*, size_t) {
+  // ── Sensor calibration ────────────────────────────────────────────────────
+  // GET /api/sensors/:id/calibration — live raw + calibrated value per channel
+  server_.addHandler(new GetPrefixHandler("/api/sensors/",
+      [this](AsyncWebServerRequest* req) {
         const String url = req->url();
+        if (!url.endsWith("/calibration")) { req->send(404); return; }
+        String path = url.substring(strlen("/api/sensors/"));
+        String id   = path.substring(0, path.length() - strlen("/calibration"));
+        JsonDocument doc;
+        auto r = items_.getCalibration(id.c_str(), doc);
+        if (!r.ok) { req->send(404, "text/plain", r.error); return; }
+        String out;
+        serializeJson(doc, out);
+        req->send(200, "application/json", out);
+      }));
+
+  // ── Reset sensor accumulated state (e.g. YF-S201 volume) ──────────────────
+  // ── POST /api/sensors/:id/calibration — set a channel's calibration ───────
+  server_.addHandler(new BodyPrefixHandler("/api/sensors/",
+      [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        const String url = req->url();
+        if (url.endsWith("/calibration")) {
+          JsonDocument doc;
+          if (deserializeJson(doc, data, len) != DeserializationError::Ok || !doc.is<JsonObject>()) {
+            req->send(400, "text/plain", "invalid JSON");
+            return;
+          }
+          String path = url.substring(strlen("/api/sensors/"));
+          String id   = path.substring(0, path.length() - strlen("/calibration"));
+          auto r = items_.calibrateSensor(id.c_str(), doc.as<JsonObjectConst>());
+          if (!r.ok) { req->send(strcmp(r.error, "sensor not found") == 0 ? 404 : 400, "text/plain", r.error); return; }
+          items_.saveToSD(fs_);
+          pushSnapshot_();
+          req->send(204);
+          return;
+        }
         if (!url.endsWith("/reset")) {
           req->send(405, "text/plain", "method not allowed");
           return;
@@ -1838,6 +1881,17 @@ void WebUI::begin() {
     out += settings_.serialize();
     out += ",\"profiles\":";
     out += profiles_.serialize();
+    // Definitions only: runtime state is stripped, so a restore — possibly onto
+    // another device — never resumes a running program or a log session whose
+    // CSV is not part of the bundle.
+    out += ",\"logs\":";
+    out += definitionsOnly(logs_.serialize(), {"session"});
+    out += ",\"programs\":";
+    out += definitionsOnly(programs_.serialize(),
+                           {"stepRemainingSec", "stepStartedEpoch", "elapsedAtPauseSec"},
+                           /*resetProgramState=*/true);
+    out += ",\"alarms\":";
+    out += definitionsOnly(alarms_.serialize(), {"active", "since", "resolved"});
     out += "}";
     AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", out);
     resp->addHeader("Content-Disposition",
@@ -1866,6 +1920,13 @@ void WebUI::begin() {
           req->send(400, "text/plain", "invalid profiles"); return;
         }
 
+        // Same for logs/programs/alarms, added later.
+        for (const char* k : {"logs", "programs", "alarms"}) {
+          if (!o[k].isNull() && !o[k].is<JsonArray>()) {
+            req->send(400, "text/plain", String("invalid ") + k); return;
+          }
+        }
+
         // Validation passed — only now touch the filesystem.
         if (!writeSection_("/config/registry.json",   o["registry"]) ||
             !writeSection_("/config/dashboards.json",  o["dashboards"]) ||
@@ -1884,17 +1945,6 @@ void WebUI::begin() {
 
   // ── SD file manager ─────────────────────────────────────────────────────────
   // GET /api/files (list) and GET /api/files/download run the same handler,
-    // Definitions only: runtime state is stripped, so a restore — possibly onto
-    // another device — never resumes a running program or a log session whose
-    // CSV is not part of the bundle.
-    out += ",\"logs\":";
-    out += definitionsOnly(logs_.serialize(), {"session"});
-    out += ",\"programs\":";
-    out += definitionsOnly(programs_.serialize(),
-                           {"stepRemainingSec", "stepStartedEpoch", "elapsedAtPauseSec"},
-                           /*resetProgramState=*/true);
-    out += ",\"alarms\":";
-    out += definitionsOnly(alarms_.serialize(), {"active", "since", "resolved"});
   // dispatched by url(). Registered as exact matches (not a prefix) so that
   // GET /api/files/mkdir and GET /api/files/rename fall through to their
   // POST-only PostJsonHandlers and get a 405 instead of landing here.
@@ -1923,13 +1973,6 @@ void WebUI::begin() {
         doc["path"] = path;
         JsonArray arr = doc["entries"].to<JsonArray>();
         bool ok = false;
-        // Same for logs/programs/alarms, added later.
-        for (const char* k : {"logs", "programs", "alarms"}) {
-          if (!o[k].isNull() && !o[k].is<JsonArray>()) {
-            req->send(400, "text/plain", String("invalid ") + k); return;
-          }
-        }
-
         {
           SdLock lock;
           File dir = fs_.open(path);

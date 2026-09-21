@@ -127,8 +127,9 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     uint8_t     mask;
     const char* err = nullptr;
     if (!parseChannelMask(cfg, "rate", "volume", mask, err)) return {false, err};
+    // A non-default legacy `calibration` is applied as a gain by the
+    // calibration wrapper below; the sensor itself stays at its default.
     auto sensor = std::make_unique<YF_S201Sensor>(e->id.c_str(), pin);
-    if (cal != YF_S201Sensor::kHzPerLiterPerMin) sensor->setCalibration(cal);
     sensor->setChannelMask(mask);
     YF_S201Sensor* rawPtr = sensor.get();
     e->ptr = std::move(sensor);
@@ -159,12 +160,11 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     int sck  = cfg["sck"]  | -1;
     if (dout < 0) return {false, "missing dout"};
     if (sck  < 0) return {false, "missing sck"};
-    auto sensor = std::make_unique<HX711LoadCellSensor>(e->id.c_str(), dout, sck);
-    if (!cfg["scale"].isNull())
-      sensor->setScale(cfg["scale"].as<float>());
-    HX711LoadCellSensor* rawPtr = sensor.get();
-    e->ptr = std::move(sensor);
-    e->resetFn = [rawPtr]() { rawPtr->tare(); };
+    // Scale and tare live in the calibration wrapper (raw = counts); a legacy
+    // `scale` becomes its gain below.
+    if (!cfg["scale"].isNull() && cfg["scale"].as<float>() <= 0.0f)
+      return {false, "invalid scale"};
+    e->ptr = std::make_unique<HX711LoadCellSensor>(e->id.c_str(), dout, sck);
   } else if (strcmp(type, "DigitalInput") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
@@ -188,20 +188,16 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     for (const char* k : kCal) if (!cfg[k].isNull()) ++calKeys;
     if (calKeys != 0 && calKeys != 4) return {false, "calibration needs cal_raw1/cal_value1/cal_raw2/cal_value2"};
 
+    if (calKeys == 4 && cfg["cal_raw1"].as<int>() == cfg["cal_raw2"].as<int>())
+      return {false, "cal_raw1 must differ from cal_raw2"};
+
     auto sensor = std::make_unique<AnalogInputSensor>(e->id.c_str(), pin);
     sensor->setMeta(Quantity::Custom, cfg["unit"] | "", vmin, vmax,
                     cfg["resolution"] | 0.01f);
-    if (calKeys == 4) {
-      int raw1 = cfg["cal_raw1"].as<int>();
-      int raw2 = cfg["cal_raw2"].as<int>();
-      if (raw1 == raw2) return {false, "cal_raw1 must differ from cal_raw2"};
-      sensor->setCalibration(raw1, raw2, cfg["cal_value1"].as<float>(),
-                             cfg["cal_value2"].as<float>());
-    } else {
-      // No calibration yet: full-scale ADC range onto the display range, so the
-      // card shows values of the right magnitude instead of raw counts.
-      sensor->setCalibration(0, 4095, vmin, vmax);
-    }
+    // Full-scale ADC range onto the display range, so the card shows values of
+    // the right magnitude instead of raw counts. Legacy cal_* points are
+    // applied on top of this by the calibration wrapper below.
+    sensor->setCalibration(0, 4095, vmin, vmax);
     sensor->setSmoothing(static_cast<uint8_t>(smoothing));
     e->ptr = std::move(sensor);
   } else if (strcmp(type, "MqttGeneric") == 0) {
@@ -229,8 +225,171 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     return {false, "unknown sensor type"};
   }
 
+  // Every sensor goes through a CalibratedSensor (identity until calibrated),
+  // so calibrating never needs a re-create.
+  e->innerPtr = std::move(e->ptr);
+  auto wrapper = std::make_unique<CalibratedSensor>(*e->innerPtr);
+  e->cal = wrapper.get();
+  e->ptr = std::move(wrapper);
+
+  // Legacy per-sensor calibration keys → calibration (they are dropped from the
+  // stored config by syncCalibrationConfig below).
+  bool migrate = false;
+  if (strcmp(type, "HX711") == 0 && !cfg["scale"].isNull()) {
+    e->cal->setCalibration(0, 0.0f, 0.0f, cfg["scale"].as<float>());
+    migrate = true;
+  } else if (strcmp(type, "YF-S201") == 0 && !cfg["calibration"].isNull()) {
+    // rate and volume both scale with 1/calibration; the sensor runs at its default.
+    const float gain = YF_S201Sensor::kHzPerLiterPerMin / cfg["calibration"].as<float>();
+    for (const char* key : {"rate", "volume"}) {
+      int idx = e->cal->indexOfKey(key);
+      if (idx >= 0) e->cal->setCalibration(idx, 0.0f, 0.0f, gain);
+    }
+    migrate = true;
+  } else if (strcmp(type, "AnalogInput") == 0 && !cfg["cal_raw1"].isNull()) {
+    // The sensor maps the full ADC range 0..4095 onto value_min..value_max;
+    // express the two legacy (ADC count → value) points in that mapped value.
+    const float vmin = cfg["value_min"].as<float>();
+    const float span = cfg["value_max"].as<float>() - vmin;
+    auto mapped = [&](float counts) { return vmin + counts / 4095.0f * span; };
+    e->cal->calibrateTwoPoint(0, mapped(cfg["cal_raw1"].as<float>()), cfg["cal_value1"].as<float>(),
+                              mapped(cfg["cal_raw2"].as<float>()), cfg["cal_value2"].as<float>());
+    migrate = true;
+  }
+  JsonArrayConst saved = cfg["calibrations"].as<JsonArrayConst>();
+  for (JsonObjectConst o : saved) {
+    int idx = e->cal->indexOfKey(o["channel"] | "");
+    if (idx >= 0)
+      e->cal->setCalibration(idx, o["raw_ref"] | 0.0f, o["value_ref"] | 0.0f,
+                             o["gain"] | 1.0f);
+  }
+  if (migrate || !saved.isNull()) syncCalibrationConfig(*e);
+
   reg.add(e->ptr.get());
   sensors_.push_back(std::move(e));
+  return {true};
+}
+
+void DynamicItems::syncCalibrationConfig(SensorEntry& e) {
+  JsonDocument doc;
+  if (deserializeJson(doc, e.cfgJson) != DeserializationError::Ok) return;
+  const char* type = doc["type"] | "";
+  if (strcmp(type, "HX711") == 0) doc.remove("scale");
+  if (strcmp(type, "YF-S201") == 0) doc.remove("calibration");
+  if (strcmp(type, "AnalogInput") == 0) {
+    doc.remove("cal_raw1"); doc.remove("cal_value1");
+    doc.remove("cal_raw2"); doc.remove("cal_value2");
+  }
+  doc.remove("calibrations");
+  JsonArray arr;
+  const size_t n = e.cal->channelCount();
+  for (size_t i = 0; i < n && i < CalibratedSensor::kMaxChannels; ++i) {
+    const CalibratedSensor::Calibration c = e.cal->calibration(i);
+    if (!c.active) continue;
+    if (arr.isNull()) arr = doc["calibrations"].to<JsonArray>();
+    JsonObject o = arr.add<JsonObject>();
+    o["channel"]   = e.cal->channel(i).key;
+    o["raw_ref"]   = c.rawRef;
+    o["value_ref"] = c.valRef;
+    o["gain"]      = c.gain;
+  }
+  e.cfgJson.clear();
+  serializeJson(doc, e.cfgJson);
+}
+
+DynamicItems::SensorEntry* DynamicItems::findSensorEntry(const char* id) {
+  for (auto& e : sensors_) if (e->id == id) return e.get();
+  return nullptr;
+}
+
+const DynamicItems::SensorEntry* DynamicItems::findSensorEntry(const char* id) const {
+  for (auto& e : sensors_) if (e->id == id) return e.get();
+  return nullptr;
+}
+
+static const char* calibrationError(CalibratedSensor::Result r) {
+  switch (r) {
+    case CalibratedSensor::Result::BadChannel:      return "unknown channel";
+    case CalibratedSensor::Result::NotCalibratable: return "channel does not support this calibration";
+    case CalibratedSensor::Result::InvalidPoints:   return "invalid calibration points";
+    default:                                        return "";
+  }
+}
+
+DynamicItems::Result DynamicItems::getCalibration(const char* id,
+                                                  JsonDocument& out) const {
+  const SensorEntry* e = findSensorEntry(id);
+  if (!e) return {false, "sensor not found"};
+  JsonArray channels = out["channels"].to<JsonArray>();
+  const size_t n = e->cal->channelCount();
+  for (size_t i = 0; i < n; ++i) {
+    const Channel ch = e->cal->channel(i);
+    const CalibratedSensor::Calibration c = e->cal->calibration(i);
+    const ValueKind kind = ch.meta.kind;
+    JsonObject o = channels.add<JsonObject>();
+    o["key"]   = ch.key;
+    o["unit"]  = ch.meta.unit;
+    o["valid"] = ch.reading.valid;
+    o["raw"]   = e->cal->rawValue(i);
+    o["value"] = ch.reading.value;
+    o["calibrated"] = c.active;
+    if (c.active) {
+      o["raw_ref"]   = c.rawRef;
+      o["value_ref"] = c.valRef;
+      o["gain"]      = c.gain;
+    }
+    // Which modes make sense for this channel (see CalibratedSensor).
+    JsonArray modes = o["modes"].to<JsonArray>();
+    if (i < CalibratedSensor::kMaxChannels) {
+      if (kind == ValueKind::Continuous) { modes.add("offset"); modes.add("twopoint"); }
+      if (kind == ValueKind::Continuous || kind == ValueKind::Cumulative) modes.add("gain");
+    }
+  }
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::calibrateSensor(const char* id,
+                                                   const JsonObjectConst& body) {
+  SensorEntry* e = findSensorEntry(id);
+  if (!e) return {false, "sensor not found"};
+  const int idx = e->cal->indexOfKey(body["channel"] | "");
+  if (idx < 0) return {false, "unknown channel"};
+  const char* mode = body["mode"] | "";
+  JsonArrayConst pts = body["points"].as<JsonArrayConst>();
+  const size_t need = strcmp(mode, "twopoint") == 0 ? 2 : 1;
+  if (strcmp(mode, "offset") != 0 && strcmp(mode, "gain") != 0 && need != 2)
+    return {false, "invalid mode"};
+  if (pts.isNull() || pts.size() != need) return {false, "wrong number of points"};
+  float raw[2], val[2];
+  size_t k = 0;
+  for (JsonObjectConst p : pts) {
+    if (p["value"].isNull()) return {false, "missing value"};
+    // No raw given → the reading the sensor shows right now.
+    raw[k] = p["raw"].isNull() ? e->cal->rawValue(idx) : p["raw"].as<float>();
+    val[k] = p["value"].as<float>();
+    ++k;
+  }
+  CalibratedSensor::Result r =
+      need == 2 ? e->cal->calibrateTwoPoint(idx, raw[0], val[0], raw[1], val[1])
+      : strcmp(mode, "offset") == 0 ? e->cal->calibrateOffset(idx, raw[0], val[0])
+                                    : e->cal->calibrateGain(idx, raw[0], val[0]);
+  if (r != CalibratedSensor::Result::Ok) return {false, calibrationError(r)};
+  syncCalibrationConfig(*e);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::clearCalibration(const char* id,
+                                                    const char* channelKey) {
+  SensorEntry* e = findSensorEntry(id);
+  if (!e) return {false, "sensor not found"};
+  if (channelKey) {
+    const int idx = e->cal->indexOfKey(channelKey);
+    if (idx < 0) return {false, "unknown channel"};
+    e->cal->clear(idx);
+  } else {
+    for (size_t i = 0; i < CalibratedSensor::kMaxChannels; ++i) e->cal->clear(i);
+  }
+  syncCalibrationConfig(*e);
   return {true};
 }
 

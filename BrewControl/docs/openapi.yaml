@@ -266,6 +266,134 @@ paths:
             text/plain: { schema: { type: string } }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
+  /api/sensors/{id}/calibration:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    get:
+      tags: [Dynamic Items]
+      operationId: getSensorCalibration
+      summary: Live raw and calibrated value per channel
+      description: |
+        Every dynamic sensor is wrapped in a calibration layer (identity until
+        calibrated). `raw` is the sensor's uncalibrated value in the channel's
+        unit — what it would show without any calibration; `value` is what the
+        snapshot reports. The calibration UI polls this (~1 Hz) to capture the
+        raw value. `modes` lists what the channel supports: `offset`,
+        `twopoint`, `gain` for continuous channels, only `gain` for cumulative
+        ones; empty for switches (Binary/Discrete).
+      responses:
+        "200":
+          description: One entry per channel (`key` is `""` for single-value sensors).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [channels]
+                properties:
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, unit, valid, raw, value, calibrated, modes]
+                      properties:
+                        key: { type: string }
+                        unit: { type: string }
+                        valid: { type: boolean }
+                        raw: { type: [number, "null"] }
+                        value: { type: [number, "null"] }
+                        calibrated: { type: boolean }
+                        raw_ref: { type: number, description: "Reference point of the line (only when calibrated)." }
+                        value_ref: { type: number }
+                        gain: { type: number, description: "Slope; value = value_ref + gain * (raw - raw_ref)." }
+                        modes:
+                          type: array
+                          items: { type: string, enum: [offset, twopoint, gain] }
+              example:
+                channels:
+                  - { key: "", unit: pH, valid: true, raw: 5.31, value: 5.31, calibrated: false, modes: [offset, twopoint, gain] }
+        "404":
+          description: Body is `sensor not found`.
+          content:
+            text/plain: { schema: { type: string } }
+    post:
+      tags: [Dynamic Items]
+      operationId: calibrateSensor
+      summary: Calibrate one channel
+      description: |
+        Sets `value = value_ref + gain * (raw - raw_ref)` for the channel and
+        persists it (`calibrations` in the sensor's config, `/config/registry.json`).
+
+        - `offset` (1 point): the given raw reading should read `value`; the
+          existing gain is kept. Not allowed on cumulative channels.
+        - `gain` (1 point): line through the origin, `gain = value / raw`.
+          `raw` must not be 0.
+        - `twopoint` (2 points): offset and slope from two references; the raw
+          values must differ. Not allowed on cumulative channels.
+
+        A point without `raw` uses the sensor's current live raw value
+        (e.g. tare: `{mode: offset, points: [{value: 0}]}`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, mode, points]
+              properties:
+                channel: { type: string, description: 'Channel key, `""` for single-value sensors.' }
+                mode: { type: string, enum: [offset, gain, twopoint] }
+                points:
+                  type: array
+                  items:
+                    type: object
+                    required: [value]
+                    properties:
+                      raw: { type: number }
+                      value: { type: number }
+            examples:
+              ph:
+                summary: pH probe, buffers 4 and 7
+                value: { channel: "", mode: twopoint, points: [{ raw: 5.31, value: 4 }, { raw: 6.02, value: 7 }] }
+              tare:
+                summary: Tare a scale (current reading becomes 0)
+                value: { channel: "", mode: offset, points: [{ value: 0 }] }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid JSON`, `unknown channel`, `invalid mode`,
+            `wrong number of points`, `missing value`,
+            `channel does not support this calibration` or
+            `invalid calibration points`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `sensor not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+    delete:
+      tags: [Dynamic Items]
+      operationId: clearSensorCalibration
+      summary: Reset calibration to identity
+      parameters:
+        - name: channel
+          in: query
+          required: false
+          schema: { type: string }
+          description: Channel key to reset; absent resets every channel of the sensor.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `unknown channel`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `sensor not found`.
+          content:
+            text/plain: { schema: { type: string } }
+
   /api/actuators:
     post:
       tags: [Dynamic Items]
@@ -2653,8 +2781,8 @@ components:
         echo: { type: integer, description: HC-SR04 echo pin. }
         dout: { type: integer, description: HX711 data pin. }
         sck: { type: integer, description: HX711 clock pin. }
-        scale: { type: number }
-        calibration: { type: number, description: "YF-S201 pulse frequency in Hz per L/min; must be > 0." }
+        scale: { type: number, deprecated: true, description: "Legacy HX711 grams per count; must be > 0. Converted to a gain in `calibrations` on load." }
+        calibration: { type: number, deprecated: true, description: "Legacy YF-S201 pulse frequency in Hz per L/min; must be > 0. Converted to a gain in `calibrations` on load." }
         factor: { type: number }
         offset: { type: number }
         unit: { type: string }
@@ -2676,10 +2804,24 @@ components:
         value_max: { type: number }
         resolution: { type: number }
         smoothing: { type: integer, minimum: 1, maximum: 32, default: 1, description: "AnalogInput moving-average window (samples)." }
-        cal_raw1: { type: integer, description: "AnalogInput calibration point 1, raw ADC count. All four cal_* keys or none; without them the full ADC range 0..4095 maps onto value_min..value_max." }
-        cal_value1: { type: number, description: "AnalogInput calibration point 1, physical value." }
-        cal_raw2: { type: integer, description: "AnalogInput calibration point 2, raw ADC count; must differ from cal_raw1." }
-        cal_value2: { type: number, description: "AnalogInput calibration point 2, physical value." }
+        calibrations:
+          type: array
+          description: |
+            Per-channel calibration, `value = value_ref + gain * (raw - raw_ref)`.
+            Written by `POST /api/sensors/{id}/calibration`; clients that
+            re-create a sensor (edit) pass it through unchanged. Unknown
+            channels are ignored.
+          items:
+            type: object
+            properties:
+              channel: { type: string }
+              raw_ref: { type: number }
+              value_ref: { type: number }
+              gain: { type: number }
+        cal_raw1: { type: integer, deprecated: true, description: "Legacy AnalogInput calibration point 1 (raw ADC count). All four cal_* keys or none. Converted to `calibrations` on load and dropped from the stored config." }
+        cal_value1: { type: number, deprecated: true }
+        cal_raw2: { type: integer, deprecated: true, description: "Must differ from cal_raw1." }
+        cal_value2: { type: number, deprecated: true }
         topic: { type: string, description: MQTT topic (MqttGeneric). }
         json_field: { type: string }
         device: { type: string }
@@ -3701,6 +3843,25 @@ components:
             Optional — absent in bundles written by firmware from before the
             profile library. On import a missing section leaves
             `/config/profiles.json` untouched.
+        logs:
+          type: array
+          items: { type: object }
+          description: |
+            Optional, like `profiles`: shape of `GET /api/logs` minus runtime
+            state. A missing section leaves `/config/logs.json` untouched.
+        programs:
+          type: array
+          items: { type: object }
+          description: |
+            Optional. Shape of `GET /api/programs`; on export every program is
+            `idle` at step 0. A missing section leaves `/config/programs.json`
+            untouched.
+        alarms:
+          type: array
+          items: { type: object }
+          description: |
+            Optional. Rule definitions of `GET /api/alarms` without the live
+            state. A missing section leaves `/config/alarms.json` untouched.
 
     # ── Files ────────────────────────────────────────────────────────────────
     FileEntry:
@@ -3724,22 +3885,3 @@ components:
       required: [id]
       properties:
         id: { type: string, pattern: "^[0-9a-f]{6}$" }
-        logs:
-          type: array
-          items: { type: object }
-          description: |
-            Optional, like `profiles`: shape of `GET /api/logs` minus runtime
-            state. A missing section leaves `/config/logs.json` untouched.
-        programs:
-          type: array
-          items: { type: object }
-          description: |
-            Optional. Shape of `GET /api/programs`; on export every program is
-            `idle` at step 0. A missing section leaves `/config/programs.json`
-            untouched.
-        alarms:
-          type: array
-          items: { type: object }
-          description: |
-            Optional. Rule definitions of `GET /api/alarms` without the live
-            state. A missing section leaves `/config/alarms.json` untouched.
