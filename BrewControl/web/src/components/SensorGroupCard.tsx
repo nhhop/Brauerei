@@ -1,4 +1,4 @@
-import { Pencil, RotateCcw, Rows3, Rows4, X, TriangleAlert } from 'lucide-preact';
+import { Crosshair, Pencil, RotateCcw, Rows3, Rows4, X, TriangleAlert } from 'lucide-preact';
 import type { Sensor, Severity, WidgetMode } from '../types';
 import { badgeCaution } from '../ui';
 
@@ -23,7 +23,7 @@ function channelLabel(s: Sensor): string {
   return dot >= 0 ? s.id.slice(dot + 1) : s.meta.quantity;
 }
 
-export function SensorGroupCard({ baseId, channels, modeOf, alarmOf, onToggleMode, onReset, onEdit, onDelete }: {
+export function SensorGroupCard({ baseId, channels, modeOf, alarmOf, onToggleMode, onReset, onEdit, onCalibrate, onDelete }: {
   baseId: string;
   channels: Sensor[];
   modeOf: (channelId: string) => WidgetMode;
@@ -31,6 +31,7 @@ export function SensorGroupCard({ baseId, channels, modeOf, alarmOf, onToggleMod
   onToggleMode?: (channelId: string) => void;
   onReset?: () => void;
   onEdit?: () => void;
+  onCalibrate?: () => void;
   onDelete?: () => void;
 }) {
   // The fault string belongs to the sensor, not to one channel — every channel
@@ -42,6 +43,10 @@ export function SensorGroupCard({ baseId, channels, modeOf, alarmOf, onToggleMod
       <div class="flex items-center justify-between gap-2">
         <h3 class="min-w-0 truncate font-medium text-fg">{baseId}</h3>
         <div class="flex items-center gap-2">
+          {onCalibrate && (
+            <button type="button" onClick={onCalibrate} title="Kalibrieren"
+              class="text-faint hover:text-fg"><Crosshair size={14} /></button>
+          )}
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="text-faint hover:text-fg"><Pencil size={14} /></button>

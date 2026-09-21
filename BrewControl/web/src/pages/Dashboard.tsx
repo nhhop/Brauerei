@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { VNode } from 'preact';
-import type { LayoutNode, Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity, WidgetMode } from '../types';
+import type { LayoutNode, Sensor, Snapshot, ItemConfig, DashboardConfig, LogConfig, ProgramConfig, ProgramStep, TimerConfig, ProfileLibrary, Severity, WidgetMode } from '../types';
 import {
-  resetSensor, getConfig,
+  resetSensor, calibrateSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard, moveDashboard,
   getLogs,
   getPrograms, createProgram, updateProgram, deleteProgram,
@@ -20,6 +20,7 @@ import { TimerCard } from '../components/TimerCard';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { isCardRef, linearize, memberRefs, reconcile, refId, refKind, renameRef } from '../dashboardLayout';
 import { AddItemModal } from '../components/AddItemModal';
+import { CalibrateModal } from '../components/CalibrateModal';
 import { NameModal } from '../components/NameModal';
 import { TabBtn } from '../components/TabBtn';
 import { DashboardContentModal } from '../components/DashboardContentModal';
@@ -33,6 +34,11 @@ type TimerSave = Pick<TimerConfig, 'name' | 'mode' | 'durationSec' | 'timeOfDay'
 
 type Role = 'sensor' | 'actuator' | 'controller';
 type Tab = { kind: 'dashboard'; id: string };
+
+// Binary/Discrete channels (switches) have nothing to calibrate.
+function isCalibratable(s: Sensor): boolean {
+  return s.meta.kind === 'Continuous' || s.meta.kind === 'Cumulative';
+}
 
 function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
   const si = new Set(dash.sensors);
@@ -165,6 +171,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   // ── Edit item (from card buttons) ─────────────────────────────────────────
   const [addOpen, setAddOpen] = useState(false);
   const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
+  const [calibrateId, setCalibrateId] = useState<string | null>(null);
 
   // POST /api/dashboards/<id> replaces every field, so a key left out of the
   // body is cleared on the device — the layout included. Every writer goes
@@ -406,8 +413,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
               modeOf={(cid) => channelMode(cid, baseId)}
               alarmOf={(cid) => alarmByRef?.get(`sensor/${cid}`)}
               onToggleMode={editMode ? toggleRowMode : undefined}
-              onReset={channels.some((s) => s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass')
+              onReset={channels.some((s) => s.meta.kind === 'Cumulative')
                 ? () => resetSensor(baseId) : undefined}
+              onCalibrate={editMode && channels.some(isCalibratable) ? () => setCalibrateId(baseId) : undefined}
               onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
               onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
             />
@@ -420,9 +428,17 @@ export function Dashboard({ snap, err, alarmByRef }: {
             alarm={alarmByRef?.get(`sensor/${s.id}`)}
             viewMode={mode}
             onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+            onCalibrate={editMode && isCalibratable(s) ? () => setCalibrateId(baseId) : undefined}
             onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
-            onReset={s.meta.kind === 'Cumulative' || s.meta.quantity === 'Mass'
-              ? () => resetSensor(baseId) : undefined}
+            onReset={s.meta.kind === 'Cumulative'
+              ? () => resetSensor(baseId)
+              // Tare = one-point offset: what the scale shows right now becomes 0.
+              : s.meta.quantity === 'Mass'
+                ? () => calibrateSensor(baseId, {
+                    channel: id.includes('.') ? id.split('.')[1] : '',
+                    mode: 'offset', points: [{ value: 0 }],
+                  })
+                : undefined}
             onCycleMode={editMode ? () => cycleMode('sensorModes', id, mode) : undefined}
           />
         );
@@ -615,6 +631,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
         editRole={editItem?.role}
         onRenamed={handleRenamed}
       />
+
+      <CalibrateModal open={calibrateId !== null} sensorId={calibrateId ?? ''}
+        onClose={() => setCalibrateId(null)} />
 
       <NameModal
         open={meta !== null}

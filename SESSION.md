@@ -4172,6 +4172,50 @@ X-Skala noch alle Daten umfasst (`isZoomed`); nur dann läuft der Graph
 automatisch mit, sonst bleibt der gezoomte Ausschnitt stehen. Doppelklick
 setzt den Zoom zurück (uPlot-Standard).
 
+## 2026-09-21 — Generische Sensor-Kalibrierung (`CalibratedSensor`)
+
+Ersetzt die Einzellösungen (HX711 `scale`/Tara, YF-S201 `calibration`,
+AnalogInput `cal_*`) durch einen Mechanismus. Ausgangspunkt war die Beobachtung,
+dass man die Rohwerte (ADC-Counts, Pulse) beim Kalibrieren gar nicht kennt.
+Lösung: „roh" ist der **unkalibrierte Wert, den der Sensor ohnehin anzeigt**;
+der Assistent greift ihn live ab (5 s Mittelwert), der Nutzer tippt nur die
+Referenzwerte ein.
+
+**Library:** `CalibratedSensor` (Decorator, wie `IntervalActuator` bei Aktoren)
+rechnet pro Kanal `wert = valRef + gain · (roh − rawRef)` — Punkt-Steigungs-
+Form statt `gain·roh + offset`, weil sie bei 24-Bit-HX711-Counts in float
+genau bleibt (Test `test_precision_with_large_raw_counts`). Drei Arten:
+Ein-Punkt-Offset (Steigung bleibt), Ein-Punkt-Faktor (durch den Nullpunkt),
+Zwei-Punkt. Binary/Discrete-Kanäle sind nicht kalibrierbar, Cumulative nur per
+Faktor (ein Offset würde den Zähler verfälschen).
+
+**Firmware:** `DynamicItems` wickelt *jeden* dynamischen Sensor (Identität bis
+zur Kalibrierung, dadurch kein Neuanlegen nötig; `innerPtr`/`ptr` wie bei
+`ActuatorEntry`). Persistenz als `calibrations`-Array im Sensor-Config;
+Altkeys werden beim Laden übernommen und aus der Config entfernt (HX711 `scale`
+→ Gain, YF-S201 `calibration` → Gain `7,5/cal` auf `rate`+`volume`, AnalogInput
+`cal_*` → Punkte auf den Full-Scale-Werten). Neue Routen
+`GET|POST|DELETE /api/sensors/:id/calibration` (openapi.yaml + README). Der
+Snapshot bleibt unverändert — die UI pollt den Rohwert über den GET.
+
+**UI:** `CalibrateModal` (Kanal, Methode, „Messen"-Knopf je Punkt, Reset),
+erreichbar in Einstellungen → Geräte und im Dashboard-Bearbeiten-Modus.
+HX711-Tara ist jetzt ein Ein-Punkt-Offset und bleibt damit — anders als früher
+(nur RAM) — über einen Reboot erhalten. `AddItemModal`: Felder `scale` und
+`cal_*` entfernt, Bearbeiten reicht `calibrations` durch (Bearbeiten ist
+Löschen + Neuanlegen). HC-SR04 „Ableitung" heißt jetzt „Umgerechneter Kanal":
+es ist eine Einheiten-Umrechnung (cm → Liter) auf einem zweiten Kanal, keine
+Kalibrierung; jeder der beiden Kanäle wird einzeln kalibriert.
+
+Verifikation: `pio test -e native` (245 Tests, 14 neue), `pio run` für
+esp32dev (Flash 89,4 %), lolin_s2_mini (86,3 %) und LilyGo, `pnpm typecheck`,
+Redocly-Lint. Am `brewcontrol-esp32dev` (DAC GPIO 25 → ADC GPIO 34): Migration
+eines echten `cal_*`-Eintrags, alle API-Fehlerfälle, Assistent im Browser
+durchgespielt (Zurücksetzen, Zwei-Punkt mit gemessenen Rohwerten, Übernehmen),
+danach 1,0 / 1,65 V auf ≤ 0,012 V; Bearbeiten-Speichern und Reboot erhalten
+die Kalibrierung. HX711-/YF-Altkey-Migration per API mit freien Pins belegt.
+Offen (PLAN.md): Tara/Faktor an echter Wägezelle und echtem YF-S201.
+
 Verifikation: `pnpm typecheck` grün. Nicht geprüft: Verhalten im Browser
 mit Live-Daten.
 

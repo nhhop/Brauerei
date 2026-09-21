@@ -107,7 +107,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // HX711
   const [hx711Dout, setHx711Dout] = useState('');
   const [hx711Sck,  setHx711Sck]  = useState('');
-  const [hx711Scale, setHx711Scale] = useState('');
 
   // DigitalInput
   const [diPin, setDiPin] = useState('');
@@ -115,17 +114,12 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const [diPullup, setDiPullup] = useState(false);
   const [diDebounce, setDiDebounce] = useState('0');
 
-  // AnalogInput — display range (aiMin/aiMax) plus optional two-point calibration
+  // AnalogInput — display range (aiMin/aiMax). Calibration lives in CalibrateModal.
   const [aiPin, setAiPin] = useState('');
   const [aiMin, setAiMin] = useState('0');
   const [aiMax, setAiMax] = useState('14');
   const [aiUnit, setAiUnit] = useState('');
   const [aiSmoothing, setAiSmoothing] = useState('1');
-  const [aiCal, setAiCal] = useState(false);
-  const [aiRaw1, setAiRaw1] = useState('');
-  const [aiVal1, setAiVal1] = useState('');
-  const [aiRaw2, setAiRaw2] = useState('');
-  const [aiVal2, setAiVal2] = useState('');
 
   // MqttGeneric (sensor) — shares mqttTopic/mqttUnit/mqttMin/mqttMax/mqttResolution
   // with the actuator's Continuous fields below (same meaning); only the
@@ -263,7 +257,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         } else if (t === 'HX711') {
           setHx711Dout(String(editConfig.dout ?? ''));
           setHx711Sck(String(editConfig.sck ?? ''));
-          setHx711Scale(editConfig.scale != null ? String(editConfig.scale) : '');
         } else if (t === 'HCSR04') {
           setTrigPin(String(editConfig.trig ?? ''));
           setEchoPin(String(editConfig.echo ?? ''));
@@ -285,12 +278,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setAiMax(String(editConfig.value_max ?? '14'));
           setAiUnit(String(editConfig.unit ?? ''));
           setAiSmoothing(String(editConfig.smoothing ?? '1'));
-          const hasCal = editConfig.cal_raw1 != null;
-          setAiCal(hasCal);
-          setAiRaw1(hasCal ? String(editConfig.cal_raw1) : '');
-          setAiVal1(hasCal ? String(editConfig.cal_value1 ?? '') : '');
-          setAiRaw2(hasCal ? String(editConfig.cal_raw2 ?? '') : '');
-          setAiVal2(hasCal ? String(editConfig.cal_value2 ?? '') : '');
         } else if (t === 'MqttGeneric') {
           setMqttTopic(String(editConfig.topic ?? ''));
           setMqttJsonField(String(editConfig.json_field ?? ''));
@@ -423,10 +410,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       setTrigPin(''); setEchoPin('');
       setChDistance(true); setChRate(true); setChVolume(true);
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
-      setHx711Dout(''); setHx711Sck(''); setHx711Scale('');
+      setHx711Dout(''); setHx711Sck('');
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
       setAiPin(''); setAiMin('0'); setAiMax('14'); setAiUnit(''); setAiSmoothing('1');
-      setAiCal(false); setAiRaw1(''); setAiVal1(''); setAiRaw2(''); setAiVal2('');
       setMqttJsonField('');
       setRemoteDevice(''); setRemoteId(''); setRemotePrefix(''); setRemoteChannelKey('');
       setRemoteTransport('mqtt'); setRemoteListenPort('8080'); setRemotePeerUrl('');
@@ -591,11 +577,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           if (isNaN(dout) || dout < 0) throw new Error('DOUT Pin ungültig');
           if (isNaN(sck)  || sck  < 0) throw new Error('SCK Pin ungültig');
           cfg = { type: 'HX711', id: trimId, dout, sck };
-          if (hx711Scale.trim() !== '') {
-            const sc = parseFloat(hx711Scale);
-            if (isNaN(sc) || sc <= 0) throw new Error('Scale ungültig (muss > 0)');
-            cfg.scale = sc;
-          }
         } else if (sensorType === 'DigitalInput') {
           const p = parseInt(diPin, 10);
           if (isNaN(p) || p < 0) throw new Error('Pin ungültig');
@@ -614,14 +595,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           if (isNaN(sm) || sm < 1 || sm > 32) throw new Error('Glättung muss zwischen 1 und 32 liegen');
           cfg = { type: 'AnalogInput', id: trimId, pin: p, value_min: vmin, value_max: vmax, smoothing: sm };
           if (aiUnit.trim()) cfg.unit = aiUnit.trim();
-          if (aiCal) {
-            const r1 = parseInt(aiRaw1, 10), r2 = parseInt(aiRaw2, 10);
-            const v1 = parseFloat(aiVal1), v2 = parseFloat(aiVal2);
-            if ([r1, r2, v1, v2].some(isNaN)) throw new Error('Kalibrierpunkte unvollständig');
-            if (r1 === r2) throw new Error('Die Rohwerte der Kalibrierpunkte müssen verschieden sein');
-            cfg.cal_raw1 = r1; cfg.cal_value1 = v1;
-            cfg.cal_raw2 = r2; cfg.cal_value2 = v2;
-          }
         } else if (sensorType === 'MqttGeneric') {
           const topic = mqttTopic.trim();
           if (!topic) throw new Error('Topic erforderlich');
@@ -656,7 +629,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           if (isNaN(echo) || echo < 0) throw new Error('ECHO Pin ungültig');
           const channels = [chDistance && 'distance', showScale && 'derived'].filter(Boolean) as string[];
           if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
-          if (showScale && scaleFactor === '') throw new Error('Faktor für die Ableitung erforderlich');
+          if (showScale && scaleFactor === '') throw new Error('Faktor für den umgerechneten Kanal erforderlich');
           cfg = { type: 'HCSR04', id: trimId, trig, echo, channels };
           if (showScale) {
             const f = parseFloat(scaleFactor);
@@ -666,6 +639,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             if (scaleUnit !== '') cfg.unit = scaleUnit;
           }
         }
+        // Editing re-creates the sensor: carry its calibration over, it isn't part of this form.
+        if (isEdit && editConfig?.calibrations) cfg.calibrations = editConfig.calibrations;
         if (isEdit) await deleteSensor(String(editConfig!.id));
         await createSensor(cfg);
         if (Array.isArray(cfg.channels)) createdIds = (cfg.channels as string[]).map((c) => `${trimId}.${c}`);
@@ -1037,12 +1012,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     placeholder="z.B. 5" class={inp} required />
                 </div>
               </div>
-              <div>
-                <label class={lbl}>Scale (g / count, optional)</label>
-                <input type="number" step="any" value={hx711Scale}
-                  onInput={(e) => setHx711Scale((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 0.00427" class={inp} />
-              </div>
+              <p class="text-xs text-faint">
+                Tara und Umrechnung in Gramm stellst du nach dem Anlegen über „Kalibrieren“ ein.
+              </p>
             </div>
           )}
 
@@ -1100,8 +1072,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     placeholder="z.B. pH" class={inp} /></div>
               </div>
               <p class="text-xs text-faint">
-                Min/Max = Wertebereich der Anzeige. Ohne Kalibrierung wird der volle
-                ADC-Bereich (0–4095) darauf abgebildet.
+                Min/Max = Wertebereich der Anzeige. Der volle ADC-Bereich (0–4095) wird
+                darauf abgebildet; genauer wird es über „Kalibrieren“ nach dem Anlegen.
               </p>
               <div>
                 <label class={lbl}>Glättung (Mittelwert über N Messungen, 1 = aus)</label>
@@ -1109,37 +1081,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   onInput={(e) => setAiSmoothing((e.target as HTMLInputElement).value)}
                   class={inp} />
               </div>
-              <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
-                <input type="checkbox" checked={aiCal} class="accent-accent"
-                  onChange={(e) => setAiCal((e.target as HTMLInputElement).checked)} />
-                Zwei-Punkt-Kalibrierung
-              </label>
-              {aiCal && (
-                <div class="space-y-2">
-                  <div class="grid grid-cols-2 gap-2">
-                    <div><label class={lbl}>Punkt 1: Rohwert</label>
-                      <input type="number" value={aiRaw1}
-                        onInput={(e) => setAiRaw1((e.target as HTMLInputElement).value)}
-                        placeholder="z.B. 1443" class={inp} /></div>
-                    <div><label class={lbl}>Punkt 1: Wert</label>
-                      <input type="number" step="any" value={aiVal1}
-                        onInput={(e) => setAiVal1((e.target as HTMLInputElement).value)}
-                        placeholder="z.B. 4" class={inp} /></div>
-                    <div><label class={lbl}>Punkt 2: Rohwert</label>
-                      <input type="number" value={aiRaw2}
-                        onInput={(e) => setAiRaw2((e.target as HTMLInputElement).value)}
-                        placeholder="z.B. 2060" class={inp} /></div>
-                    <div><label class={lbl}>Punkt 2: Wert</label>
-                      <input type="number" step="any" value={aiVal2}
-                        onInput={(e) => setAiVal2((e.target as HTMLInputElement).value)}
-                        placeholder="z.B. 7" class={inp} /></div>
-                  </div>
-                  <p class="text-xs text-faint">
-                    Rohwerte (ADC-Counts) bei zwei bekannten Werten, z.B. Pufferlösung pH 4 und pH 7.
-                    Die Gerade gilt auch außerhalb der Punkte.
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
@@ -1267,7 +1208,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
                   <input type="checkbox" checked={showScale} class="accent-accent"
                     onChange={(e) => setShowScale((e.target as HTMLInputElement).checked)} />
-                  Ableitung
+                  Umgerechneter Kanal (z. B. Füllstand)
                 </label>
               </div>
               <div>
@@ -1291,6 +1232,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                         onInput={(e) => setScaleUnit((e.target as HTMLInputElement).value)}
                         placeholder="cm" class={inp} />
                     </div>
+                    <p class="col-span-3 text-xs text-faint">
+                      Zweiter Kanal mit eigener Einheit: Wert = Distanz × Faktor + Offset
+                      (z. B. Füllstand in Litern). Kein Ersatz für die Kalibrierung —
+                      jeder Kanal wird über „Kalibrieren“ einzeln abgeglichen.
+                    </p>
                   </div>
                 )}
               </div>

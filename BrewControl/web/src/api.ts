@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -165,6 +165,27 @@ export function deleteSensor(id: string): Promise<void> {
 
 export function resetSensor(id: string): Promise<void> {
   return postJson(`/api/sensors/${encodeURIComponent(id)}/reset`, {});
+}
+
+export async function getCalibration(id: string): Promise<CalibrationInfo> {
+  const r = await fetch(`/api/sensors/${encodeURIComponent(id)}/calibration`);
+  if (!r.ok) await failed(r);
+  return (await r.json()) as CalibrationInfo;
+}
+
+// A point without `raw` means "the sensor's current live raw value".
+export function calibrateSensor(id: string, body: {
+  channel: string;
+  mode: CalibrationMode;
+  points: { raw?: number; value: number }[];
+}): Promise<void> {
+  return postJson(`/api/sensors/${encodeURIComponent(id)}/calibration`, body);
+}
+
+// Without `channel` every channel of the sensor goes back to uncalibrated.
+export function clearCalibration(id: string, channel?: string): Promise<void> {
+  const q = channel === undefined ? '' : `?channel=${encodeURIComponent(channel)}`;
+  return deleteItem(`/api/sensors/${encodeURIComponent(id)}/calibration${q}`);
 }
 
 export function deleteActuator(id: string): Promise<void> {

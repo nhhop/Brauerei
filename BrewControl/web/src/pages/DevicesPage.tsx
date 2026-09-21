@@ -12,7 +12,8 @@ import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnPrimary } from '../ui';
 import type { ItemPrefill } from '../itemTypes';
-import { Pencil, Plus, X, Gauge, SlidersHorizontal, Zap, type LucideIcon } from 'lucide-preact';
+import { CalibrateModal } from '../components/CalibrateModal';
+import { Crosshair, Pencil, Plus, X, Gauge, SlidersHorizontal, Zap, type LucideIcon } from 'lucide-preact';
 
 type Role = 'sensor' | 'actuator' | 'controller';
 
@@ -31,6 +32,7 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
   const [deleteTarget, setDeleteTarget] = useState<{ role: Role; id: string } | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [calibrateId, setCalibrateId] = useState<string | null>(null);
 
   async function startEdit(role: Role, id: string) {
     setEditPending(id);
@@ -108,9 +110,14 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
           <SettingsGroup title="Sensoren">
             {sensors.map((s) => {
               const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
+              // Binary/Discrete channels (switches) have nothing to calibrate.
+              const calibratable = snap!.sensors.some((x) =>
+                (x.id.includes('.') ? x.id.split('.')[0] : x.id) === base
+                && (x.meta.kind === 'Continuous' || x.meta.kind === 'Cumulative'));
               return (
                 <DeviceRow key={base} label={base} badge={s.meta.quantity} icon={Gauge}
                   editing={editPending === base}
+                  onCalibrate={calibratable ? () => setCalibrateId(base) : undefined}
                   onEdit={() => startEdit('sensor', base)}
                   onDelete={() => setDeleteTarget({ role: 'sensor', id: base })} />
               );
@@ -158,18 +165,27 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
         editConfig={editItem?.cfg}
         editRole={editItem?.role}
         prefill={prefill ?? undefined} />
+
+      <CalibrateModal open={calibrateId !== null} sensorId={calibrateId ?? ''}
+        onClose={() => setCalibrateId(null)} />
     </PageShell>
   );
 }
 
-function DeviceRow({ label, badge, icon, editing, onEdit, onDelete }: {
+function DeviceRow({ label, badge, icon, editing, onEdit, onDelete, onCalibrate }: {
   label: string; badge?: string; icon: LucideIcon; editing: boolean;
-  onEdit: () => void; onDelete: () => void;
+  onEdit: () => void; onDelete: () => void; onCalibrate?: () => void;
 }) {
   return (
     <SettingsCard icon={icon} title={label} desc={badge} chevron={false}
       control={
         <div class="flex items-center gap-1">
+          {onCalibrate && (
+            <button type="button" onClick={onCalibrate} title="Kalibrieren"
+              class={`${iconBtn} hover:text-fg`}>
+              <Crosshair size={14} />
+            </button>
+          )}
           <button type="button" onClick={onEdit} disabled={editing} title="Bearbeiten"
             class={`${iconBtn} hover:text-fg`}>
             {editing ? <Spinner size={14} /> : <Pencil size={14} />}

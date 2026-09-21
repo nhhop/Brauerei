@@ -1,16 +1,17 @@
-import { Pencil, RotateCcw, X, TriangleAlert } from 'lucide-preact';
+import { Crosshair, Pencil, RotateCcw, X, TriangleAlert } from 'lucide-preact';
 import type { Sensor, Severity, WidgetMode } from '../types';
 import { badgeCaution, badgeCritical, widgetSizeClass } from '../ui';
 import { CardModeButton } from './CardModeButton';
 import { Gauge } from './Gauge';
 
-export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onReset, onEdit, onCycleMode }: {
+export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onReset, onEdit, onCalibrate, onCycleMode }: {
   sensor: Sensor;
   alarm?: Severity;
   viewMode?: WidgetMode;
   onDelete?: () => void;
   onReset?: () => void;
   onEdit?: () => void;
+  onCalibrate?: () => void;
   onCycleMode?: () => void;
 }) {
   const { id, meta, state } = sensor;
@@ -30,6 +31,10 @@ export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onRes
         <div class="flex items-center gap-2">
           {viewMode === 'compact' && <span class="text-xs text-muted">{meta.quantity}</span>}
           {onCycleMode && <CardModeButton mode={viewMode} onCycle={onCycleMode} />}
+          {onCalibrate && (
+            <button type="button" onClick={onCalibrate} title="Kalibrieren"
+              class="text-faint hover:text-fg"><Crosshair size={14} /></button>
+          )}
           {onEdit && (
             <button type="button" onClick={onEdit} title="Bearbeiten"
               class="text-faint hover:text-fg"><Pencil size={14} /></button>
