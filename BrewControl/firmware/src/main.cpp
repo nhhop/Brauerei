@@ -33,6 +33,8 @@
 #include "PushService.h"
 #include "RemoteDiscovery.h"
 #include "SettingsStore.h"
+#include "SpikeMetrics.h"
+#include "display/DisplayUI.h"
 #include "TimerStore.h"
 #include "WebSocketService.h"
 #include "WebUI.h"
@@ -79,6 +81,12 @@ BrewControl::EspNowPublishService espNowPublishService;
 BrewControl::PushService pushService;
 BrewControl::RemoteDiscovery remoteDiscovery;
 BrewControl::MdnsBrowser mdnsBrowser;
+#ifdef BREWCTL_SPIKE_METRICS
+BrewControl::SpikeMetrics spikeMetrics;
+#endif
+#ifdef BREWCTL_HAS_DISPLAY
+BrewControl::DisplayUI displayUI;
+#endif
 WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
@@ -294,6 +302,9 @@ void setup() {
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
              settingsStore.ntpServer().c_str());
 
+#ifdef BREWCTL_HAS_DISPLAY
+  displayUI.begin(registry);
+#endif
   registry.begin();
   dynamicItems.markInitialized();  // future add*() calls will call begin()
   mqttService.attachExisting();    // mirrors the registry + registers
@@ -319,6 +330,12 @@ void setup() {
   pushService.begin(hostname_);  // no-op until a browser subscribed
   webUI.begin();
   firmwareUpdater.begin();
+#ifdef BREWCTL_SPIKE_METRICS
+  spikeMetrics.begin();
+#ifdef BREWCTL_HAS_DISPLAY
+  displayUI.setMetrics(&spikeMetrics);
+#endif
+#endif
   Serial.println(F("BrewControl ready"));
 }
 
@@ -338,6 +355,9 @@ static void maintainWiFi() {
 }
 
 void loop() {
+#ifdef BREWCTL_SPIKE_METRICS
+  spikeMetrics.onLoop();
+#endif
   registry.tick();
   webUI.tick();
   firmwareUpdater.tick();
@@ -349,6 +369,9 @@ void loop() {
   remoteDiscovery.tick();
   mdnsBrowser.tick(millis());
   pushService.tick();
+#ifdef BREWCTL_HAS_DISPLAY
+  displayUI.tick();
+#endif
   maintainWiFi();
   delay(5);
 }
