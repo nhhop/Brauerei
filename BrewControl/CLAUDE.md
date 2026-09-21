@@ -63,7 +63,7 @@ pnpm typecheck
   `web/src/types.ts` prüfen. Verifikation:
   `npx @redocly/cli lint --config BrewControl/docs/redocly.yaml BrewControl/docs/openapi.yaml`.
 - `types.ts` immer mit `RegistrySnapshot.h` synchron halten — bei Library-Änderungen prüfen.
-- SD-Pins für LilyGo T-Display-S3-AMOLED-1.43: CS=38, SCK=41, MOSI=39, MISO=40 (GPIO 33–37 durch OPI-PSRAM belegt).
+- SD-Pins für LilyGo T-Display-S3-AMOLED-1.75: CS=38, SCK=41, MOSI=39, MISO=40 (GPIO 33–37 durch OPI-PSRAM belegt).
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —

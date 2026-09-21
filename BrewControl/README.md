@@ -8,7 +8,7 @@ Tuning zur Laufzeit über eine HTTP+SSE-API.
 > **Status:** MVP + Laufzeit-Item-Add/Remove + Bus-Discovery + Datenlogging +
 > Sollwert-Programme + MQTT/Webhook/ESP-NOW (lokal + Remote-Node) +
 > WinUI-3-Fluent-Redesign, alle drei Boards (esp32dev, LOLIN S2 Mini,
-> LilyGo T-Display-S3-AMOLED-1.43) hardware-verifiziert. Aktueller
+> LilyGo T-Display-S3-AMOLED-1.75) hardware-verifiziert. Aktueller
 > Gesamtstand/Roadmap: [`../PLAN.md`](../PLAN.md); Session-Historie:
 > [`../SESSION.md`](../SESSION.md).
 
@@ -115,7 +115,7 @@ Kein onboard-SD-Slot — läuft standardmäßig auf LittleFS (internes Flash), k
 SPI-Breakout nötig. Flash über DFU: ersten Flash BOOT + RST halten, danach enumeriert
 die Firmware als neuer COM-Port (TinyUSB-CDC).
 
-**LilyGo T-Display-S3-AMOLED-1.43 (`lilygo_t_display_s3_amoled`)**
+**LilyGo T-Display-S3-AMOLED-1.75 (`lilygo_t_display_s3_amoled`)**
 
 | Pin     | Funktion                | Build-Flag                  |
 |---------|-------------------------|-----------------------------|
