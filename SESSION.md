@@ -4254,3 +4254,92 @@ damit der Footer unten klebt. Confirm-/Name-/Login-Dialog bleiben bewusst klein.
 
 Verifikation: `pnpm typecheck` und `pnpm build` grün, `max-md:`-Klassen im
 CSS-Bundle. Nicht geprüft: Sicht am Handy bzw. im Mobil-Viewport.
+
+## 2026-09-22 — Spike: LVGL-Display auf dem AMOLED-1.75 (Branch `spike/lvgl-display`)
+
+Machbarkeits-Spike zu `PLAN.md` → „Interaktives LVGL-Display". Nicht nach main
+gemerged; der Code lebt auf `spike/lvgl-display`, hier stehen die Ergebnisse.
+
+**Build-Seite steht.** Env `lilygo_t_display_s3_amoled` erweitert (kein
+zweiter OTA-Varianten-Eintrag), Display-Code hinter `BREWCTL_HAS_DISPLAY`,
+`lv_conf.h` nur über `-I src/display` sichtbar. LVGL 8.4 baut unter GCC 8.4 /
+`gnu++17` ohne Murren.
+
+| Build | Flash | RAM statisch |
+|---|---|---|
+| A — nur Metriken | 1.633.409 B (24,9 %) | 61.028 B (18,6 %) |
+| B — + Display + LVGL | 1.982.141 B (30,2 %) | 112.036 B (34,2 %) |
+| Δ | +348.732 B | +51.008 B |
+
+Der RAM-Zuwachs ist fast ganz `LV_MEM_SIZE` (48 KB statisches Array); der
+33,6-KB-Draw-Buffer kommt zur Laufzeit dazu. `esp32dev` baut **byte-identisch**
+mit und ohne Spike-Code — die `#ifdef`-Kapselung ist dicht.
+
+**LVGL braucht den Arduino-Core-3-Sprung nicht.** Der entsprechende Halbsatz in
+`PLAN.md` ist damit erledigt. Die bequeme Treiber-Library allerdings schon:
+Arduino_GFX ist aus der PlatformIO-Registry für S3 + Core 2 in keiner Version
+baubar, die CO5300/SH8601 kennt (unter 1.6.1 fehlen sie, 1.6.1 scheitert am
+falschen Guard in `Arduino_ESP32RGBPanel.h`, ab 1.6.2 kommt `esp32-hal-periman.h`
+dazu; PlatformIO kompiliert jede `.cpp` einer Library, auch die ungenutzten
+Backends). **LilyGos vendored Fork 1.3.7 baut dagegen problemlos** — der ist der
+Weg, nicht ein selbstgeschriebener Treiber.
+
+**Speicher reicht mit Abstand.** Am Gerät gemessen: PSRAM 8.385.767 B (davon
+8.293.315 frei — die bislang nur behauptete `qio_opi`-Konfiguration greift also
+wirklich), internes Heap 182 KB frei, größter DMA-Block 172 KB.
+
+**Der `loop()`-Takt ist der kritische Befund, und er ist displayunabhängig.**
+Schon ohne Display: avg 9,6 ms, p50 7 ms, aber **p99 160–170 ms, max 206–221 ms**.
+118 von 6280 Durchläufen liegen im Band 100–250 ms — 1,96 pro Sekunde. Über
+Abschnitts-Timer lokalisiert auf `registry.tick()` (max 186 ms; `webUI.tick()`
+max 6 ms). Ursache: `IdsActuator` tickt alle 500 ms und `IdsCooker::sendCommand()`
+bitbangt 33 Pulse mit `delayMicroseconds` — bei `SIGNAL_HIGH` 5120 µs und
+`SIGNAL_LOW` 1280 µs pro Bit ergibt das **84–211 ms pro Kommando**, protokoll-
+bedingt und im kooperativen Loop unvermeidbar. Konsequenz für das Display: die
+Plan-Empfehlung „`lv_timer_handler()` aus `loop()`" trägt auf einem Board mit
+IDS-Kocher **nicht** — zweimal pro Sekunde stünde die UI ~190 ms. Ein eigener,
+auf Core 0 gepinnter LVGL-Task ist damit keine Rückfallebene mehr, sondern die
+Ausgangslage. (Messmethodischer Hinweis: `enabled=false` am Aktor ändert nichts,
+der Keep-Alive läuft unabhängig davon.)
+
+**Pin-Konflikte in der Item-Konfiguration des Testboards** — behoben und
+behalten: `Durchfluss` 9→8, `kettle` 6→21, `Riptide Pumpe` 7→47, `Agitator`
+3→48, `IDS1` 7/9/11 → 1/42/18; `Füllhöhe` (HC-SR04, nie ein Messwert) und
+`test_dac` (der S3 hat keinen DAC) entfernt. Vorher teilten sich GPIO 7, 9 und 11
+je zwei Items: der IDS-Bitbang feuerte 33 Pulse in die RISING-ISR des
+YF-S201 — daher meldete `Durchfluss.rate` konstant 9,02 L/min ohne angeschlossenen
+Sensor. Seither 0. Umgestellt per `POST /api/backup` mit einem bearbeiteten
+Bundle; das Original liegt gesichert. Die Firmware kann solche Überlagerungen
+nicht erkennen — Beleg für den Pin-Manager im Backlog.
+
+**Display-Hardware identifiziert.** Das Panel ist rund, 466×466, und trägt einen
+**CO5300** mit **CST9217**-Touch — nicht den dokumentierten SH8601/FT3168.
+Maßgeblich ist LilyGos `libraries/Mylibrary/pin_config.h`, die zwischen
+`DO0143FAT01` (1.43", SH8601+FT3168), `H0175Y003AM` (1.75", CO5300+CST9217 —
+dieses Board) und `DO0143FMST10` unterscheidet; die README-Tabelle beschreibt nur
+die 1.43. Ein I²C-Scan am Gerät bestätigt das unabhängig: 0x51 (PCF8563),
+0x5A (CST9217, **nicht** 0x38) und 0x6A (SY6970). Dieselbe Datei erklärt auch den
+alten SD-Fehlversuch — dort steht `SD_CS 38` und separat
+`BATTERY_VOLTAGE_ADC_DATA 4`, die README hatte beides zu „SD CS = 4" verschmolzen.
+Ebenfalls dort aufgefallen: `Wire` steht auf diesem Variant per Default auf
+SDA 18 / SCL 17, und **GPIO 17 ist der Panel-Reset** — heute latent, weil kein
+I²C-Item konfiguriert ist. Pin-Belegung und Hinweise stehen jetzt in
+`platformio.ini` und `BrewControl/CLAUDE.md`.
+
+**Panel-Bring-up: offen.** Der selbstgeschriebene `Co5300Panel` bringt kein Bild,
+obwohl Init-Sequenz und QSPI-Framing inzwischen deckungsgleich mit Arduino_GFX
+sind (manuelles CS, `MULTILINE_CMD/ADDR`, `SPI_TRANS_USE_TXDATA` für kurze
+Nutzlasten, `0xC4=0x80`, Pixelformat `0x55`, Spalten-Offset 6). Derselbe Pfad mit
+LilyGos Arduino_GFX-1.3.7 zeigt dagegen sauber Farben und Text — **Hardware,
+Verdrahtung und Pins sind also in Ordnung**, der Rest ist ein Fehler im eigenen
+Treiber. Damit ist die Konsequenz klar: Arduino_GFX-1.3.7 vendoren statt selbst
+schreiben. Nicht gemessen wurden fps, Touch und die Rückwirkung des Renderns auf
+`loop()`.
+
+Diagnosewerkzeug nebenbei: Boot-Log auf SD (`/spike-boot.log`, lesbar über
+`GET /api/files/download`) plus I²C-Scan und Panel-Registerlesung. Auf einem
+USB-CDC-Board ist das der einzige Weg an einen Panic zu kommen — der Port
+re-enumeriert bei jedem Reset, `pio device monitor` sieht nichts. Erst damit fiel
+auf, dass die erste „Boot-Schleife" ein eigener Fehler war: `lv_mem_monitor()`
+stand unter `#ifdef BREWCTL_HAS_DISPLAY` statt unter der Stufe, in der `lv_init()`
+tatsächlich läuft, sodass jede Anfrage an den Metrik-Port das Board panikte.

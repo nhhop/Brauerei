@@ -64,6 +64,12 @@ pnpm typecheck
   `npx @redocly/cli lint --config BrewControl/docs/redocly.yaml BrewControl/docs/openapi.yaml`.
 - `types.ts` immer mit `RegistrySnapshot.h` synchron halten — bei Library-Änderungen prüfen.
 - SD-Pins für LilyGo T-Display-S3-AMOLED-1.75: CS=38, SCK=41, MOSI=39, MISO=40 (GPIO 33–37 durch OPI-PSRAM belegt).
+- Display-Hardware desselben Boards (am Gerät verifiziert 2026-09-22, falls es je angesteuert wird):
+  rundes 466×466-AMOLED auf **CO5300** über QSPI (CS 10, SCLK 12, D0 11, D1 13, D2 14, D3 15,
+  RST 17, EN 16), Touch **CST9217** auf I²C 0x5A (SDA 7 / SCL 6, geteilt mit PCF8563 0x51 und
+  SY6970 0x6A). Maßgeblich ist LilyGos `libraries/Mylibrary/pin_config.h`, **nicht** die
+  README-Tabelle — die beschreibt nur die 1.43 (SH8601 + FT3168). ⚠ `Wire` steht auf diesem
+  Variant per Default auf SDA 18 / SCL 17, und GPIO 17 ist der Panel-Reset.
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
