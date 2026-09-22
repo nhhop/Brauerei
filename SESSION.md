@@ -4346,3 +4346,74 @@ re-enumeriert bei jedem Reset, `pio device monitor` sieht nichts. Erst damit fie
 auf, dass die erste „Boot-Schleife" ein eigener Fehler war: `lv_mem_monitor()`
 stand unter `#ifdef BREWCTL_HAS_DISPLAY` statt unter der Stufe, in der `lv_init()`
 tatsächlich läuft, sodass jede Anfrage an den Metrik-Port das Board panikte.
+
+## 2026-09-22 — Multi-Point-Kalibrierung (Polynom-Fit) für `CalibratedSensor`
+
+Vierter Kalibriermodus `poly` neben `offset`/`gain`/`twopoint`, durchgängig von
+der Library über die HTTP-API bis in den Kalibrier-Dialog: Ausgleichspolynom vom
+Grad 1–3 durch bis zu acht Stützpunkte, für Sensoren mit krummer Kennlinie
+(Anlass: Tilt-Hydrometer nach iSpindel-Vorbild). Die drei linearen Modi bleiben
+unverändert — `poly` mit Grad 1 ist zwar rechnerisch dasselbe wie `twopoint`,
+aber die Punkt-Steigungs-Form ist der genauere Pfad bei 24-Bit-Rohwerten, und
+bestehende Kalibrierungen bleiben ohne Migration lesbar.
+
+**Entscheidungen.** *Kein `CurveFitting`-Dependency*, obwohl der PLAN-Eintrag
+das vorschlug: die dort angenommene API (`fit.addPoint/fit/solve`) existiert
+nicht, die reale Library hat `fitCurve(order, n, px, py, nCoeffs, coeffs)`,
+inkludiert `<Arduino.h>` und ruft `Serial.print` — sie baut also nicht im
+`native`-Test-Env, womit ausgerechnet die Fit-Mathematik untestbar wäre.
+Stattdessen ein eigener Normalgleichungs-Solver (Gauß mit Spaltenpivotisierung,
+in `double`, ~60 Zeilen, keine Allokation) direkt in `CalibratedSensor.cpp`; das
+spart zugleich einen Eintrag in `library.json`/`library.properties` der
+standalone-publizierbaren Library. *Persistiert werden die Stützpunkte*, nicht
+die Koeffizienten — die UI braucht sie ohnehin für die Tabelle, einzelne Punkte
+bleiben nachkorrigierbar, und der Fit wird beim Laden neu gerechnet. *Der Grad
+ist wählbar* (1–3) statt aus der Punktzahl abgeleitet, damit bewusst geglättet
+werden kann (z. B. sechs Punkte, Grad 2).
+
+**Numerik.** Gefittet wird in der zentrierten und skalierten Koordinate
+`u = (roh − rawRef)/rawScale` mit `rawRef` = Mittelwert und `rawScale` =
+`max|roh − rawRef|`. Ohne das erreichen die Momente der Normalgleichungen bei
+HX711-Zählern (~8,4 Mio.) Größenordnungen um `u⁶ ≈ 3e41` und das System ist auch
+in `double` unbrauchbar; mit Skalierung liegt die Konditionszahl bei ~25.
+`rawRef`/`rawScale` werden als `float` gespeichert und der Fit mit genau diesem
+`float`-Wert gerechnet — bei 8,4e6 ist ein float-ULP 1,0, ein zwischen Fit und
+Auswertung abweichendes Zentrum würde das Ergebnis verschieben. Außerhalb der
+Stützstellen wird **tangential-linear** fortgesetzt statt das Polynom laufen zu
+lassen: eine Kubik wird dort leicht unmonoton, eine Waage zeigte bei *mehr*
+Gewicht *weniger* an. Bei Grad 1 ist diese Fortsetzung exakt die Zwei-Punkt-
+Gerade.
+
+**Zwei Fallstricke, die der Entwurf zunächst enthielt** (beide jetzt durch Tests
+abgedeckt): die linearen Modi setzten nur `rawRef/valRef/gain` — auf einem
+Ex-Poly-Kanal wäre `degree > 0` stehengeblieben und der Nutzer hätte sichtbar
+ins Leere kalibriert; und `setCalibration` resettete den Kanal über eine
+*positionale* Aggregat-Initialisierung (`Calibration{rawRef, valRef, gain,
+true}`), die beim Anhängen neuer Member nur zufällig weiter stimmt. Beides auf
+feldweises Zurücksetzen umgebaut. `calibrateOffset` auf einem aktiven
+Poly-Kanal wird jetzt abgelehnt (`NotCalibratable`) statt „behält den Gain" auf
+einen Konditionierungsrest anzuwenden.
+
+**Firmware/API.** `calibrations` in der Sensor-Config trägt für Poly
+`{channel, mode:"poly", degree, points:[{raw,value}]}` statt der drei
+Linear-Zahlen — Einträge ohne `mode`-Key sind weiterhin die lineare Form und
+werden unverändert gelesen. `GET …/calibration` liefert jetzt zusätzlich ein
+`mode`-Feld (`linear`/`poly`), das bisher fehlte, sodass die UI den aktiven
+Modus überhaupt erkennen kann. In `calibrateSensor` wurde das feste
+`float raw[2]` auf `kMaxPoints` erweitert und die Schreibschleife zusätzlich
+gegen Überlauf abgesichert; Grad-/Anzahlfehler bekommen eigene Fehlertexte statt
+des generischen `invalid calibration points`. Höchstens ein Punkt darf „raw"
+weglassen — mehrere wären derselbe Live-Messwert und der Fit singulär.
+
+**Verifikation.** 254 native Unit-Tests grün, davon 9 neue für den Poly-Pfad
+(exakte Interpolation, Ausgleichsfall mit analytisch bekannter Steigung 2,2,
+HX711-Größenordnung, Extrapolation, Modus-Wechsel, Refit-Roundtrip,
+Ablehnungen). Compile-Smoke für `esp32dev` und `lilygo_t_display_s3_amoled`,
+OpenAPI-Lint, `pnpm typecheck`, 39 Frontend-Tests (14 neu in
+`calibrationPoints.test.ts`). UI gegen einen Node-Mock im Browser geprüft:
+Modus-Wechsel, Gradwahl (Zeilen werden auf `Grad+1` aufgefüllt), Hinzufügen und
+Entfernen von Punkten, Entfernen am Minimum gesperrt, Validierungsmeldungen,
+gesendeter POST-Body, mobiles Vollbild-Sheet. **Auf echter Hardware noch nicht
+verifiziert** — das esp32dev mit der DAC→ADC-Schleife ist von der
+IDS-Überarbeitung belegt; der Durchlauf steht als eigener Punkt in PLAN.md (der
+S3 hat keinen DAC, taugt also nicht als Ersatz für gemessene Stützpunkte).

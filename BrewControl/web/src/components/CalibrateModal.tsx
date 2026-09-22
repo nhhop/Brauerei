@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CalibrationChannel, CalibrationInfo, CalibrationMode } from '../types';
 import { calibrateSensor, clearCalibration, getCalibration } from '../api';
+import {
+  MAX_DEGREE, MAX_POINTS, emptyPoint, ensureRows, pointsProblem, pointsToWire, requiredCount,
+} from '../calibrationPoints';
+import type { PointDraft } from '../calibrationPoints';
 import { btnPrimary, btnSecondary, dialogBtnRow, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
+import { Segmented } from './Segmented';
 import { Spinner } from './Spinner';
 
 const lbl = 'mb-1 block text-xs text-muted';
@@ -10,6 +15,7 @@ const MODE_LABEL: Record<CalibrationMode, string> = {
   offset: 'Nullpunkt (Offset)',
   twopoint: 'Zwei-Punkt',
   gain: 'Faktor (Steigung)',
+  poly: 'Mehrpunkt (Kurve)',
 };
 
 const MODE_HELP: Record<CalibrationMode, string> = {
@@ -19,16 +25,22 @@ const MODE_HELP: Record<CalibrationMode, string> = {
     + 'Daraus werden Nullpunkt und Steigung bestimmt.',
   gain: 'Nur die Steigung durch den Nullpunkt anpassen (z. B. der Sensor zeigt 4,6 L, '
     + 'tatsächlich waren es 5 L).',
+  poly: 'Für Sensoren mit krummer Kennlinie: mehrere bekannte Werte messen, daraus wird eine '
+    + 'Ausgleichskurve berechnet. Mehr Punkte als nötig mitteln Messrauschen heraus. Außerhalb '
+    + 'der gemessenen Spanne wird die Kurve gerade fortgesetzt.',
 };
 
 const MEASURE_MS = 5000;
 const MEASURE_STEP_MS = 500;
 
+const DEGREE_OPTIONS = Array.from({ length: MAX_DEGREE }, (_, i) => ({
+  value: String(i + 1),
+  label: ['Gerade', 'Quadratisch', 'Kubisch'][i],
+}));
+
 function fmt(n: number | null | undefined): string {
   return n == null || !isFinite(n) ? '—' : String(Number(n.toPrecision(6)));
 }
-
-interface PointState { raw: string; value: string }
 
 // Calibrate one sensor: pick a channel and a method, bring the sensor into a
 // known state, "Messen" averages the live raw value for a few seconds, type the
@@ -42,7 +54,8 @@ export function CalibrateModal({ open, sensorId, onClose }: {
   const [info, setInfo] = useState<CalibrationInfo | null>(null);
   const [channelKey, setChannelKey] = useState<string | null>(null);
   const [mode, setMode] = useState<CalibrationMode>('offset');
-  const [points, setPoints] = useState<PointState[]>([{ raw: '', value: '' }, { raw: '', value: '' }]);
+  const [degree, setDegree] = useState(2);
+  const [points, setPoints] = useState<PointDraft[]>([emptyPoint(), emptyPoint()]);
   const [measuring, setMeasuring] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -54,7 +67,8 @@ export function CalibrateModal({ open, sensorId, onClose }: {
     if (!open) return;
     alive.current = true;
     setInfo(null); setChannelKey(null); setErr(null); setDone(false); setMeasuring(null);
-    setPoints([{ raw: '', value: '' }, { raw: '', value: '' }]);
+    setDegree(2);
+    setPoints([emptyPoint(), emptyPoint()]);
     const poll = () => getCalibration(sensorId)
       .then((i) => { if (alive.current) setInfo(i); })
       .catch((e) => { if (alive.current) setErr(String(e)); });
@@ -74,10 +88,22 @@ export function CalibrateModal({ open, sensorId, onClose }: {
 
   if (!open) return null;
 
-  const need = mode === 'twopoint' ? 2 : 1;
+  // The linear modes show a fixed number of points; poly shows as many rows as
+  // the user has added, but never fewer than the degree needs.
+  const need = requiredCount(mode, degree);
+  const filled = ensureRows(points, need);
+  const rows = mode === 'poly' ? filled : filled.slice(0, need);
 
-  function setPoint(i: number, patch: Partial<PointState>) {
-    setPoints((p) => p.map((pt, j) => (j === i ? { ...pt, ...patch } : pt)));
+  function setPoint(i: number, patch: Partial<PointDraft>) {
+    setPoints((p) => ensureRows(p, i + 1).map((pt, j) => (j === i ? { ...pt, ...patch } : pt)));
+  }
+
+  function addRow() {
+    setPoints((p) => [...ensureRows(p, need), emptyPoint()]);
+  }
+
+  function removeRow(i: number) {
+    setPoints((p) => ensureRows(p, need).filter((_, j) => j !== i));
   }
 
   async function measure(i: number) {
@@ -102,18 +128,14 @@ export function CalibrateModal({ open, sensorId, onClose }: {
   async function apply() {
     if (!channel) return;
     setErr(null); setDone(false);
-    const pts: { raw: number; value: number }[] = [];
-    for (let i = 0; i < need; i++) {
-      const raw = parseFloat(points[i].raw);
-      const value = parseFloat(points[i].value);
-      if (isNaN(raw) || isNaN(value)) { setErr(`Punkt ${i + 1}: Rohwert messen und Referenzwert eintragen.`); return; }
-      pts.push({ raw, value });
-    }
-    if (mode === 'twopoint' && pts[0].raw === pts[1].raw) { setErr('Die beiden Rohwerte müssen verschieden sein.'); return; }
-    if (mode === 'gain' && pts[0].raw === 0) { setErr('Der Rohwert darf für den Faktor nicht 0 sein.'); return; }
+    const problem = pointsProblem(rows, mode, degree);
+    if (problem) { setErr(problem); return; }
     setPending(true);
     try {
-      await calibrateSensor(sensorId, { channel: channel.key, mode, points: pts });
+      await calibrateSensor(sensorId, {
+        channel: channel.key, mode, points: pointsToWire(rows),
+        ...(mode === 'poly' ? { degree } : {}),
+      });
       setDone(true);
       setInfo(await getCalibration(sensorId));
     } catch (e) {
@@ -184,19 +206,39 @@ export function CalibrateModal({ open, sensorId, onClose }: {
                 <p class="mt-1 text-xs text-faint">{MODE_HELP[mode]}</p>
               </div>
 
-              {Array.from({ length: need }, (_, i) => (
+              {mode === 'poly' && (
+                <div>
+                  <label class={lbl}>Kurvenform</label>
+                  <Segmented value={String(degree)} options={DEGREE_OPTIONS} disabled={busy}
+                    onChange={(v) => setDegree(Number(v))} />
+                  <p class="mt-1 text-xs text-faint">
+                    Braucht mindestens {need} Punkte, höchstens {MAX_POINTS}.
+                  </p>
+                </div>
+              )}
+
+              {rows.map((pt, i) => (
                 <div key={i} class="space-y-2 rounded-md border border-border p-3">
-                  {need > 1 && <div class="text-xs font-medium text-muted">Punkt {i + 1}</div>}
+                  {rows.length > 1 && (
+                    <div class="flex items-center justify-between">
+                      <div class="text-xs font-medium text-muted">Punkt {i + 1}</div>
+                      {mode === 'poly' && (
+                        <button type="button" class="text-xs text-faint hover:text-fg disabled:opacity-40"
+                          disabled={busy || rows.length <= need} onClick={() => removeRow(i)}
+                          title="Punkt entfernen">×</button>
+                      )}
+                    </div>
+                  )}
                   <div class="grid grid-cols-2 gap-2">
                     <div>
                       <label class={lbl}>Rohwert</label>
-                      <input type="number" step="any" class={`${inp} w-full`} value={points[i].raw}
+                      <input type="number" step="any" class={`${inp} w-full`} value={pt.raw}
                         onInput={(e) => setPoint(i, { raw: (e.target as HTMLInputElement).value })}
                         placeholder="messen …" />
                     </div>
                     <div>
                       <label class={lbl}>Referenzwert{unit}</label>
-                      <input type="number" step="any" class={`${inp} w-full`} value={points[i].value}
+                      <input type="number" step="any" class={`${inp} w-full`} value={pt.value}
                         onInput={(e) => setPoint(i, { value: (e.target as HTMLInputElement).value })} />
                     </div>
                   </div>
@@ -208,6 +250,11 @@ export function CalibrateModal({ open, sensorId, onClose }: {
                   </button>
                 </div>
               ))}
+
+              {mode === 'poly' && rows.length < MAX_POINTS && (
+                <button type="button" class="text-xs text-faint hover:text-fg" disabled={busy}
+                  onClick={addRow}>+ Punkt hinzufügen</button>
+              )}
 
               <p class="text-xs text-faint">
                 Hinweis: Bereits aufgezeichnete Logdaten bleiben unkalibriert — der Verlauf springt beim Kalibrieren.

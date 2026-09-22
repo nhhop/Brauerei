@@ -275,7 +275,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/sensors` | POST | Sensor anlegen |
 | `/api/sensors/<id>` | DELETE | Sensor entfernen |
 | `/api/sensors/<id>/reset` | POST | Akkumulierten Sensorwert zurücksetzen (z.B. YF-S201-Volumen) |
-| `/api/sensors/<id>/calibration` | GET / POST / DELETE | Live-Rohwert + kalibrierter Wert je Kanal; Kanal kalibrieren (Offset / Faktor / Zwei-Punkt); Kalibrierung zurücksetzen |
+| `/api/sensors/<id>/calibration` | GET / POST / DELETE | Live-Rohwert + kalibrierter Wert je Kanal; Kanal kalibrieren (Offset / Faktor / Zwei-Punkt / Mehrpunkt-Kurve); Kalibrierung zurücksetzen |
 | `/api/actuators` | POST | Aktor anlegen |
 | `/api/actuators/<id>` | POST, DELETE | Wert / `enabled` / Takt-Intervall schreiben; Aktor entfernen |
 | `/api/controllers` | POST | Regler anlegen |

@@ -99,8 +99,16 @@ konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),
 `CalibratedSensor` (Decorator: umhüllt einen beliebigen Sensor und rechnet
 pro Kanal `wert = valRef + gain · (roh − rawRef)` — Ein-Punkt-Offset,
 Ein-Punkt-Faktor oder Zwei-Punkt; „roh" ist der unkalibrierte Wert des
-Sensors, `rawValue()` liefert ihn für Kalibrier-Oberflächen. Binary/Discrete-
-Kanäle sind nicht kalibrierbar, Cumulative nur per Faktor).
+Sensors, `rawValue()` liefert ihn für Kalibrier-Oberflächen. Für krumme
+Kennlinien zusätzlich `calibratePoly()`: Ausgleichspolynom vom Grad 1–3 durch
+bis zu acht Stützpunkte, ausgewertet in der zentrierten und skalierten
+Koordinate `u = (roh − rawRef)/rawScale` — ohne diese Skalierung wären die
+Normalgleichungen bei 24-Bit-Rohwerten unbrauchbar. Außerhalb der Stützstellen
+wird tangential-linear fortgesetzt, damit eine Kubik dort nicht unmonoton
+wird; die Stützpunkte bleiben in `Calibration` erhalten, sodass eine Ober-
+fläche einzelne korrigieren und der Fit nach einem Reload neu gerechnet werden
+kann. Binary/Discrete-Kanäle sind nicht kalibrierbar, Cumulative nur per
+Faktor).
 
 **Aktoren** (`src/actuators/`): `DigitalOutputActuator` (binär oder
 Time-Proportional/SSR), `PulseOutputActuator` (nicht-blockierende

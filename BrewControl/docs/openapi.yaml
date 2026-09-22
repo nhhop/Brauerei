@@ -278,8 +278,12 @@ paths:
         unit — what it would show without any calibration; `value` is what the
         snapshot reports. The calibration UI polls this (~1 Hz) to capture the
         raw value. `modes` lists what the channel supports: `offset`,
-        `twopoint`, `gain` for continuous channels, only `gain` for cumulative
-        ones; empty for switches (Binary/Discrete).
+        `twopoint`, `poly`, `gain` for continuous channels, only `gain` for
+        cumulative ones; empty for switches (Binary/Discrete).
+
+        A calibrated channel reports which form is in use: `mode: linear`
+        carries `raw_ref`/`value_ref`/`gain`, `mode: poly` carries `degree`
+        and the support `points` it was fitted from.
       responses:
         "200":
           description: One entry per channel (`key` is `""` for single-value sensors).
@@ -301,15 +305,36 @@ paths:
                         raw: { type: [number, "null"] }
                         value: { type: [number, "null"] }
                         calibrated: { type: boolean }
-                        raw_ref: { type: number, description: "Reference point of the line (only when calibrated)." }
+                        mode:
+                          type: string
+                          enum: [linear, poly]
+                          description: "Which form is in use (only when calibrated)."
+                        raw_ref: { type: number, description: "Reference point of the line (only when mode is linear)." }
                         value_ref: { type: number }
                         gain: { type: number, description: "Slope; value = value_ref + gain * (raw - raw_ref)." }
+                        degree:
+                          type: integer
+                          minimum: 1
+                          maximum: 3
+                          description: "Polynomial degree (only when mode is poly)."
+                        points:
+                          type: array
+                          maxItems: 8
+                          description: |
+                            Support points the polynomial was fitted from (only
+                            when mode is poly). These are what is persisted; the
+                            fit is recomputed on every reload.
+                          items:
+                            type: object
+                            properties:
+                              raw: { type: number }
+                              value: { type: number }
                         modes:
                           type: array
-                          items: { type: string, enum: [offset, twopoint, gain] }
+                          items: { type: string, enum: [offset, twopoint, poly, gain] }
               example:
                 channels:
-                  - { key: "", unit: pH, valid: true, raw: 5.31, value: 5.31, calibrated: false, modes: [offset, twopoint, gain] }
+                  - { key: "", unit: pH, valid: true, raw: 5.31, value: 5.31, calibrated: false, modes: [offset, twopoint, poly, gain] }
         "404":
           description: Body is `sensor not found`.
           content:
@@ -319,18 +344,29 @@ paths:
       operationId: calibrateSensor
       summary: Calibrate one channel
       description: |
-        Sets `value = value_ref + gain * (raw - raw_ref)` for the channel and
-        persists it (`calibrations` in the sensor's config, `/config/registry.json`).
+        Calibrates the channel and persists it (`calibrations` in the sensor's
+        config, `/config/registry.json`).
+
+        Linear modes set `value = value_ref + gain * (raw - raw_ref)`:
 
         - `offset` (1 point): the given raw reading should read `value`; the
-          existing gain is kept. Not allowed on cumulative channels.
+          existing gain is kept. Not allowed on cumulative channels, nor on a
+          channel that currently holds a polynomial — reset it first.
         - `gain` (1 point): line through the origin, `gain = value / raw`.
           `raw` must not be 0.
         - `twopoint` (2 points): offset and slope from two references; the raw
           values must differ. Not allowed on cumulative channels.
 
+        `poly` (2..8 points) fits a least-squares polynomial of `degree` (1..3)
+        for non-linear characteristics; it needs at least `degree + 1` points
+        with distinct raw values and is not allowed on cumulative channels.
+        Outside the range of its support points the curve continues along its
+        tangent rather than running free. Only the points are stored — the fit
+        is recomputed on every reload, so a single point can be corrected later.
+
         A point without `raw` uses the sensor's current live raw value
-        (e.g. tare: `{mode: offset, points: [{value: 0}]}`).
+        (e.g. tare: `{mode: offset, points: [{value: 0}]}`). At most one point
+        per request may leave `raw` out.
       requestBody:
         required: true
         content:
@@ -340,9 +376,15 @@ paths:
               required: [channel, mode, points]
               properties:
                 channel: { type: string, description: 'Channel key, `""` for single-value sensors.' }
-                mode: { type: string, enum: [offset, gain, twopoint] }
+                mode: { type: string, enum: [offset, gain, twopoint, poly] }
+                degree:
+                  type: integer
+                  minimum: 1
+                  maximum: 3
+                  description: "Polynomial degree; required for `poly`, ignored otherwise."
                 points:
                   type: array
+                  maxItems: 8
                   items:
                     type: object
                     required: [value]
@@ -356,13 +398,26 @@ paths:
               tare:
                 summary: Tare a scale (current reading becomes 0)
                 value: { channel: "", mode: offset, points: [{ value: 0 }] }
+              tilt:
+                summary: Tilt hydrometer, quadratic fit over four points
+                value:
+                  channel: ""
+                  mode: poly
+                  degree: 2
+                  points:
+                    - { raw: 25.4, value: 1.000 }
+                    - { raw: 33.1, value: 1.020 }
+                    - { raw: 41.8, value: 1.045 }
+                    - { raw: 52.6, value: 1.072 }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "400":
           description: |
             Body is `invalid JSON`, `unknown channel`, `invalid mode`,
-            `wrong number of points`, `missing value`,
+            `wrong number of points`, `missing value`, `degree must be 1..3`,
+            `need at least degree+1 points`, `too many points`,
+            `only one point may omit raw`,
             `channel does not support this calibration` or
             `invalid calibration points`.
           content:
@@ -2807,17 +2862,34 @@ components:
         calibrations:
           type: array
           description: |
-            Per-channel calibration, `value = value_ref + gain * (raw - raw_ref)`.
-            Written by `POST /api/sensors/{id}/calibration`; clients that
-            re-create a sensor (edit) pass it through unchanged. Unknown
-            channels are ignored.
+            Per-channel calibration. Written by
+            `POST /api/sensors/{id}/calibration`; clients that re-create a
+            sensor (edit) pass it through unchanged. Unknown channels are
+            ignored.
+
+            An entry without `mode` is the linear form,
+            `value = value_ref + gain * (raw - raw_ref)` — that is every entry
+            written before polynomial calibration existed, and it stays readable
+            unchanged. `mode: poly` instead carries `degree` and the support
+            `points`; the fit is recomputed on load rather than stored. A
+            firmware predating `poly` reads such an entry as an identity.
           items:
             type: object
             properties:
               channel: { type: string }
+              mode: { type: string, enum: [poly], description: "Absent for the linear form." }
               raw_ref: { type: number }
               value_ref: { type: number }
               gain: { type: number }
+              degree: { type: integer, minimum: 1, maximum: 3 }
+              points:
+                type: array
+                maxItems: 8
+                items:
+                  type: object
+                  properties:
+                    raw: { type: number }
+                    value: { type: number }
         cal_raw1: { type: integer, deprecated: true, description: "Legacy AnalogInput calibration point 1 (raw ADC count). All four cal_* keys or none. Converted to `calibrations` on load and dropped from the stored config." }
         cal_value1: { type: number, deprecated: true }
         cal_raw2: { type: integer, deprecated: true, description: "Must differ from cal_raw1." }

@@ -173,10 +173,13 @@ export async function getCalibration(id: string): Promise<CalibrationInfo> {
   return (await r.json()) as CalibrationInfo;
 }
 
-// A point without `raw` means "the sensor's current live raw value".
+// A point without `raw` means "the sensor's current live raw value"; at most
+// one point per request may leave it out. `degree` is only read for mode
+// 'poly', which needs at least degree+1 points.
 export function calibrateSensor(id: string, body: {
   channel: string;
   mode: CalibrationMode;
+  degree?: number;
   points: { raw?: number; value: number }[];
 }): Promise<void> {
   return postJson(`/api/sensors/${encodeURIComponent(id)}/calibration`, body);
