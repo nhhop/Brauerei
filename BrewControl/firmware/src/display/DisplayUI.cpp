@@ -5,7 +5,7 @@
 #include <Wire.h>
 
 #include "Ft3168Touch.h"
-#include "Sh8601Panel.h"
+#include "Co5300Panel.h"
 
 #if BREWCTL_DISPLAY_STAGE >= 3
 #include <lvgl.h>
@@ -18,7 +18,7 @@
 namespace BrewControl {
 namespace {
 
-Sh8601Panel g_panel;
+Co5300Panel g_panel;
 bool g_panelUp = false;
 Ft3168Touch g_touch;
 
@@ -218,7 +218,7 @@ void DisplayUI::begin(SensActCtrl::Registry& reg) {
   // variant defaults (SDA 18 / SCL 17 - SCL 17 is the panel reset).
   Wire.begin(BREWCTL_TOUCH_SDA, BREWCTL_TOUCH_SCL, 400000);
 
-  const Sh8601Panel::Pins pins = {BREWCTL_LCD_CS,  BREWCTL_LCD_SCK,
+  const Co5300Panel::Pins pins = {BREWCTL_LCD_CS,  BREWCTL_LCD_SCK,
                                   BREWCTL_LCD_D0,  BREWCTL_LCD_D1,
                                   BREWCTL_LCD_D2,  BREWCTL_LCD_D3,
                                   BREWCTL_LCD_RST, BREWCTL_LCD_EN};
