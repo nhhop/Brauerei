@@ -358,8 +358,18 @@ void loop() {
 #ifdef BREWCTL_SPIKE_METRICS
   spikeMetrics.onLoop();
 #endif
+#ifdef BREWCTL_SPIKE_METRICS
+  uint32_t secT0 = micros();
+  registry.tick();
+  spikeMetrics.recordSection(BrewControl::SpikeMetrics::kRegistry, micros() - secT0);
+  secT0 = micros();
+  webUI.tick();
+  spikeMetrics.recordSection(BrewControl::SpikeMetrics::kWebUi, micros() - secT0);
+  secT0 = micros();
+#else
   registry.tick();
   webUI.tick();
+#endif
   firmwareUpdater.tick();
   mqttService.tick();
   webhookService.tick();
@@ -369,6 +379,9 @@ void loop() {
   remoteDiscovery.tick();
   mdnsBrowser.tick(millis());
   pushService.tick();
+#ifdef BREWCTL_SPIKE_METRICS
+  spikeMetrics.recordSection(BrewControl::SpikeMetrics::kOtherServices, micros() - secT0);
+#endif
 #ifdef BREWCTL_HAS_DISPLAY
   displayUI.tick();
 #endif

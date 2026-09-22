@@ -49,6 +49,11 @@ void SpikeMetrics::resetWindow_(uint32_t nowUs) {
   flushCount_ = 0;
   flushMaxUs_ = 0;
   flushPixels_ = 0;
+  for (size_t i = 0; i < kSectionCount; ++i) {
+    secCount_[i] = 0;
+    secMaxUs_[i] = 0;
+    secSumUs_[i] = 0;
+  }
   windowStartMs_ = nowUs / 1000;
 }
 
@@ -75,6 +80,12 @@ void SpikeMetrics::recordDisplayTick(uint32_t us) {
   ++dispCount_;
   dispSumUs_ += us;
   if (us > dispMaxUs_) dispMaxUs_ = us;
+}
+
+void SpikeMetrics::recordSection(Section s, uint32_t us) {
+  ++secCount_[s];
+  secSumUs_[s] += us;
+  if (us > secMaxUs_[s]) secMaxUs_[s] = us;
 }
 
 void SpikeMetrics::recordFlush(uint32_t pixels, uint32_t us) {
@@ -139,6 +150,9 @@ size_t SpikeMetrics::buildJson_(char* out, size_t cap) const {
       "\"heap\":{\"free\":%u,\"minFree\":%u,\"internalFree\":%u,\"dmaLargest\":%u},"
       "\"psram\":{\"size\":%u,\"free\":%u,\"minFree\":%u},"
       "\"lvgl\":{\"usedPct\":%u,\"fragPct\":%u,\"maxUsed\":%u},"
+      "\"sections\":{\"registryMaxUs\":%u,\"registryAvgUs\":%u,"
+      "\"webuiMaxUs\":%u,\"webuiAvgUs\":%u,"
+      "\"otherMaxUs\":%u,\"otherAvgUs\":%u},"
       "\"wifi\":{\"rssi\":%d,\"ip\":\"%s\"}}",
       BREWCTL_VARIANT, hasDisplay,
       nowMs, windowMs,
@@ -152,6 +166,12 @@ size_t SpikeMetrics::buildJson_(char* out, size_t cap) const {
       heap_caps_get_largest_free_block(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
       ESP.getPsramSize(), ESP.getFreePsram(), ESP.getMinFreePsram(),
       lvUsed, lvFrag, lvMax,
+      secMaxUs_[kRegistry],
+      secCount_[kRegistry] ? static_cast<uint32_t>(secSumUs_[kRegistry] / secCount_[kRegistry]) : 0,
+      secMaxUs_[kWebUi],
+      secCount_[kWebUi] ? static_cast<uint32_t>(secSumUs_[kWebUi] / secCount_[kWebUi]) : 0,
+      secMaxUs_[kOtherServices],
+      secCount_[kOtherServices] ? static_cast<uint32_t>(secSumUs_[kOtherServices] / secCount_[kOtherServices]) : 0,
       WiFi.RSSI(), WiFi.localIP().toString().c_str());
 }
 

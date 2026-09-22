@@ -31,6 +31,11 @@ class SpikeMetrics {
   void recordDisplayTick(uint32_t us);
   void recordFlush(uint32_t pixels, uint32_t us);
 
+  // Per-section timing, to attribute a long loop() to a culprit instead of
+  // guessing. kSections slots, named in kSectionNames.
+  enum Section { kRegistry = 0, kWebUi, kOtherServices, kSectionCount };
+  void recordSection(Section s, uint32_t us);
+
  private:
   // Histogram: [0..99] = 1 ms each, [100..189] = 10 ms each, [190] = >= 1 s.
   static constexpr size_t kBuckets = 191;
@@ -55,6 +60,10 @@ class SpikeMetrics {
   uint32_t flushCount_ = 0;
   uint32_t flushMaxUs_ = 0;
   uint64_t flushPixels_ = 0;
+
+  uint32_t secCount_[kSectionCount] = {};
+  uint32_t secMaxUs_[kSectionCount] = {};
+  uint64_t secSumUs_[kSectionCount] = {};
 
   // Set by the HTTP handler (AsyncTCP task), consumed in onLoop() (loopTask) so
   // the counters are only ever written from one thread.
