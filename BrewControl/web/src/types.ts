@@ -128,7 +128,9 @@ export interface Snapshot {
 // Wire format of GET /api/sensors/:id/calibration. `raw` is the sensor's
 // uncalibrated value (what it would show without any calibration), `value`
 // the calibrated one. `modes` lists what the channel supports.
-export type CalibrationMode = 'offset' | 'gain' | 'twopoint';
+export type CalibrationMode = 'offset' | 'gain' | 'twopoint' | 'poly';
+
+export interface CalibrationPoint { raw: number; value: number }
 
 export interface CalibrationChannel {
   key: string;          // '' for single-value sensors
@@ -137,9 +139,12 @@ export interface CalibrationChannel {
   raw: number | null;   // ArduinoJson serializes NaN as null
   value: number | null;
   calibrated: boolean;
-  raw_ref?: number;
+  mode?: 'linear' | 'poly';   // which form is active (only when calibrated)
+  raw_ref?: number;           // linear form
   value_ref?: number;
   gain?: number;
+  degree?: number;            // polynomial form
+  points?: CalibrationPoint[];
   modes: CalibrationMode[];
 }
 

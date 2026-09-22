@@ -259,9 +259,26 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
   JsonArrayConst saved = cfg["calibrations"].as<JsonArrayConst>();
   for (JsonObjectConst o : saved) {
     int idx = e->cal->indexOfKey(o["channel"] | "");
-    if (idx >= 0)
+    if (idx < 0) continue;
+    // No "mode" key means the linear form — that is every entry written before
+    // polynomial calibration existed.
+    if (strcmp(o["mode"] | "", "poly") == 0) {
+      // Only the support points are persisted; the fit is recomputed here. A
+      // rejected fit leaves the channel at identity, which is what a corrupt
+      // config should do.
+      float raw[CalibratedSensor::kMaxPoints], val[CalibratedSensor::kMaxPoints];
+      size_t k = 0;
+      for (JsonObjectConst p : o["points"].as<JsonArrayConst>()) {
+        if (k >= CalibratedSensor::kMaxPoints) break;
+        raw[k] = p["raw"] | 0.0f;
+        val[k] = p["value"] | 0.0f;
+        ++k;
+      }
+      e->cal->calibratePoly(idx, raw, val, k, static_cast<uint8_t>(o["degree"] | 0));
+    } else {
       e->cal->setCalibration(idx, o["raw_ref"] | 0.0f, o["value_ref"] | 0.0f,
                              o["gain"] | 1.0f);
+    }
   }
   if (migrate || !saved.isNull()) syncCalibrationConfig(*e);
 
@@ -288,10 +305,22 @@ void DynamicItems::syncCalibrationConfig(SensorEntry& e) {
     if (!c.active) continue;
     if (arr.isNull()) arr = doc["calibrations"].to<JsonArray>();
     JsonObject o = arr.add<JsonObject>();
-    o["channel"]   = e.cal->channel(i).key;
-    o["raw_ref"]   = c.rawRef;
-    o["value_ref"] = c.valRef;
-    o["gain"]      = c.gain;
+    o["channel"] = e.cal->channel(i).key;
+    // Either the linear triple or the polynomial points — never both.
+    if (c.degree > 0) {
+      o["mode"]   = "poly";
+      o["degree"] = c.degree;
+      JsonArray pts = o["points"].to<JsonArray>();
+      for (size_t k = 0; k < c.pointCount; ++k) {
+        JsonObject p = pts.add<JsonObject>();
+        p["raw"]   = c.points[k][0];
+        p["value"] = c.points[k][1];
+      }
+    } else {
+      o["raw_ref"]   = c.rawRef;
+      o["value_ref"] = c.valRef;
+      o["gain"]      = c.gain;
+    }
   }
   e.cfgJson.clear();
   serializeJson(doc, e.cfgJson);
@@ -334,14 +363,27 @@ DynamicItems::Result DynamicItems::getCalibration(const char* id,
     o["value"] = ch.reading.value;
     o["calibrated"] = c.active;
     if (c.active) {
-      o["raw_ref"]   = c.rawRef;
-      o["value_ref"] = c.valRef;
-      o["gain"]      = c.gain;
+      o["mode"] = c.degree > 0 ? "poly" : "linear";
+      if (c.degree > 0) {
+        o["degree"] = c.degree;
+        JsonArray pts = o["points"].to<JsonArray>();
+        for (size_t k = 0; k < c.pointCount; ++k) {
+          JsonObject p = pts.add<JsonObject>();
+          p["raw"]   = c.points[k][0];
+          p["value"] = c.points[k][1];
+        }
+      } else {
+        o["raw_ref"]   = c.rawRef;
+        o["value_ref"] = c.valRef;
+        o["gain"]      = c.gain;
+      }
     }
     // Which modes make sense for this channel (see CalibratedSensor).
     JsonArray modes = o["modes"].to<JsonArray>();
     if (i < CalibratedSensor::kMaxChannels) {
-      if (kind == ValueKind::Continuous) { modes.add("offset"); modes.add("twopoint"); }
+      if (kind == ValueKind::Continuous) {
+        modes.add("offset"); modes.add("twopoint"); modes.add("poly");
+      }
       if (kind == ValueKind::Continuous || kind == ValueKind::Cumulative) modes.add("gain");
     }
   }
@@ -355,24 +397,46 @@ DynamicItems::Result DynamicItems::calibrateSensor(const char* id,
   const int idx = e->cal->indexOfKey(body["channel"] | "");
   if (idx < 0) return {false, "unknown channel"};
   const char* mode = body["mode"] | "";
+  const bool isOffset   = strcmp(mode, "offset") == 0;
+  const bool isGain     = strcmp(mode, "gain") == 0;
+  const bool isTwoPoint = strcmp(mode, "twopoint") == 0;
+  const bool isPoly     = strcmp(mode, "poly") == 0;
+  if (!isOffset && !isGain && !isTwoPoint && !isPoly) return {false, "invalid mode"};
+
   JsonArrayConst pts = body["points"].as<JsonArrayConst>();
-  const size_t need = strcmp(mode, "twopoint") == 0 ? 2 : 1;
-  if (strcmp(mode, "offset") != 0 && strcmp(mode, "gain") != 0 && need != 2)
-    return {false, "invalid mode"};
-  if (pts.isNull() || pts.size() != need) return {false, "wrong number of points"};
-  float raw[2], val[2];
-  size_t k = 0;
+  if (pts.isNull()) return {false, "wrong number of points"};
+  uint8_t degree = 0;
+  if (isPoly) {
+    degree = static_cast<uint8_t>(body["degree"] | 0);
+    if (degree < 1 || degree > CalibratedSensor::kMaxDegree)
+      return {false, "degree must be 1..3"};
+    if (pts.size() < static_cast<size_t>(degree) + 1u)
+      return {false, "need at least degree+1 points"};
+    if (pts.size() > CalibratedSensor::kMaxPoints) return {false, "too many points"};
+  } else if (pts.size() != (isTwoPoint ? 2u : 1u)) {
+    return {false, "wrong number of points"};
+  }
+
+  float raw[CalibratedSensor::kMaxPoints], val[CalibratedSensor::kMaxPoints];
+  size_t k = 0, live = 0;
   for (JsonObjectConst p : pts) {
+    if (k >= CalibratedSensor::kMaxPoints) break;
     if (p["value"].isNull()) return {false, "missing value"};
     // No raw given → the reading the sensor shows right now.
-    raw[k] = p["raw"].isNull() ? e->cal->rawValue(idx) : p["raw"].as<float>();
+    if (p["raw"].isNull()) { raw[k] = e->cal->rawValue(idx); ++live; }
+    else                   { raw[k] = p["raw"].as<float>(); }
     val[k] = p["value"].as<float>();
     ++k;
   }
+  // Two points taken from the same live reading would be identical, which makes
+  // the fit singular — only one point may leave "raw" out.
+  if (live > 1) return {false, "only one point may omit raw"};
+
   CalibratedSensor::Result r =
-      need == 2 ? e->cal->calibrateTwoPoint(idx, raw[0], val[0], raw[1], val[1])
-      : strcmp(mode, "offset") == 0 ? e->cal->calibrateOffset(idx, raw[0], val[0])
-                                    : e->cal->calibrateGain(idx, raw[0], val[0]);
+      isPoly      ? e->cal->calibratePoly(idx, raw, val, k, degree)
+      : isTwoPoint ? e->cal->calibrateTwoPoint(idx, raw[0], val[0], raw[1], val[1])
+      : isOffset   ? e->cal->calibrateOffset(idx, raw[0], val[0])
+                   : e->cal->calibrateGain(idx, raw[0], val[0]);
   if (r != CalibratedSensor::Result::Ok) return {false, calibrationError(r)};
   syncCalibrationConfig(*e);
   return {true};
