@@ -7,6 +7,12 @@
 #include "Ft3168Touch.h"
 #include "Co5300Panel.h"
 
+#ifdef BREWCTL_GFX_REFERENCE
+// LilyGo's vendored Arduino_GFX-1.3.7: the version their own examples use
+// for this board, and the last one that predates the core-3 headers.
+#include <Arduino_GFX_Library.h>
+#endif
+
 #if BREWCTL_DISPLAY_STAGE >= 3
 #include <lvgl.h>
 #endif
@@ -218,6 +224,42 @@ void DisplayUI::begin(SensActCtrl::Registry& reg) {
   // variant defaults (SDA 18 / SCL 17 - SCL 17 is the panel reset).
   Wire.begin(BREWCTL_TOUCH_SDA, BREWCTL_TOUCH_SCL, 400000);
 
+#ifdef BREWCTL_GFX_REFERENCE
+  // Straight transcription of LilyGo's examples/GFX/GFX.ino for H0175Y003AM.
+  pinMode(BREWCTL_LCD_EN, OUTPUT);
+  digitalWrite(BREWCTL_LCD_EN, HIGH);
+  auto* bus = new Arduino_ESP32QSPI(BREWCTL_LCD_CS, BREWCTL_LCD_SCK,
+                                    BREWCTL_LCD_D0, BREWCTL_LCD_D1,
+                                    BREWCTL_LCD_D2, BREWCTL_LCD_D3);
+  auto* gfx = new Arduino_CO5300(bus, BREWCTL_LCD_RST, 0 /* rotation */,
+                                 false /* IPS */, BREWCTL_LCD_W, BREWCTL_LCD_H,
+                                 6 /* col offset 1 */, 0, 0, 0);
+  const bool gfxOk = gfx->begin();
+  Serial.printf("Display: reference gfx->begin() = %d", gfxOk ? 1 : 0);
+  Serial.println();
+  if (gfxOk) {
+    gfx->fillScreen(WHITE);
+    for (int i = 0; i <= 255; ++i) {
+      gfx->Display_Brightness(i);
+      delay(3);
+    }
+    gfx->fillScreen(RED);
+    delay(1500);
+    gfx->fillScreen(GREEN);
+    delay(1500);
+    gfx->fillScreen(BLUE);
+    delay(1500);
+    gfx->fillScreen(BLACK);
+    gfx->setTextColor(WHITE);
+    gfx->setTextSize(4);
+    gfx->setCursor(120, 220);
+    gfx->print("GFX OK");
+  }
+  snprintf(g_probe, sizeof(g_probe), "reference-gfx begin=%d %dx%d",
+           gfxOk ? 1 : 0, BREWCTL_LCD_W, BREWCTL_LCD_H);
+  g_panelUp = false;  // no LVGL path in the reference build
+  return;
+#endif
   const Co5300Panel::Pins pins = {BREWCTL_LCD_CS,  BREWCTL_LCD_SCK,
                                   BREWCTL_LCD_D0,  BREWCTL_LCD_D1,
                                   BREWCTL_LCD_D2,  BREWCTL_LCD_D3,
