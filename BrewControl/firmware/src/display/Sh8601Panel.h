@@ -42,6 +42,11 @@ class Sh8601Panel {
 
   void fill(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color565);
 
+  // Reads len bytes from a panel register. The decisive bring-up test: a
+  // sane answer proves the QSPI lines reach the controller, all-zero or
+  // all-0xFF means they do not. Needs SPI-read mode (0x47) enabled first.
+  bool readRegister(uint8_t reg, uint8_t* out, size_t len);
+
   int16_t width() const { return width_; }
   int16_t height() const { return height_; }
 

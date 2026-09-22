@@ -302,10 +302,21 @@ void setup() {
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
              settingsStore.ntpServer().c_str());
 
+#ifdef BREWCTL_SPIKE_METRICS
+  BrewControl::SpikeMetrics::logBoot(deviceFs, "pre-display");
+#endif
 #ifdef BREWCTL_HAS_DISPLAY
   displayUI.begin(registry);
 #endif
+#if defined(BREWCTL_SPIKE_METRICS) && defined(BREWCTL_HAS_DISPLAY)
+  BrewControl::SpikeMetrics::logBoot(deviceFs, BrewControl::DisplayUI::probeResult());
+#elif defined(BREWCTL_SPIKE_METRICS)
+  BrewControl::SpikeMetrics::logBoot(deviceFs, "post-display");
+#endif
   registry.begin();
+#ifdef BREWCTL_SPIKE_METRICS
+  BrewControl::SpikeMetrics::logBoot(deviceFs, "post-registry");
+#endif
   dynamicItems.markInitialized();  // future add*() calls will call begin()
   mqttService.attachExisting();    // mirrors the registry + registers
                                     // DynamicItems hooks — must run before
@@ -329,12 +340,19 @@ void setup() {
 
   pushService.begin(hostname_);  // no-op until a browser subscribed
   webUI.begin();
+#ifdef BREWCTL_SPIKE_METRICS
+  BrewControl::SpikeMetrics::logBoot(deviceFs, "post-webui");
+#endif
   firmwareUpdater.begin();
 #ifdef BREWCTL_SPIKE_METRICS
+  BrewControl::SpikeMetrics::logBoot(deviceFs, "post-updater");
   spikeMetrics.begin();
 #ifdef BREWCTL_HAS_DISPLAY
   displayUI.setMetrics(&spikeMetrics);
 #endif
+#endif
+#ifdef BREWCTL_SPIKE_METRICS
+  BrewControl::SpikeMetrics::logBoot(deviceFs, "setup-done");
 #endif
   Serial.println(F("BrewControl ready"));
 }
@@ -356,6 +374,11 @@ static void maintainWiFi() {
 
 void loop() {
 #ifdef BREWCTL_SPIKE_METRICS
+  static bool firstLoop = true;
+  if (firstLoop) {
+    firstLoop = false;
+    BrewControl::SpikeMetrics::logBoot(deviceFs, "loop-1");
+  }
   spikeMetrics.onLoop();
 #endif
 #ifdef BREWCTL_SPIKE_METRICS

@@ -28,6 +28,8 @@ constexpr uint32_t kSlpOutDelayMs = 120;
 // and address 0x3C00 (Memory Write Continue), after a plain 0x2C has opened the
 // write. Anything else and the panel ignores the data.
 constexpr uint8_t kCmdWrite = 0x02;
+constexpr uint8_t kCmdRead = 0x03;
+constexpr uint8_t kSpiReadOn = 0x47;  // SH8601 "SPI read On"
 constexpr uint8_t kCmdPixels = 0x32;
 constexpr uint32_t kAddrPixels = 0x003C00;
 
@@ -142,6 +144,20 @@ void Sh8601Panel::blit(int16_t x, int16_t y, int16_t w, int16_t h,
   ext.base.tx_buffer = data;
   ext.base.length = len * 8;
   spi_device_polling_transmit(dev_, &ext.base);
+}
+
+bool Sh8601Panel::readRegister(uint8_t reg, uint8_t* out, size_t len) {
+  if (!dev_) return false;
+  writeCommand_(kSpiReadOn);
+  spi_transaction_t t = {};
+  t.flags = SPI_TRANS_USE_RXDATA;
+  t.cmd = kCmdRead;
+  t.addr = static_cast<uint32_t>(reg) << 8;
+  t.rxlength = len * 8;
+  t.length = 0;
+  if (spi_device_polling_transmit(dev_, &t) != ESP_OK) return false;
+  for (size_t i = 0; i < len && i < 4; ++i) out[i] = t.rx_data[i];
+  return true;
 }
 
 void Sh8601Panel::setBrightness(uint8_t value) {

@@ -37,6 +37,74 @@ constexpr uint16_t kBufLines = 60;
 constexpr size_t kBufBytes =
     static_cast<size_t>(BREWCTL_LCD_W) * kBufLines * 2;
 
+// Both buses came back silent on the documented pin map, so before guessing
+// further: sweep the plausible I2C pin pairs and report every address that
+// ACKs. This board is supposed to carry a PCF8563 RTC (0x51) and an SY6970
+// PMU (0x6A) besides the FT3168 touch (0x38) - if none of them answer
+// anywhere, the pin map is for a different board, which would also explain
+// the silent panel.
+void scanI2c(char* out, size_t cap) {
+  static const int8_t pairs[][2] = {{7, 6}, {6, 7}, {18, 17}, {17, 18}};
+  size_t n = 0;
+  for (auto& pr : pairs) {
+    Wire.end();
+    delay(5);
+    if (!Wire.begin(pr[0], pr[1], 100000)) continue;
+    delay(5);
+    n += snprintf(out + n, cap - n, " sda%d/scl%d:", pr[0], pr[1]);
+    bool any = false;
+    for (uint8_t addr = 0x08; addr < 0x78 && n + 8 < cap; ++addr) {
+      Wire.beginTransmission(addr);
+      if (Wire.endTransmission() == 0) {
+        n += snprintf(out + n, cap - n, "%02X,", addr);
+        any = true;
+      }
+    }
+    if (!any) n += snprintf(out + n, cap - n, "none");
+    if (n + 24 >= cap) break;
+  }
+  // Leave the bus on the pins the touch driver expects.
+  Wire.end();
+  delay(5);
+  Wire.begin(BREWCTL_TOUCH_SDA, BREWCTL_TOUCH_SCL, 400000);
+}
+
+// Bring-up read-back. A panel that answers its ID register proves the QSPI
+// lines reach the controller; all-zero or all-0xFF means they do not, and no
+// amount of tweaking the write path will help. Serial is useless here (USB-CDC
+// re-enumerates on every reset), so the result goes to the SD boot log.
+char g_probe[400] = "not run";
+
+void probeSummary(int w, int h, bool touch) {
+  uint8_t id[4] = {0, 0, 0, 0};
+  uint8_t pwr[4] = {0, 0, 0, 0};
+  const bool okId = g_panel.readRegister(0x04, id, 4);
+  const bool okPwr = g_panel.readRegister(0x0A, pwr, 4);
+  char i2c[180] = "";
+  scanI2c(i2c, sizeof(i2c));
+  snprintf(g_probe, sizeof(g_probe),
+           "%dx%d touch=%d rdid=%d:%02X%02X%02X%02X pwr=%d:%02X%02X%02X%02X i2c[%s ]",
+           w, h, touch ? 1 : 0, okId ? 1 : 0, id[0], id[1], id[2], id[3],
+           okPwr ? 1 : 0, pwr[0], pwr[1], pwr[2], pwr[3], i2c);
+  Serial.println(g_probe);
+}
+
+// Geometry probe for a ROUND panel: a rectangular frame is useless here
+// because the corners are not there. Four ticks poke out to the extreme
+// midpoint of each edge plus a centre cross - if all four ticks touch the
+// rim and the cross sits in the middle, resolution and offsets are right.
+void drawGeometryProbe() {
+  const uint16_t white = rgb565(255, 255, 255);
+  const int16_t cx = BREWCTL_LCD_W / 2, cy = BREWCTL_LCD_H / 2;
+  g_panel.fill(0, 0, BREWCTL_LCD_W, BREWCTL_LCD_H, rgb565(0, 0, 0));
+  g_panel.fill(cx - 4, 0, 8, 48, white);                       // top
+  g_panel.fill(cx - 4, BREWCTL_LCD_H - 48, 8, 48, white);      // bottom
+  g_panel.fill(0, cy - 4, 48, 8, white);                       // left
+  g_panel.fill(BREWCTL_LCD_W - 48, cy - 4, 48, 8, white);      // right
+  g_panel.fill(cx - 40, cy - 2, 80, 4, rgb565(255, 200, 0));   // centre cross
+  g_panel.fill(cx - 2, cy - 40, 4, 80, rgb565(255, 200, 0));
+}
+
 #if BREWCTL_DISPLAY_STAGE >= 3
 
 lv_disp_draw_buf_t g_drawBuf;
@@ -162,30 +230,23 @@ void DisplayUI::begin(SensActCtrl::Registry& reg) {
   g_panel.fill(0, 0, BREWCTL_LCD_W, BREWCTL_LCD_H, rgb565(0, 0, 0));
 
   g_touch.begin();
+  probeSummary(BREWCTL_LCD_W, BREWCTL_LCD_H, g_touch.present());
   Serial.printf("Display: panel %dx%d up, touch %s\n", BREWCTL_LCD_W,
                 BREWCTL_LCD_H, g_touch.present() ? "found" : "MISSING");
 
 #if BREWCTL_DISPLAY_STAGE == 1
-  // Colour order and geometry check: the fills tell RGB from BGR, the 2 px
-  // frame tells whether a row/column offset is needed.
+  // Colour order first: three full-screen fills tell RGB from BGR at a glance.
   const uint16_t fills[] = {rgb565(255, 0, 0), rgb565(0, 255, 0),
                             rgb565(0, 0, 255)};
   for (uint16_t c : fills) {
     g_panel.fill(0, 0, BREWCTL_LCD_W, BREWCTL_LCD_H, c);
-    delay(700);
+    delay(1200);
   }
-  g_panel.fill(0, 0, BREWCTL_LCD_W, BREWCTL_LCD_H, rgb565(0, 0, 0));
-  const uint16_t white = rgb565(255, 255, 255);
-  g_panel.fill(0, 0, BREWCTL_LCD_W, 2, white);
-  g_panel.fill(0, BREWCTL_LCD_H - 2, BREWCTL_LCD_W, 2, white);
-  g_panel.fill(0, 0, 2, BREWCTL_LCD_H, white);
-  g_panel.fill(BREWCTL_LCD_W - 2, 0, 2, BREWCTL_LCD_H, white);
+  drawGeometryProbe();
+  delay(4000);
+  drawGeometryProbe();
 #elif BREWCTL_DISPLAY_STAGE == 2
-  const uint16_t white = rgb565(255, 255, 255);
-  g_panel.fill(0, 0, BREWCTL_LCD_W, 2, white);
-  g_panel.fill(0, BREWCTL_LCD_H - 2, BREWCTL_LCD_W, 2, white);
-  g_panel.fill(0, 0, 2, BREWCTL_LCD_H, white);
-  g_panel.fill(BREWCTL_LCD_W - 2, 0, 2, BREWCTL_LCD_H, white);
+  drawGeometryProbe();
 #else
   g_buf1 = static_cast<lv_color_t*>(
       heap_caps_malloc(kBufBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
@@ -214,6 +275,8 @@ void DisplayUI::begin(SensActCtrl::Registry& reg) {
                 static_cast<unsigned>(kBufBytes));
 #endif
 }
+
+const char* DisplayUI::probeResult() { return g_probe; }
 
 void DisplayUI::tick() {
   if (!g_panelUp) return;

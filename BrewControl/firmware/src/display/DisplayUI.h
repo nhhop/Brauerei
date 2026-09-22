@@ -46,11 +46,14 @@
 #ifndef BREWCTL_LCD_EN
 #define BREWCTL_LCD_EN 16
 #endif
+// Round panel, confirmed by eye on the device 2026-09-22 - which matches the
+// 2026-05-18 note in SESSION-archive ("466x466 round AMOLED", board in hand).
+// LilyGo's wiki page for the 1.75 lists 280x456; that is a different build.
 #ifndef BREWCTL_LCD_W
-#define BREWCTL_LCD_W 280
+#define BREWCTL_LCD_W 466
 #endif
 #ifndef BREWCTL_LCD_H
-#define BREWCTL_LCD_H 456
+#define BREWCTL_LCD_H 466
 #endif
 #ifndef BREWCTL_TOUCH_SDA
 #define BREWCTL_TOUCH_SDA 7
@@ -74,6 +77,9 @@ class DisplayUI {
   void begin(SensActCtrl::Registry& reg);
 
   void tick();
+
+  // One-line panel/touch read-back from begin(), for the SD boot log.
+  static const char* probeResult();
 
 #ifdef BREWCTL_SPIKE_METRICS
   void setMetrics(SpikeMetrics* m);

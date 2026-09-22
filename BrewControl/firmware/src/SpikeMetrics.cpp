@@ -5,8 +5,10 @@
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 
-#ifdef BREWCTL_HAS_DISPLAY
+#if defined(BREWCTL_HAS_DISPLAY) && BREWCTL_DISPLAY_STAGE >= 3
+#define BREWCTL_LVGL_LIVE 1
 #include <lvgl.h>
 #endif
 
@@ -36,6 +38,15 @@ uint32_t bucketMs(size_t i) {
 }
 
 }  // namespace
+
+void SpikeMetrics::logBoot(fs::FS& fs, const char* tag) {
+  File f = fs.open("/spike-boot.log", FILE_APPEND);
+  if (!f) return;
+  f.printf("%lu,reset=%d,%s", static_cast<unsigned long>(millis()),
+           static_cast<int>(esp_reset_reason()), tag);
+  f.println();
+  f.close();
+}
 
 void SpikeMetrics::resetWindow_(uint32_t nowUs) {
   loopCount_ = 0;
@@ -127,13 +138,16 @@ size_t SpikeMetrics::buildJson_(char* out, size_t cap) const {
   const uint32_t fps = windowMs ? static_cast<uint32_t>((flushCount_ * 1000ULL) / windowMs) : 0;
   const uint32_t pxPerSec = windowMs ? static_cast<uint32_t>((flushPixels_ * 1000ULL) / windowMs) : 0;
 
-#ifdef BREWCTL_HAS_DISPLAY
+#ifdef BREWCTL_LVGL_LIVE
   lv_mem_monitor_t mem;
   lv_mem_monitor(&mem);
   const uint32_t lvUsed = mem.used_pct, lvFrag = mem.frag_pct, lvMax = mem.max_used;
-  const int hasDisplay = 1;
 #else
   const uint32_t lvUsed = 0, lvFrag = 0, lvMax = 0;
+#endif
+#ifdef BREWCTL_HAS_DISPLAY
+  const int hasDisplay = 1;
+#else
   const int hasDisplay = 0;
 #endif
 

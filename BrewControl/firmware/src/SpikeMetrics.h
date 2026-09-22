@@ -15,11 +15,18 @@
 #ifdef BREWCTL_SPIKE_METRICS
 
 #include <Arduino.h>
+#include <FS.h>
 
 namespace BrewControl {
 
 class SpikeMetrics {
  public:
+  // Appends "<millis>,<resetReason>,<tag>" to /spike-boot.log. USB-CDC serial
+  // is useless here - the port re-enumerates on every reset, so a boot loop
+  // never gets its panic text out. A file on SD survives the reboot and is
+  // readable over the existing GET /api/files/download.
+  static void logBoot(fs::FS& fs, const char* tag);
+
   // Starts the metrics server. Safe to call before WiFi is up.
   void begin();
 
