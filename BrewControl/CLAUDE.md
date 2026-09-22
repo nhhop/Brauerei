@@ -46,16 +46,19 @@ pnpm typecheck
 ## Arbeitsregeln
 
 - ESPAsyncWebServer-Dep ist auf `esp32async/`-Org gepinnt (post-Migration von `me-no-dev/`): `esp32async/ESPAsyncWebServer@^3.1.0` + `esp32async/AsyncTCP@^3.2.0`.
-- **Firmware-Build braucht `IdsInductionCooker` als Sibling des Repo-Roots.**
-  `firmware/platformio.ini` hat `lib_deps: symlink://../../../IdsInductionCooker`, aufgelöst
-  also `C:\Users\nhhop\repos\Brauerei\IdsInductionCooker` (neben diesem Repo, nicht darin).
-  Fehlt der Checkout, bricht `pio run` mit `PackageException: Can not create a symbolic link`
-  ab — die Meldung nennt die Ursache nicht. Auf einer frischen Maschine dorthin klonen
-  (`git clone https://github.com/nhhop/IdsInductionCooker.git`), `platformio.ini` bleibt
-  unangetastet. In einem git-Worktree zeigt derselbe relative Pfad ins Leere
-  (`.claude/worktrees/IdsInductionCooker`); dort einmalig eine Junction anlegen:
-  `New-Item -ItemType Junction -Path "<repo>\.claude\worktrees\IdsInductionCooker" -Target "C:\Users\nhhop\repos\Brauerei\IdsInductionCooker"`.
-  `symlink://../../SensActCtrl` ist unproblematisch, das bleibt innerhalb des Worktrees.
+- **`IdsInductionCooker` kommt ausschließlich über `SensActCtrl/library.json`** (Git-URL + SHA).
+  Kein lokaler Checkout nötig, kein Sibling, kein Submodul — PlatformIO holt die Library selbst.
+  **Arbeiten daran:** in einem beliebigen eigenen Klon des Library-Repos editieren, dort
+  committen und pushen, danach den SHA in `SensActCtrl/library.json` bumpen. Erst dieser Bump
+  wirkt sich auf den Build aus.
+  **Warum nicht zusätzlich per `symlink://` einbinden:** PlatformIO befolgt den URL-Eintrag
+  bedingungslos. Lag die Library zusätzlich als Symlink (oder als Submodul unter `lib/`) vor,
+  wurde eine **zweite** Kopie nach `libdeps` geholt, **beide** kompiliert, und die gefetchte im
+  Link-Kommando **nach vorn** gesetzt — ausgeliefert wurde also der gepinnte SHA, während
+  Änderungen am lokalen Arbeitsbaum stillschweigend verfielen. Erfolglos geprüft (2026-09-23):
+  Namen angleichen, `lib_ignore`, Platzierung unter `lib/`, `lib/` plus Umbenennung.
+  `symlink://../../SensActCtrl` ist davon nicht betroffen — SensActCtrl wird von niemandem
+  zusätzlich per URL deklariert.
 - Jede Änderung an einer HTTP-Route in `firmware/src/WebUI.cpp` — neuer Endpoint, neuer Body-Key,
   geänderter Status-Code oder Fehlertext, geänderte Response-Shape — **im selben Commit** in
   [`docs/openapi.yaml`](docs/openapi.yaml) nachziehen; kommt eine Route dazu oder fällt eine weg,

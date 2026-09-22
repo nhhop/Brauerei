@@ -4533,3 +4533,38 @@ Session verfügbar): das eigentliche UI-Verhalten am Gerät — Label an einem
 regler-verdrahteten Sensor ändern (kein 405 mehr), ID an demselben Sensor
 ändern (verbesserte Fehlermeldung), Label-Anzeige in Karten/Dropdowns +
 ID-Tooltip.
+
+## 2026-09-23 — IdsInductionCooker: eine Quelle statt drei
+
+Beim Vorbereiten des RMT-Umbaus aufgefallen, dass Änderungen am lokalen
+IdsInductionCooker-Checkout **nie in der Firmware landeten**. Ursache: die Library kam über
+zwei Wege gleichzeitig — `symlink://../../../IdsInductionCooker` aus `platformio.ini` und ein
+`dependencies`-Eintrag per Git-URL `#bf5be40` in `SensActCtrl/library.json`. PlatformIO holte
+daraufhin eine zweite Kopie nach `libdeps`, kompilierte **beide**, und setzte die gefetchte im
+Link-Kommando **nach vorn**. Der Linker bedient sich aus dem ersten Archiv, das die Symbole
+liefert — ausgeliefert wurde also der gepinnte SHA. Eine zum Test eingefügte `#warning`
+erschien brav im Build-Log und war trotzdem wirkungslos. Im CI galt dasselbe, womit der
+Sibling-Checkout in `release.yml` nie etwas bewirkt hat.
+
+Vier Reparaturversuche blieben erfolglos, isoliert in einem Wegwerf-Projekt nachgestellt:
+Namen von `library.properties` und `library.json` angleichen (PlatformIO holt dann unter dem
+neuen Namen erneut), `lib_ignore` (kappt die Abhängigkeitsbeziehung mitsamt Include-Pfad,
+Build bricht am fehlenden Header ab), die Library als Submodul unter `lib/` legen, und
+`lib/` zusätzlich mit Umbenennung. **PlatformIO befolgt einen `dependencies`-Eintrag mit URL
+bedingungslos**, unabhängig davon, was lokal vorliegt.
+
+Methodischer Fehler dabei, der fast zu einer falschen Lösung geführt hätte: Die `lib/`-Variante
+sah zunächst erfolgreich aus, weil `libdeps` beim Test noch stale war — ohne gelöschte
+`integrity.dat` unterbleibt das Nachholen, und es sieht nach Deduplizierung aus. Erst die
+vollständige Neuauflösung zeigte das echte Verhalten.
+
+**Lösung:** der Symlink ist raus, `SensActCtrl/library.json` ist die einzige Quelle. Damit
+entfällt auch die Pflicht, das Library-Repo als Sibling des Repo-Roots zu klonen, samt der
+Junction-Krücke für git-Worktrees; `release.yml` braucht keinen zweiten Checkout und keine
+verschachtelte `Brauerei/`-Ablage mehr. Gearbeitet wird künftig in einem beliebigen eigenen
+Klon des Library-Repos: dort committen, pushen, danach den SHA in `library.json` bumpen — erst
+der Bump wirkt. SensActCtrl bleibt dadurch standalone installierbar.
+
+Verifikation: nach vollständiger Neuauflösung kompiliert in allen drei Envs **genau ein**
+`IdsCooker.cpp.o`, und zwar aus `libdeps`; `pio run` grün für esp32dev (Flash 90,3 %),
+lolin_s2_mini (87,1 %) und lilygo_t_display_s3_amoled (25,1 %).
