@@ -4413,7 +4413,22 @@ OpenAPI-Lint, `pnpm typecheck`, 39 Frontend-Tests (14 neu in
 `calibrationPoints.test.ts`). UI gegen einen Node-Mock im Browser geprüft:
 Modus-Wechsel, Gradwahl (Zeilen werden auf `Grad+1` aufgefüllt), Hinzufügen und
 Entfernen von Punkten, Entfernen am Minimum gesperrt, Validierungsmeldungen,
-gesendeter POST-Body, mobiles Vollbild-Sheet. **Auf echter Hardware noch nicht
-verifiziert** — das esp32dev mit der DAC→ADC-Schleife ist von der
-IDS-Überarbeitung belegt; der Durchlauf steht als eigener Punkt in PLAN.md (der
-S3 hat keinen DAC, taugt also nicht als Ersatz für gemessene Stützpunkte).
+gesendeter POST-Body, mobiles Vollbild-Sheet.
+
+**Hardware-Durchlauf am esp32dev** (`brewcontrol-esp32dev.local`, DAC Pin 25 →
+ADC Pin 34, per OTA geflasht): Schon das Update selbst belegte die
+Abwärtskompatibilität — die vorhandene lineare Kalibrierung
+(`raw_ref 0.38909`, `gain 1.066575`) überstand es unverändert und wird jetzt als
+`mode: "linear"` ausgewiesen. Danach vier Stützpunkte über die Schleife
+aufgenommen und als Referenz jeweils `roh²` gesetzt; der Grad-2-Fit traf an drei
+Prüfpunkten die Parabel auf vier Nachkommastellen (Abweichung 0,0000).
+Unterhalb der Stützstellen lieferte er bei roh 0,0710 den Wert −0,0967 statt der
+Parabel — exakt die Tangente `0,1521 + 0,78·(0,0710 − 0,39)`, womit die lineare
+Fortsetzung am Gerät bestätigt ist. Die Config enthielt `mode/degree/points` und
+keine Linear-Keys; nach einem Reboot waren die Stützpunkte identisch und der
+nachgerechnete Fit lieferte denselben Wert (Abweichung 0,0000) — der Refit aus
+der Config trägt also. `twopoint` auf denselben Kanal setzte `degree` zurück und
+der Wert folgte der Geraden; `points`/`degree` verschwanden auch aus der Config.
+Alle sieben Fehlerfälle antworteten mit den in `openapi.yaml` dokumentierten
+Texten und ließen den Kanal unverändert. Board anschließend auf die
+ursprüngliche Kalibrierung zurückgesetzt.
