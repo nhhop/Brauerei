@@ -59,4 +59,16 @@ Controller* Registry::findController(const char* id) const {
   return nullptr;
 }
 
+void Registry::setLabel(const char* id, const char* label) {
+  if (!id) return;
+  if (!label || !label[0]) { labels_.erase(id); return; }
+  labels_[id] = label;
+}
+
+const char* Registry::label(const char* id) const {
+  if (!id) return "";
+  auto it = labels_.find(id);
+  return it == labels_.end() ? "" : it->second.c_str();
+}
+
 }  // namespace SensActCtrl

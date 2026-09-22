@@ -54,6 +54,14 @@ class DynamicItems {
   Result calibrateSensor(const char* id, const JsonObjectConst& body);
   Result clearCalibration(const char* id, const char* channelKey);
 
+  // Set (or, with label == "", clear) a dynamic item's display label. Unlike
+  // an id change, this never touches removeSensor/removeActuator's
+  // controller-reference check, so it works even while the item is wired to
+  // a controller. Returns {false, "not a dynamic item"} if id is unknown.
+  Result setSensorLabel(const char* id, SensActCtrl::Registry& reg, const char* label);
+  Result setActuatorLabel(const char* id, SensActCtrl::Registry& reg, const char* label);
+  Result setControllerLabel(const char* id, SensActCtrl::Registry& reg, const char* label);
+
   // Parse /config/registry.json and register items WITHOUT calling begin().
   // Call before registry.begin() so registry.begin() handles all items.
   void loadFromSD(fs::FS& sd, SensActCtrl::Registry& reg);

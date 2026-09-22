@@ -1,0 +1,3 @@
+[submodule "BrewControl/firmware/lib/IdsInductionCooker"]
+	path = BrewControl/firmware/lib/IdsInductionCooker
+	url = https://github.com/nhhop/IdsInductionCooker.git

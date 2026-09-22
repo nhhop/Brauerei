@@ -14,7 +14,7 @@ export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onRes
   onCalibrate?: () => void;
   onCycleMode?: () => void;
 }) {
-  const { id, meta, state } = sensor;
+  const { id, label, meta, state } = sensor;
   const v = state.v;
   const live = state.ok && v != null && isFinite(v);
   const pct = live && meta.max > meta.min
@@ -25,7 +25,7 @@ export function SensorCard({ sensor, alarm, viewMode = 'normal', onDelete, onRes
     <div class={`${widgetSizeClass[viewMode]} rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8`}>
       <div class="flex items-center justify-between gap-2">
         <div class="min-w-0">
-          <h3 class="font-medium text-fg">{id}</h3>
+          <h3 class="font-medium text-fg" title={id}>{label || id}</h3>
           {viewMode !== 'compact' && <div class="text-xs text-muted">{meta.quantity}</div>}
         </div>
         <div class="flex items-center gap-2">

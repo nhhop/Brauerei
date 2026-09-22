@@ -266,6 +266,38 @@ paths:
             text/plain: { schema: { type: string } }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
+  /api/sensors/{id}/label:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: setSensorLabel
+      summary: Set (or clear) a sensor's display label
+      description: |
+        Updates only the Registry-level display label — unlike changing `id`
+        (which is delete+recreate, see `DELETE /api/sensors/{id}`), this works
+        even while the sensor is referenced by a controller. An absent or
+        empty `label` clears it, falling back to `id` in the UI.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+            example: { label: "Maische-Temperatur" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Invalid JSON.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
+
   /api/sensors/{id}/calibration:
     parameters: [{ $ref: "#/components/parameters/ItemId" }]
     get:
@@ -514,6 +546,38 @@ paths:
           content:
             text/plain: { schema: { type: string } }
 
+  /api/actuators/{id}/label:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: setActuatorLabel
+      summary: Set (or clear) an actuator's display label
+      description: |
+        Updates only the Registry-level display label — unlike changing `id`
+        (which is delete+recreate, see `DELETE /api/actuators/{id}`), this
+        works even while the actuator is referenced by a controller. An
+        absent or empty `label` clears it, falling back to `id` in the UI.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+            example: { label: "Heizung" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Invalid JSON.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
+
   /api/estop:
     post:
       tags: [Dynamic Items]
@@ -588,6 +652,36 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "405":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
+
+  /api/controllers/{id}/label:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      tags: [Dynamic Items]
+      operationId: setControllerLabel
+      summary: Set (or clear) a controller's display label
+      description: |
+        Updates only the Registry-level display label, independent of `id`.
+        An absent or empty `label` clears it, falling back to `id` in the UI.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+            example: { label: "Maische-Regler" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Invalid JSON.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
           description: Body is `not a dynamic item`.
           content:
             text/plain: { schema: { type: string } }
@@ -2694,6 +2788,9 @@ components:
             would exceed 63 characters.
         meta: { $ref: "#/components/schemas/ItemMeta" }
         state: { $ref: "#/components/schemas/ItemState" }
+        label:
+          type: string
+          description: Optional display name; falls back to `id` in the UI when absent.
         fault:
           type: string
           description: Present only while the driver reports a fault.
@@ -2711,6 +2808,9 @@ components:
           description: |
             `t` is the serialization time, not a measurement time, and `ok` is
             always `true` — actuators report no reading validity.
+        label:
+          type: string
+          description: Optional display name; falls back to `id` in the UI when absent.
         fault:
           type: string
           description: Present only while the driver reports a fault.
@@ -2778,6 +2878,9 @@ components:
         id: { type: string }
         setpoint: { type: number }
         enabled: { type: boolean }
+        label:
+          type: string
+          description: Optional display name; falls back to `id` in the UI when absent.
         params:
           allOf: [{ $ref: "#/components/schemas/ControllerParams" }]
           description: Omitted when the controller reports no parameters.
@@ -2823,6 +2926,7 @@ components:
           type: string
           enum: [DS18B20, MAX31865, BME280, GY521, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, MqttGeneric, Remote]
         id: { type: string }
+        label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin: { type: integer }
         address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68)." }
         cs: { type: integer }
@@ -2922,6 +3026,7 @@ components:
           type: string
           enum: [DigitalOutput, AnalogOutput, PulseOutput, IDS1, IDS2, MqttGeneric, Remote]
         id: { type: string }
+        label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin: { type: integer }
         mode: { type: string, description: "e.g. `Binary` or `TPO`." }
         invert: { type: boolean, description: "Active-low. Also PulseOutput (active-low pulses)." }
@@ -2960,6 +3065,7 @@ components:
       properties:
         type: { type: string, enum: [PID, TwoPoint, DualStage, SplitRangePID] }
         id: { type: string }
+        label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         sensor: { type: string }
         actuator: { type: string }
         heat_actuator: { type: string, description: DualStage / SplitRangePID. }

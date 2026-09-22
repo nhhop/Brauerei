@@ -4482,3 +4482,54 @@ Erfolgsmeldung.
 und Vorzeichen die reale Einbaulage des Schwimmkörpers braucht, ist eine feste
 Annahme ohne Hardware-Test — muss am echten GY-521 verifiziert/angepasst
 werden, danach `poly`-Kalibrierung gegen reale SG-Messpunkte.
+
+## 2026-09-23 — Anzeigename (Label) für Registry-Items + entkoppeltes Umbenennen
+
+Umsetzung zweier zusammenhängender PLAN.md-Punkte: „Registry-Items haben
+keinen Anzeigenamen" und „Umbenennen nicht möglich, wenn eine Zuordnung zu
+einem Regler besteht". Statt die fehlende Referenz-Rewrite-Mechanik für
+Controller→Sensor/Aktor-Verweise nachzurüsten, wurde ein vom stabilen `id()`
+getrenntes, frei editierbares Label eingeführt — Umbenennen ist damit nie
+mehr vom Delete+Recreate-Pfad (und dessen Regler-Referenz-Blockade in
+`DynamicItems::removeSensor`/`removeActuator`) abhängig.
+
+**Architektur-Entscheidung.** Label lebt als Registry-Konzept in SensActCtrl,
+nicht nur firmware-seitig — `Registry::setLabel(id, label)`/`label(id)`
+(neue private `std::map<std::string,std::string> labels_`), bewusst **kein**
+Feld auf `Sensor`/`Actuator`/`Controller` selbst: kostet so nur Speicher für
+Items, die tatsächlich ein Label bekommen, statt jedes Item-Objekt zu
+vergrößern (auch bei reiner Standalone-Nutzung der Library ohne UI), und
+lässt die drei Interfaces unangetastet. `RegistrySnapshot::serialize()`
+emittiert `"label"` optional (nur wenn nicht leer) für Sensoren (pro
+Sensor-`id()`, nicht pro Kanal), Aktoren und Regler.
+
+**Firmware.** Kein neuer `LabelStore` — `main.cpp` legt keine nativen Items
+an, jedes Item läuft über `DynamicItems`, also wird Label einfach ein
+weiterer Key `"label"` im ohnehin persistierten `cfgJson`. Neue
+`DynamicItems::setSensorLabel`/`setActuatorLabel`/`setControllerLabel()`
+aktualisieren Registry-Label + `cfgJson`, ohne Delete/Recreate — funktionieren
+also auch bei bestehender Regler-Zuordnung. Drei neue Endpoints
+`POST /api/{sensors,actuators,controllers}/{id}/label`, einheitlich als
+Suffix analog zu `/calibration`/`/reset`/`/setpoint`/`/params`.
+
+**Frontend.** `AddItemModal.tsx` bekommt ein Anzeigename-Feld neben der ID.
+Kernstück: `onlyLabelDiffers()` vergleicht die neu gebaute Config
+strukturell (key-sortierter JSON-Dump, damit Objekt-Key-Reihenfolge keine
+falsche „geändert"-Erkennung auslöst) gegen die persistierte — hat sich außer
+dem Label nichts geändert, wird nur `set<Rolle>Label()` aufgerufen statt
+Delete+Recreate. Karten (`SensorCard`/`ActuatorCard`/`ControllerCard`) und
+die Regler-Verdrahtungs-Dropdowns zeigen `label || id`, die rohe ID bleibt
+als Tooltip (`title`) sichtbar. Die vorbestehende 405-Fehlermeldung bei
+blockiertem ID-Rename wird jetzt im Frontend in einen verständlichen Hinweis
+übersetzt (Label-Alternative wird genannt).
+
+**Verifikation.** Neue native Tests für `Registry::setLabel/label` (Get/Set/
+Overwrite/Clear/Default-leer) und `RegistrySnapshot` (Label anwesend/
+abwesend je Sensor/Aktor/Regler) — alle 271 native Tests grün. Firmware
+kompiliert für `esp32dev` (Flash 90,3 %). Redocly-Lint auf `openapi.yaml`
+grün (neue Endpoints + `label`-Feld in Response-/Create-Schemas). Frontend
+`pnpm typecheck` + `pnpm build` grün. **Nicht geprüft** (kein Board in dieser
+Session verfügbar): das eigentliche UI-Verhalten am Gerät — Label an einem
+regler-verdrahteten Sensor ändern (kein 405 mehr), ID an demselben Sensor
+ändern (verbesserte Fehlermeldung), Label-Anzeige in Karten/Dropdowns +
+ID-Tooltip.

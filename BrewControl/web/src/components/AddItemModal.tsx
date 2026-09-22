@@ -4,6 +4,7 @@ import type { Snapshot, ScannedDevice, ItemConfig } from '../types';
 import {
   createSensor, createActuator, createController,
   deleteSensor, deleteActuator, deleteController,
+  setSensorLabel, setActuatorLabel, setControllerLabel,
   scanOneWireBus, startAutotune, stopAutotune,
 } from '../api';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
@@ -30,6 +31,27 @@ type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 type Step = 1 | 2 | 3 | 4;
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
+
+// Deep-equal via a key-sorted JSON dump, so object key order (cfg is built
+// fresh via object literals; editConfig comes back in whatever order the
+// firmware wrote it) never causes a false "changed".
+function stableStringify(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const keys = Object.keys(v as Record<string, unknown>).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((v as Record<string, unknown>)[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+
+// Whether cfg (freshly built, id already confirmed unchanged) differs from
+// the persisted editConfig in anything other than "label" — if not, the
+// caller can update just the label instead of delete+recreate.
+function onlyLabelDiffers(cfg: Record<string, unknown>, editConfig: Record<string, unknown>): boolean {
+  const a = { ...cfg }; delete a.label;
+  const b = { ...editConfig }; delete b.label;
+  return stableStringify(a) === stableStringify(b);
+}
 
 const STEP_TEXT: Record<Step, { label: string; title: string; sub: string }> = {
   1: { label: 'Art des Geräts', title: 'Was möchtest du hinzufügen?',
@@ -75,6 +97,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
   // shared
   const [id, setId] = useState('');
+  const [label, setLabel] = useState('');
   const [pin, setPin] = useState('');
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -231,6 +254,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
     if (isEdit && editConfig && editRole) {
       setRole(editRole);
       setId(String(editConfig.id ?? ''));
+      setLabel(String(editConfig.label ?? ''));
 
       if (editRole === 'sensor') {
         const t = String(editConfig.type ?? 'DS18B20') as SensorType;
@@ -406,7 +430,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       }
     } else {
       // new item — reset to defaults
-      setRole(initialRole ?? 'sensor'); setId(''); setPin('');
+      setRole(initialRole ?? 'sensor'); setId(''); setLabel(''); setPin('');
       setSensorType('DS18B20');
       setI2cAddr(0x76);
       setCsPin(''); setWiresCount(2); setRtdType('PT100');
@@ -648,8 +672,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         }
         // Editing re-creates the sensor: carry its calibration over, it isn't part of this form.
         if (isEdit && editConfig?.calibrations) cfg.calibrations = editConfig.calibrations;
-        if (isEdit) await deleteSensor(String(editConfig!.id));
-        await createSensor(cfg);
+        const trimmedLabel = label.trim();
+        if (trimmedLabel) cfg.label = trimmedLabel;
+        if (isEdit && trimId === String(editConfig!.id) &&
+            onlyLabelDiffers(cfg, editConfig!)) {
+          await setSensorLabel(trimId, trimmedLabel);
+        } else {
+          if (isEdit) await deleteSensor(String(editConfig!.id));
+          await createSensor(cfg);
+        }
         if (Array.isArray(cfg.channels)) createdIds = (cfg.channels as string[]).map((c) => `${trimId}.${c}`);
 
       } else if (role === 'actuator') {
@@ -731,8 +762,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           cfg.interval_period_sec = Math.round(period * mult);
           cfg.interval_on_sec = Math.round(onAmt * mult);
         }
-        if (isEdit) await deleteActuator(String(editConfig!.id));
-        await createActuator(cfg);
+        {
+          const trimmedLabel = label.trim();
+          if (trimmedLabel) cfg.label = trimmedLabel;
+          if (isEdit && trimId === String(editConfig!.id) &&
+              onlyLabelDiffers(cfg, editConfig!)) {
+            await setActuatorLabel(trimId, trimmedLabel);
+          } else {
+            if (isEdit) await deleteActuator(String(editConfig!.id));
+            await createActuator(cfg);
+          }
+        }
 
       } else { // controller
         const dualOutput = ctrlType === 'DualStage' || ctrlType === 'SplitRangePID';
@@ -790,8 +830,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             cfg.range_min = rMin; cfg.range_max = rMax;
           }
         }
-        if (isEdit) await deleteController(String(editConfig!.id));
-        await createController(cfg);
+        const trimmedLabel = label.trim();
+        if (trimmedLabel) cfg.label = trimmedLabel;
+        if (isEdit && trimId === String(editConfig!.id) &&
+            onlyLabelDiffers(cfg, editConfig!)) {
+          await setControllerLabel(trimId, trimmedLabel);
+        } else {
+          if (isEdit) await deleteController(String(editConfig!.id));
+          await createController(cfg);
+        }
       }
 
       if (wizard) {
@@ -804,7 +851,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         if (!isEdit) onCreated?.(role, trimId, createdIds);
         else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId);
       }
-    } catch (e) { setErr(String(e)); }
+    } catch (e) {
+      const msg = String(e);
+      if (msg.includes('referenced by a controller')) {
+        setErr('Die ID kann nicht geändert werden, solange dieses Gerät mit einem Regler verbunden ist — den Regler zuerst umhängen oder löschen. Der Anzeigename lässt sich unabhängig davon jederzeit ändern.');
+      } else {
+        setErr(msg);
+      }
+    }
     setPending(false);
   }
 
@@ -870,6 +924,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             <input type="text" value={id}
               onInput={(e) => setId((e.target as HTMLInputElement).value)}
               placeholder="z.B. maische_temp" class={inp} required />
+          </div>
+
+          {/* Anzeigename (all roles) — separate from id, editable even while
+              the item is wired to a controller (see handleSubmit). */}
+          <div>
+            <label class={lbl}>Anzeigename (optional)</label>
+            <input type="text" value={label}
+              onInput={(e) => setLabel((e.target as HTMLInputElement).value)}
+              placeholder={id || 'z.B. Maische-Temperatur'} class={inp} />
           </div>
 
           {/* DS18B20 fields */}
@@ -1545,7 +1608,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     <select value={sensorId} title="Sensor"
                       onChange={(e) => setSensorId((e.target as HTMLSelectElement).value)}
                       class={inp}>
-                      {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+                      {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.label || s.id}</option>)}
                       {!snap?.sensors.length && <option value="">— keine Sensoren —</option>}
                     </select>
                   </div>
@@ -1554,7 +1617,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     <select value={actuatorId} title="Aktor"
                       onChange={(e) => setActuatorId((e.target as HTMLSelectElement).value)}
                       class={inp}>
-                      {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
+                      {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.label || a.id}</option>)}
                       {!snap?.actuators.length && <option value="">— keine Aktoren —</option>}
                     </select>
                   </div>
@@ -1567,7 +1630,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     <select value={sensorId} title="Sensor"
                       onChange={(e) => setSensorId((e.target as HTMLSelectElement).value)}
                       class={inp}>
-                      {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+                      {snap?.sensors.map((s) => <option key={s.id} value={s.id}>{s.label || s.id}</option>)}
                       {!snap?.sensors.length && <option value="">— keine Sensoren —</option>}
                     </select>
                   </div>
@@ -1578,7 +1641,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                         onChange={(e) => setHeatActuatorId((e.target as HTMLSelectElement).value)}
                         class={inp}>
                         <option value="">— keiner —</option>
-                        {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
+                        {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.label || a.id}</option>)}
                       </select>
                     </div>
                     <div>
@@ -1587,7 +1650,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                         onChange={(e) => setCoolActuatorId((e.target as HTMLSelectElement).value)}
                         class={inp}>
                         <option value="">— keiner —</option>
-                        {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.id}</option>)}
+                        {snap?.actuators.map((a) => <option key={a.id} value={a.id}>{a.label || a.id}</option>)}
                       </select>
                     </div>
                   </div>

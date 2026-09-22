@@ -199,6 +199,20 @@ export function deleteController(id: string): Promise<void> {
   return deleteItem(`/api/controllers/${encodeURIComponent(id)}`);
 }
 
+// Unlike an id change (delete+recreate), setting the label works even while
+// the item is referenced by a controller.
+export function setSensorLabel(id: string, label: string): Promise<void> {
+  return postJson(`/api/sensors/${encodeURIComponent(id)}/label`, { label });
+}
+
+export function setActuatorLabel(id: string, label: string): Promise<void> {
+  return postJson(`/api/actuators/${encodeURIComponent(id)}/label`, { label });
+}
+
+export function setControllerLabel(id: string, label: string): Promise<void> {
+  return postJson(`/api/controllers/${encodeURIComponent(id)}/label`, { label });
+}
+
 // ── Config (original cfgJson — used by edit UI) ──────────────────────────────
 
 export async function getConfig(): Promise<ConfigSnapshot> {

@@ -42,6 +42,8 @@ export interface ItemState {
 
 export interface Sensor {
   id: string;
+  // Optional display name; falls back to id in the UI when absent.
+  label?: string;
   meta: ItemMeta;
   state: ItemState;
   fault?: string;
@@ -49,6 +51,8 @@ export interface Sensor {
 
 export interface Actuator {
   id: string;
+  // Optional display name; falls back to id in the UI when absent.
+  label?: string;
   meta: ItemMeta;
   state: ItemState;
   // What was last commanded, as opposed to state.v (what's physically driven
@@ -110,6 +114,8 @@ export interface ControllerParams {
 
 export interface Controller {
   id: string;
+  // Optional display name; falls back to id in the UI when absent.
+  label?: string;
   setpoint: number;
   enabled: boolean;
   params?: ControllerParams;

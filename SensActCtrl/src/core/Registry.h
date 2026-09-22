@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+#include <string>
 #include <vector>
 
 #include "Sensor.h"
@@ -45,10 +47,22 @@ class Registry {
   const std::vector<Actuator*>& actuators() const { return actuators_; }
   const std::vector<Controller*>& controllers() const { return controllers_; }
 
+  // Optional display label for an item, keyed by its id() — deliberately
+  // separate from id() (which stays a fixed identifier set at construction
+  // and used by controllers/alarms/logs/dashboards) so a UI-facing rename
+  // never has to touch the id. Stored centrally here rather than as a field
+  // on Sensor/Actuator/Controller: it costs memory only for items that
+  // actually get one, instead of growing every item — including standalone
+  // library uses with no UI at all — and leaves the item interfaces
+  // untouched. label(id) returns "" (never nullptr) if unset or unknown.
+  void setLabel(const char* id, const char* label);
+  const char* label(const char* id) const;
+
  private:
   std::vector<Sensor*> sensors_;
   std::vector<Actuator*> actuators_;
   std::vector<Controller*> controllers_;
+  std::map<std::string, std::string> labels_;
 };
 
 }  // namespace SensActCtrl

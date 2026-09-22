@@ -57,6 +57,8 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
       }
       JsonObject obj = sensorsArr.add<JsonObject>();
       obj["id"] = entryId;
+      const char* lbl = reg.label(s->id());
+      if (lbl[0]) obj["label"] = lbl;
       writeMeta(obj["meta"].to<JsonObject>(), ch.meta);
       JsonObject state = obj["state"].to<JsonObject>();
       state["v"]  = ch.reading.value;
@@ -72,6 +74,8 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
   for (Actuator* a : reg.actuators()) {
     JsonObject obj = actuatorsArr.add<JsonObject>();
     obj["id"] = a->id();
+    const char* lbl = reg.label(a->id());
+    if (lbl[0]) obj["label"] = lbl;
     writeMeta(obj["meta"].to<JsonObject>(), a->meta());
     obj["enabled"] = a->enabled();
     obj["target"] = a->target();
@@ -96,6 +100,8 @@ size_t serializeRegistry(const Registry& reg, char* buf, size_t cap) {
   for (Controller* c : reg.controllers()) {
     JsonObject obj = ctrlArr.add<JsonObject>();
     obj["id"]       = c->id();
+    const char* lbl = reg.label(c->id());
+    if (lbl[0]) obj["label"] = lbl;
     obj["setpoint"] = c->setpoint();
     obj["enabled"]  = c->enabled();
 

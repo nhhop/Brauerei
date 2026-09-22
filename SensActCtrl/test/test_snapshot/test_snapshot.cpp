@@ -159,6 +159,47 @@ void test_snapshot_actuator_fault_present_when_set() {
   TEST_ASSERT_EQUAL_STRING("E0: Kein Topf", a0["fault"].as<const char*>());
 }
 
+void test_snapshot_label_absent_when_unset() {
+  MockSensor temp("mash_temp", tempMeta());
+  MockActuator heater("heater", switchMeta());
+  TwoPointController ctrl("mash_ctrl", temp, heater);
+  Registry reg;
+  reg.add(&temp);
+  reg.add(&heater);
+  reg.add(&ctrl);
+
+  char buf[1024];
+  serializeRegistry(reg, buf, sizeof(buf));
+  JsonDocument doc;
+  deserializeJson(doc, buf);
+
+  TEST_ASSERT_TRUE(doc["sensors"][0]["label"].isNull());
+  TEST_ASSERT_TRUE(doc["actuators"][0]["label"].isNull());
+  TEST_ASSERT_TRUE(doc["controllers"][0]["label"].isNull());
+}
+
+void test_snapshot_label_present_when_set() {
+  MockSensor temp("mash_temp", tempMeta());
+  MockActuator heater("heater", switchMeta());
+  TwoPointController ctrl("mash_ctrl", temp, heater);
+  Registry reg;
+  reg.add(&temp);
+  reg.add(&heater);
+  reg.add(&ctrl);
+  reg.setLabel("mash_temp", "Maische-Temperatur");
+  reg.setLabel("heater", "Heizung");
+  reg.setLabel("mash_ctrl", "Maische-Regler");
+
+  char buf[1024];
+  serializeRegistry(reg, buf, sizeof(buf));
+  JsonDocument doc;
+  deserializeJson(doc, buf);
+
+  TEST_ASSERT_EQUAL_STRING("Maische-Temperatur", doc["sensors"][0]["label"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("Heizung", doc["actuators"][0]["label"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("Maische-Regler", doc["controllers"][0]["label"].as<const char*>());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -170,5 +211,7 @@ int main(int, char**) {
   RUN_TEST(test_snapshot_returns_zero_on_too_small_buffer);
   RUN_TEST(test_snapshot_actuator_fault_absent_when_null);
   RUN_TEST(test_snapshot_actuator_fault_present_when_set);
+  RUN_TEST(test_snapshot_label_absent_when_unset);
+  RUN_TEST(test_snapshot_label_present_when_set);
   return UNITY_END();
 }

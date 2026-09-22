@@ -276,12 +276,15 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/sensors/<id>` | DELETE | Sensor entfernen |
 | `/api/sensors/<id>/reset` | POST | Akkumulierten Sensorwert zurücksetzen (z.B. YF-S201-Volumen) |
 | `/api/sensors/<id>/calibration` | GET / POST / DELETE | Live-Rohwert + kalibrierter Wert je Kanal; Kanal kalibrieren (Offset / Faktor / Zwei-Punkt / Mehrpunkt-Kurve); Kalibrierung zurücksetzen |
+| `/api/sensors/<id>/label` | POST | Anzeigename setzen/löschen (unabhängig von `id`, funktioniert auch bei Regler-Zuordnung) |
 | `/api/actuators` | POST | Aktor anlegen |
 | `/api/actuators/<id>` | POST, DELETE | Wert / `enabled` / Takt-Intervall schreiben; Aktor entfernen |
+| `/api/actuators/<id>/label` | POST | Anzeigename setzen/löschen (unabhängig von `id`, funktioniert auch bei Regler-Zuordnung) |
 | `/api/controllers` | POST | Regler anlegen |
 | `/api/controllers/<id>` | DELETE | Regler entfernen |
 | `/api/controllers/<id>/setpoint` | POST | Sollwert setzen |
 | `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
+| `/api/controllers/<id>/label` | POST | Anzeigename setzen/löschen |
 | `/api/estop` | POST, DELETE | Not-Aus auslösen (rastet ein, überlebt Neustart) / Verriegelung aufheben |
 | `/api/bus/scan` | GET | 1-Wire-Bus nach Geräten scannen |
 | `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |

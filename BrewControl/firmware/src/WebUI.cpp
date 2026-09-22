@@ -624,6 +624,21 @@ void WebUI::begin() {
   server_.addHandler(new BodyPrefixHandler("/api/sensors/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
         const String url = req->url();
+        if (url.endsWith("/label")) {
+          JsonDocument doc;
+          if (deserializeJson(doc, data, len) != DeserializationError::Ok || !doc.is<JsonObject>()) {
+            req->send(400, "text/plain", "invalid JSON");
+            return;
+          }
+          String path = url.substring(strlen("/api/sensors/"));
+          String id   = path.substring(0, path.length() - strlen("/label"));
+          auto r = items_.setSensorLabel(id.c_str(), reg_, doc["label"] | "");
+          if (!r.ok) { req->send(404, "text/plain", r.error); return; }
+          items_.saveToSD(fs_);
+          pushSnapshot_();
+          req->send(204);
+          return;
+        }
         if (url.endsWith("/calibration")) {
           JsonDocument doc;
           if (deserializeJson(doc, data, len) != DeserializationError::Ok || !doc.is<JsonObject>()) {
@@ -654,12 +669,24 @@ void WebUI::begin() {
   // ── Write actuator (prefix, body) ────────────────────────────────────────
   server_.addHandler(new BodyPrefixHandler("/api/actuators/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
+        const String url = req->url();
         JsonDocument doc;
         if (deserializeJson(doc, data, len) != DeserializationError::Ok) {
           req->send(400, "text/plain", "invalid JSON");
           return;
         }
-        String id = req->url().substring(strlen("/api/actuators/"));
+        if (url.endsWith("/label")) {
+          if (!doc.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
+          String path = url.substring(strlen("/api/actuators/"));
+          String id   = path.substring(0, path.length() - strlen("/label"));
+          auto r = items_.setActuatorLabel(id.c_str(), reg_, doc["label"] | "");
+          if (!r.ok) { req->send(404, "text/plain", r.error); return; }
+          items_.saveToSD(fs_);
+          pushSnapshot_();
+          req->send(204);
+          return;
+        }
+        String id = url.substring(strlen("/api/actuators/"));
         auto* a = reg_.findActuator(id.c_str());
         if (!a) { req->send(404); return; }
         bool hasEnabled = !doc["enabled"].isNull();
@@ -730,7 +757,18 @@ void WebUI::begin() {
         String url = req->url();
         bool isSp = url.endsWith("/setpoint");
         bool isPr = url.endsWith("/params");
-        if (!isSp && !isPr) { req->send(404); return; }
+        bool isLabel = url.endsWith("/label");
+        if (!isSp && !isPr && !isLabel) { req->send(404); return; }
+        if (isLabel) {
+          String path = url.substring(strlen("/api/controllers/"));
+          String id   = path.substring(0, path.length() - strlen("/label"));
+          auto r = items_.setControllerLabel(id.c_str(), reg_, doc["label"] | "");
+          if (!r.ok) { req->send(404, "text/plain", r.error); return; }
+          items_.saveToSD(fs_);
+          pushSnapshot_();
+          req->send(204);
+          return;
+        }
         int cut = isSp ? strlen("/setpoint") : strlen("/params");
         String id = url.substring(strlen("/api/controllers/"), url.length() - cut);
         auto* c = reg_.findController(id.c_str());

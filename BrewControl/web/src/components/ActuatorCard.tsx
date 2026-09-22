@@ -13,7 +13,7 @@ export function ActuatorCard({ actuator, controllers = [], programs = [], alarm,
   actuator: Actuator; controllers?: Controller[]; programs?: ProgramConfig[];
   alarm?: Severity; onDelete?: () => void; onEdit?: () => void;
 }) {
-  const { id, meta, state, target, enabled, interval } = actuator;
+  const { id, label, meta, state, target, enabled, interval } = actuator;
   const [pending, setPending] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -68,7 +68,7 @@ export function ActuatorCard({ actuator, controllers = [], programs = [], alarm,
   return (
     <div class="min-h-[160px] rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
       <div class="flex items-center justify-between gap-2">
-        <h3 class="font-medium text-fg">{id}</h3>
+        <h3 class="font-medium text-fg" title={id}>{label || id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.kind}</span>
           <ToggleSwitch checked={enabled} disabled={toggling} mixed={ownerActive}

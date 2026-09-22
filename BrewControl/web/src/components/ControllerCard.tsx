@@ -32,7 +32,7 @@ function outputPct(a: Actuator | undefined): number | null {
 }
 
 export function ControllerCard({ controller, sensors, actuators, programs = [], viewMode = 'normal', onDelete, onEdit, onCycleMode }: Props) {
-  const { id, setpoint, enabled, params } = controller;
+  const { id, label: itemLabel, setpoint, enabled, params } = controller;
   const [sp, setSp] = useState(setpoint.toString());
   useEffect(() => { setSp(setpoint.toString()); }, [setpoint]);
   const [toggling, setToggling] = useState(false);
@@ -194,7 +194,7 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
       enabled ? 'border-card-border' : 'border-card-border/50 opacity-60'
     }`}>
       <div class="flex items-center justify-between gap-2">
-        <h3 class="truncate font-medium text-fg">{id}</h3>
+        <h3 class="truncate font-medium text-fg" title={id}>{itemLabel || id}</h3>
         <div class="flex shrink-0 items-center gap-1.5">
           <ToggleSwitch checked={enabled} disabled={toggling} mixed={!!progOwner}
             title={progOwner ? `Wird von Programm „${progOwner.id}“ gesteuert`

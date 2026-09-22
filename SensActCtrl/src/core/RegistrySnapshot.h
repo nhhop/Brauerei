@@ -34,6 +34,10 @@ class Registry;
 // `params` is the nested-object form of the controller's paramsJson() result
 // (not a string), so frontends can address fields directly.
 //
+// Each sensor/actuator/controller entry also carries an optional "label"
+// key (the item's Registry::label(id), a freely-editable display name kept
+// separate from the stable "id") — omitted when no label is set.
+//
 // Returns the number of bytes written (excluding the null terminator).
 // Returns 0 if buf is null, cap is zero, or serialization overflows cap.
 size_t serializeRegistry(const Registry& reg, char* buf, size_t cap);

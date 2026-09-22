@@ -73,6 +73,32 @@ void test_registry_reading_propagates() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 42.5f, r.value);
 }
 
+void test_registry_label_unset_by_default() {
+  Registry reg;
+  TEST_ASSERT_EQUAL_STRING("", reg.label("t1"));
+}
+
+void test_registry_label_get_set() {
+  Registry reg;
+  reg.setLabel("t1", "Maische");
+  TEST_ASSERT_EQUAL_STRING("Maische", reg.label("t1"));
+  TEST_ASSERT_EQUAL_STRING("", reg.label("unknown"));
+}
+
+void test_registry_label_overwrite() {
+  Registry reg;
+  reg.setLabel("t1", "Maische");
+  reg.setLabel("t1", "Wuerze");
+  TEST_ASSERT_EQUAL_STRING("Wuerze", reg.label("t1"));
+}
+
+void test_registry_label_clear() {
+  Registry reg;
+  reg.setLabel("t1", "Maische");
+  reg.setLabel("t1", "");
+  TEST_ASSERT_EQUAL_STRING("", reg.label("t1"));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -82,5 +108,9 @@ int main(int, char**) {
   RUN_TEST(test_registry_tick_order_sensor_then_actuator);
   RUN_TEST(test_registry_find_by_id);
   RUN_TEST(test_registry_reading_propagates);
+  RUN_TEST(test_registry_label_unset_by_default);
+  RUN_TEST(test_registry_label_get_set);
+  RUN_TEST(test_registry_label_overwrite);
+  RUN_TEST(test_registry_label_clear);
   return UNITY_END();
 }

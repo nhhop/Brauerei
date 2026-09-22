@@ -286,6 +286,8 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
   if (migrate || !saved.isNull()) syncCalibrationConfig(*e);
 
   reg.add(e->ptr.get());
+  const char* label = cfg["label"] | "";
+  if (label[0]) reg.setLabel(id, label);
   sensors_.push_back(std::move(e));
   return {true};
 }
@@ -593,6 +595,8 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
   }
 
   reg.add(e->ptr.get());
+  const char* label = cfg["label"] | "";
+  if (label[0]) reg.setLabel(id, label);
   actuators_.push_back(std::move(e));
   return {true};
 }
@@ -721,6 +725,8 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
   e->ptr->setSetpoint(cfg["setpoint"] | 0.0f);  // first call ⇒ snaps instantly
 
   reg.add(e->ptr.get());
+  const char* label = cfg["label"] | "";
+  if (label[0]) reg.setLabel(id, label);
   controllers_.push_back(std::move(e));
   return {true};
 }
@@ -783,6 +789,56 @@ DynamicItems::Result DynamicItems::removeController(const char* id,
       reg.remove((*it)->ptr.get());
       for (auto& cb : onControllerRemoving_) if (cb) cb(*(*it)->ptr);
       controllers_.erase(it);
+      return {true};
+    }
+  }
+  return {false, "not a dynamic item"};
+}
+
+// ── Label ─────────────────────────────────────────────────────────────────
+// Unlike an id change (delete+recreate, blocked while a controller
+// references the item — see removeSensor/removeActuator above), a label
+// only updates Registry metadata, so it works regardless of controller
+// wiring. label == "" clears it.
+
+namespace {
+void rewriteCfgLabel(std::string& cfgJson, const char* label) {
+  JsonDocument doc;
+  if (deserializeJson(doc, cfgJson) != DeserializationError::Ok) return;
+  if (label && label[0]) doc["label"] = label;
+  else doc.remove("label");
+  cfgJson.clear();
+  serializeJson(doc, cfgJson);
+}
+}  // namespace
+
+DynamicItems::Result DynamicItems::setSensorLabel(const char* id, Registry& reg,
+                                                   const char* label) {
+  SensorEntry* e = findSensorEntry(id);
+  if (!e) return {false, "not a dynamic item"};
+  reg.setLabel(id, label);
+  rewriteCfgLabel(e->cfgJson, label);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::setActuatorLabel(const char* id, Registry& reg,
+                                                     const char* label) {
+  for (auto& e : actuators_) {
+    if (e->id == id) {
+      reg.setLabel(id, label);
+      rewriteCfgLabel(e->cfgJson, label);
+      return {true};
+    }
+  }
+  return {false, "not a dynamic item"};
+}
+
+DynamicItems::Result DynamicItems::setControllerLabel(const char* id, Registry& reg,
+                                                       const char* label) {
+  for (auto& e : controllers_) {
+    if (e->id == id) {
+      reg.setLabel(id, label);
+      rewriteCfgLabel(e->cfgJson, label);
       return {true};
     }
   }
