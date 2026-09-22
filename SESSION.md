@@ -4432,3 +4432,53 @@ der Wert folgte der Geraden; `points`/`degree` verschwanden auch aus der Config.
 Alle sieben Fehlerfälle antworteten mit den in `openapi.yaml` dokumentierten
 Texten und ließen den Kanal unverändert. Board anschließend auf die
 ursprüngliche Kalibrierung zurückgesetzt.
+
+
+## 2026-09-23 — GY-521/MPU-6050 als Tilt-Hydrometer-Sensor
+
+Umsetzung des PLAN.md-Punkts „MPU6050/GY-521 als neuer Sensor": ein GY-521
+(MPU-6050, I²C) als Tilt-Hydrometer nach iSpindel-Vorbild — Neigungswinkel,
+kalibrierbar gegen Stammwürze/SG.
+
+**Architektur-Entscheidung.** Rohe Achsenwerte und abgeleiteter Winkel bewusst
+in zwei Klassen getrennt (Nutzer-Vorgabe), per Komposition statt Vererbung
+oder Referenz-Decorator: `GY521Sensor` (SensActCtrl) ist der rohe 6-Kanal-Sensor
+(AccelX/Y/Z „g", GyroX/Y/Z „°/s", analog zu `BME280Sensor` inkl.
+`#if defined(ARDUINO)`-Stub fürs native Testbuild). `GY521TiltSensor` hält
+intern ein `GY521Sensor`-Member (Ownership, kein `Sensor&`-Wrapper — ein
+Tilt-Sensor *ist kein* Rohsensor, er *nutzt* einen) und liefert einen einzigen
+`angle`-Kanal über einen Komplementärfilter
+(`angle = alpha·(prevAngle + gyroRate·dt) + (1-alpha)·angleAccel`, alpha=0,98,
+`angleAccel = atan2(-ax, sqrt(ay²+az²))`). Die Filterberechnung ist als
+statische `complementaryStep()` exponiert, damit sie ohne Hardware
+deterministisch testbar ist. Die Dichte-Ableitung brauchte **keinen dritten
+Baustein**: `DynamicItems.cpp` wrapped ohnehin jeden neu angelegten Sensor in
+`CalibratedSensor`, der `angle`-Kanal bekommt die SG-Umrechnung also direkt
+über die kürzlich gebaute Poly-Kalibrierung (`mode: poly`).
+
+**Firmware/API.** Neuer `type: "GY521"`-Zweig in
+`DynamicItems::addSensorNoBegin()` neben `BME280`, liest `address` (Default
+`0x68`) und legt einen `GY521TiltSensor` an — läuft sonst durch denselben Pfad
+wie jeder andere Sensortyp. `docs/openapi.yaml`: `GY521` im `SensorCreate.type`-
+Enum, `address`-Feldbeschreibung um die numerische I2C-Adresse (BME280/GY521)
+ergänzt. Abhängigkeit `Adafruit MPU6050` (+ transitiv Unified Sensor/BusIO,
+beide schon vorhanden) in `SensActCtrl/library.json` ergänzt.
+
+**Frontend.** Neue Kategorie „Beschleunigung / Tilt" (Compass-Icon) in
+`itemTypes.ts`, `GY521` als `SensorType` in `AddItemModal.tsx` mit
+I2C-Adress-Umschalter (0x68/0x69, analog zum BME280-Muster) und Edit-Restore.
+
+**Verifikation.** Neue native Tests `test_gy521` (Kanalform/-metadaten,
+Stub-Werte nach `begin()`) und `test_gy521_tilt` (Komplementärfilter-Numerik
+über `complementaryStep()`, Kanalform, End-to-End gegen den `GY521Sensor`-Stub)
+— alle 265 native Tests grün. Firmware kompiliert für `esp32dev`
+(`Adafruit MPU6050` löst über `library.json` automatisch auf). OpenAPI-Lint
+und `pnpm typecheck` grün. UI gegen einen Node-Mock im Browser durchgeklickt:
+Kategorie „Beschleunigung / Tilt" mit Compass-Icon, Gerätetyp-Auswahl,
+Adress-Umschalter, gesendeter POST-Body (`{type:"GY521",id,address}`) korrekt,
+Erfolgsmeldung.
+
+**Offen** (siehe PLAN.md → Hardware-Verifikation): welche Achsenkombination
+und Vorzeichen die reale Einbaulage des Schwimmkörpers braucht, ist eine feste
+Annahme ohne Hardware-Test — muss am echten GY-521 verifiziert/angepasst
+werden, danach `poly`-Kalibrierung gegen reale SG-Messpunkte.

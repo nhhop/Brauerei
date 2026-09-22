@@ -1,6 +1,6 @@
 import {
   Gauge, Zap, SlidersHorizontal, Thermometer, Droplets, Waves, Ruler, Scale,
-  ToggleLeft, ToggleRight, Radio, Cpu, CircuitBoard, Flame, Activity,
+  ToggleLeft, ToggleRight, Radio, Cpu, CircuitBoard, Flame, Activity, Compass,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -33,6 +33,9 @@ export const ITEM_TYPES: ItemTypeEntry[] = [
   { role: 'sensor', type: 'BME280', group: 'Feuchte / Druck',
     label: 'BME280 (T/H/P, I²C)',
     hint: 'Temperatur, Feuchte und Druck über I²C — drei Kanäle.' },
+  { role: 'sensor', type: 'GY521', group: 'Beschleunigung / Tilt',
+    label: 'GY-521 (Neigungswinkel, I²C)',
+    hint: 'MPU-6050-Breakout über I²C — Neigungswinkel für ein Tilt-Hydrometer, per Kalibrierung auf Stammwürze/SG umrechenbar.' },
   { role: 'sensor', type: 'YF-S201', group: 'Durchfluss',
     label: 'YF-S201 (Durchfluss)',
     hint: 'Impuls-Durchflusssensor — liefert Rate und Volumen.' },
@@ -113,6 +116,7 @@ export const ROLE_META: Record<Role, { icon: LucideIcon; desc: string }> = {
 export const CATEGORY_ICON: Record<string, LucideIcon> = {
   'Temperatur': Thermometer,
   'Feuchte / Druck': Droplets,
+  'Beschleunigung / Tilt': Compass,
   'Durchfluss': Waves,
   'Distanz': Ruler,
   'Gewicht': Scale,

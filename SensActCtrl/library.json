@@ -44,6 +44,11 @@
       "version": "^1.2.0"
     },
     {
+      "name": "Adafruit MPU6050",
+      "owner": "adafruit",
+      "version": "^2.2.6"
+    },
+    {
       "name": "AutoTunePID",
       "version": "https://github.com/lily-osp/AutoTunePID.git#34c6f39"
     },

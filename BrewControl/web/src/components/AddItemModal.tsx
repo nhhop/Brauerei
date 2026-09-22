@@ -20,7 +20,7 @@ const AUTOTUNE_METHODS = [
 ] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'MqttGeneric' | 'Remote';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'GY521' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'MqttGeneric' | 'Remote';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
@@ -90,6 +90,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
   // BME280
   const [i2cAddr, setI2cAddr] = useState<number>(0x76);
+
+  // GY521
+  const [gy521Addr, setGy521Addr] = useState<number>(0x68);
 
   // HCSR04
   const [trigPin, setTrigPin] = useState('');
@@ -254,6 +257,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setChVolume(!chs || chs.includes('volume'));
         } else if (t === 'BME280') {
           setI2cAddr((editConfig.address ?? 0x76) as number);
+        } else if (t === 'GY521') {
+          setGy521Addr((editConfig.address ?? 0x68) as number);
         } else if (t === 'HX711') {
           setHx711Dout(String(editConfig.dout ?? ''));
           setHx711Sck(String(editConfig.sck ?? ''));
@@ -571,6 +576,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           cfg = { type: 'YF-S201', id: trimId, pin: p, channels };
         } else if (sensorType === 'BME280') {
           cfg = { type: 'BME280', id: trimId, address: i2cAddr };
+        } else if (sensorType === 'GY521') {
+          cfg = { type: 'GY521', id: trimId, address: gy521Addr };
         } else if (sensorType === 'HX711') {
           const dout = parseInt(hx711Dout, 10);
           const sck  = parseInt(hx711Sck,  10);
@@ -1257,6 +1264,25 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
               </div>
               <p class="text-xs text-faint">
                 3 Kanäle: <strong>id.temp</strong> (°C), <strong>id.hum</strong> (%RH), <strong>id.pres</strong> (hPa).
+              </p>
+            </div>
+          )}
+
+          {/* GY521 fields */}
+          {role === 'sensor' && sensorType === 'GY521' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>I²C Address</label>
+                <div class="flex gap-2">
+                  {[0x68, 0x69].map((a) => (
+                    <button key={a} type="button" onClick={() => setGy521Addr(a)}
+                      class={segBtn(gy521Addr === a)}>0x{a.toString(16)}</button>
+                  ))}
+                </div>
+              </div>
+              <p class="text-xs text-faint">
+                1 Kanal: <strong>id</strong> — Neigungswinkel in °, per Kalibrierung
+                (Modus „poly") auf Stammwürze/SG umrechenbar.
               </p>
             </div>
           )}

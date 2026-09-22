@@ -2821,10 +2821,10 @@ components:
       properties:
         type:
           type: string
-          enum: [DS18B20, MAX31865, BME280, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, MqttGeneric, Remote]
+          enum: [DS18B20, MAX31865, BME280, GY521, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, MqttGeneric, Remote]
         id: { type: string }
         pin: { type: integer }
-        address: { type: string, description: "DS18B20 ROM address, 16 lowercase hex chars." }
+        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68)." }
         cs: { type: integer }
         clk: { type: integer }
         miso: { type: integer }

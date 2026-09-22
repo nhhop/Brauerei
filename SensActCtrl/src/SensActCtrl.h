@@ -33,6 +33,8 @@
 #include "sensors/PulseCounterSensor.h"
 #include "sensors/DS18B20Sensor.h"
 #include "sensors/BME280Sensor.h"
+#include "sensors/GY521Sensor.h"
+#include "sensors/GY521TiltSensor.h"
 #include "sensors/MAX31865Sensor.h"
 #include "sensors/YF_S201Sensor.h"
 #include "sensors/HCSR04Sensor.h"
