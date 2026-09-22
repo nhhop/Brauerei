@@ -4293,9 +4293,12 @@ Schon ohne Display: avg 9,6 ms, p50 7 ms, aber **p99 160–170 ms, max 206–221
 118 von 6280 Durchläufen liegen im Band 100–250 ms — 1,96 pro Sekunde. Über
 Abschnitts-Timer lokalisiert auf `registry.tick()` (max 186 ms; `webUI.tick()`
 max 6 ms). Ursache: `IdsActuator` tickt alle 500 ms und `IdsCooker::sendCommand()`
-bitbangt 33 Pulse mit `delayMicroseconds` — bei `SIGNAL_HIGH` 5120 µs und
-`SIGNAL_LOW` 1280 µs pro Bit ergibt das **84–211 ms pro Kommando**, protokoll-
-bedingt und im kooperativen Loop unvermeidbar. Konsequenz für das Display: die
+bitbangt 33 Pulse mit `delayMicroseconds`. `setupCommands()` setzt jedes Bit auf
+`SIGNAL_HIGH` 5120 µs oder `SIGNAL_LOW` 1280 µs, dahinter je 1280 µs Pause — ein
+Kommando dauert damit **131–146 ms** (Vorspann 25 ms + 10 ms, dann 96–111 ms
+Pulszug je nach Anzahl der Eins-Bits), protokollbedingt und im kooperativen Loop
+unvermeidbar. Der Vorspann läuft über `millis2wait()` mit `yield()`, der Pulszug
+über `delayMicroseconds()` ganz ohne. Konsequenz für das Display: die
 Plan-Empfehlung „`lv_timer_handler()` aus `loop()`" trägt auf einem Board mit
 IDS-Kocher **nicht** — zweimal pro Sekunde stünde die UI ~190 ms. Ein eigener,
 auf Core 0 gepinnter LVGL-Task ist damit keine Rückfallebene mehr, sondern die
