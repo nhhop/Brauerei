@@ -10,8 +10,10 @@
 namespace SensActCtrl {
 
 // Wraps IdsCooker (IDS1/IDS2 induction cooker) as a SensActCtrl Actuator.
-// write(0.0-1.0) sets power; tick() drives Update() at <=2 Hz to avoid
-// blocking the loop for the ~246 ms sendCommand() call.
+// write(0.0-1.0) sets power; tick() drives Update() at <=2 Hz, which is the
+// keep-alive cadence the cooker expects. Since 2026-09-23 sendCommand()
+// clocks the frame out through the RMT peripheral and returns immediately;
+// it used to bit-bang it and block the caller for ~139 ms per call.
 // fault() returns the cooker's error string when errorCode != 0, else nullptr.
 class IdsActuator : public Actuator {
  public:

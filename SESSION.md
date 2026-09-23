@@ -4568,3 +4568,67 @@ der Bump wirkt. SensActCtrl bleibt dadurch standalone installierbar.
 Verifikation: nach vollständiger Neuauflösung kompiliert in allen drei Envs **genau ein**
 `IdsCooker.cpp.o`, und zwar aus `libdeps`; `pio run` grün für esp32dev (Flash 90,3 %),
 lolin_s2_mini (87,1 %) und lilygo_t_display_s3_amoled (25,1 %).
+
+## 2026-09-23 — IDS-Keep-Alive: Bit-Bang raus, RMT rein
+
+`IdsCooker::sendCommand()` taktete das Funkprotokoll der Platte in Software aus — 25 ms
+Vorspann, 10 ms Pause, dann 33 Bits à `delayMicroseconds(5120|1280)` plus je 1280 µs Lücke.
+`IdsActuator::tick()` ruft das alle 500 ms auf, der loopTask stand also zweimal pro Sekunde.
+Der Frame geht jetzt als 34 `rmt_data_t`-Items an die RMT-Peripherie, `sendCommand()` kehrt
+sofort zurück.
+
+**Gemessen am esp32dev-Testboard**, mit einem IDS1-Testitem (pin_white 16, pin_yellow 17,
+pin_interrupt 23) und einer Drahtbrücke 17 → 18 auf einen Capture-Pin. Das Messwerkzeug lag
+auf dem Wegwerf-Branch `spike/ids-rmt`: eine ISR legt 256 Flanken-Zeitstempel in einen
+Ringpuffer, `GET :81/spike/capture` dekodiert daraus bis zu drei vollständige Frames. Zuerst
+gegen den **bestehenden** Bit-Bang kalibriert — der dekodierte Bitstring war zeichengleich mit
+`CMD[1]` aus der Tabelle, bevor irgendetwas umgebaut wurde.
+
+| | Bit-Bang | RMT |
+|---|---|---|
+| `registry.tick()` max | 141 280 µs | **3 791 µs** |
+| `loop()` p99 | 160 ms | **12 ms** |
+| `loop()` max | 154 ms | **18 ms** |
+| Durchläufe 100–250 ms | 58 von 3356 (1,98/s) | **0** |
+
+**Der Umbau ist eine Korrektheitsreparatur, nicht nur eine Latenzverbesserung.** Das war die
+offene Frage aus PLAN.md: `AsyncTCP` läuft mit Priorität 10 ohne Core-Bindung, der Bit-Bang
+ist also preemptierbar — ob das die Pulse verfälscht, war ungeprüft. Unter moderater Last
+(ein SSE-Abonnent, zwei parallele Downloads) waren **drei von neun** erfassten Frames
+fehlerhaft: gekippte Bits, weil eine 1280-µs-Null über die Entscheidungsschwelle gedehnt wurde.
+Die Abweichungen sprengten die Toleranzen der Library selbst — bis 1904 µs gegen
+`SIGNAL_HIGH_TOL` 1500, bis 2709 µs gegen `SIGNAL_LOW_TOL` 500. Unter derselben Last liefert
+der RMT-Pfad **alle** Bitstrings korrekt, mit 29–64 µs Abweichung.
+
+Im Leerlauf ist der un-preemptierte Bit-Bang übrigens minimal präziser als RMT (5 µs gegen
+19–50 µs); unter Last kehrt sich das um zwei Größenordnungen um. Beides liegt weit innerhalb
+der Protokolltoleranz.
+
+Drei Dinge, die beim Umbau nicht offensichtlich waren: `rmtSetTick()` muss **nach** `rmtInit()`
+kommen, weil das clk_div auf 1 stehen lässt (12,5 ns/Tick), womit 25 ms nicht ins 15-Bit-Feld
+`duration0` passen. Der Item-Puffer ist Member, nicht Stack — `rmt_write_items()` ist
+dokumentiert als *„will not copy data, instead it will point to the original items"*. Und ein
+`txEndMs`-Schutz verwirft einen Frame, solange noch einer läuft: `rmt_write_items()` nimmt die
+Kanal-Semaphore mit `portMAX_DELAY`, ein zweiter Aufruf würde also genau so lange blockieren,
+wie die Änderung einspart.
+
+Der Ruhepegel ist damit LOW statt HIGH, ohne Zutun — die Peripherie setzt
+`idle_level = RMT_IDLE_LEVEL_LOW`. Das ist auch der richtige Pegel, denn `readInput()` sucht
+das Startbit auf einer steigenden Flanke. Das `digitalWrite(PIN_YELLOW, HIGH)` in `Init()` war
+ein Artefakt und entfällt im RMT-Zweig.
+
+**Destruktor** (`IdsCooker` hatte keinen): Der Umbau führt eine knappe Ressource ein, ein
+RMT-TX-Kanal wird belegt und nie freigegeben. Neun Lösch-/Anlege-Zyklen auf das Item am
+Testboard belegten es: `registry.tick()` max sprang auf 141 417 µs zurück, die Capture zeigte
+die Bit-Bang-Signatur — `rmtInit()` lieferte `nullptr` und die Firmware fiel stillschweigend
+zurück. Mit Destruktor bleiben es nach denselben neun Zyklen 2 796 µs. Das `detachInterrupt()`
+darin repariert nebenbei ein älteres Leck: `staticInduction` blieb nach einem `DELETE` hängen
+und die ISR schrieb in freigegebenen Speicher.
+
+Arduino Core 3 hat eine inkompatible RMT-API, der ESP8266 gar keine: beide behalten über den
+`IDS_USE_RMT`-Guard den unveränderten Software-Pfad, ebenso der Fall, dass kein Kanal frei ist.
+
+Nebenbefund, als eigener PLAN.md-Punkt festgehalten: unter parallelen Datei-Downloads steigen
+**alle** Abschnittstimer gleichzeitig (bis 414 ms, einmal 14,2 s in einem Durchlauf), und bei
+3 SSE + 6 Downloads nahm das Board ~40 s lang auf beiden Ports keine Verbindung mehr an — ohne
+Absturz, die Uptime lief durch. Das ist nicht der IDS; es wurde bisher nur von ihm überdeckt.
