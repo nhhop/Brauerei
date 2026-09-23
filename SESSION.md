@@ -4632,3 +4632,85 @@ Nebenbefund, als eigener PLAN.md-Punkt festgehalten: unter parallelen Datei-Down
 **alle** Abschnittstimer gleichzeitig (bis 414 ms, einmal 14,2 s in einem Durchlauf), und bei
 3 SSE + 6 Downloads nahm das Board ~40 s lang auf beiden Ports keine Verbindung mehr an — ohne
 Absturz, die Uptime lief durch. Das ist nicht der IDS; es wurde bisher nur von ihm überdeckt.
+
+## 2026-09-23 — IDS-Induktionskocher: E2E mit der echten Platte
+
+Der seit Projektbeginn offene E2E-Punkt ist erledigt. Gefahren am **esp32dev** statt wie geplant
+am LilyGo: dort war die Messbrücke ohnehin gesteckt, und der LilyGo hat einen Pin-Konflikt
+(GPIO 1 trägt den HLT-OneWire-Bus **und** `IDS1.pin_white`), der so nicht zum Blocker wurde. Die
+Platte hängt über Optokoppler an pin_white 16 / pin_yellow 17 / pin_interrupt 23; das Relais
+sitzt in der Platte und wird über Weiß geschaltet.
+
+**Ergebnis:** Relais klickt, Platte läuft an, folgt den Stufen (bei 10 % taktet sie selbst ein
+und aus — unterhalb ihrer Mindestleistung normal —, ab 30 % läuft sie durch), `fault: null` über
+0 / 10 / 30 / 100 / 0 %. Das Ausschalten wirkt: unser `CMD[0]` beginnt mit `101`, die
+Leistungskommandos mit `1001`, und das **Antwort-Präfix der Platte kippt genauso mit**. Sie
+spiegelt also den Kommandotyp zurück, was stärker ist als `fault: null` allein.
+
+Möglich wurde das, weil die Messbrücke auf die **Antwortleitung** umgesteckt wurde (23 → 18):
+die Platte spricht dasselbe Protokoll, das Spike-Harness dekodiert ihre Frames also mit. Damit
+liest man die Antwort direkt, statt `fault` glauben zu müssen — `fault: null` ist sonst von
+„gar nichts empfangen“ nicht zu unterscheiden. Ihr Fehlercode steht in den Bits 13–16 und war
+durchgehend 0.
+
+### Drei Defekte im Empfangspfad, gefunden und behoben
+
+**Auswertung kam einen Frame zu spät.** `inputCurrent < 34` wartete auf ein 34. Bit, das die
+Platte nie sendet; `BtoI(13,4)` lief erst, wenn der nächste Frame schon begonnen hatte, und las
+die Bits des vorherigen. Jetzt wird nach dem 33. ausgewertet. Nebenbei wurde `inputBuffer[33]`
+beschrieben, ein Byte hinter dem Array — **der Backlog-Eintrag dazu war sachlich falsch**: der
+getroffene Nachbar ist nicht `newError`, sondern ein Padding-Byte (`inputBuffer` endet auf
+Offset 46, `powerSampletime` ist 4-Byte-aligned auf 48). Folgenlos, aber undefiniertes
+Verhalten.
+
+**Ein gestörter Puls hätte die Rückmeldung dauerhaft stillgelegt.** Traf eine Pulslänge weder
+das HIGH- noch das LOW-Fenster, wurde sie ignoriert, `inputCurrent` blieb stehen und
+`inputStarted` für immer true. Der alte Erholungspfad lief unbeabsichtigt über genau den
+34.-Bit-Fehler oben — mit dessen Korrektur musste ein echter Resync her.
+
+**Die Fehlermeldung war Zeigerarithmetik.** `errorMessage = "Fehler: " + errorCode;` ist
+`const char* + int`. Als die Platte im Lauf tatsächlich einmal **Code 1** meldete, kam die
+Push-Benachrichtigung als „Störung: ehler:“ an — der Zeiger war um ein Zeichen vorgerückt. Ab
+Code 9 hätte er hinter das Literal gezeigt. Jetzt `String("Fehler ") + errorCode` (die
+StringSumHelper-Überladungen verlangen einen `String` links, die umgekehrte Reihenfolge ist
+nicht übersetzbar).
+
+### Startfenster: vorbeugend geweitet, nicht akut repariert
+
+`readInput()` akzeptierte Startpulse nur bis 35 ms; die Platte sendet bis 34,1 ms. Gemessen
+wurden 113 Frames: Minimum 26 503 µs, Maximum 34 149 µs, **keiner über 35 ms**. Die alte Grenze
+hat also nichts verschluckt, die Weitung auf 45 ms ist Vorsorge. Was bleibt: die Pulslängen sind
+**diskret** (26,5 / 29,0 / 30,3 / 30,8 / 32,8 / 33,4 / 34,1 ms), und 11 der 113 Frames liegen in
+der 34,1-ms-Klasse — also eine feste Nachrichtenklasse 851 µs unter der Abbruchkante, keine
+zufällige Streuung. Gefahrlos ist die Weitung, weil ihre Frames lückenlos kommen (184 ms lang,
+182 ms Abstand): zwischen 35 und 45 ms existiert gar kein HIGH-Intervall.
+
+**Methodischer Fehler dabei, der die erste Messung wertlos machte:** das Harness suchte
+Startpulse im selben Fenster 15–35 ms, das die Library benutzt — es konnte eine Verletzung
+dieser Grenze also gar nicht beobachten, die Aussage „kein Frame über 35 ms“ war zirkulär. Erst
+mit 60 ms im Harness wurde sie belastbar. Ein Messwerkzeug darf die zu prüfende Grenze nicht
+teilen.
+
+### Bewusst nicht geändert
+
+**Der IDS-Sollwert übersteht keinen Neustart** — nach einem Reset steht `target` auf 0 und die
+Platte kommt nicht von selbst wieder hoch. Das fällt beim Testen auf und sieht nach einem Mangel
+aus, ist aber so gewollt (Nutzer-Entscheidung 2026-09-23): ein Induktionsfeld, das nach einem
+unerwarteten Reset selbsttätig wieder anläuft, wäre das größere Problem. Kein Backlog-Punkt,
+damit es niemand versehentlich „repariert“.
+
+**Das Abschaltverhalten bei Fehlern** (`Update()` kehrt bei `errorCode != 0` sofort zurück und
+sendet gar nichts mehr, auch kein „Aus“) bleibt als Backlog-Punkt offen — gleiche Kategorie,
+Produktentscheidung. Der Code-1-Vorfall hat ihm einen realen Auslöser gegeben: hätte der Code
+angestanden statt sich nach einer Sekunde selbst zu heilen, wäre die Platte stillschweigend sich
+selbst überlassen gewesen.
+
+### Nebenbei
+
+Zwei anfängliche „Abstürze“ waren die Hand am Stecker, ein Klackern ein Wackelkontakt. Übrig
+blieben zwei echte **Brownouts** (`reset=9`), solange das Board aus der Platte versorgt wurde —
+mit eigener USB-Versorgung weg. Das ist auch elektrisch richtiger: zieht das Board seinen Strom
+aus der Platte, ist die galvanische Trennung der Optokoppler ohnehin aufgehoben. Eine einzelne
+`reset=4`-Panic aus derselben Phase blieb unerklärt und trat danach nicht wieder auf.
+
+Fault-Beobachtung über drei Minuten bei 10 % nach dem Fix: 173 Abfragen, kein einziger Fehler. Code 1 kam nicht wieder, die errorMessage-Korrektur ist damit zur Laufzeit **unverifiziert** - belegt ist nur, dass die Konkatenation korrekt gebildet wird.
