@@ -18,6 +18,9 @@
 #include <SPI.h>
 #include <SensActCtrl.h>
 #include <WiFi.h>
+#ifdef BREWCTL_I2C_SDA
+#include <Wire.h>
+#endif
 #include <memory>
 
 #include "AlarmStore.h"
@@ -38,6 +41,8 @@
 #include "WebUI.h"
 #include "WebhookService.h"
 #include "WiFiSetupPortal.h"
+#include "display/DisplayPages.h"
+#include "display/DisplayUI.h"
 
 using namespace SensActCtrl;
 using BrewControl::WebUI;
@@ -80,6 +85,10 @@ BrewControl::PushService pushService;
 BrewControl::RemoteDiscovery remoteDiscovery;
 BrewControl::MdnsBrowser mdnsBrowser;
 WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
+#ifdef BREWCTL_HAS_DISPLAY
+BrewControl::DisplayUI displayUI;
+BrewControl::DisplayPages displayPages;
+#endif
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -156,6 +165,15 @@ void setup() {
   while (!Serial && millis() - waitStart < 3000) delay(10);
   delay(200);
   Serial.println(F("BrewControl boot"));
+
+#ifdef BREWCTL_I2C_SDA
+  // Boards whose variant header defaults Wire to the wrong pins: claim the
+  // real bus before any item can. BME280/GY521 call Wire.begin() without pins
+  // (via Adafruit BusIO), which is a no-op on an already running bus - but on
+  // a fresh one it would pick the defaults, on the AMOLED-1.75 SCL 17 = panel
+  // reset.
+  Wire.begin(BREWCTL_I2C_SDA, BREWCTL_I2C_SCL);
+#endif
 
   if (resetHeldAtBoot()) {
     Serial.println(F("Reset trigger — clearing WiFi prefs"));
@@ -319,6 +337,10 @@ void setup() {
   pushService.begin(hostname_);  // no-op until a browser subscribed
   webUI.begin();
   firmwareUpdater.begin();
+#ifdef BREWCTL_HAS_DISPLAY
+  displayUI.begin();
+  if (displayUI.ready()) displayPages.begin();
+#endif
   Serial.println(F("BrewControl ready"));
 }
 
@@ -350,5 +372,8 @@ void loop() {
   mdnsBrowser.tick(millis());
   pushService.tick();
   maintainWiFi();
+#ifdef BREWCTL_HAS_DISPLAY
+  displayUI.tick();
+#endif
   delay(5);
 }
