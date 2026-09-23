@@ -19,6 +19,7 @@ using SensActCtrl::Sensor;
 using SensActCtrl::ValueKind;
 
 constexpr uint32_t kRefreshMs = 500;
+constexpr size_t kMaxPages = 16;  // ~1.5 kB LVGL pool each, see rebuild_()
 constexpr int16_t kArcSize = 420;  // leaves a 23 px rim on the 466 px glass
 constexpr int16_t kArcWidth = 22;
 constexpr int16_t kCentre = 233;  // tile coordinates, panel is 466 x 466
@@ -279,6 +280,10 @@ void DisplayPages::rebuild_(bool keepPage) {
     for (const std::string& id : items.actuators)
       if (reg_->findActuator(id.c_str())) pages_.push_back(Page{Kind::Actuator, id});
   }
+  // Every page lives in LVGL's static pool (lv_conf.h: LV_MEM_SIZE), and an
+  // exhausted pool ends in LV_ASSERT's endless loop - a watchdog reboot, and
+  // the same again on the next boot. Better a truncated dashboard.
+  if (pages_.size() > kMaxPages) pages_.resize(kMaxPages);
 
   tileview_ = lv_tileview_create(lv_scr_act());
   lv_obj_set_style_bg_color(tileview_, lv_color_black(), 0);
