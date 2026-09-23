@@ -19,6 +19,7 @@ void DisplayPages::begin() {
   lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(ring, 4, 0);
   lv_obj_set_style_border_color(ring, lv_color_white(), 0);
+  lv_obj_clear_flag(ring, LV_OBJ_FLAG_CLICKABLE);  // else it eats every press
 
   const uint32_t colors[] = {0xFF0000, 0x00FF00, 0x0000FF};
   for (int i = 0; i < 3; ++i) {
@@ -27,6 +28,7 @@ void DisplayPages::begin() {
     lv_obj_set_style_radius(bar, 0, 0);
     lv_obj_set_style_border_width(bar, 0, 0);
     lv_obj_set_style_bg_color(bar, lv_color_hex(colors[i]), 0);
+    lv_obj_clear_flag(bar, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_align(bar, LV_ALIGN_TOP_MID, (i - 1) * 70, 70);
   }
 
@@ -46,6 +48,34 @@ void DisplayPages::begin() {
   lv_obj_set_style_text_color(small, lv_color_hex(0xAAAAAA), 0);
   lv_label_set_text(small, "Kühlen · Füllhöhe · Maß");
   lv_obj_align(small, LV_ALIGN_CENTER, 0, 95);
+
+  // Touch probe: a dot follows the finger and the reported coordinates are
+  // printed - mirrored or swapped axes show at a glance.
+  static lv_obj_t* dot = nullptr;
+  static lv_obj_t* coords = nullptr;
+  dot = lv_obj_create(scr);
+  lv_obj_set_size(dot, 24, 24);
+  lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(dot, 0, 0);
+  lv_obj_set_style_bg_color(dot, lv_color_hex(0x00FF88), 0);
+  lv_obj_add_flag(dot, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+  coords = lv_label_create(scr);
+  lv_obj_set_style_text_color(coords, lv_color_hex(0x00FF88), 0);
+  lv_label_set_text(coords, lv_indev_get_next(nullptr) ? "Touch: bereit"
+                                                       : "Touch: FEHLT");
+  lv_obj_align(coords, LV_ALIGN_BOTTOM_MID, 0, -60);
+  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(
+      scr,
+      [](lv_event_t*) {
+        lv_point_t p;
+        lv_indev_get_point(lv_indev_get_act(), &p);
+        lv_obj_clear_flag(dot, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(dot, p.x - 12, p.y - 12);
+        lv_label_set_text_fmt(coords, "%d, %d", p.x, p.y);
+      },
+      LV_EVENT_PRESSING, nullptr);
 }
 
 }  // namespace BrewControl

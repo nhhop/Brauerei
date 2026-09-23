@@ -3,6 +3,8 @@
 #ifdef BREWCTL_HAS_DISPLAY
 
 #include <Arduino.h>
+#include <TouchDrv.hpp>
+#include <Wire.h>
 #include <databus/Arduino_ESP32QSPI.h>
 #include <display/Arduino_CO5300.h>
 #include <esp_heap_caps.h>
@@ -38,9 +40,17 @@ constexpr uint8_t kBrightness = 160;  // 0..255; AMOLED, keep it moderate
 constexpr uint16_t kBufLines = 40;
 constexpr uint32_t kBufPx = static_cast<uint32_t>(kLcdW) * kBufLines;
 
+// CST9217 on the shared I2C bus (RTC 0x51, PMU 0x6A), which main.cpp has
+// already started on SDA 7 / SCL 6. Polled from LVGL; the interrupt line
+// (GPIO 9, shared with the RTC) stays unused.
+constexpr uint8_t kTouchAddr = 0x5A;
+
 Arduino_CO5300* g_gfx = nullptr;
 lv_disp_draw_buf_t g_drawBuf;
 lv_disp_drv_t g_dispDrv;
+TouchDrvCST92xx g_touch;
+bool g_touchUp = false;
+lv_indev_drv_t g_indevDrv;
 
 // The CO5300 ignores address windows narrower or shorter than 2 px, so every
 // invalidated area is widened to start on an even and end on an odd pixel.
@@ -59,6 +69,20 @@ void flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
   g_gfx->draw16bitBeRGBBitmap(a->x1, a->y1, reinterpret_cast<uint16_t*>(px), w,
                               h);
   lv_disp_flush_ready(drv);
+}
+
+void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
+  const TouchPoints& pts = g_touch.getTouchPoints();
+  if (pts.hasPoints()) {
+    const TouchPoint& p = pts.getPoint(0);
+    // The touch layer sits rotated 180 deg against the panel (checked on the
+    // device: a tap at the top edge reported the bottom, left reported right).
+    data->point.x = kLcdW - 1 - p.x;
+    data->point.y = kLcdH - 1 - p.y;
+    data->state = LV_INDEV_STATE_PRESSED;
+  } else {
+    data->state = LV_INDEV_STATE_RELEASED;  // LVGL keeps the last point
+  }
 }
 
 }  // namespace
@@ -95,9 +119,19 @@ void DisplayUI::begin() {
   g_dispDrv.draw_buf = &g_drawBuf;
   lv_disp_drv_register(&g_dispDrv);
 
+  // A missing touch leaves a read-only display, not a dead one.
+  g_touchUp = g_touch.begin(Wire, kTouchAddr);
+  if (g_touchUp) {
+    lv_indev_drv_init(&g_indevDrv);
+    g_indevDrv.type = LV_INDEV_TYPE_POINTER;
+    g_indevDrv.read_cb = readTouch;
+    lv_indev_drv_register(&g_indevDrv);
+  }
+
   ready_ = true;
-  Serial.printf("Display: %dx%d up, draw buffer %u B\n", kLcdW, kLcdH,
-                static_cast<unsigned>(kBufPx * sizeof(lv_color_t)));
+  Serial.printf("Display: %dx%d up, draw buffer %u B, touch %s\n", kLcdW,
+                kLcdH, static_cast<unsigned>(kBufPx * sizeof(lv_color_t)),
+                g_touchUp ? g_touch.getModelName() : "MISSING");
 }
 
 void DisplayUI::tick() {
