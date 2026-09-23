@@ -43,6 +43,7 @@
 #include "WiFiSetupPortal.h"
 #include "display/DisplayPages.h"
 #include "display/DisplayUI.h"
+#include "SpikeMetrics.h"
 
 using namespace SensActCtrl;
 using BrewControl::WebUI;
@@ -89,6 +90,7 @@ WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, fir
 BrewControl::DisplayUI displayUI;
 BrewControl::DisplayPages displayPages;
 #endif
+BrewControl::SpikeMetrics spikeMetrics;
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
 // in the library: it rides the already-established WiFi channel instead of
@@ -343,6 +345,7 @@ void setup() {
     displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
                        webUI);
 #endif
+  spikeMetrics.begin();
   Serial.println(F("BrewControl ready"));
 }
 
@@ -362,8 +365,14 @@ static void maintainWiFi() {
 }
 
 void loop() {
+  spikeMetrics.onLoop();
+  uint32_t t0 = micros();
   registry.tick();
+  spikeMetrics.recordSection(BrewControl::SpikeMetrics::kRegistry, micros() - t0);
+  t0 = micros();
   webUI.tick();
+  spikeMetrics.recordSection(BrewControl::SpikeMetrics::kWebUi, micros() - t0);
+  t0 = micros();
   firmwareUpdater.tick();
   mqttService.tick();
   webhookService.tick();
@@ -374,8 +383,11 @@ void loop() {
   mdnsBrowser.tick(millis());
   pushService.tick();
   maintainWiFi();
+  spikeMetrics.recordSection(BrewControl::SpikeMetrics::kOtherServices, micros() - t0);
 #ifdef BREWCTL_HAS_DISPLAY
+  t0 = micros();
   displayUI.tick();
+  spikeMetrics.recordDisplayTick(micros() - t0);
 #endif
   delay(5);
 }

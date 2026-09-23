@@ -10,6 +10,9 @@
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 
+#include "../SpikeMetrics.h"
+extern BrewControl::SpikeMetrics spikeMetrics;
+
 namespace BrewControl {
 namespace {
 
@@ -62,12 +65,14 @@ void rounder(lv_disp_drv_t*, lv_area_t* a) {
 }
 
 void flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
+  const uint32_t t0 = micros();
   const int16_t w = a->x2 - a->x1 + 1;
   const int16_t h = a->y2 - a->y1 + 1;
   // LV_COLOR_16_SWAP=1: the buffer already holds big-endian RGB565, which the
   // panel takes byte for byte - no per-pixel conversion on this path.
   g_gfx->draw16bitBeRGBBitmap(a->x1, a->y1, reinterpret_cast<uint16_t*>(px), w,
                               h);
+  spikeMetrics.recordFlush(static_cast<uint32_t>(w) * h, micros() - t0);
   lv_disp_flush_ready(drv);
 }
 
