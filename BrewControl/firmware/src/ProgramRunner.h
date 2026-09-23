@@ -73,6 +73,11 @@ class ProgramRunner {
   // Best-effort: programs that are neither are simply skipped.
   void pauseAllRunning(SensActCtrl::Registry& reg);
 
+  // Name of a running, awaiting or paused program whose steps target id (a
+  // controller or actuator), i.e. one that may overwrite a manual change.
+  // Mirrors programOwnerOf() in web/src/ownership.ts. False if none.
+  bool activeOwnerOf(const char* id, std::string& name) const;
+
   // Advance running programs whose step has ended, apply targets, and persist
   // on transitions. nowEpoch is the wall-clock time (Unix s). No-op
   // until nowEpoch is a real (post-2000) time.

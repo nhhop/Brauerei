@@ -13,6 +13,14 @@ class SettingsStore {
   String serialize() const;
   void update(const JsonObject& patch);
 
+  // Bumped by loadFromSD and update, so a reader on another task can re-read
+  // the String settings only after a change instead of on every tick.
+  uint32_t revision() const { return revision_; }
+
+  // Appearance: hex colors "#rrggbb" as chosen in the web UI.
+  const String& accentColor() const { return accent_; }
+  const String& secondaryColor() const { return secondary_; }
+
   // Firmware-update preferences.
   const String& firmwareChannel() const { return fwChannel_; }   // "stable" | "preview"
   bool firmwareAutoCheck() const { return fwAutoCheck_; }
@@ -63,6 +71,7 @@ class SettingsStore {
   const String& espnowTopicPrefix() const { return espnowTopicPrefix_; }
 
  private:
+  uint32_t revision_ = 0;
   String mode_       = "system";   // "light" | "dark" | "system"
   String accent_     = "#0078d4";  // hex color (Windows accent blue)
   String secondary_  = "#22c55e";  // hex color (second series: controller output)

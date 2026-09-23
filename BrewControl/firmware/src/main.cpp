@@ -339,7 +339,9 @@ void setup() {
   firmwareUpdater.begin();
 #ifdef BREWCTL_HAS_DISPLAY
   displayUI.begin();
-  if (displayUI.ready()) displayPages.begin();
+  if (displayUI.ready())
+    displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
+                       webUI);
 #endif
   Serial.println(F("BrewControl ready"));
 }

@@ -355,6 +355,22 @@ void ProgramRunner::pauseAllRunning(SensActCtrl::Registry& reg) {
   for (const auto& id : ids) control(id.c_str(), "pause", reg);
 }
 
+bool ProgramRunner::activeOwnerOf(const char* id, std::string& name) const {
+  ScopedLock lk(mutex_);
+  for (const auto& p : programs_) {
+    if (p.status != Status::Running && p.status != Status::Awaiting &&
+        p.status != Status::Paused)
+      continue;
+    for (const auto& step : p.steps)
+      for (const TargetCmd& c : step.targets)
+        if (c.id == id) {
+          name = p.name;
+          return true;
+        }
+  }
+  return false;
+}
+
 // ── Tick ─────────────────────────────────────────────────────────────────────────
 
 void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,

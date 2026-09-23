@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 #include <FS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -35,6 +37,22 @@ class DashboardStore {
   // Returns false if id not found.
   bool move(const char* id, int dir);
 
+  // Bumped by every load/add/update/remove/move, so a reader can tell that
+  // its copy is stale without comparing contents.
+  uint32_t revision() const { return revision_; }
+
+  // Number of dashboards, and a copy of the item lists of the one at index
+  // (0 = the leftmost tab in the UI; false if out of range). Safe to call
+  // from loopTask while the AsyncTCP task edits the store.
+  struct Items {
+    std::string name;
+    std::vector<std::string> sensors;
+    std::vector<std::string> actuators;
+    std::vector<std::string> controllers;
+  };
+  size_t count() const;
+  bool dashboardAt(size_t index, Items& out) const;
+
  private:
   struct DashboardCfg {
     std::string id;
@@ -58,6 +76,12 @@ class DashboardStore {
   };
 
   std::vector<DashboardCfg> dashboards_;
+  uint32_t revision_ = 0;
+
+  // Guards dashboards_: the REST handlers write from the AsyncTCP task, the
+  // display reads from loopTask. Recursive so saveToSD -> serialize while
+  // locked doesn't self-deadlock.
+  mutable SemaphoreHandle_t mutex_ = xSemaphoreCreateRecursiveMutex();
 
   static String generateId();
   static void fillFromJson(DashboardCfg& d, const JsonObject& cfg);

@@ -67,6 +67,7 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* c = espnow["clientId"])    espnowClientId_    = c;
     if (const char* p = espnow["topicPrefix"]) espnowTopicPrefix_ = p;
   }
+  ++revision_;
 }
 
 void SettingsStore::saveToSD(fs::FS& sd) const {
@@ -195,6 +196,7 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* p = espnow["topicPrefix"]) espnowTopicPrefix_ = p;
     // "connected"/"error" are read-only (live transport state) — never read from a patch.
   }
+  ++revision_;
 }
 
 }  // namespace BrewControl
