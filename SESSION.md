@@ -4568,3 +4568,149 @@ der Bump wirkt. SensActCtrl bleibt dadurch standalone installierbar.
 Verifikation: nach vollständiger Neuauflösung kompiliert in allen drei Envs **genau ein**
 `IdsCooker.cpp.o`, und zwar aus `libdeps`; `pio run` grün für esp32dev (Flash 90,3 %),
 lolin_s2_mini (87,1 %) und lilygo_t_display_s3_amoled (25,1 %).
+
+## 2026-09-23 — IDS-Keep-Alive: Bit-Bang raus, RMT rein
+
+`IdsCooker::sendCommand()` taktete das Funkprotokoll der Platte in Software aus — 25 ms
+Vorspann, 10 ms Pause, dann 33 Bits à `delayMicroseconds(5120|1280)` plus je 1280 µs Lücke.
+`IdsActuator::tick()` ruft das alle 500 ms auf, der loopTask stand also zweimal pro Sekunde.
+Der Frame geht jetzt als 34 `rmt_data_t`-Items an die RMT-Peripherie, `sendCommand()` kehrt
+sofort zurück.
+
+**Gemessen am esp32dev-Testboard**, mit einem IDS1-Testitem (pin_white 16, pin_yellow 17,
+pin_interrupt 23) und einer Drahtbrücke 17 → 18 auf einen Capture-Pin. Das Messwerkzeug lag
+auf dem Wegwerf-Branch `spike/ids-rmt`: eine ISR legt 256 Flanken-Zeitstempel in einen
+Ringpuffer, `GET :81/spike/capture` dekodiert daraus bis zu drei vollständige Frames. Zuerst
+gegen den **bestehenden** Bit-Bang kalibriert — der dekodierte Bitstring war zeichengleich mit
+`CMD[1]` aus der Tabelle, bevor irgendetwas umgebaut wurde.
+
+| | Bit-Bang | RMT |
+|---|---|---|
+| `registry.tick()` max | 141 280 µs | **3 791 µs** |
+| `loop()` p99 | 160 ms | **12 ms** |
+| `loop()` max | 154 ms | **18 ms** |
+| Durchläufe 100–250 ms | 58 von 3356 (1,98/s) | **0** |
+
+**Der Umbau ist eine Korrektheitsreparatur, nicht nur eine Latenzverbesserung.** Das war die
+offene Frage aus PLAN.md: `AsyncTCP` läuft mit Priorität 10 ohne Core-Bindung, der Bit-Bang
+ist also preemptierbar — ob das die Pulse verfälscht, war ungeprüft. Unter moderater Last
+(ein SSE-Abonnent, zwei parallele Downloads) waren **drei von neun** erfassten Frames
+fehlerhaft: gekippte Bits, weil eine 1280-µs-Null über die Entscheidungsschwelle gedehnt wurde.
+Die Abweichungen sprengten die Toleranzen der Library selbst — bis 1904 µs gegen
+`SIGNAL_HIGH_TOL` 1500, bis 2709 µs gegen `SIGNAL_LOW_TOL` 500. Unter derselben Last liefert
+der RMT-Pfad **alle** Bitstrings korrekt, mit 29–64 µs Abweichung.
+
+Im Leerlauf ist der un-preemptierte Bit-Bang übrigens minimal präziser als RMT (5 µs gegen
+19–50 µs); unter Last kehrt sich das um zwei Größenordnungen um. Beides liegt weit innerhalb
+der Protokolltoleranz.
+
+Drei Dinge, die beim Umbau nicht offensichtlich waren: `rmtSetTick()` muss **nach** `rmtInit()`
+kommen, weil das clk_div auf 1 stehen lässt (12,5 ns/Tick), womit 25 ms nicht ins 15-Bit-Feld
+`duration0` passen. Der Item-Puffer ist Member, nicht Stack — `rmt_write_items()` ist
+dokumentiert als *„will not copy data, instead it will point to the original items"*. Und ein
+`txEndMs`-Schutz verwirft einen Frame, solange noch einer läuft: `rmt_write_items()` nimmt die
+Kanal-Semaphore mit `portMAX_DELAY`, ein zweiter Aufruf würde also genau so lange blockieren,
+wie die Änderung einspart.
+
+Der Ruhepegel ist damit LOW statt HIGH, ohne Zutun — die Peripherie setzt
+`idle_level = RMT_IDLE_LEVEL_LOW`. Das ist auch der richtige Pegel, denn `readInput()` sucht
+das Startbit auf einer steigenden Flanke. Das `digitalWrite(PIN_YELLOW, HIGH)` in `Init()` war
+ein Artefakt und entfällt im RMT-Zweig.
+
+**Destruktor** (`IdsCooker` hatte keinen): Der Umbau führt eine knappe Ressource ein, ein
+RMT-TX-Kanal wird belegt und nie freigegeben. Neun Lösch-/Anlege-Zyklen auf das Item am
+Testboard belegten es: `registry.tick()` max sprang auf 141 417 µs zurück, die Capture zeigte
+die Bit-Bang-Signatur — `rmtInit()` lieferte `nullptr` und die Firmware fiel stillschweigend
+zurück. Mit Destruktor bleiben es nach denselben neun Zyklen 2 796 µs. Das `detachInterrupt()`
+darin repariert nebenbei ein älteres Leck: `staticInduction` blieb nach einem `DELETE` hängen
+und die ISR schrieb in freigegebenen Speicher.
+
+Arduino Core 3 hat eine inkompatible RMT-API, der ESP8266 gar keine: beide behalten über den
+`IDS_USE_RMT`-Guard den unveränderten Software-Pfad, ebenso der Fall, dass kein Kanal frei ist.
+
+Nebenbefund, als eigener PLAN.md-Punkt festgehalten: unter parallelen Datei-Downloads steigen
+**alle** Abschnittstimer gleichzeitig (bis 414 ms, einmal 14,2 s in einem Durchlauf), und bei
+3 SSE + 6 Downloads nahm das Board ~40 s lang auf beiden Ports keine Verbindung mehr an — ohne
+Absturz, die Uptime lief durch. Das ist nicht der IDS; es wurde bisher nur von ihm überdeckt.
+
+## 2026-09-23 — IDS-Induktionskocher: E2E mit der echten Platte
+
+Der seit Projektbeginn offene E2E-Punkt ist erledigt. Gefahren am **esp32dev** statt wie geplant
+am LilyGo: dort war die Messbrücke ohnehin gesteckt, und der LilyGo hat einen Pin-Konflikt
+(GPIO 1 trägt den HLT-OneWire-Bus **und** `IDS1.pin_white`), der so nicht zum Blocker wurde. Die
+Platte hängt über Optokoppler an pin_white 16 / pin_yellow 17 / pin_interrupt 23; das Relais
+sitzt in der Platte und wird über Weiß geschaltet.
+
+**Ergebnis:** Relais klickt, Platte läuft an, folgt den Stufen (bei 10 % taktet sie selbst ein
+und aus — unterhalb ihrer Mindestleistung normal —, ab 30 % läuft sie durch), `fault: null` über
+0 / 10 / 30 / 100 / 0 %. Das Ausschalten wirkt: unser `CMD[0]` beginnt mit `101`, die
+Leistungskommandos mit `1001`, und das **Antwort-Präfix der Platte kippt genauso mit**. Sie
+spiegelt also den Kommandotyp zurück, was stärker ist als `fault: null` allein.
+
+Möglich wurde das, weil die Messbrücke auf die **Antwortleitung** umgesteckt wurde (23 → 18):
+die Platte spricht dasselbe Protokoll, das Spike-Harness dekodiert ihre Frames also mit. Damit
+liest man die Antwort direkt, statt `fault` glauben zu müssen — `fault: null` ist sonst von
+„gar nichts empfangen“ nicht zu unterscheiden. Ihr Fehlercode steht in den Bits 13–16 und war
+durchgehend 0.
+
+### Drei Defekte im Empfangspfad, gefunden und behoben
+
+**Auswertung kam einen Frame zu spät.** `inputCurrent < 34` wartete auf ein 34. Bit, das die
+Platte nie sendet; `BtoI(13,4)` lief erst, wenn der nächste Frame schon begonnen hatte, und las
+die Bits des vorherigen. Jetzt wird nach dem 33. ausgewertet. Nebenbei wurde `inputBuffer[33]`
+beschrieben, ein Byte hinter dem Array — **der Backlog-Eintrag dazu war sachlich falsch**: der
+getroffene Nachbar ist nicht `newError`, sondern ein Padding-Byte (`inputBuffer` endet auf
+Offset 46, `powerSampletime` ist 4-Byte-aligned auf 48). Folgenlos, aber undefiniertes
+Verhalten.
+
+**Ein gestörter Puls hätte die Rückmeldung dauerhaft stillgelegt.** Traf eine Pulslänge weder
+das HIGH- noch das LOW-Fenster, wurde sie ignoriert, `inputCurrent` blieb stehen und
+`inputStarted` für immer true. Der alte Erholungspfad lief unbeabsichtigt über genau den
+34.-Bit-Fehler oben — mit dessen Korrektur musste ein echter Resync her.
+
+**Die Fehlermeldung war Zeigerarithmetik.** `errorMessage = "Fehler: " + errorCode;` ist
+`const char* + int`. Als die Platte im Lauf tatsächlich einmal **Code 1** meldete, kam die
+Push-Benachrichtigung als „Störung: ehler:“ an — der Zeiger war um ein Zeichen vorgerückt. Ab
+Code 9 hätte er hinter das Literal gezeigt. Jetzt `String("Fehler ") + errorCode` (die
+StringSumHelper-Überladungen verlangen einen `String` links, die umgekehrte Reihenfolge ist
+nicht übersetzbar).
+
+### Startfenster: vorbeugend geweitet, nicht akut repariert
+
+`readInput()` akzeptierte Startpulse nur bis 35 ms; die Platte sendet bis 34,1 ms. Gemessen
+wurden 113 Frames: Minimum 26 503 µs, Maximum 34 149 µs, **keiner über 35 ms**. Die alte Grenze
+hat also nichts verschluckt, die Weitung auf 45 ms ist Vorsorge. Was bleibt: die Pulslängen sind
+**diskret** (26,5 / 29,0 / 30,3 / 30,8 / 32,8 / 33,4 / 34,1 ms), und 11 der 113 Frames liegen in
+der 34,1-ms-Klasse — also eine feste Nachrichtenklasse 851 µs unter der Abbruchkante, keine
+zufällige Streuung. Gefahrlos ist die Weitung, weil ihre Frames lückenlos kommen (184 ms lang,
+182 ms Abstand): zwischen 35 und 45 ms existiert gar kein HIGH-Intervall.
+
+**Methodischer Fehler dabei, der die erste Messung wertlos machte:** das Harness suchte
+Startpulse im selben Fenster 15–35 ms, das die Library benutzt — es konnte eine Verletzung
+dieser Grenze also gar nicht beobachten, die Aussage „kein Frame über 35 ms“ war zirkulär. Erst
+mit 60 ms im Harness wurde sie belastbar. Ein Messwerkzeug darf die zu prüfende Grenze nicht
+teilen.
+
+### Bewusst nicht geändert
+
+**Der IDS-Sollwert übersteht keinen Neustart** — nach einem Reset steht `target` auf 0 und die
+Platte kommt nicht von selbst wieder hoch. Das fällt beim Testen auf und sieht nach einem Mangel
+aus, ist aber so gewollt (Nutzer-Entscheidung 2026-09-23): ein Induktionsfeld, das nach einem
+unerwarteten Reset selbsttätig wieder anläuft, wäre das größere Problem. Kein Backlog-Punkt,
+damit es niemand versehentlich „repariert“.
+
+**Das Abschaltverhalten bei Fehlern** (`Update()` kehrt bei `errorCode != 0` sofort zurück und
+sendet gar nichts mehr, auch kein „Aus“) bleibt als Backlog-Punkt offen — gleiche Kategorie,
+Produktentscheidung. Der Code-1-Vorfall hat ihm einen realen Auslöser gegeben: hätte der Code
+angestanden statt sich nach einer Sekunde selbst zu heilen, wäre die Platte stillschweigend sich
+selbst überlassen gewesen.
+
+### Nebenbei
+
+Zwei anfängliche „Abstürze“ waren die Hand am Stecker, ein Klackern ein Wackelkontakt. Übrig
+blieben zwei echte **Brownouts** (`reset=9`), solange das Board aus der Platte versorgt wurde —
+mit eigener USB-Versorgung weg. Das ist auch elektrisch richtiger: zieht das Board seinen Strom
+aus der Platte, ist die galvanische Trennung der Optokoppler ohnehin aufgehoben. Eine einzelne
+`reset=4`-Panic aus derselben Phase blieb unerklärt und trat danach nicht wieder auf.
+
+Fault-Beobachtung über drei Minuten bei 10 % nach dem Fix: 173 Abfragen, kein einziger Fehler. Code 1 kam nicht wieder, die errorMessage-Korrektur ist damit zur Laufzeit **unverifiziert** - belegt ist nur, dass die Konkatenation korrekt gebildet wird.
