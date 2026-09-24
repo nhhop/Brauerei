@@ -4914,3 +4914,78 @@ bleibt im Dauerbetrieb auf 0 — die Doppeltrigger kamen aus dem Einschaltmoment
 
 Nebenbefund: `/spike/capture` liegt auf **Port 81**. Eine Abfrage auf Port 80 liefert die SPA und
 sieht aus, als wäre das Harness nicht auf dem Board.
+
+## 2026-09-25 — IDS: Interrupt pro Instanz, und Fehlercode 1 eingegrenzt
+
+Anlass war eine Vergleichstabelle zur ISR der fremden Brausteuerung **Brautomat**, die
+dieselbe IDS-Codebasis nutzt und deren Code nicht öffentlich ist. Zwei Zeilen daraus ließen
+sich gegen unseren Code prüfen, der Rest nicht übernehmen.
+
+### Was die fremde Tabelle beigetragen hat — und was nicht
+
+**`attachInterruptArg()`** war dort bereits im Einsatz. Das ist genau unser Backlog-Punkt
+„Nur eine IDS-Platte pro Gerät“: `staticInduction` war ein globaler Zeiger, den jeder
+Konstruktor überschrieb, sodass eine zweite Instanz der ersten die Interrupt-Zustellung
+stahl — still, denn nur die zuletzt angelegte bekam noch Rückmeldungen. Umgestellt.
+
+**Nicht übernommen** wurden die ISR-Mikrooptimierungen. Ihre Laufzeitzahlen rechnen mit
+„1 Hz Interrupt“, die Empfangsleitung trägt aber rund 190 Flanken/s, und 60–70 µs für eine
+Bitentscheidung sind bei 240 MHz etwa 15 000 Takte — plausibel nur, wenn ihre ISR loggt
+(der Text nennt „InnuLog“ als Kompatibilitätsanforderung). Vor allem aber wäre ihre
+„schnellere“ Bitdekodierung über eine einzige Schwelle bei uns ein Rückschritt: damit
+entfällt der `else`-Zweig, also genau der Resync, der seit 2026-09-23 verhindert, dass ein
+gestörter Puls die Rückmeldung dauerhaft stilllegt. Unsere ISR kostet bei ~190 Flanken/s
+großzügig gerechnet 0,1 % CPU; der Engpass war nie sie, sondern das 139-ms-Senden.
+
+### Eine Fehlannahme, die etwas Besseres freilegte — und sich dann als folgenlos erwies
+
+Die Zeile „Zustandsvariablen: statisch im IRAM“ ließ vermuten, dass unser Empfangspfad
+abstürzen könnte: nur `readInputStatic()` trägt ein `IRAM_ATTR`, der Rumpf `readInput()`
+und `BtoI()` liegen im Flash. Im Arduino-Core nachgesehen: `gpio_install_isr_service()`
+bekommt `ARDUINO_ISR_FLAG`, und weil `CONFIG_ARDUINO_ISR_IRAM` in allen drei SDK-Configs
+**nicht gesetzt** ist, ist dieses Flag `0`; auch `__onPinInterrupt`, `micros()` und
+`__digitalRead()` liegen im Flash. Also **kein Absturz, sondern Maskierung** — der
+GPIO-Interrupt ist während Flash-Zugriffen abgeschaltet. Unser `IRAM_ATTR` bringt in diesem
+Build folglich gar nichts.
+
+Daraus wurde die Hypothese, dass LittleFS-Schreibvorgänge Flanken verschlucken und ein
+zerstörter Frame den ominösen Fehlercode 1 erzeugt. Sie passte gut — und ist **falsch**.
+Drei Phasen à 180 s bei 30 %:
+
+| Phase | Schreiblast | Fehler |
+| --- | --- | --- |
+| K | keine | 0 |
+| F | 35 Konfig-Schreibvorgänge (`POST .../label`) | 0 |
+| G | 17 Uploads à 16 KB (erzwingt Sektor-Löschungen) | 0 |
+
+Die Maskierung ist real, hat auf den IDS-Empfangspfad aber keine messbare Wirkung. Damit
+ist die Frage geschlossen — und festgehalten, damit sie niemand erneut herleitet.
+
+### Fehlercode 1: der Auslöser ist das Relais
+
+Was ihn zuverlässig auslöst, ist das **Neuanlegen des Aktors**: 11 von 12 Zyklen, jeweils
+exakt 1,1 s danach, für rund eine Sekunde. Die frühere Streuung (3/4, dann 2/12) war
+ausschließlich ein Abtastartefakt des 1-Hz-Pollings; mit 2 Hz ist es deterministisch.
+`Init()` setzt `PIN_WHITE` auf LOW, das Relais trennt die Platte also kurz vom Netz — Code
+1 ist damit höchstwahrscheinlich ihr Anlaufzustand und kein Fehler. Offen bleibt nur, dass
+er als `fault` in UI und Push erscheint, obwohl er einen Normalvorgang beschreibt.
+
+### Die Grenze, die der Fix *nicht* aufhebt
+
+`attachInterruptArg()` beseitigt die Interrupt-Grenze, nicht die harte: **RMT-Kanäle**.
+Pro Platte einer, und davon gibt es 8 (ESP32), 4 (ESP32-S2) bzw. 4 sendefähige (ESP32-S3).
+Ist keiner frei, liefert `rmtInit()` `NULL` und `Init()` fällt stillschweigend auf den
+Software-Pfad zurück — die überzählige Platte schlägt also nicht fehl, sie blockiert den
+`loop()` mit ~139 ms je Frame und macht den RMT-Umbau für alle rückgängig. Jetzt am
+Fallback kommentiert und als Punkt beim Pin-Manager vermerkt, weil es dieselbe Klasse ist
+wie die Pin-Belegung: eine Hardware-Ressource, die die UI beliebig oft vergeben lässt.
+
+### Verifikation
+
+Der Regressionstest nutzt genau den Code-1-Effekt: tritt er nach dem ISR-Umbau weiterhin
+auf, empfängt die ISR. Ohne Messharness ist `fault: null` sonst nicht von „gar nichts
+empfangen“ zu unterscheiden. Vorher 4/4, nachher 7/8 — der eine Ausreißer war der erste
+Zyklus direkt nach dem Reboot. Dazu drei Envs gebaut und 271/271 native Tests.
+
+**Ungeprüft bleibt:** der Mehr-Platten-Fall selbst (nur eine Platte vorhanden) und die
+ESP8266-Variante von `attachInterruptArg` (hier nicht übersetzbar).
