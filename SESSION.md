@@ -4825,3 +4825,92 @@ Wie die Zahlen zu lesen sind:
 - Fremdgesteuerte Items: nachfragen statt sperren?
 - Die GPL-3.0-Kopfzeile in `Arduino_CO5300.cpp`. Nutzer-Entscheidung: später ersetzen.
 - Der ungesperrte `Registry::label()`-Zugriff.
+
+## 2026-09-24 — IDS-Library: Fehlerpfad, Leistungsmischung, Idempotenz
+
+Vier offene Punkte aus dem Backlog geschlossen, zwei davon am realen Gerät gemessen. Die
+Induktionsplatte hing noch am esp32dev, und der Messaufbau war die verderbliche Ressource —
+deshalb jetzt.
+
+### Ein Fehler kappte den Kommandokanal
+
+`Update()` kehrte bei jedem Fehlercode ≠ 0 sofort zurück, und `updateError()` lieferte `true`,
+solange der Code anstand — nicht nur auf der Flanke. Damit fiel der **gesamte** Rumpf aus: der
+übergebene Sollwert wurde verworfen, bevor ihn irgendwer sah, Relais und Stufe froren ein, und
+es ging kein Frame mehr raus, auch kein „Aus“.
+
+Der schärfste Beleg ist der Not-Aus. `POST /api/estop` setzt `setEnabled(false)` für jeden
+Aktor; bei `IdsActuator` führt das über `applyEnabled()` zu `Update(0)` — und genau dort stand
+der Return. **Solange ein Fehler anstand, erreichte der Not-Aus die Platte nicht.** Die Absicht
+war an zwei Stellen dokumentiert (`Actuator.h` nennt `IdsActuator` namentlich: „must actively
+command zero, because going silent would leave the far end running“; `IdsActuator.cpp`
+wiederholt es), und eine Zeile in der Library hebelte beides aus.
+
+Entscheidung (Nutzer, 2026-09-24): **ein Fehler der Platte ist nur Status.** Der Kommandokanal
+bleibt offen, der Fehler geht wie bisher als `fault` nach oben. Ein erzwungenes Abschalten
+gehört eine Schicht höher, wo es konfigurierbar ist — in der Library wäre es fest verdrahtet,
+und ein kurz angehobener Topf würde einen Maischeschritt beenden.
+
+**Am Gerät gemessen**, nicht nur hergeleitet. Fehlercode 1 tritt beim Neuanlegen des Aktors
+reproduzierbar auf und steht genau eine Sekunde — also über zwei `Update()`-Aufrufe. Das
+Spike-Harness zählt die Flanken auf der Kommandoleitung, ein vollständiger Frame sind 68:
+
+| Firmware | Treffer | Flankenrate in der Fehlersekunde |
+| --- | --- | --- |
+| alt (`7e196eb`) | 2 | **68**, 68 |
+| neu (`53c05a0`) | 3 | **136**, 136, 136 |
+
+68 ist exakt ein Frame statt zwei — der frühe Return hat einen der beiden Aufrufe verschluckt.
+Genau die vorhergesagte Signatur.
+
+### Leistungsmischung rechnete mit IDS2s Raster
+
+`updatePower()` teilte fest durch `20L`. Das ist die Stufenbreite von IDS2; IDS1 hat 10-%-Stufen
+und bekam dadurch nur die halbe Low-Zeit. Die Stufenbreite kommt jetzt aus `PWR_STEPS`, nicht als
+neue Konstante — eine feste `10 * IDS_TYPE` hätte denselben Fehler nur eine Generation
+weitergereicht.
+
+A/B bei kommandierten 45 %, je ~100 s bei 1-Hz-Abtastung der gesendeten Stufe:
+
+| | P5 (50 %) | P4 (40 %) | Mittelleistung |
+| --- | --- | --- | --- |
+| vorher | 75,3 % | 23,7 % | **47,6 %** |
+| nachher | 50,0 % | 50,0 % | **45,0 %** |
+
+Betroffen war genau der Regelpfad, den `Maischen` benutzt.
+
+### Init() war nicht idempotent
+
+`setupCommands()` rechnete die `CMD`-Tabelle in-place in Pulsdauern um; ein zweiter Aufruf hätte
+sie komplett auf `SIGNAL_LOW` gesetzt, jedes Kommando wäre zu 33 Null-Bits geworden. Statt einer
+zweiten Tabelle (so stand es im Backlog) ist die Tabelle jetzt `static const` und `sendCommand()`
+rechnet beim Senden um: weniger Code, und 1452 Byte weniger Heap je Instanz, weil sie ins Flash
+wandert. Am Gerät mit drei Lösch-/Anlege-Zyklen geprüft — danach weiterhin korrekte Frames.
+
+Dazu ~35 Zeilen auskommentierter Vorgangercode raus, und drei Member (`timeTurnedoff`,
+`lastInterrupt`, `powerLast`) bekamen einen Initialisierer: sie hatten keinen, der Konstruktor
+setzte sie nicht, und `IdsCooker` wird per `new` angelegt — `powerLast` steuert den Schaltzyklus.
+
+### Was nicht funktioniert hat
+
+**Der geplante Topf-Test fällt aus.** Die Annahme war, „Kein Topf“ sei der eine Fehler, den man
+auf Zuruf erzeugen kann. Am Gerät: Topf bei 30 % und bei 100 % heruntergenommen, über 240 bzw.
+85 Sekunden blieb `fault` **null**. Die Zuordnung „Code 2 = kein Topf“ stammt aus der Tabelle der
+Library, nicht aus einer Beobachtung an dieser Platte. Damit gibt es derzeit keinen Weg, einen
+IDS-Fehler absichtlich auszulösen; dass der Fehlerpfad trotzdem gemessen werden konnte, lag
+allein daran, dass Code 1 beim Neuanlegen von selbst auftritt.
+
+Das erste A/B zum Fehlerpfad ging ebenfalls daneben: vier Zyklen auf jeder Firmware, drei Treffer
+auf der neuen und **null** auf der alten. Erst acht weitere Zyklen auf der alten brachten die
+zwei Vergleichswerte. Mit n=4 hätte die Aussage nicht getragen.
+
+### Harness
+
+Die Kommandoleitung triggert über den Optokoppler doppelt — der Ring des Spike-Harness wrapte
+in unter einer Sekunde. Zwei Bedingungen im Capture-ISR: eine Flanke ohne Pegelwechsel ist keine,
+und ein Pegelwechsel innerhalb von 200 µs nach der letzten akzeptierten ist ein Glitch (kürzestes
+echtes Intervall im Protokoll ist die 1280-µs-Lücke). Danach exakt 136 Flanken/s, `dropped`
+bleibt im Dauerbetrieb auf 0 — die Doppeltrigger kamen aus dem Einschaltmoment des Relais.
+
+Nebenbefund: `/spike/capture` liegt auf **Port 81**. Eine Abfrage auf Port 80 liefert die SPA und
+sieht aus, als wäre das Harness nicht auf dem Board.
