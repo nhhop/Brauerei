@@ -4714,3 +4714,114 @@ aus der Platte, ist die galvanische Trennung der Optokoppler ohnehin aufgehoben.
 `reset=4`-Panic aus derselben Phase blieb unerklärt und trat danach nicht wieder auf.
 
 Fault-Beobachtung über drei Minuten bei 10 % nach dem Fix: 173 Abfragen, kein einziger Fehler. Code 1 kam nicht wieder, die errorMessage-Korrektur ist damit zur Laufzeit **unverifiziert** - belegt ist nur, dass die Konkatenation korrekt gebildet wird.
+
+## 2026-09-23/24 — Interaktives Display auf dem AMOLED-1.75, Stufe 1 (Branch `feature/lvgl-display`)
+
+Aus dem Spike vom 2026-09-22 wird ein Feature, das im Repo bleibt. Nutzer-Entscheidungen vorab:
+- frisch ab main statt auf dem Spike-Branch weiterbauen;
+- `lv_timer_handler()` aus `loop()` statt eigenem Task;
+- als erste Stufe die Items eines Dashboards, ohne das Grid-Layout.
+
+Gebaut und am Gerät (brewcontrol.local, per OTA) Schritt für Schritt mit dem Nutzer
+abgenommen, in drei Stufen.
+
+**Panel.** Der Treiber ist `vendor/Arduino_GFX-1.3.7`, eine gekürzte Kopie von LilyGos Fork:
+14 Dateien statt 18 MB, die Quellen unverändert. Eingebunden wird er per `symlink://` nur im
+AMOLED-Env; `esp32dev` und `lolin_s2_mini` blieben bis Stufe 2 **byte-gleich** (1.726.965 B
+bzw. 1.665.382 B). Drei Dinge waren nicht offensichtlich:
+- **Takt.** Die Library taktet QSPI per Default mit **8 MHz**, so lief auch das
+  Referenzbild im Spike. Ein Vollbild hätte damit ~110 ms gekostet; jetzt sind es 40 MHz.
+- **Mindestfenster.** Der CO5300 nimmt keine Fenster unter 2×2 Pixel an, deshalb gibt es einen
+  `rounder_cb`.
+- **Umlaute.** LVGLs eingebaute Montserrat-Fonts können nur ASCII plus °. „Kühlen“ oder
+  „Füllhöhe“ hätten Lücken gehabt. Deshalb gibt es eigene Latin-1-Fonts (`lv_font_conv`, Quelle
+  ist die TTF aus dem LVGL-Paket, Anleitung in `src/display/fonts/README.md`).
+
+Nebenbei ist der `Wire`-Punkt aus PLAN.md erledigt. `main.cpp` startet `Wire` jetzt als
+Erstes auf `BREWCTL_I2C_SDA/SCL`. Im Core-2-Quelltext geprüft: Ein späteres `Wire.begin()`
+ohne Pins, etwa von BME280/GY521 über Adafruit BusIO, lässt einen laufenden Bus in Ruhe
+(`Wire.cpp:300`).
+
+**Touch.** Der Treiber ist SensorLib 0.5.0 (`TouchDrvCST92xx`), er baut unter Core 2 ohne
+Anpassung. Die Touch-Ebene liegt um **180° gedreht** gegen das Panel (oben meldete unten,
+links meldete rechts). Beim ersten Test kam gar kein Druck an: Ein bildschirmfüllendes `lv_obj`
+ist in LVGL per Default klickbar und schluckt jeden Druck.
+
+**Seiten und Bedienung.** Pro Item gibt es eine Wischseite, zuerst Regler, dann Sensoren, dann
+Aktoren. Hoch/Runter wechselt das Dashboard. Die Befunde, die das Design bestimmt haben:
+- Die Firmware prüft den Not-Aus beim Schreiben nicht. Das Display ist deshalb bei
+  eingerastetem Not-Aus komplett gesperrt, zusätzlich wird der Hintergrund rot.
+- „Fremdgesteuert“ prüfte bisher nur das Frontend (`ownership.ts`). Das Display übernimmt die
+  Regeln, sperrt aber, statt nachzufragen.
+- `DashboardStore` hatte weder einen C++-Lesezugriff noch eine Sperre. Er bekommt einen Mutex
+  nach `ProgramRunner`-Muster, `revision()` und `count()`/`dashboardAt()`.
+- Items werden auf dem AsyncTCP-Task ohne Sperre gelöscht. Deshalb hält das Display keine
+  Zeiger und sucht jede Id bei jedem Refresh neu.
+
+Neu in bestehenden Klassen: `WebUI::estopLatched()`, `ProgramRunner::activeOwnerOf()`, und
+`SettingsStore` bekommt `revision()` sowie Getter für die Akzentfarben.
+
+Das Bedienmodell hat sich in der Abnahme an vier Stellen gegen den Plan verschoben:
+- **Master-Schalter.** Geplant war, dass das Display nie `setEnabled()` aufruft. In der Web-UI
+  **ist** der Master-Schalter aber bei Binär-Aktoren der einzige Schalter. Das Display bildet
+  das jetzt nach: ein großer Knopf bei Binär-Aktoren, ein Power-Knopf bei stetigen Aktoren und
+  Reglern. Wird ein Regler abgeschaltet, gehen seine Ausgänge auf Ruhe, wie in
+  `ControllerCard.doToggle()`.
+- **Ring.** Ein `lv_arc` als Slider verschluckte Wischgesten auf der ganzen Seite. Beim Wischen
+  wurde der Sollwert unbemerkt verstellt: Die API meldete danach 46,5 statt der eingetippten
+  73,0. Jetzt ist der Ring reine Anzeige des Istwerts in der Akzentfarbe. Ein weißer Griff ist
+  der Sollwert und das einzige Ziel zum Ziehen; geschrieben wird erst beim Loslassen.
+- **Schritte.** Die ±-Knöpfe wurden durch unsichtbare Tippzonen direkt vor und hinter dem Griff
+  ersetzt, die mit ihm mitwandern.
+- **Ausgang.** „Ausgang n %“ steht einzeilig in der Sekundärfarbe unter dem Istwert. Bei
+  Aktoren mit Intervall steht dort das Intervall.
+
+Zwei Absicherungen kamen aus der eigenen Durchsicht:
+- **Neuaufbau aus dem Event.** Ein Tile-Wechsel konnte einen Neuaufbau auslösen, der den
+  Tileview in seinem eigenen Event gelöscht hätte. Heute frischt der Tile-Wechsel nur die Seite
+  auf; der Neuaufbau läuft über den Timer, beim Dashboard-Wechsel per `lv_async_call`.
+- **Poolgrenze.** Ein erschöpfter LVGL-Pool endet in `LV_ASSERT`s Endlosschleife, also im
+  Watchdog-Reboot, und das bei jedem weiteren Boot wieder. Deshalb gibt es höchstens 16 Seiten.
+  Der Pool hat jetzt 32 statt 48 KB, gemessen belegt waren höchstens 7,7 KB.
+
+**Am Gerät abgenommen:**
+- Farben, runder Rand, Umlaute.
+- Touch an Rändern und Mitte.
+- Alle Seiten des Test-Dashboards, veraltete Ids übersprungen.
+- Griff, Tippzonen und Power-Knöpfe; die Web-UI folgt binnen 1 s.
+- Not-Aus-Sperre samt rotem Hintergrund. Dafür wurde der Not-Aus per API ausgelöst und danach
+  der vorige Zustand wiederhergestellt.
+- Neuaufbau bei Dashboard-Umordnung ohne Neustart: Dashboard per API verschoben und
+  zurückgeschoben.
+- Dashboard-Wechsel per Wischen.
+
+**Rückwirkung auf `loop()`**, gemessen auf dem Wegwerf-Branch `spike/lvgl-metrics` (`GET
+:81/spike`):
+
+| | Leerlauf, 60 s | Dauerwischen, 38 s |
+|---|---|---|
+| `loop()` p50 / p99 / max | 6 / 22 / 40 ms | 6 / 72 / 137 ms |
+| `displayTick` Ø / max | 0,6 / 16 ms | 7 / 132 ms |
+| Durchläufe ≥ 50 ms | 0 | 189 von 2990 |
+| Pixel pro Sekunde | 70 k | 2,46 M (≈ 5 Vollbilder/s) |
+| Flush je 40-Zeilen-Block, max | 2,1 ms | 2,4 ms |
+
+Wie die Zahlen zu lesen sind:
+- **Rendern, nicht Blit.** Ein Vollbild braucht bei 40 MHz ~25 ms Blit. Die Zeit geht in LVGLs
+  Software-Rendering der Ringe und der großen Schrift.
+- **Registry.** `registry.tick()` hat unabhängig vom Display Spitzen um 20 ms.
+- **Heap.** 111 KB internes Heap frei, größter DMA-Block 94 KB.
+- **Bewertung.** Der Nutzer empfand das Wischen als „flüssig genug“. Der Stau beim Wischen ist
+  so akzeptiert und steht als Einschränkung in PLAN.md, samt eigenem LVGL-Task als Ausweg.
+
+**Größen:**
+- AMOLED-Env: Flash 1.953.285 B (+297 KB, 29,8 %), RAM statisch 93.844 B (+35 KB).
+- `esp32dev`/`lolin_s2_mini`: +~650 B Flash, +16 B RAM, durch die gemeinsamen Store-Änderungen.
+
+**Offen, in PLAN.md:**
+- Layout spiegeln.
+- Chart-, Programm- und Timer-Seiten.
+- Burn-in-Schutz.
+- Fremdgesteuerte Items: nachfragen statt sperren?
+- Die GPL-3.0-Kopfzeile in `Arduino_CO5300.cpp`. Nutzer-Entscheidung: später ersetzen.
+- Der ungesperrte `Registry::label()`-Zugriff.
