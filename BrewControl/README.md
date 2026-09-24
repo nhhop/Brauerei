@@ -7,7 +7,7 @@ Tuning zur Laufzeit über eine HTTP+SSE-API.
 
 > **Status:** MVP + Laufzeit-Item-Add/Remove + Bus-Discovery + Datenlogging +
 > Sollwert-Programme + MQTT/Webhook/ESP-NOW (lokal + Remote-Node) +
-> WinUI-3-Fluent-Redesign, alle drei Boards (esp32dev, LOLIN S2 Mini,
+> WinUI-3-Fluent-Redesign + rundes Touch-Display (AMOLED-1.75), alle drei Boards (esp32dev, LOLIN S2 Mini,
 > LilyGo T-Display-S3-AMOLED-1.75) hardware-verifiziert. Aktueller
 > Gesamtstand/Roadmap: [`../PLAN.md`](../PLAN.md); Session-Historie:
 > [`../SESSION.md`](../SESSION.md).
@@ -260,6 +260,54 @@ pnpm dev
 
 `.env.local` ist gitignored — jeder Entwickler trägt seine ESP32-IP
 selbst ein, kein Branch-Drift.
+
+## Rundes Touch-Display (nur `lilygo_t_display_s3_amoled`)
+
+Das 466×466-AMOLED des LilyGo T-Display-S3-AMOLED-1.75 zeigt die Items eines
+Dashboards als Seiten: zuerst Regler, dann Sensoren, dann Aktoren, maximal 16.
+Links/rechts wischen blättert die Seiten, hoch/runter wechselt das Dashboard.
+Das Grid-Layout der Web-UI wird nicht nachgebildet. Ids, zu denen es kein Item
+mehr gibt, werden übersprungen. Ändern sich Dashboards, Items oder die
+Akzentfarben, baut das Display ohne Neustart neu auf.
+
+| Seite | Anzeige | Bedienung |
+|---|---|---|
+| Regler | Ring = Istwert (Akzentfarbe), weißer Griff = Sollwert, „Ausgang n %“ (Sekundärfarbe) | Griff ziehen; Tippzonen direkt vor/hinter dem Griff = −/+ ein Schritt; Power-Knopf |
+| Stetiger Aktor | Ring = Zustand, Griff = Vorgabe, ggf. Intervall | Griff, Tippzonen, Power-Knopf |
+| Binärer Aktor | großer Knopf AN/AUS | Knopf = Master-Schalter, wie in der Web-UI |
+| Sensor | Wert + Einheit, bei Mehrkanal-Sensoren alle Kanäle | — |
+
+**Gesperrt** (die Fußzeile nennt den Grund) ist eine Seite in diesen Fällen:
+- Der **Not-Aus** ist eingerastet. Dann wird zusätzlich der Hintergrund rot.
+  Das ist strenger als die Web-UI: Am Gerät soll man den Not-Aus nicht aus
+  Versehen aufheben können.
+- Ein Aktor wird von einem aktiven Regler oder einem laufenden Programm
+  gesteuert. Die Web-UI fragt in diesem Fall nach, das Display sperrt.
+
+**Architektur:** `src/display/DisplayUI` übernimmt Panel, Touch und LVGL-Treiber.
+`src/display/DisplayPages` liefert die Inhalte. `lv_timer_handler()` läuft aus
+`loop()`, also im selben Task wie `registry.tick()`; es gibt keine Sperren und
+keine Command-Queue. Items werden bei jedem Refresh per Id gesucht, weil der
+AsyncTCP-Task sie jederzeit löschen darf. Gemessen (2026-09-24, siehe
+`SESSION.md`): Im Ruhebetrieb liegt `loop()` bei p99 22 ms. Beim Dauerwischen
+steigt p99 auf 72 ms und das Maximum auf 137 ms, verursacht vom
+Software-Rendering, nicht vom Blit.
+
+**Bausteine:** LVGL 8.4 (`src/display/lv_conf.h`, nur für dieses Env sichtbar);
+Panel-Treiber `vendor/Arduino_GFX-1.3.7` (gekürzte Kopie von LilyGos Fork, siehe
+dortiges README); Touch per SensorLib (`TouchDrvCST92xx`); eigene Latin-1-Fonts
+in `src/display/fonts/`, weil LVGLs Montserrat keine Umlaute kennt. Alles steht
+hinter `BREWCTL_HAS_DISPLAY`, die anderen Envs bauen unverändert.
+
+**Fallstricke:**
+- Der QSPI-Takt steht auf 40 MHz. Der Library-Default von 8 MHz kostet
+  ~110 ms pro Vollbild.
+- Der CO5300 nimmt nur Fenster ab 2×2 Pixel an. Deshalb gibt es einen
+  `rounder_cb`.
+- Die Touch-Ebene ist um 180° gegen das Panel gedreht.
+- `Wire` muss vor allem anderen auf SDA 7 / SCL 6 laufen
+  (`BREWCTL_I2C_SDA/SCL`), weil der Variant-Default SCL 17 der Panel-Reset
+  ist.
 
 ## API-Vertrag
 

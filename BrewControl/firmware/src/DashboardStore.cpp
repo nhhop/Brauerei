@@ -3,10 +3,25 @@
 #include "SdLock.h"
 
 namespace BrewControl {
+namespace {
+
+// RAII guard for the recursive dashboards_ mutex (same as ProgramRunner's).
+struct ScopedLock {
+  SemaphoreHandle_t m;
+  explicit ScopedLock(SemaphoreHandle_t s) : m(s) {
+    if (m) xSemaphoreTakeRecursive(m, portMAX_DELAY);
+  }
+  ~ScopedLock() { if (m) xSemaphoreGiveRecursive(m); }
+  ScopedLock(const ScopedLock&) = delete;
+  ScopedLock& operator=(const ScopedLock&) = delete;
+};
+
+}  // namespace
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 
 void DashboardStore::loadFromSD(fs::FS& sd) {
+  ScopedLock lk(mutex_);
   SdLock sdLock;
   File f = sd.open("/config/dashboards.json");
   if (!f) return;
@@ -40,6 +55,7 @@ void DashboardStore::loadFromSD(fs::FS& sd) {
     if (obj["layout"].is<JsonObject>()) d.layout.set(obj["layout"]);
     dashboards_.push_back(std::move(d));
   }
+  ++revision_;
 }
 
 void DashboardStore::saveToSD(fs::FS& sd) const {
@@ -54,6 +70,7 @@ void DashboardStore::saveToSD(fs::FS& sd) const {
 // ── Serialization ─────────────────────────────────────────────────────────────
 
 String DashboardStore::serialize() const {
+  ScopedLock lk(mutex_);
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& d : dashboards_) {
@@ -134,25 +151,30 @@ String DashboardStore::add(const JsonObject& cfg) {
   d.id = generateId().c_str();
   fillFromJson(d, cfg);
   String id = d.id.c_str();
+  ScopedLock lk(mutex_);
   dashboards_.push_back(std::move(d));
+  ++revision_;
   return id;
 }
 
 bool DashboardStore::update(const char* id, const JsonObject& cfg) {
+  ScopedLock lk(mutex_);
   for (auto& d : dashboards_) {
-    if (d.id == id) { fillFromJson(d, cfg); return true; }
+    if (d.id == id) { fillFromJson(d, cfg); ++revision_; return true; }
   }
   return false;
 }
 
 bool DashboardStore::remove(const char* id) {
+  ScopedLock lk(mutex_);
   for (auto it = dashboards_.begin(); it != dashboards_.end(); ++it) {
-    if (it->id == id) { dashboards_.erase(it); return true; }
+    if (it->id == id) { dashboards_.erase(it); ++revision_; return true; }
   }
   return false;
 }
 
 bool DashboardStore::move(const char* id, int dir) {
+  ScopedLock lk(mutex_);
   auto it = std::find_if(dashboards_.begin(), dashboards_.end(),
       [&](const DashboardCfg& d) { return d.id == id; });
   if (it == dashboards_.end()) return false;
@@ -161,6 +183,23 @@ bool DashboardStore::move(const char* id, int dir) {
   if (dir > 0 && i + 1 >= dashboards_.size()) return true;    // already rightmost: no-op
   size_t j = (dir < 0) ? i - 1 : i + 1;
   std::swap(dashboards_[i], dashboards_[j]);
+  ++revision_;
+  return true;
+}
+
+size_t DashboardStore::count() const {
+  ScopedLock lk(mutex_);
+  return dashboards_.size();
+}
+
+bool DashboardStore::dashboardAt(size_t index, Items& out) const {
+  ScopedLock lk(mutex_);
+  if (index >= dashboards_.size()) return false;
+  const DashboardCfg& d = dashboards_[index];
+  out.name = d.name;
+  out.sensors = d.sensors;
+  out.actuators = d.actuators;
+  out.controllers = d.controllers;
   return true;
 }
 

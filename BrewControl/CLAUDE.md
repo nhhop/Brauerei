@@ -67,12 +67,30 @@ pnpm typecheck
   `npx @redocly/cli lint --config BrewControl/docs/redocly.yaml BrewControl/docs/openapi.yaml`.
 - `types.ts` immer mit `RegistrySnapshot.h` synchron halten — bei Library-Änderungen prüfen.
 - SD-Pins für LilyGo T-Display-S3-AMOLED-1.75: CS=38, SCK=41, MOSI=39, MISO=40 (GPIO 33–37 durch OPI-PSRAM belegt).
-- Display-Hardware desselben Boards (am Gerät verifiziert 2026-09-22, falls es je angesteuert wird):
+- Display-Hardware desselben Boards (am Gerät verifiziert 2026-09-22):
   rundes 466×466-AMOLED auf **CO5300** über QSPI (CS 10, SCLK 12, D0 11, D1 13, D2 14, D3 15,
   RST 17, EN 16), Touch **CST9217** auf I²C 0x5A (SDA 7 / SCL 6, geteilt mit PCF8563 0x51 und
   SY6970 0x6A). Maßgeblich ist LilyGos `libraries/Mylibrary/pin_config.h`, **nicht** die
   README-Tabelle — die beschreibt nur die 1.43 (SH8601 + FT3168). ⚠ `Wire` steht auf diesem
-  Variant per Default auf SDA 18 / SCL 17, und GPIO 17 ist der Panel-Reset.
+  Variant per Default auf SDA 18 / SCL 17, und GPIO 17 ist der Panel-Reset. Deshalb startet
+  `main.cpp` `Wire` als Allererstes auf `BREWCTL_I2C_SDA/SCL`.
+- Das Display wird seit 2026-09-24 angesteuert, Code in `src/display/`: `DisplayUI` übernimmt
+  Panel, Touch und LVGL, `DisplayPages` die Inhalte. Alles steht hinter `BREWCTL_HAS_DISPLAY`.
+  Einen Überblick gibt `README.md` → „Rundes Touch-Display“. Regeln:
+  - **LVGL läuft aus `loop()`**, im selben Task wie `registry.tick()`. Touch-Aktionen rufen die
+    Registry direkt auf. Über einen Refresh hinaus **keine Item-Zeiger halten**, weil der
+    AsyncTCP-Task Items jederzeit löschen darf.
+  - Nie einen Neuaufbau aus dem Event eines Objekts heraus starten, das dabei gelöscht wird.
+    Stattdessen `lv_async_call` oder den Refresh-Timer nehmen.
+  - Bei eingerastetem Not-Aus ist das Display komplett gesperrt. Die Besitz-Regeln
+    (Regler/Programm) spiegeln `web/src/ownership.ts`.
+  - Panel-Treiber ist ausschließlich `vendor/Arduino_GFX-1.3.7` (gekürzt, Quellen unverändert).
+    **Keinen eigenen CO5300-Treiber schreiben:** Der Spike vom 2026-09-22 bekam damit trotz
+    identischer Init-Sequenz kein Bild.
+  - Umlaute gibt es nur mit den eigenen Fonts in `src/display/fonts/`; die eingebauten
+    `lv_font_montserrat_*` haben keine. Wie man die Fonts neu erzeugt, steht im README dort.
+  - Jede Seite belegt LVGL-Pool (`LV_MEM_SIZE` 32 KB, etwa 1,5 KB pro Seite). Ist der Pool
+    voll, endet das im Watchdog-Reboot. Deshalb gilt die Grenze `kMaxPages`.
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —

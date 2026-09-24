@@ -143,6 +143,9 @@ class WebUI {
   // Call once per loop() iteration. Broadcasts a fresh snapshot every 1 s.
   void tick();
 
+  // Emergency stop latched (POST /api/estop, until DELETE /api/estop).
+  bool estopLatched() const { return estop_; }
+
  private:
   void pushSnapshot_();
   void sendSnapshotTo_(AsyncEventSourceClient* client);

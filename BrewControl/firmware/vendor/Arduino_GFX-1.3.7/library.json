@@ -1,0 +1,7 @@
+{
+  "name": "Arduino_GFX_LilyGo_CO5300",
+  "version": "1.3.7",
+  "description": "Trimmed vendored copy of LilyGo's Arduino_GFX 1.3.7 fork: QSPI bus + CO5300 panel only (see README.md).",
+  "frameworks": "arduino",
+  "platforms": "espressif32"
+}
