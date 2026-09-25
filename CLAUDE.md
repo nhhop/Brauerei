@@ -21,13 +21,17 @@ Brauerei/
 ```powershell
 # SensActCtrl — Unit-Tests (native, kein Hardware nötig)
 cd SensActCtrl
-pio test -e native
+pio test -e native               # 271 Tests
 
 # BrewControl — Firmware
 cd BrewControl/firmware
+pio test -e native               # 37 Tests der Firmware selbst (test/, kein Hardware nötig)
 pio run -e esp32dev              # compile-smoke
 pio run -e esp32dev -t upload    # flash
 pio device monitor               # serial @ 115200
+# Achtung: `pio run -e native` schlägt hier fehl und ist kein Defekt —
+# das Env ist mit `test_build_src = no` reines Test-Env, `src/` gehört
+# nicht dazu und lässt sich ohne Arduino-Header ohnehin nicht bauen.
 
 # BrewControl — Web-Frontend
 cd BrewControl/web
