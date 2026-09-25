@@ -5160,8 +5160,11 @@ Verbindungen laufen ins lwIP-Socket-Limit, siehe 2026-09-23).
 | LilyGo Downloads | **190 ms** | **400 ms** | 315 |
 | LilyGo nur SD-Lesen auf Core 0 | 22 ms | 195 ms | 2 |
 | LilyGo Downloads, AsyncTCP auf Core 0 | **24 ms** | 119 ms | 2 |
+| S2 Leerlauf | 7 ms | 14 ms | 0 |
+| S2 Downloads | **420 ms** | **576 ms** | 183 |
+| S2 Downloads, AsyncTCP-Priorität 1 | **22 ms** | 34 ms | 0 |
 
-**Ergebnis:** H1 ist die Ursache, auf beiden Boards. Der Handler von `:81/spike` lief ungebunden
+**Ergebnis:** H1 ist die Ursache, auf allen drei Boards. Der Handler von `:81/spike` lief ungebunden
 jedes Mal auf Core 1, gebunden auf Core 0. Am LilyGo (SD) bremst reines Lesen `loop()` überhaupt
 nicht, dort ist es ausschließlich die Aushungerung — und sie ist dort stärker (`loop()` lief
 unter Last nur noch mit einem Fünftel der Rate). H2 gibt es auf dem esp32dev messbar, aber klein
@@ -5169,8 +5172,12 @@ unter Last nur noch mit einem Fünftel der Rate). H2 gibt es auf dem esp32dev me
 nichts mehr zu sehen. Der Download-Durchsatz ist gebunden wie ungebunden gleich (~190 KB/s für
 das 124-KB-Bundle). Der 14,2-s-Ausreißer vom 2026-09-23 trat in keiner Messung wieder auf.
 
-**Fix:** `-DCONFIG_ASYNC_TCP_RUNNING_CORE=0` in `[common]`. Auf dem S2 (ein Core) wirkungslos,
-aber harmlos; das Board war während der Session nicht im Netz und ist ungemessen (PLAN.md).
+**Fix:** `-DCONFIG_ASYNC_TCP_RUNNING_CORE=0` in `[common]`. Der S2 hat nur einen Core, dort hilft
+das nicht, und er war am schwersten betroffen. Für ihn setzt `[env:lolin_s2_mini]` zusätzlich
+`-DCONFIG_ASYNC_TCP_PRIORITY=1`: Bei gleicher Priorität teilt der Scheduler die CPU zwischen
+AsyncTCP und loopTask im Wechsel auf. Durchsatz unverändert (~300 KB/s), `/api/snapshot` unter
+Download-Last 50–125 ms statt 20 ms — für die UI unkritisch. Auf den Dual-Core-Boards bleibt die
+Priorität beim Library-Default.
 
 **Watchdog auf dem loopTask** (Nutzer-Entscheidung): Die API läuft auf dem AsyncTCP-Task und
 antwortet weiter, während `loop()` steht — genau so sah der Programm-Hänger vom 2026-09-12 aus.
@@ -5182,9 +5189,13 @@ Neustarts meldet `GET /api/update/status` als `resetReason`; die Firmware-Seite 
 färbt ungeplante Neustarts (Watchdog, Absturz, Spannungseinbruch) rot. Einen Alert dafür gibt es
 nicht, `AlarmStore` bräuchte eine neue Art — als eigener Punkt in PLAN.md.
 
-**Verifikation am esp32dev:** `GET :81/spike/hang?s=40` blockiert den loopTask. Die API
-antwortete währenddessen weiter (Uptime lief hoch), nach ~30 s startete das Board neu und meldete
-`resetReason: "task_wdt"`. Die Update-Prüfung beim Boot (TLS im loopTask) lief ohne Auslösen
+**Verifikation:** `GET :81/spike/hang?s=40` blockiert den loopTask. Am esp32dev antwortete die
+API währenddessen weiter (Uptime lief hoch), nach ~30 s startete das Board neu und meldete
+`resetReason: "task_wdt"`. Am LilyGo dasselbe mit laufendem Programm „Hermann-Weizen“ im zweiten
+Schritt (`currentStep: 1`, 60 s): nach dem Neustart lief es im selben Schritt mit unverändertem `stepStartedEpoch` weiter,
+Restzeit passend zur Uhr (3 s), und schaltete danach regulär weiter. Der Stromlos-Zyklus meldete
+`power_on`, OTA-Flashes `sw`. Zum Schluss laufen alle drei Boards auf der Fix-Firmware ohne
+Messwerkzeug. Die Update-Prüfung beim Boot (TLS im loopTask) lief ohne Auslösen
 durch. Checks: `pio run` für alle drei Envs, `pio test -e native` (37), `pnpm typecheck`,
 `pnpm build`, OpenAPI-Lint.
 
@@ -5192,6 +5203,8 @@ durch. Checks: `pio run` für alle drei Envs, `pio test -e native` (37), `pnpm t
 durch den Task-Watchdog (`esp_reset_reason()` 6), zweimal mitten im SD-Lesen. Mit `vTaskDelay(1)`
 nach jeder Datei lief er sauber. Nach dem nächsten OTA-Flash hing die SD-Karte nicht mehr ein
 (Registry leer, Einstellungen auf Code-Defaults, auf die Karte wurde nichts geschrieben), auch
-nicht nach zwei Software-Neustarts — die nehmen der Karte nicht den Strom. Der Lesepfad des
-Spikes war bewusst ungesperrt wie `AsyncFileResponse`; daraus der neue PLAN.md-Punkt zum
-fehlenden `SdLock` bei Downloads auf SD-Boards.
+nicht nach zwei Software-Neustarts — die nehmen der Karte nicht den Strom. Nach einem
+Stromlos-Zyklus war sie vollständig wieder da (Config, Logs, Items) — mit unveränderter
+Fix-Firmware, die damit als Ursache ausscheidet. Der Lesepfad des Spikes war bewusst ungesperrt
+wie `AsyncFileResponse`; daraus der neue PLAN.md-Punkt zum fehlenden `SdLock` bei Downloads auf
+SD-Boards.

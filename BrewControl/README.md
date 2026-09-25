@@ -48,7 +48,9 @@ Browser einen vollständigen Snapshot.
   Dieser Task (Priorität 10) ist per `CONFIG_ASYNC_TCP_RUNNING_CORE=0`
   auf Core 0 gebunden, damit Core 1 dem loopTask (Priorität 1) bleibt —
   ungebunden hungerte er ihn beim Streamen von Dateien aus
-  (`loop()`-p99 bis 190 ms, siehe `SESSION.md` 2026-09-26).
+  (`loop()`-p99 bis 190 ms, siehe `SESSION.md` 2026-09-26). Der S2 hat
+  nur einen Core; dort läuft AsyncTCP stattdessen mit Priorität 1, gleich
+  dem loopTask (`CONFIG_ASYNC_TCP_PRIORITY` in `[env:lolin_s2_mini]`).
 - **Watchdog auf dem loopTask** (30 s): Die Web-API läuft auf dem
   AsyncTCP-Task und antwortet auch dann weiter, wenn `loop()` hängt — ohne
   Watchdog wirkte das Gerät gesund, während Regler und Programme standen.
