@@ -338,7 +338,7 @@ void setup() {
   webUI.begin();
   firmwareUpdater.begin();
 #ifdef BREWCTL_HAS_DISPLAY
-  displayUI.begin();
+  displayUI.begin(settingsStore);
   if (displayUI.ready())
     displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
                        webUI);
@@ -375,7 +375,14 @@ void loop() {
   pushService.tick();
   maintainWiFi();
 #ifdef BREWCTL_HAS_DISPLAY
-  displayUI.tick();
+  // A new alert wakes a dimmed or dark display, as the latched stop does.
+  static uint32_t seenAlert = 0;
+  const uint32_t alert = alarmStore.lastSeq();
+  if (alert != seenAlert) {
+    seenAlert = alert;
+    displayUI.wake();
+  }
+  displayUI.tick(webUI.estopLatched());
 #endif
   delay(5);
 }

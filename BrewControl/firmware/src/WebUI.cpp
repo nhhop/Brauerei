@@ -1746,6 +1746,23 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject display = obj["display"].as<JsonObject>();
+        if (!display.isNull()) {
+          for (const char* key : {"dimAfterSec", "offAfterSec"}) {
+            if (display[key].isNull()) continue;
+            const int32_t v = display[key].is<int>() ? display[key].as<int32_t>() : -1;
+            if (v < 0 || v > 86400) {
+              req->send(400, "text/plain", String("invalid display ") + key); return;
+            }
+          }
+          for (const char* key : {"brightness", "dimPercent"}) {
+            if (display[key].isNull()) continue;
+            const int32_t v = display[key].is<int>() ? display[key].as<int32_t>() : 0;
+            if (v < 1 || v > 100) {
+              req->send(400, "text/plain", String("invalid display ") + key); return;
+            }
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
         if (!t.isNull()) {
