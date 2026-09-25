@@ -28,8 +28,11 @@ namespace SensActCtrl {
 // flow back over the same connection.
 //
 // publish(): a client sends to its server; a server sends to *all* connected
-// clients (each filters by topic). A server never relays one client's
-// messages to another — it is not a broker.
+// clients (each filters by topic) — except /set and /tune commands: the server
+// learns from incoming frames which client delivers which <device> and sends
+// such a command to that client only. Device not learned yet (or its client
+// disconnected) → broadcast. A server never relays one client's messages to
+// another — it is not a broker.
 //
 // Retain emulation (same idea as EspNowTransport): retained payloads are
 // cached locally. A side that has subscriptions sends a Retained-Request on
@@ -88,6 +91,8 @@ class WebSocketTransport : public ITransport {
   bool send_(int peer, const char* data, size_t length);
   bool send_(int peer, const std::string& wire) { return send_(peer, wire.data(), wire.size()); }
   static constexpr int kAllPeers = -1;
+  // Server: drops the learned device→peer entries of a client slot.
+  void forgetPeer_(uint8_t peer);
 
   WebSocketsServer* server_ = nullptr;
   WebSocketsClient* client_ = nullptr;
@@ -96,6 +101,8 @@ class WebSocketTransport : public ITransport {
   bool retainedRequestPending_ = false;
   std::vector<std::pair<std::string, MessageCallback>> subs_;
   std::map<std::string, std::string> retained_;
+  // Server: which client slot last delivered a frame for a <device>.
+  std::map<std::string, uint8_t> devicePeer_;
   // Always points at a string literal: it's read from other tasks (e.g. a
   // web handler reporting status) while tick() may switch it, and a pointer
   // swap can't leave a reader with a freed buffer the way std::string can.

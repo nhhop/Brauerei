@@ -55,6 +55,32 @@ inline Frame decodeFrame(const char* data, size_t length) {
   return f;
 }
 
+// Device segment of a remote topic (<prefix>/<device>/<kind>/<id>[/...]): the
+// segment right before the first "/sensor/", "/actuator/" or "/controller/".
+// Empty if the topic has none.
+inline std::string deviceOfTopic(const std::string& topic) {
+  static const char* const kKinds[] = {"/sensor/", "/actuator/", "/controller/"};
+  size_t pos = std::string::npos;
+  for (const char* kind : kKinds) {
+    const size_t p = topic.find(kind);
+    if (p < pos) pos = p;
+  }
+  if (pos == std::string::npos) return {};
+  const size_t slash = topic.rfind('/', pos == 0 ? 0 : pos - 1);
+  const size_t start = (slash == std::string::npos || slash >= pos) ? 0 : slash + 1;
+  return topic.substr(start, pos - start);
+}
+
+// True for command topics (".../set", ".../tune") — the ones addressed to
+// exactly one device.
+inline bool isCommandTopic(const std::string& topic) {
+  auto endsWith = [&](const char* suffix) {
+    const size_t n = std::strlen(suffix);
+    return topic.size() >= n && topic.compare(topic.size() - n, n, suffix) == 0;
+  };
+  return endsWith("/set") || endsWith("/tune");
+}
+
 struct Url {
   std::string host;
   uint16_t port = 80;

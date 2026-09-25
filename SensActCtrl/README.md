@@ -136,7 +136,10 @@ unbekannt → Broadcast; Zustellfehler erscheinen in `lastErrorMessage()`),
 unerreichbarem Peer), `WebSocketTransport` (dauerhafte bidirektionale
 Verbindung ohne Broker über `links2004/WebSockets`; Server- oder Client-Rolle,
 gedacht als Hub: veröffentlichende Knoten verbinden sich als Client zum
-konsumierenden Knoten; Retain-Emulation via Retained-Request, Heartbeat).
+konsumierenden Knoten; Retain-Emulation via Retained-Request, Heartbeat;
+`/set` und `/tune` gehen aus der Server-Rolle nur an den Client, der zuletzt
+Frames dieses `<device>` geliefert hat — Mapping aus empfangenen Frames
+gelernt, pro Verbindung, Ziel unbekannt → Broadcast).
 Der Client-Connect blockiert bei unerreichbarem Server bis zu
 `WEBSOCKETS_TCP_TIMEOUT` (Library-Default 5000 ms) pro Reconnect-Versuch —
 `-DWEBSOCKETS_TCP_TIMEOUT=1000` in `build_flags` empfohlen.
