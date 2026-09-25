@@ -67,6 +67,14 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* c = espnow["clientId"])    espnowClientId_    = c;
     if (const char* p = espnow["topicPrefix"]) espnowTopicPrefix_ = p;
   }
+  JsonObject display = doc["display"].as<JsonObject>();
+  if (!display.isNull()) {
+    if (display["brightness"].is<int>())  displayBrightness_  = display["brightness"].as<uint8_t>();
+    if (display["dimAfterSec"].is<int>()) displayDimAfterSec_ = display["dimAfterSec"].as<uint32_t>();
+    if (display["dimPercent"].is<int>())  displayDimPercent_  = display["dimPercent"].as<uint8_t>();
+    if (display["offAfterSec"].is<int>()) displayOffAfterSec_ = display["offAfterSec"].as<uint32_t>();
+    if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
+  }
   ++revision_;
 }
 
@@ -127,6 +135,17 @@ String SettingsStore::serialize() const {
   espnow["enabled"]     = espnowEnabled_;
   espnow["clientId"]    = espnowClientId_.c_str();
   espnow["topicPrefix"] = espnowTopicPrefix_.c_str();
+  JsonObject display = doc["display"].to<JsonObject>();
+  display["brightness"]  = displayBrightness_;
+  display["dimAfterSec"] = displayDimAfterSec_;
+  display["dimPercent"]  = displayDimPercent_;
+  display["offAfterSec"] = displayOffAfterSec_;
+  display["pixelShift"]  = displayPixelShift_;
+#ifdef BREWCTL_HAS_DISPLAY
+  display["supported"] = true;
+#else
+  display["supported"] = false;
+#endif
   String out;
   serializeJson(doc, out);
   return out;
@@ -195,6 +214,15 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* c = espnow["clientId"])    espnowClientId_    = c;
     if (const char* p = espnow["topicPrefix"]) espnowTopicPrefix_ = p;
     // "connected"/"error" are read-only (live transport state) — never read from a patch.
+  }
+  JsonObject display = patch["display"].as<JsonObject>();
+  if (!display.isNull()) {
+    if (display["brightness"].is<int>())  displayBrightness_  = display["brightness"].as<uint8_t>();
+    if (display["dimAfterSec"].is<int>()) displayDimAfterSec_ = display["dimAfterSec"].as<uint32_t>();
+    if (display["dimPercent"].is<int>())  displayDimPercent_  = display["dimPercent"].as<uint8_t>();
+    if (display["offAfterSec"].is<int>()) displayOffAfterSec_ = display["offAfterSec"].as<uint32_t>();
+    if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
+    // "supported" is read-only (server-computed) — never read from a patch.
   }
   ++revision_;
 }

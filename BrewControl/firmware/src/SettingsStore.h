@@ -70,6 +70,14 @@ class SettingsStore {
   const String& espnowClientId() const { return espnowClientId_; }
   const String& espnowTopicPrefix() const { return espnowTopicPrefix_; }
 
+  // Burn-in protection of the device's own display (BREWCTL_HAS_DISPLAY);
+  // stored on every board. Idle seconds until dimmed / dark, 0 = never.
+  uint8_t displayBrightness() const { return displayBrightness_; }  // % of panel maximum
+  uint32_t displayDimAfterSec() const { return displayDimAfterSec_; }
+  uint8_t displayDimPercent() const { return displayDimPercent_; }  // % of displayBrightness
+  uint32_t displayOffAfterSec() const { return displayOffAfterSec_; }
+  bool displayPixelShift() const { return displayPixelShift_; }
+
  private:
   uint32_t revision_ = 0;
   String mode_       = "system";   // "light" | "dark" | "system"
@@ -111,6 +119,12 @@ class SettingsStore {
   bool     espnowEnabled_     = false;
   String   espnowClientId_    = "";           // empty ⇒ falls back to mDNS hostname
   String   espnowTopicPrefix_ = "brewcontrol";
+
+  uint8_t  displayBrightness_  = 63;   // ~160/255, the level before it was adjustable
+  uint32_t displayDimAfterSec_ = 120;
+  uint8_t  displayDimPercent_  = 20;
+  uint32_t displayOffAfterSec_ = 600;
+  bool     displayPixelShift_  = false;
 };
 
 }  // namespace BrewControl

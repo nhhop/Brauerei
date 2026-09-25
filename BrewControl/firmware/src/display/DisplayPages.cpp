@@ -38,6 +38,13 @@ constexpr lv_coord_t kYUnit = 28;
 constexpr lv_coord_t kYOut = 62;
 constexpr lv_coord_t kYSteps = 124;  // master switch below the output
 
+// Pixel shift (display.pixelShift): the whole tileview walks round a small
+// circle, one step a minute, so static edges do not sit on the same pixels
+// for hours. The ring's 23 px rim leaves room; touch geometry ignores it.
+constexpr uint32_t kShiftPeriodMs = 60000;
+constexpr float kShiftRadius = 3;
+constexpr uint8_t kShiftSteps = 8;
+
 const lv_color_t kDim = lv_color_hex(0x9AA0A6);
 const lv_color_t kOff = lv_color_hex(0x303030);
 const lv_color_t kAlert = lv_color_hex(0xEF5350);
@@ -241,6 +248,9 @@ void DisplayPages::begin(Registry& reg, DashboardStore& dashboards,
   settings_ = &settings;
   webUI_ = &webUI;
   lv_obj_set_style_bg_color(lv_scr_act(), lv_color_black(), 0);
+  // A shifted tileview overhangs the screen by a few pixels; the screen must
+  // not turn that into a scroll range a swipe could chain into.
+  lv_obj_clear_flag(lv_scr_act(), LV_OBJ_FLAG_SCROLLABLE);
   // Gestures bubble up from whatever was touched; the screen outlives every
   // rebuild, so the handler is registered once, here.
   lv_obj_add_event_cb(lv_scr_act(), onGesture_, LV_EVENT_GESTURE, this);
@@ -291,6 +301,7 @@ void DisplayPages::rebuild_(bool keepPage) {
   lv_obj_add_event_cb(tileview_, onTileChanged_, LV_EVENT_VALUE_CHANGED, this);
   estopShown_ = false;
   applyEstop_();
+  applyShift_();
 
   if (pages_.empty()) {
     buildInfoPage_(lv_tileview_add_tile(tileview_, 0, 0, LV_DIR_NONE));
@@ -436,7 +447,24 @@ void DisplayPages::refresh_() {
     rebuild_();
     return;
   }
+  if (settings_->displayPixelShift() && millis() - shiftAtMs_ >= kShiftPeriodMs) {
+    shiftAtMs_ = millis();
+    shiftStep_ = (shiftStep_ + 1) % kShiftSteps;
+  }
+  applyShift_();
   refreshVisible_();
+}
+
+// Moves the tileview only when its offset changes: that redraws the screen.
+void DisplayPages::applyShift_() {
+  lv_coord_t dx = 0, dy = 0;
+  if (settings_->displayPixelShift()) {
+    const float a = shiftStep_ * 2 * static_cast<float>(M_PI) / kShiftSteps;
+    dx = static_cast<lv_coord_t>(std::lround(kShiftRadius * cosf(a)));
+    dy = static_cast<lv_coord_t>(std::lround(kShiftRadius * sinf(a)));
+  }
+  if (lv_obj_get_x(tileview_) != dx || lv_obj_get_y(tileview_) != dy)
+    lv_obj_set_pos(tileview_, dx, dy);
 }
 
 // Red background while the emergency stop is latched. Only on a change:

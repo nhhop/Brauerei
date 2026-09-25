@@ -1,12 +1,12 @@
 // BrewControl/web/src/pages/SettingsIndex.tsx
 import { useEffect, useState } from 'preact/hooks';
-import { getUpdateStatus } from '../api';
+import { getSettings, getUpdateStatus } from '../api';
 import { SettingsCard } from '../components/SettingsCard';
 import { PageShell } from '../components/PageShell';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Network, FolderOpen,
-  ShieldCheck, BellRing, Smartphone,
+  ShieldCheck, BellRing, Smartphone, Monitor,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -19,6 +19,7 @@ interface Entry {
 
 const ENTRIES: Entry[] = [
   { href: '/settings/appearance', icon: Palette, title: 'Darstellung', desc: 'Modus, Akzentfarbe, Hintergrund' },
+  { href: '/settings/display', icon: Monitor, title: 'Gerätedisplay', desc: 'Dimmen, Ausschalten, Pixel-Shift' },
   { href: '/settings/devices', icon: Cpu, title: 'Geräte', desc: 'Sensoren, Regler, Aktoren verwalten' },
   { href: '/settings/firmware', icon: CloudDownload, title: 'Firmware-Update', desc: 'Version, Kanal, Upload' },
   { href: '/settings/backup', icon: DatabaseBackup, title: 'Backup & Restore', desc: 'Konfiguration exportieren / wiederherstellen' },
@@ -34,9 +35,12 @@ const ENTRIES: Entry[] = [
 
 export function SettingsIndex(_: { path?: string }) {
   const [updateAvail, setUpdateAvail] = useState(false);
+  // Only boards built with a display get the entry.
+  const [hasDisplay, setHasDisplay] = useState(false);
 
   useEffect(() => {
     getUpdateStatus().then((s) => setUpdateAvail(s.state === 'updateAvailable')).catch(() => {});
+    getSettings().then((s) => setHasDisplay(!!s.display?.supported)).catch(() => {});
   }, []);
 
   return (
@@ -45,7 +49,7 @@ export function SettingsIndex(_: { path?: string }) {
         <h1 class="text-2xl font-semibold tracking-tight">Einstellungen</h1>
       </header>
       <div class="space-y-1">
-        {ENTRIES.map(({ href, icon, title, desc }) => (
+        {ENTRIES.filter((e) => e.href !== '/settings/display' || hasDisplay).map(({ href, icon, title, desc }) => (
           <SettingsCard key={href} href={href} icon={icon} title={title} desc={desc}
             control={href === '/settings/firmware' && updateAvail
               ? <span class={badgeCaution}>Update verfügbar</span>

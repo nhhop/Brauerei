@@ -15,6 +15,7 @@ import { RechnerIndex } from './pages/RechnerIndex';
 import { RechnerDetail } from './pages/RechnerDetail';
 import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
+import { DisplayPage } from './pages/DisplayPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { FirmwarePage } from './pages/FirmwarePage';
 import { BackupPage } from './pages/BackupPage';
@@ -182,6 +183,7 @@ export function App() {
         <RechnerDetail path="/rechner/:calc" />
         <SettingsIndex path="/settings" />
         <AppearancePage path="/settings/appearance" />
+        <DisplayPage path="/settings/display" />
         <DevicesPage path="/settings/devices" snap={snap} />
         <FirmwarePage path="/settings/firmware" />
         <BackupPage path="/settings/backup" />
