@@ -167,6 +167,37 @@ export interface ConfigSnapshot {
   controllers: ItemConfig[];
 }
 
+// GET /api/pins — mirrors writePinsJson() in firmware/src/PinMap.h.
+export type PinClass = 'free' | 'forbidden' | 'reserved' | 'risky';
+
+export interface PinUser {
+  id: string;
+  key: string; // config key, e.g. "pin", "pin_white", "cs"
+  share?: 'onewire' | 'spi'; // absent = exclusive
+}
+
+export interface PinInfo {
+  gpio: number;
+  class: PinClass;
+  note?: string;
+  inputOnly?: boolean;
+  dac?: boolean;
+  users: PinUser[];
+}
+
+export interface PinConflict {
+  gpio: number;
+  reason: string;
+  users: PinUser[];
+}
+
+export interface PinsInfo {
+  board: string;
+  caps: { dac: boolean; rmtTx: number; rmtUsed: number };
+  pins: PinInfo[];
+  conflicts: PinConflict[];
+}
+
 // Per-widget dashboard display variant. 'normal' entries are never stored —
 // absence from the *Modes map already means 'normal'.
 export type WidgetMode = 'normal' | 'compact' | 'gauge';

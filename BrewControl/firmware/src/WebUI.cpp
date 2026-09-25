@@ -13,6 +13,7 @@
 #include <LittleFS.h>
 #endif
 
+#include "BoardPins.h"
 #include "Hostname.h"
 #include "SdLock.h"
 #include "version.h"
@@ -343,6 +344,41 @@ class GetPrefixHandler : public AsyncWebHandler {
     return req->method() == HTTP_GET && req->url().startsWith(prefix_);
   }
   void handleRequest(AsyncWebServerRequest* req) override { cb_(req); }
+  bool isRequestHandlerTrivial() const override { return false; }
+
+ private:
+  String prefix_;
+  Cb cb_;
+};
+
+// Matches PUT <prefix>* requests and delivers the parsed JSON body; the URL
+// carries the item id. Same body collection and auth as BodyPrefixHandler.
+class PutJsonPrefixHandler : public AsyncWebHandler {
+ public:
+  using Cb = std::function<void(AsyncWebServerRequest*, JsonVariant&)>;
+  PutJsonPrefixHandler(const char* prefix, Cb cb)
+      : prefix_(prefix), cb_(std::move(cb)) {}
+
+  bool canHandle(AsyncWebServerRequest* req) const override {
+    return req->method() == HTTP_PUT && req->url().startsWith(prefix_);
+  }
+  void handleRequest(AsyncWebServerRequest* req) override {
+    if (req->contentLength() == 0) req->send(400, "text/plain", "missing body");
+  }
+  void handleBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
+                  size_t index, size_t total) override {
+    const uint8_t* body = collectBody(req, data, len, index, total);
+    if (body == nullptr) return;
+    if (!requireAuth(req)) return;
+    JsonDocument doc;
+    if (deserializeJson(doc, body, total) != DeserializationError::Ok ||
+        !doc.is<JsonObject>()) {
+      req->send(400, "text/plain", "invalid JSON");
+      return;
+    }
+    JsonVariant json = doc.as<JsonVariant>();
+    cb_(req, json);
+  }
   bool isRequestHandlerTrivial() const override { return false; }
 
  private:
@@ -793,7 +829,7 @@ void WebUI::begin() {
   server_.addHandler(new PostJsonHandler("/api/sensors",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addSensor(json.as<JsonObject>(), reg_);
-        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        if (!r.ok) { req->send(r.conflict ? 409 : 400, "text/plain", r.error); return; }
         items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);
@@ -802,7 +838,7 @@ void WebUI::begin() {
   server_.addHandler(new PostJsonHandler("/api/actuators",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         auto r = items_.addActuator(json.as<JsonObject>(), reg_);
-        if (!r.ok) { req->send(400, "text/plain", r.error); return; }
+        if (!r.ok) { req->send(r.conflict ? 409 : 400, "text/plain", r.error); return; }
         // A latched stop must not be bypassed by a fresh item's default.
         if (estop_) {
           if (auto* a = reg_.findActuator(json["id"] | "")) a->setEnabled(false);
@@ -822,6 +858,50 @@ void WebUI::begin() {
         items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);
+      }));
+
+  // ── Replace (edit) — full config, the id may change ──────────────────────
+  // Atomic from the client's view: a rejected config leaves the old item as
+  // it was (DynamicItems::replace*).
+  auto replaced = [this](AsyncWebServerRequest* req, const DynamicItems::Result& r,
+                         JsonVariant& json, bool isController) {
+    if (!r.ok) {
+      const int status = strcmp(r.error, "not a dynamic item") == 0 ? 404
+                         : r.conflict                               ? 409
+                                                                    : 400;
+      req->send(status, "text/plain", r.error);
+      return;
+    }
+    // A latched stop must not be bypassed by the rebuilt item's default.
+    if (estop_) {
+      const char* id = json["id"] | "";
+      if (isController) {
+        if (auto* c = reg_.findController(id)) c->setEnabled(false);
+      } else if (auto* a = reg_.findActuator(id)) {
+        a->setEnabled(false);
+      }
+    }
+    items_.saveToSD(fs_);
+    pushSnapshot_();
+    req->send(204);
+  };
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/sensors/",
+      [this, replaced](AsyncWebServerRequest* req, JsonVariant& json) {
+        const String id = req->url().substring(strlen("/api/sensors/"));
+        replaced(req, items_.replaceSensor(id.c_str(), json.as<JsonObject>(), reg_), json, false);
+      }));
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/actuators/",
+      [this, replaced](AsyncWebServerRequest* req, JsonVariant& json) {
+        const String id = req->url().substring(strlen("/api/actuators/"));
+        replaced(req, items_.replaceActuator(id.c_str(), json.as<JsonObject>(), reg_), json, false);
+      }));
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/controllers/",
+      [this, replaced](AsyncWebServerRequest* req, JsonVariant& json) {
+        const String id = req->url().substring(strlen("/api/controllers/"));
+        replaced(req, items_.replaceController(id.c_str(), json.as<JsonObject>(), reg_), json, true);
       }));
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -1070,6 +1150,15 @@ void WebUI::begin() {
   // ── Config (original cfgJson for all dynamic items — used by edit UI) ────
   server_.on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* req) {
     req->send(200, "application/json", items_.serializeConfig());
+  });
+
+  // ── Pins (board table + occupancy, PinMap.h) ─────────────────────────────
+  server_.on("/api/pins", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    writePinsJson(currentBoard(), BREWCTL_VARIANT, items_.pinUses(), doc.to<JsonObject>());
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
   });
 
   // ── Dashboards ────────────────────────────────────────────────────────────

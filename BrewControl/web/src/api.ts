@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -152,6 +152,40 @@ export function createController(cfg: object): Promise<void> {
   return postJson('/api/controllers', cfg);
 }
 
+// ── Dynamic item replacement (edit) ──────────────────────────────────────
+// The firmware swaps the item in one step and keeps the old one if the new
+// config is rejected — unlike the former delete + create, which lost the item
+// when the create failed. The new id may differ from oldId.
+
+async function putJson(url: string, body: unknown): Promise<void> {
+  const r = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) await failed(r);
+}
+
+export function replaceSensor(oldId: string, cfg: object): Promise<void> {
+  return putJson(`/api/sensors/${encodeURIComponent(oldId)}`, cfg);
+}
+
+export function replaceActuator(oldId: string, cfg: object): Promise<void> {
+  return putJson(`/api/actuators/${encodeURIComponent(oldId)}`, cfg);
+}
+
+export function replaceController(oldId: string, cfg: object): Promise<void> {
+  return putJson(`/api/controllers/${encodeURIComponent(oldId)}`, cfg);
+}
+
+// ── Pins (board table + occupancy) ───────────────────────────────────────
+
+export async function getPins(): Promise<PinsInfo> {
+  const r = await fetch('/api/pins');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as PinsInfo;
+}
+
 // ── Dynamic item deletion ────────────────────────────────────────────────
 
 async function deleteItem(url: string): Promise<void> {
@@ -199,8 +233,8 @@ export function deleteController(id: string): Promise<void> {
   return deleteItem(`/api/controllers/${encodeURIComponent(id)}`);
 }
 
-// Unlike an id change (delete+recreate), setting the label works even while
-// the item is referenced by a controller.
+// Unlike a replace (refused while a controller references a sensor/actuator),
+// setting the label works regardless of controller wiring.
 export function setSensorLabel(id: string, label: string): Promise<void> {
   return postJson(`/api/sensors/${encodeURIComponent(id)}/label`, { label });
 }

@@ -5134,3 +5134,53 @@ erneuten Connect desselben Slots werden dessen Einträge verworfen, bis wieder e
 Verifikation: 273 native Tests grün (2 neue für `deviceOfTopic`/`isCommandTopic`),
 `BrewControl/firmware` `pio run -e esp32dev` baut. **Am Gerät nicht geprüft** — das Mapping liegt im
 ARDUINO-Zweig und ist nativ nicht testbar.
+
+## 2026-09-26 — Pin-Manager Stufe 1 und Bearbeiten per PUT (Branch `feature/pin-manager`)
+
+Anlass waren die Pin-Konflikte am LilyGo (zweimal in drei Tagen, einmal auf einem Strapping-Pin) und
+der DAC-Aktor, der auch am S3 angeboten wurde. Bewusst **ohne** die Peripherie-Abstraktion: alle Pins
+stehen unter festen Konfig-Schlüsseln in `DynamicItems.cpp`, geteilt wird nur OneWire und SPI.
+
+### Umsetzung
+
+- **`firmware/src/BoardPins.h`**: Tabelle je Board (esp32dev, lolin_s2_mini, LilyGo-AMOLED), gewählt
+  per `CONFIG_IDF_TARGET_*`. Klassen `free`, `risky` (Strapping, USB, UART0, Batterie-ADC,
+  Onboard-LED), `reserved` (BOOT-Taste, SD, I²C, Display, Touch-/RTC-Interrupt), `forbidden`
+  (Flash/PSRAM); dazu Input-only, DAC-Pins und RMT-TX-Kanäle (8/4/4). SD- und I²C-Pins des LilyGo
+  sind per `static_assert` an die Build-Flags gekoppelt.
+- **`firmware/src/PinMap.h`** (header-only, nativ getestet): `collectPins` liest die Pins einer
+  Item-Config, `checkItemPins` prüft ein neues/ersetzendes Item (400 unmöglich, 409 belegt/reserviert/
+  kein RMT-Kanal, Warnungen für bedenkliche Pins), `findPinConflicts` findet Konflikte im Bestand,
+  `writePinsJson` baut `GET /api/pins`. Ein Pin hat keine vorab festgelegte Rolle — das erste Item
+  bestimmt sie, teilen dürfen nur Items derselben Bus-Art.
+- **`DynamicItems`**: `addSensor`/`addActuator` prüfen die Pins; der Boot-Pfad (`NoBegin`) lädt
+  unverändert und loggt Konflikte seriell (`[pins] GPIO …`). Neu `replaceSensor/Actuator/Controller`:
+  Pins vorab prüfen (eigene zählen als frei), altes Item über `remove*` entfernen, neues über `add*`
+  anlegen, bei Fehlschlag das alte aus seiner gespeicherten Config wiederherstellen, Listenposition
+  beibehalten.
+- **WebUI**: `PUT /api/{sensors,actuators,controllers}/{id}` (neue `PutJsonPrefixHandler`),
+  `GET /api/pins`, 409 an den POST-Routen. OpenAPI und README-Routentabelle nachgezogen.
+- **Frontend**: Bearbeiten nutzt `PUT` statt delete + create — ein abgelehntes Bearbeiten ließ früher
+  das Item verschwinden. `PinHint` unter jedem Pin-Feld (frei / gemeinsamer Bus / bedenklich / belegt
+  von X / vom Board belegt), Bestätigungs-Checkbox für bedenkliche Pins (die Firmware lässt sie zu),
+  PWM/DAC-Auswahl nur bei Boards mit DAC, IDS-Typen gesperrt ohne freien RMT-Kanal,
+  Konflikt-Banner auf der Geräte-Seite.
+- **Nebenfund**: `BREWCTL_ONEWIRE_PIN`/`BREWCTL_SSR_PIN` wurden nirgends gelesen — die LilyGo-Konflikte
+  kamen aus der Nutzer-Config, nicht aus Board-Defaults. Flags und die veraltete README-Pintabelle
+  (`kOneWirePin`, `kSsrPin`) entfernt.
+- **Gefunden**: `IDS1.pin_white` am LilyGo liegt seit der Bereinigung vom 2026-09-25 auf GPIO 9, der
+  Touch-/RTC-Interrupt-Leitung — jetzt als Konflikt gemeldet, Punkt in PLAN.md.
+
+### Verifikation
+
+- Native Tests: 53/53 in der Firmware (16 neu in `test_pin_map`: Schlüssel je Typ, OneWire-/SPI-Teilen,
+  CS exklusiv, Input-only, DAC, RMT-Budget, Ersetzen, Bestandskonflikte, JSON). Frontend: 46/46
+  vitest (7 neu für `pins.ts`), Typecheck und Build sauber. Redocly-Lint sauber (bekannte
+  `info-license`-Warnung).
+- Alle drei Envs bauen.
+- UI gegen einen Node-Mock (LilyGo-ähnliche Tabelle, IDS1 auf GPIO 9): Banner, Hinweis „bedenklich“
+  bei GPIO 3, Speichern erst nach Haken und dann genau **ein** `PUT` (kein DELETE im Request-Log),
+  GPIO 7 → 409 mit Text und Item bleibt auf GPIO 8, eigener Pin beim Bearbeiten „frei“,
+  regler-verdrahteter IDS1 → verständliche Meldung, nichts verändert, PWM/DAC-Auswahl fehlt ohne DAC,
+  IDS-Typen gesperrt bei 1/1 RMT-Kanälen.
+- **Am Gerät noch nicht geprüft** (siehe unten, sobald geflasht).

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Check } from 'lucide-preact';
-import type { Snapshot, ScannedDevice, ItemConfig } from '../types';
+import type { Snapshot, ScannedDevice, ItemConfig, PinsInfo } from '../types';
 import {
   createSensor, createActuator, createController,
-  deleteSensor, deleteActuator, deleteController,
+  replaceSensor, replaceActuator, replaceController,
   setSensorLabel, setActuatorLabel, setControllerLabel,
-  scanOneWireBus, startAutotune, stopAutotune,
+  scanOneWireBus, startAutotune, stopAutotune, getPins,
 } from '../api';
+import { riskyPins } from '../pins';
+import { PinHint } from './PinHint';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
 import {
@@ -46,7 +48,7 @@ function stableStringify(v: unknown): string {
 
 // Whether cfg (freshly built, id already confirmed unchanged) differs from
 // the persisted editConfig in anything other than "label" — if not, the
-// caller can update just the label instead of delete+recreate.
+// caller can update just the label instead of replacing the item.
 function onlyLabelDiffers(cfg: Record<string, unknown>, editConfig: Record<string, unknown>): boolean {
   const a = { ...cfg }; delete a.label;
   const b = { ...editConfig }; delete b.label;
@@ -245,9 +247,18 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const [atBusy, setAtBusy] = useState(false);
   const [atErr, setAtErr] = useState<string | null>(null);
 
+  // Board pin table + occupancy (GET /api/pins). null until loaded, or for a
+  // firmware without the route — the form then works without pin hints.
+  const [pins, setPins] = useState<PinsInfo | null>(null);
+  // Risky pins of the last submit attempt, and the set the user confirmed.
+  const [riskyWarn, setRiskyWarn] = useState<string[]>([]);
+  const [riskyAck, setRiskyAck] = useState('');
+
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setRiskyWarn([]); setRiskyAck('');
+    getPins().then(setPins).catch(() => setPins(null));
     setAtErr(null); setAtBusy(false); setAtMethod('ZieglerNichols');
     setScanning(false); setScanned(false); setScannedDevices([]); setSelectedAddress('');
 
@@ -564,6 +575,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
     if (!rrefTouched) setRref(DEFAULT_RREF[rt]);
   }
 
+  // False (and shows the confirmation box) while cfg uses risky pins the user
+  // has not confirmed yet. The firmware accepts them either way.
+  function risksConfirmed(cfg: Record<string, unknown>): boolean {
+    const risky = riskyPins(pins, cfg);
+    setRiskyWarn(risky);
+    return risky.length === 0 || riskyAck === risky.join('|');
+  }
+
   async function handleSubmit(e: Event) {
     e.preventDefault();
     const trimId = id.trim();
@@ -674,11 +693,13 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         if (isEdit && editConfig?.calibrations) cfg.calibrations = editConfig.calibrations;
         const trimmedLabel = label.trim();
         if (trimmedLabel) cfg.label = trimmedLabel;
+        if (!risksConfirmed(cfg)) { setPending(false); return; }
         if (isEdit && trimId === String(editConfig!.id) &&
             onlyLabelDiffers(cfg, editConfig!)) {
           await setSensorLabel(trimId, trimmedLabel);
+        } else if (isEdit) {
+          await replaceSensor(String(editConfig!.id), cfg);
         } else {
-          if (isEdit) await deleteSensor(String(editConfig!.id));
           await createSensor(cfg);
         }
         if (Array.isArray(cfg.channels)) createdIds = (cfg.channels as string[]).map((c) => `${trimId}.${c}`);
@@ -765,11 +786,13 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         {
           const trimmedLabel = label.trim();
           if (trimmedLabel) cfg.label = trimmedLabel;
+          if (!risksConfirmed(cfg)) { setPending(false); return; }
           if (isEdit && trimId === String(editConfig!.id) &&
               onlyLabelDiffers(cfg, editConfig!)) {
             await setActuatorLabel(trimId, trimmedLabel);
+          } else if (isEdit) {
+            await replaceActuator(String(editConfig!.id), cfg);
           } else {
-            if (isEdit) await deleteActuator(String(editConfig!.id));
             await createActuator(cfg);
           }
         }
@@ -835,8 +858,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         if (isEdit && trimId === String(editConfig!.id) &&
             onlyLabelDiffers(cfg, editConfig!)) {
           await setControllerLabel(trimId, trimmedLabel);
+        } else if (isEdit) {
+          await replaceController(String(editConfig!.id), cfg);
         } else {
-          if (isEdit) await deleteController(String(editConfig!.id));
           await createController(cfg);
         }
       }
@@ -854,7 +878,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
     } catch (e) {
       const msg = String(e);
       if (msg.includes('referenced by a controller')) {
-        setErr('Die ID kann nicht geändert werden, solange dieses Gerät mit einem Regler verbunden ist — den Regler zuerst umhängen oder löschen. Der Anzeigename lässt sich unabhängig davon jederzeit ändern.');
+        setErr('Solange dieses Gerät mit einem Regler verbunden ist, lassen sich ID und Anschlüsse nicht ändern — den Regler zuerst umhängen oder löschen. Das Gerät bleibt unverändert; der Anzeigename lässt sich unabhängig davon jederzeit ändern.');
       } else {
         setErr(msg);
       }
@@ -864,6 +888,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
   const inp = `${inpBase} w-full font-mono`;
   const lbl = 'block text-xs text-muted mb-1';
+  // The edited item's own pins show as free in the hints.
+  const selfId = isEdit ? String(editConfig!.id) : undefined;
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' :
@@ -959,6 +985,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     {scanning ? '…' : 'Scan'}
                   </button>
                 </div>
+                <PinHint pins={pins} value={pin} selfId={selfId} share="onewire" />
               </div>
               {scannedDevices.length > 0 && (
                 <div>
@@ -994,6 +1021,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={csPin}
                   onInput={(e) => setCsPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 5" class={inp} required />
+                <PinHint pins={pins} value={csPin} selfId={selfId} output />
               </div>
               <div>
                 <label class={lbl}>Wires</label>
@@ -1033,6 +1061,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                           <input type="number" value={val}
                             onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
                             placeholder="GPIO" class={inp} />
+                          <PinHint pins={pins} value={val} selfId={selfId} share="spi" output={label !== 'MISO'} />
                         </div>
                       )
                     )}
@@ -1049,6 +1078,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <label class={lbl}>GPIO-Pin</label>
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
+                <PinHint pins={pins} value={pin} selfId={selfId} />
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -1074,12 +1104,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={hx711Dout}
                     onInput={(e) => setHx711Dout((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 4" class={inp} required />
+                  <PinHint pins={pins} value={hx711Dout} selfId={selfId} />
                 </div>
                 <div>
                   <label class={lbl}>SCK Pin (GPIO)</label>
                   <input type="number" value={hx711Sck}
                     onInput={(e) => setHx711Sck((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 5" class={inp} required />
+                  <PinHint pins={pins} value={hx711Sck} selfId={selfId} output />
                 </div>
               </div>
               <p class="text-xs text-faint">
@@ -1096,6 +1128,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={diPin}
                   onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 15" class={inp} required />
+                <PinHint pins={pins} value={diPin} selfId={selfId} />
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -1126,6 +1159,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={aiPin}
                   onInput={(e) => setAiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 34" class={inp} required />
+                <PinHint pins={pins} value={aiPin} selfId={selfId} />
               </div>
               <div class="grid grid-cols-3 gap-2">
                 <div><label class={lbl}>Min</label>
@@ -1261,12 +1295,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={trigPin}
                     onInput={(e) => setTrigPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 5" class={inp} required />
+                  <PinHint pins={pins} value={trigPin} selfId={selfId} output />
                 </div>
                 <div>
                   <label class={lbl}>ECHO Pin (GPIO)</label>
                   <input type="number" value={echoPin}
                     onInput={(e) => setEchoPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 18" class={inp} required />
+                  <PinHint pins={pins} value={echoPin} selfId={selfId} />
                 </div>
               </div>
               <div class="flex gap-4">
@@ -1358,6 +1394,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 16" class={inp} required />
+                <PinHint pins={pins} value={pin} selfId={selfId} output />
               </div>
               <div>
                 <label class={lbl}>Mode</label>
@@ -1385,16 +1422,28 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={analogPin}
                   onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 25" class={inp} required />
+                <PinHint pins={pins} value={analogPin} selfId={selfId} output />
               </div>
-              <div>
-                <label class={lbl}>Mode</label>
-                <div class="flex gap-2">
-                  {(['pwm', 'dac'] as const).map((m) => (
-                    <button key={m} type="button" onClick={() => setAnalogMode(m)}
-                      class={segBtn(analogMode === m)}>{m.toUpperCase()}</button>
-                  ))}
+              {/* DAC only where the board has one (the ESP32-S3 has none); an
+                  existing DAC item keeps the option so its mode stays visible. */}
+              {(!pins || pins.caps.dac || analogMode === 'dac') && (
+                <div>
+                  <label class={lbl}>Mode</label>
+                  <div class="flex gap-2">
+                    {(['pwm', 'dac'] as const).map((m) => (
+                      <button key={m} type="button" onClick={() => setAnalogMode(m)}
+                        class={segBtn(analogMode === m)}>{m.toUpperCase()}</button>
+                    ))}
+                  </div>
+                  {analogMode === 'dac' && pins && (
+                    <p class="mt-1 text-xs text-faint">
+                      {pins.caps.dac
+                        ? `DAC-Pins: ${pins.pins.filter((p) => p.dac).map((p) => p.gpio).join(', ')}`
+                        : 'Dieses Board hat keinen DAC.'}
+                    </p>
+                  )}
                 </div>
-              </div>
+              )}
               <div>
                 <button type="button" onClick={() => setAnalogShowRange(!analogShowRange)}
                   class="text-xs text-muted hover:text-fg">
@@ -1429,6 +1478,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={pulsePin}
                   onInput={(e) => setPulsePin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 17" class={inp} required />
+                <PinHint pins={pins} value={pulsePin} selfId={selfId} output />
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
@@ -1468,6 +1518,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={val}
                     onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
                     placeholder="GPIO" class={inp} required />
+                  <PinHint pins={pins} value={val} selfId={selfId} output={label !== 'Interrupt'} />
                 </div>
               ))}
             </div>
@@ -1866,6 +1917,24 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             </div>
           )}
 
+          {riskyWarn.length > 0 && (
+            <div class="rounded-md border border-caution/40 bg-caution/10 p-3 text-xs">
+              <p class="font-medium text-fg">Bedenkliche Pins</p>
+              <ul class="mt-1 list-disc pl-4 text-muted">
+                {riskyWarn.map((w) => <li key={w}>{w}</li>)}
+              </ul>
+              <p class="mt-1 text-muted">
+                Funktioniert, der Pin hat aber eine Zweitaufgabe — z. B. kann ein Ausgang beim
+                Booten kurz schalten oder das Board nicht mehr starten.
+              </p>
+              <label class="mt-2 flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <input type="checkbox" class="accent-accent"
+                  checked={riskyAck === riskyWarn.join('|')}
+                  onChange={(e) => setRiskyAck((e.target as HTMLInputElement).checked ? riskyWarn.join('|') : '')} />
+                Trotzdem verwenden
+              </label>
+            </div>
+          )}
           {err && <p class="text-xs text-critical">{err}</p>}
     </>);
   }
@@ -1933,11 +2002,19 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
           {step === 3 && (
             <div role="radiogroup" aria-label="Gerätetyp" class="space-y-2">
-              {typesInCategory.map((t) => (
-                <ChoiceCard key={t.type} row icon={CATEGORY_ICON[t.group] ?? ROLE_META[role].icon}
-                  label={t.label} desc={t.hint}
-                  selected={typeChosen && currentType === t.type} onPick={() => applyType(t)} />
-              ))}
+              {typesInCategory.map((t) => {
+                // Each IDS cooker needs an RMT TX channel; without a free one
+                // the firmware refuses it (409), so don't offer it.
+                const noRmt = !!pins && (t.type === 'IDS1' || t.type === 'IDS2') &&
+                  pins.caps.rmtUsed >= pins.caps.rmtTx;
+                return (
+                  <ChoiceCard key={t.type} row icon={CATEGORY_ICON[t.group] ?? ROLE_META[role].icon}
+                    label={t.label}
+                    desc={noRmt ? `Kein RMT-Kanal mehr frei (${pins!.caps.rmtUsed} von ${pins!.caps.rmtTx} belegt)` : t.hint}
+                    disabled={noRmt}
+                    selected={typeChosen && currentType === t.type} onPick={() => applyType(t)} />
+                );
+              })}
             </div>
           )}
 

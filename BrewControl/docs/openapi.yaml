@@ -221,12 +221,53 @@ paths:
           description: |
             Validation failed. Body is the bare reason, e.g. `missing id`,
             `id already in use`, `missing pin`, `invalid address`,
-            `unknown sensor type`.
+            `unknown sensor type`, or a pin the board cannot use:
+            `GPIO 6 is not usable (Flash)`, `GPIO 22 does not exist on this board`,
+            `GPIO 34 is input-only (trig)`, `GPIO 4 used twice (trig, echo)`.
           content:
             text/plain: { schema: { type: string } }
+        "409": { $ref: "#/components/responses/PinConflict" }
 
   /api/sensors/{id}:
     parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    put:
+      tags: [Dynamic Items]
+      operationId: replaceSensor
+      summary: Replace (edit) a dynamic sensor
+      description: |
+        Body is the complete new config, same shape as `POST /api/sensors`; its
+        `id` may differ from the path id (rename). Pins are checked first, with
+        the old sensor's own pins counted as free; then the old sensor is
+        removed and the new one created. If creating fails, the old sensor is
+        recreated from its stored config — a rejected edit leaves everything as
+        it was. Persists to `/config/registry.json` and pushes a snapshot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SensorCreate" }
+            example: { type: DS18B20, id: kettle, pin: 5 }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Invalid config — same reasons as `POST /api/sensors`, plus
+            `invalid JSON` and `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: |
+            Pin taken or reserved (see `PinConflict`), or
+            `sensor is referenced by a controller` — a sensor wired to a
+            controller cannot be replaced; only its label can change
+            (`POST /api/sensors/{id}/label`).
+          content:
+            text/plain: { schema: { type: string } }
     delete:
       tags: [Dynamic Items]
       operationId: deleteSensor
@@ -499,12 +540,49 @@ paths:
         "400":
           description: |
             Validation failed, e.g. `missing id`, `id already in use`,
-            `unknown actuator type`, `invalid interval`.
+            `unknown actuator type`, `invalid interval`, a pin the board cannot
+            use (see `POST /api/sensors`), or `GPIO 16 has no DAC` /
+            `this board has no DAC` for `mode: dac`.
           content:
             text/plain: { schema: { type: string } }
+        "409": { $ref: "#/components/responses/PinConflict" }
 
   /api/actuators/{id}:
     parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    put:
+      tags: [Dynamic Items]
+      operationId: replaceActuator
+      summary: Replace (edit) a dynamic actuator
+      description: |
+        Same semantics as `PUT /api/sensors/{id}`: complete new config (the id
+        may change), pins checked with the old actuator's own pins counted as
+        free, old actuator restored if the new one cannot be created. With the
+        emergency stop latched, the new actuator starts disabled, as on create.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActuatorCreate" }
+            example: { type: DigitalOutput, id: pump, pin: 17, mode: Binary }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Invalid config — same reasons as `POST /api/actuators`, plus
+            `invalid JSON` and `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: |
+            Pin taken or reserved, no RMT channel left (see `PinConflict`), or
+            `actuator is referenced by a controller`.
+          content:
+            text/plain: { schema: { type: string } }
     post:
       tags: [Dynamic Items]
       operationId: writeActuator
@@ -644,6 +722,36 @@ paths:
 
   /api/controllers/{id}:
     parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    put:
+      tags: [Dynamic Items]
+      operationId: replaceController
+      summary: Replace (edit) a dynamic controller
+      description: |
+        Complete new config, same shape as `POST /api/controllers` (the id may
+        change). The old controller is removed and the new one created; if
+        creating fails, the old one is recreated from its stored config. Runtime
+        state (enabled flag, live setpoint, running autotune) starts over from
+        the config, as it did with delete + create. With the emergency stop
+        latched, the new controller starts disabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ControllerCreate" }
+            example: { type: PID, id: mash, sensor: kettle, actuator: heater, Kp: 10, Ki: 0.05, Kd: 0 }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Invalid config — same reasons as `POST /api/controllers`, plus
+            `invalid JSON` and `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `not a dynamic item`.
+          content:
+            text/plain: { schema: { type: string } }
     delete:
       tags: [Dynamic Items]
       operationId: deleteController
@@ -941,6 +1049,30 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ConfigSnapshot" }
+
+  /api/pins:
+    get:
+      tags: [Config]
+      operationId: getPins
+      summary: Get the board's GPIO table and which items use each pin
+      description: |
+        Every GPIO the chip has, classified by the firmware's board table
+        (`firmware/src/BoardPins.h`): `free`, `risky` (works, but has a side
+        job — strapping pin, USB, UART0, battery ADC; the UI asks for
+        confirmation), `reserved` (taken by the board itself — SD, display,
+        I2C, BOOT button) or `forbidden` (flash/PSRAM). `users` lists the
+        dynamic items on each pin. A pin has no predefined role: the first item
+        that takes a free pin owns it, and only items of the same bus kind
+        (`share`) may join. `conflicts` lists clashes already present in the
+        stored config — they load anyway and are reported here. Creating and
+        replacing items enforce the same rules (400/409).
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Pin table.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PinsInfo" }
 
   # ── Dashboards ─────────────────────────────────────────────────────────────
   /api/dashboards:
@@ -2633,6 +2765,16 @@ components:
       content:
         text/plain: { schema: { type: string, const: invalid JSON } }
 
+    PinConflict:
+      description: |
+        A pin is taken: `GPIO 16 already used by pump (pin)`,
+        `GPIO 7 is reserved by the board (I2C SDA (Touch, RTC, PMU))`, or for IDS
+        cookers `no free RMT channel (4 in use)`. Only items of the same bus
+        kind may share a pin (DS18B20 on one OneWire pin, MAX31865 on common
+        SPI lines). See `GET /api/pins`.
+      content:
+        text/plain: { schema: { type: string } }
+
     InvalidPath:
       description: |
         Body is `missing path`, `path must be absolute` or `path traversal`.
@@ -3116,6 +3258,61 @@ components:
         sensors: { type: array, items: { $ref: "#/components/schemas/SensorCreate" } }
         actuators: { type: array, items: { $ref: "#/components/schemas/ActuatorCreate" } }
         controllers: { type: array, items: { $ref: "#/components/schemas/ControllerCreate" } }
+
+    # ── Pins ─────────────────────────────────────────────────────────────────
+    PinUser:
+      type: object
+      required: [id, key]
+      properties:
+        id: { type: string, description: Item id. }
+        key: { type: string, description: 'Config key holding the pin, e.g. `pin`, `cs`, `pin_white`.' }
+        share:
+          type: string
+          enum: [onewire, spi]
+          description: Bus kind others may join; absent = exclusive.
+
+    PinsInfo:
+      type: object
+      required: [board, caps, pins, conflicts]
+      properties:
+        board: { type: string, description: 'PlatformIO env name (`BREWCTL_VARIANT`).' }
+        caps:
+          type: object
+          required: [dac, rmtTx, rmtUsed]
+          properties:
+            dac: { type: boolean, description: Board has a DAC (ESP32-S3 has none). }
+            rmtTx: { type: integer, description: 'RMT channels able to transmit — one per IDS cooker.' }
+            rmtUsed: { type: integer, description: IDS cookers configured. }
+        pins:
+          type: array
+          items:
+            type: object
+            required: [gpio, class, users]
+            properties:
+              gpio: { type: integer }
+              class: { type: string, enum: [free, risky, reserved, forbidden] }
+              note: { type: string, description: 'Why the pin is risky/reserved/forbidden (German, shown in the UI).' }
+              inputOnly: { type: boolean }
+              dac: { type: boolean }
+              users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
+        conflicts:
+          type: array
+          items:
+            type: object
+            required: [gpio, reason, users]
+            properties:
+              gpio: { type: integer }
+              reason: { type: string, description: 'e.g. `mehrfach belegt` or the note of a reserved pin.' }
+              users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
+      example:
+        board: lilygo_t_display_s3_amoled
+        caps: { dac: false, rmtTx: 4, rmtUsed: 1 }
+        pins:
+          - { gpio: 2, class: free, users: [{ id: pump, key: pin }] }
+          - { gpio: 3, class: risky, note: Strapping-Pin, users: [] }
+          - { gpio: 9, class: reserved, note: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
+        conflicts:
+          - { gpio: 9, reason: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
 
     # ── Bus discovery ────────────────────────────────────────────────────────
     BusScanResult:
