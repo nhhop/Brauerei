@@ -4989,3 +4989,55 @@ Zyklus direkt nach dem Reboot. Dazu drei Envs gebaut und 271/271 native Tests.
 
 **Ungeprüft bleibt:** der Mehr-Platten-Fall selbst (nur eine Platte vorhanden) und die
 ESP8266-Variante von `attachInterruptArg` (hier nicht übersetzbar).
+
+## 2026-09-25 — IDS-Fehlercodes entprellt; kleine Punkte abgeräumt
+
+### Fehlercode 1 ist ein Anlaufzustand — und wird nicht mehr gemeldet
+
+Am Gerät gemessen: die Platte meldet Code 1 rund **0,9 s nach dem Schließen des Relais** und
+hält ihn **0,3 bis 0,9 s**, also ein bis zwei Frames bei ~366 ms Frameabstand. Drei von drei
+Zyklen, jeweils im selben Zeitfenster. Er beschreibt damit keinen Betriebszustand, sondern den
+Anlauf — `Init()` zieht `PIN_WHITE` auf LOW und trennt die Platte kurz vom Netz.
+
+Die Entprellung gehört auf **Frame-Ebene**, nicht auf `Update()`-Ebene: letztere läuft mit 2 Hz
+und hat den Code zweimal hintereinander gesehen. Ein Code wird jetzt in der ISR erst nach drei
+gleichen Frames übernommen (~1,1 s), die 0 gilt weiterhin sofort — später melden ist die
+harmlose Richtung, später entwarnen nicht. Das ist unabhängig von Code 1 richtig: ein einzelner
+gestörter Frame soll nie einen Alarm auslösen.
+
+**Verifikation mit einem Haken.** Nach dem Fix: 0 Fehler in drei Zyklen. Das allein beweist
+nichts, weil die Entprellung genau das bewirken soll — und weil `fault: null` seit jeher nicht
+von „gar nichts empfangen“ zu unterscheiden ist. Vorher trug Code 1 diesen Beweis selbst; seit er
+geschluckt wird, nicht mehr. Deshalb ein unabhängiger Nachweis: ein `DigitalInput` mit Pullup auf
+denselben Pin 11 gelegt (dieselbe Konfiguration, die `IdsCooker` ohnehin setzt) und während des
+Laufs abgetastet — **23 Proben LOW, 46 HIGH** von 69. Die Antwortleitung lebt, das Ausbleiben ist
+die Entprellung. Sonde danach entfernt.
+
+### Der Aufbau ist umgezogen — und stand zwischendurch still
+
+Die Platte hängt nicht mehr am esp32dev, sondern an einem dritten S2-Board,
+**`brewcontrol-brautomat`** (192.168.178.86, IDS1 auf pin_white 7 / pin_yellow 9 /
+pin_interrupt 11). Dort kam zunächst **keine** Rückmeldung an, obwohl die Senderichtung
+funktionierte (die Platte lief). Ursache war mechanisch: der Optokoppler ist gesockelt, und beim
+Umbau war ein Pin verbogen und nicht in die Sockelleiste gelangt — vom Nutzer mit dem Multimeter
+gefunden. Danach war Code 1 sofort wieder reproduzierbar.
+
+**Eigener Fehler dabei:** Ich habe dreimal „Platte läuft an“ angekündigt und gemessen, obwohl der
+Nutzer zuvor gesagt hatte, Platte *und* Board seien vom Strom. Als das Board zurückkam, habe ich
+den Rest des Aufbaus stillschweigend mit angenommen. Eine Ankündigung ist wertlos, wenn der
+Zustand nicht vorher verifiziert wird.
+
+### Zwei kleine Punkte nebenbei
+
+**Das `native`-Env von `BrewControl/firmware` war nie kaputt** — das war eine eigene
+Fehldiagnose. `pio test -e native` fährt 37 Tests aus `test/` grün; mit `test_build_src = no` ist
+`pio run` schlicht das falsche Kommando. Der Irrtum entstand, weil `CLAUDE.md` unter „Common
+Commands“ nur das native-Env von SensActCtrl nannte. Beide stehen dort jetzt, samt Hinweis.
+
+**Die Pin-Konflikte am LilyGo sind aufgelöst** (am Gerät, nicht im Repo). Die im Backlog
+beschriebenen Konflikte auf GPIO 1 und 2 waren bereits behoben — dafür lag `IDS1.pin_white`
+inzwischen zusammen mit `agitator` auf **GPIO 3**, einem **Strapping-Pin**, und unbemerkt
+`Riptide Pumpe` auf **GPIO 4**, dem **Batteriespannungs-ADC** des Boards. Jetzt pin_white 9,
+agitator 8, Pumpe 2; GPIO 3 und 4 sind frei. Binnen drei Tagen hat dieselbe Ursache zweimal
+zugeschlagen — nichts prüft die Belegung, und die Board-Defaults kennen die vergebenen Pins
+nicht. Der Punkt liegt jetzt beim Pin-Manager, zusammen mit dem RMT-Kanalbudget.
