@@ -60,6 +60,7 @@ class DisplayPages {
 
   void rebuild_(bool keepPage = true);
   void applyEstop_();
+  void applyShift_();
   void buildPage_(Page& p, lv_obj_t* tile, size_t index, size_t count);
   void buildActuator_(Page& p, lv_obj_t* tile);
   void buildInfoPage_(lv_obj_t* tile);
@@ -97,6 +98,8 @@ class DisplayPages {
   size_t dashIndex_ = 0;     // which dashboard is shown
   bool estopShown_ = false;  // red background is on
   uint32_t builtSettingsRevision_ = 0;
+  uint8_t shiftStep_ = 0;  // pixel shift: position on its small circle
+  uint32_t shiftAtMs_ = 0;
 };
 
 }  // namespace BrewControl

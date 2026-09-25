@@ -5041,3 +5041,85 @@ inzwischen zusammen mit `agitator` auf **GPIO 3**, einem **Strapping-Pin**, und 
 agitator 8, Pumpe 2; GPIO 3 und 4 sind frei. Binnen drei Tagen hat dieselbe Ursache zweimal
 zugeschlagen — nichts prüft die Belegung, und die Board-Defaults kennen die vergebenen Pins
 nicht. Der Punkt liegt jetzt beim Pin-Manager, zusammen mit dem RMT-Kanalbudget.
+
+## 2026-09-25 — Burn-in-Schutz fürs AMOLED (Branch `feature/display-burnin`)
+
+Das runde AMOLED zeigte seit Stufe 1 dauerhaft ein statisches Bild bei Helligkeit 160.
+
+### Umsetzung
+
+- **Einstellungen:** neue Sektion `display` in `SettingsStore`, wirkt live und löst
+  keinen Neustart aus. Felder: `brightness` (63 %), `dimAfterSec` (120),
+  `dimPercent` (20 %), `offAfterSec` (600), `pixelShift` (aus). Dazu kommt
+  `supported` (read-only, `BREWCTL_HAS_DISPLAY`). Die Werte sind in
+  `POST /api/settings` validiert und in `docs/openapi.yaml` beschrieben.
+- **Web-UI:** eigene Seite Einstellungen › Gerätedisplay. Sie erscheint im Index
+  nur, wenn `display.supported` gilt.
+- **`DisplayUI`:** kennt die Zustände Awake, Dimmed und Off. Die Leerlaufzeit
+  kommt aus `lv_disp_get_inactive_time()`.
+  - Schwarz bedeutet Helligkeit 0 und kein `lv_timer_handler()`. Nur der Touch
+    wird alle 30 ms abgefragt.
+  - Der aufweckende Druck wird bis zum Loslassen als „released“ an LVGL
+    gemeldet.
+  - Der Not-Aus (`holdAwake`) und jeder neue Alert (`AlarmStore::lastSeq()`)
+    wecken das Display.
+- **Pixel-Shift:** in `DisplayPages` wandert der Tileview alle 60 s eine von 8
+  Positionen auf einem Kreis mit 3 px Radius weiter. Der Screen ist nicht mehr
+  scrollbar, damit der Überhang keinen Scrollbereich erzeugt.
+- Die Grundhelligkeit kam während der Abnahme als Wunsch dazu. Sie ersetzt die
+  feste Konstante 160, ihr Default 63 % entspricht dem bisherigen Wert.
+
+### Fehler in der Abnahme: Wischen aus Schwarz ging durch
+
+Aus dem gedimmten Zustand wurde der aufweckende Druck korrekt geschluckt. Aus
+Schwarz dagegen blätterte ein Wischen und verstellte den Griff; am Gerät sprang
+der Sollwert von 72 auf 82 und wurde per API zurückgesetzt.
+
+**Ursache:** `TouchDrvCST92xx::getTouchPoints()` quittiert jeden Frame per ACK.
+Beim Aufwachen lesen der Poll in `tick()` und direkt danach LVGLs
+Nachhol-Durchlauf zweimal hintereinander. Der zweite Lesevorgang liefert „kein
+Finger“, das Verschlucken endete, und der Rest des Wischens kam bei LVGL an.
+
+**Fix:** Ein Finger gilt erst nach 150 ms ohne Berührung als losgelassen
+(`kLiftMs`). Daraus ist eine neue Regel in `BrewControl/CLAUDE.md` geworden.
+
+### Verifikation
+
+- Gebaut wurden alle drei Envs. Flash gegenüber `origin/main`:
+
+  | Env | Flash |
+  |---|---|
+  | esp32dev | +2 676 B |
+  | lolin_s2_mini | +2 776 B |
+  | LilyGo | +3 700 B |
+
+  esp32dev und lolin wachsen gleich, weil SettingsStore und die WebUI-Validierung
+  gemeinsam sind. RAM wächst um +16 B bzw. +48 B.
+- Native-Tests: 37/37 in der Firmware, 271/271 in SensActCtrl. Typecheck und
+  Redocly-Lint sind sauber, die Lint-Warnung `info-license` bestand schon vorher.
+- UI gegen einen Node-Mock geprüft:
+  - Patch-Bodies für alle fünf Felder,
+  - unbekannte Werte werden als eigene Option angezeigt,
+  - 375 px Breite in Hell und Dunkel,
+  - bei `supported: false` gibt es keinen Index-Eintrag.
+- Am LilyGo per OTA, die Zeiten per API verkürzt (15/30 s, dann 5/10 s). Vom
+  Nutzer bestätigt:
+  - Dimmen und Schwarz.
+  - Aufwecken mit aktuellem Bild.
+  - Aufweck-Tipp ohne Wirkung auf Power-Knopf, Griff, Tippzone und beim Wischen
+    links/oben, aus gedimmt und aus schwarz. Nach dem Fix zeigte der
+    Snapshot-Vergleich keine Änderung durch das Aufwecken.
+  - Not-Aus: das Display wurde sofort hell und rot und blieb hell. Danach wurde
+    der vorige Zustand samt Regler-Parametern wiederhergestellt und per Snapshot
+    geprüft.
+  - Eine Test-Alarmregel weckte das Display aus Schwarz; die Regel ist wieder
+    gelöscht.
+  - Grundhelligkeit 100 % und 20 % sowie Dimmstufe 5 % und 50 %; beide wirken
+    live, auch im gedimmten Zustand.
+  - Pixel-Shift mit vorübergehend 5 s / 10 px: das Bild bewegte sich,
+    Bedienung normal, nach dem Ausschalten zentriert.
+- Am Ende wurden die Default-Werte zurückgesetzt und die finale Firmware
+  (60 s / 3 px) geflasht.
+
+**Ungeprüft bleibt:** das Verhalten ohne Touch-Controller. Dann wecken nur
+Not-Aus und Meldungen.

@@ -284,6 +284,32 @@ Akzentfarben, baut das Display ohne Neustart neu auf.
 - Ein Aktor wird von einem aktiven Regler oder einem laufenden Programm
   gesteuert. Die Web-UI fragt in diesem Fall nach, das Display sperrt.
 
+**Burn-in-Schutz:** Ohne Berührung dimmt das Display und wird später schwarz
+(Helligkeit 0, beim AMOLED sind die Pixel dann aus). Eingestellt wird das unter
+Einstellungen › Gerätedisplay (`display.*` in `/api/settings`, wirkt ohne
+Neustart):
+
+| Einstellung | Default | Bedeutung |
+|---|---|---|
+| Helligkeit | 63 % | normale Helligkeit, Anteil des Panel-Maximums (63 % = der frühere feste Wert 160/255) |
+| Dimmen nach | 2 min | Zeit ohne Berührung; „Nie“ = 0 |
+| Helligkeit gedimmt | 20 % | Anteil der eingestellten Helligkeit |
+| Ausschalten nach | 10 min | Zeit ohne Berührung; „Nie“ = 0 |
+| Pixel-Shift | aus | verschiebt das Bild jede Minute um 3 px, im Kreis über 8 Positionen |
+
+- **Aufwecken:** Ein Tipp weckt das Display. Dieser erste Druck erreicht LVGL
+  nie, er löst also weder Power-Knopf noch Tippzone, Griff oder Wischen aus.
+  Erst der nächste Druck zählt. Das gilt aus dem gedimmten wie aus dem
+  schwarzen Zustand.
+- **Not-Aus** hält das Display voll hell, solange er eingerastet ist. Nach dem
+  Aufheben läuft die Wartezeit von vorn.
+- **Jede neue Meldung** der Alarm-Zentrale weckt das Display, auch
+  „aufgehoben“-Meldungen.
+- **Schwarz heißt: kein Rendern.** `lv_timer_handler()` läuft dann gar nicht,
+  nur der Touch wird alle 30 ms abgefragt. Beim Aufwachen holt ein
+  `lv_timer_handler()` die Werte nach, bevor die Helligkeit hochgeht, damit
+  kein veraltetes Bild aus dem Panel-RAM aufblitzt.
+
 **Architektur:** `src/display/DisplayUI` übernimmt Panel, Touch und LVGL-Treiber.
 `src/display/DisplayPages` liefert die Inhalte. `lv_timer_handler()` läuft aus
 `loop()`, also im selben Task wie `registry.tick()`; es gibt keine Sperren und
@@ -305,6 +331,10 @@ hinter `BREWCTL_HAS_DISPLAY`, die anderen Envs bauen unverändert.
 - Der CO5300 nimmt nur Fenster ab 2×2 Pixel an. Deshalb gibt es einen
   `rounder_cb`.
 - Die Touch-Ebene ist um 180° gegen das Panel gedreht.
+- `TouchDrvCST92xx::getTouchPoints()` quittiert jeden gelesenen Frame. Ein
+  zweites Lesen vor dem nächsten Frame liefert „kein Finger“. Deshalb gilt ein
+  Finger beim Aufwecken erst nach 150 ms ohne Berührung als losgelassen
+  (`kLiftMs`), nicht schon nach einem leeren Lesevorgang.
 - `Wire` muss vor allem anderen auf SDA 7 / SCL 6 laufen
   (`BREWCTL_I2C_SDA/SCL`), weil der Variant-Default SCL 17 der Panel-Reset
   ist.
@@ -369,7 +399,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/profiles/<id>` | POST, DELETE | Profil ändern / löschen |
 | `/api/profile-categories` | POST | Kategorie anlegen |
 | `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
-| `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW |
+| `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW, Gerätedisplay |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
 | `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |
 | `/api/update/status` | GET | Updater-Zustand |

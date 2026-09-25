@@ -91,6 +91,11 @@ pnpm typecheck
     `lv_font_montserrat_*` haben keine. Wie man die Fonts neu erzeugt, steht im README dort.
   - Jede Seite belegt LVGL-Pool (`LV_MEM_SIZE` 32 KB, etwa 1,5 KB pro Seite). Ist der Pool
     voll, endet das im Watchdog-Reboot. Deshalb gilt die Grenze `kMaxPages`.
+  - Ist das Display schwarz (Burn-in-Schutz), läuft `lv_timer_handler()` nicht. Auch die
+    Timer von `DisplayPages` stehen dann still und laufen erst nach dem Aufwecken nach.
+    Nichts, was ohne Display weiterlaufen muss, gehört in einen LVGL-Timer.
+  - Den Touch nur über `readTouch()` bzw. `noteTouch()` in `DisplayUI.cpp` lesen. Jeder
+    `getTouchPoints()`-Aufruf quittiert den Frame, ein zweiter Leser sieht leere Frames.
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —

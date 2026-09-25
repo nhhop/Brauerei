@@ -87,7 +87,6 @@ Grob nach Bereitschaft / Aufwand; Abhängigkeiten stehen inline. Jeder Punkt bek
 - **Interaktives Display: nächste Ausbaustufen** (firmware, LilyGo T-Display-S3-AMOLED-1.75) — Stufe 1 ist seit 2026-09-24 da (siehe SESSION.md, `BrewControl/README.md` → „Rundes Touch-Display“): Items eines Dashboards als Wischseiten, Dashboard-Wechsel per Hoch/Runter, Bedienung von Reglern und Aktoren. Offen:
   - **Layout spiegeln** — langfristiges Ziel (Nutzer-Entscheidung 2026-09-22) bleibt, dass das Display die Dashboard-Konfiguration spiegelt. Das `layout`-Feld in `DashboardStore` ist für die Firmware ein opaker Web-Grid-Baum; eine Abbildung aufs runde 466×466-Panel braucht eine eigene Spec. Heute wird nur die Reihenfolge Regler → Sensoren → Aktoren genutzt.
   - **Charts, Programme, Timer** als eigene Seiten (Dashboard-Listen `charts`/`programs`/`timers` werden heute ignoriert).
-  - **Burn-in-Schutz** — AMOLED mit statischem Bild über Stunden: Dimmen oder Abschalten nach Inaktivität, Aufwecken per Touch.
   - **Fremdgesteuerte Items** — das Display sperrt sie; die Web-UI bietet stattdessen „schalten und Regler deaktivieren / Programm pausieren“. Ob das Display das auch soll, ist offen.
   - **Firmware je nach Display laden** — passende Firmware-Variante online oder von SD-Karte laden (baut auf dem OTA-Varianten-Modell auf).
   - *(Opus · groß · mit Plan)*

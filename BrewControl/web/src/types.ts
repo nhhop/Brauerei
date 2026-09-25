@@ -530,7 +530,17 @@ export interface EspNowSettings {
   error?: string;        // read-only, always "" — EspNowTransport has nothing specific to say
 }
 
-// GET /api/settings always returns all seven sections; SettingsStore::serialize()
+// Burn-in protection of the device's own round display. 0 means "never".
+export interface DisplaySettings {
+  brightness: number;    // 1..100, share of the panel's maximum
+  dimAfterSec: number;   // 0..86400
+  dimPercent: number;    // 1..100, share of `brightness` while dimmed
+  offAfterSec: number;   // 0..86400
+  pixelShift: boolean;   // move the picture a few pixels every minute
+  supported: boolean;    // read-only, server-computed: this build drives a display
+}
+
+// GET /api/settings always returns all eight sections; SettingsStore::serialize()
 // emits every one unconditionally.
 export interface AppSettings {
   theme: ThemeSettings;
@@ -540,6 +550,7 @@ export interface AppSettings {
   webhook: WebhookSettings;
   websocket: WebSocketSettings;
   espnow: EspNowSettings;
+  display: DisplaySettings;
 }
 
 export type UpdateState =

@@ -1835,6 +1835,7 @@ paths:
         before anything is stored, so a rejected patch changes nothing.
 
         Sending a `time` section re-applies the NTP configuration immediately.
+        A `display` section takes effect on the next display tick, no reboot.
         **Sending an `mqtt`, `webhook`, `websocket` or `espnow` section reboots
         the device ~500 ms after the response** — those transports are only
         established at boot.
@@ -1866,7 +1867,9 @@ paths:
             `invalid webhook clientId`, `invalid websocket hubPort`,
             `invalid websocket hubUrl`, `invalid websocket topicPrefix`,
             `invalid websocket clientId`, `invalid espnow topicPrefix`,
-            `invalid espnow clientId`.
+            `invalid espnow clientId`, `invalid display brightness`,
+            `invalid display dimAfterSec`, `invalid display dimPercent`,
+            `invalid display offAfterSec`.
           content:
             text/plain: { schema: { type: string } }
 
@@ -3894,13 +3897,51 @@ components:
         connected: { type: boolean, readOnly: true }
         error: { type: string, readOnly: true }
 
+    DisplaySettings:
+      type: object
+      description: |
+        Burn-in protection of the device's own round display. The idle time
+        counts from the last touch; touching, a latched emergency stop and a
+        new alert wake the display, and the waking touch triggers nothing.
+        Stored and validated on every board, used only where `supported`.
+      required: [brightness, dimAfterSec, dimPercent, offAfterSec, pixelShift, supported]
+      properties:
+        brightness:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 63
+          description: Normal brightness, as a share of the panel's maximum.
+        dimAfterSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          description: Idle seconds until the display dims. 0 = never.
+        dimPercent:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Brightness while dimmed, as a share of `brightness`.
+        offAfterSec:
+          type: integer
+          minimum: 0
+          maximum: 86400
+          description: Idle seconds until the display goes dark (brightness 0). 0 = never.
+        pixelShift:
+          type: boolean
+          description: Move the picture a few pixels every minute.
+        supported:
+          type: boolean
+          readOnly: true
+          description: Compile-time capability of this firmware build (a display is driven).
+
     AppSettings:
       type: object
       description: |
-        All seven sections are always emitted. On `GET /api/settings` the
+        All eight sections are always emitted. On `GET /api/settings` the
         `mqtt`, `webhook`, `websocket` and `espnow` sections additionally carry
         the live `connected` and `error` fields (`websocket` also `hubClients`).
-      required: [theme, firmware, time, mqtt, webhook, websocket, espnow]
+      required: [theme, firmware, time, mqtt, webhook, websocket, espnow, display]
       properties:
         theme: { $ref: "#/components/schemas/ThemeSettings" }
         firmware: { $ref: "#/components/schemas/FirmwareSettings" }
@@ -3909,6 +3950,7 @@ components:
         webhook: { $ref: "#/components/schemas/WebhookSettings" }
         websocket: { $ref: "#/components/schemas/WebSocketSettings" }
         espnow: { $ref: "#/components/schemas/EspNowSettings" }
+        display: { $ref: "#/components/schemas/DisplaySettings" }
 
     AppSettingsPatch:
       type: object
@@ -3923,6 +3965,7 @@ components:
         webhook: { type: object, description: Subset of `WebhookSettings`. Triggers a reboot. }
         websocket: { type: object, description: Subset of `WebSocketSettings`. Triggers a reboot. }
         espnow: { type: object, description: Subset of `EspNowSettings`. Triggers a reboot. }
+        display: { type: object, description: Subset of `DisplaySettings`. }
 
     # ── Network ──────────────────────────────────────────────────────────────
     NetworkStatus:

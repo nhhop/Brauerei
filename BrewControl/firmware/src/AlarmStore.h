@@ -106,6 +106,10 @@ class AlarmStore {
   // Also drained in WebUI::tick, on loopTask.
   bool takePendingPush(Alert& out);
 
+  // seq of the newest alert raised so far, 0 before the first. Lets a reader
+  // notice "something new" without draining the outbox (the display wakes on it).
+  uint32_t lastSeq() const;
+
  private:
 
   static constexpr size_t   kRing     = 40;
