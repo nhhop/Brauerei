@@ -7,6 +7,8 @@
 #include <WebSocketsServer.h>
 #include <WiFi.h>
 
+#include <iterator>
+
 #include "WebSocketProtocol.h"
 
 namespace SensActCtrl {
@@ -22,7 +24,8 @@ WebSocketTransport::WebSocketTransport(uint16_t listenPort) {
   server_ = new WebSocketsServer(listenPort);
   server_->onEvent([this](uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
     switch (type) {
-      case WStype_CONNECTED: onPeerConnected(num); break;
+      case WStype_CONNECTED: forgetPeer_(num); onPeerConnected(num); break;
+      case WStype_DISCONNECTED: forgetPeer_(num); break;
       case WStype_TEXT: onText(num, reinterpret_cast<const char*>(payload), length); break;
       default: break;
     }
@@ -68,7 +71,14 @@ bool WebSocketTransport::publish(const char* topic, const char* payload, bool re
   if (wire.empty()) return false;
   if (retained) retained_[topic] = payload ? payload : "";
   if (!connected()) return false;
-  return send_(kAllPeers, wire);
+  // Hub: a command goes only to the peer that delivered that device's frames.
+  // Device not learned yet (or peer gone) → broadcast, as before.
+  int to = kAllPeers;
+  if (server_ && websocket::isCommandTopic(topic)) {
+    const auto it = devicePeer_.find(websocket::deviceOfTopic(topic));
+    if (it != devicePeer_.end()) to = it->second;
+  }
+  return send_(to, wire);
 }
 
 bool WebSocketTransport::subscribe(const char* topic, MessageCallback callback) {
@@ -145,6 +155,10 @@ void WebSocketTransport::onText(uint8_t peer, const char* data, size_t length) {
   const websocket::Frame f = websocket::decodeFrame(data, length);
   switch (f.type) {
     case websocket::FrameType::Data:
+      if (server_) {
+        const std::string device = websocket::deviceOfTopic(f.topic);
+        if (!device.empty()) devicePeer_[device] = peer;
+      }
       for (auto& sub : subs_) {
         if (sub.first == f.topic) {
           sub.second(f.topic.c_str(), f.payload.c_str(), f.payload.size());
@@ -160,6 +174,12 @@ void WebSocketTransport::onText(uint8_t peer, const char* data, size_t length) {
     }
     default:
       return;
+  }
+}
+
+void WebSocketTransport::forgetPeer_(uint8_t peer) {
+  for (auto it = devicePeer_.begin(); it != devicePeer_.end();) {
+    it = it->second == peer ? devicePeer_.erase(it) : std::next(it);
   }
 }
 
@@ -190,6 +210,7 @@ size_t WebSocketTransport::clientCount() { return 0; }
 void WebSocketTransport::onPeerConnected(uint8_t) {}
 void WebSocketTransport::onPeerDisconnected() {}
 void WebSocketTransport::onText(uint8_t, const char*, size_t) {}
+void WebSocketTransport::forgetPeer_(uint8_t) {}
 bool WebSocketTransport::send_(int, const char*, size_t) { return false; }
 
 }  // namespace SensActCtrl

@@ -5041,3 +5041,14 @@ inzwischen zusammen mit `agitator` auf **GPIO 3**, einem **Strapping-Pin**, und 
 agitator 8, Pumpe 2; GPIO 3 und 4 sind frei. Binnen drei Tagen hat dieselbe Ursache zweimal
 zugeschlagen — nichts prüft die Belegung, und die Board-Defaults kennen die vergebenen Pins
 nicht. Der Punkt liegt jetzt beim Pin-Manager, zusammen mit dem RMT-Kanalbudget.
+
+## 2026-09-25 — WebSocket-Hub: `/set` und `/tune` gezielt statt Broadcast
+
+`WebSocketTransport` (Server-Rolle) lernt aus eingehenden Data-Frames, welcher Client-Slot welches
+`<device>` liefert (`devicePeer_`, Device = Segment vor `/sensor|actuator|controller/`,
+`websocket::deviceOfTopic()`), und schickt Topics auf `/set` bzw. `/tune` nur an diesen Slot.
+Device unbekannt → Broadcast wie bisher. Das Mapping gilt pro Verbindung: bei Disconnect und beim
+erneuten Connect desselben Slots werden dessen Einträge verworfen, bis wieder ein Frame kommt.
+Verifikation: 273 native Tests grün (2 neue für `deviceOfTopic`/`isCommandTopic`),
+`BrewControl/firmware` `pio run -e esp32dev` baut. **Am Gerät nicht geprüft** — das Mapping liegt im
+ARDUINO-Zweig und ist nativ nicht testbar.

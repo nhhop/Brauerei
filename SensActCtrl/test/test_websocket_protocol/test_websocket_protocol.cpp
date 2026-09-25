@@ -115,6 +115,27 @@ void test_url_failure_leaves_output_untouched() {
   TEST_ASSERT_EQUAL_STRING("keep", u.host.c_str());
 }
 
+void test_device_of_topic() {
+  using SensActCtrl::websocket::deviceOfTopic;
+  TEST_ASSERT_EQUAL_STRING("leaf", deviceOfTopic("sensactctrl/leaf/sensor/t1").c_str());
+  TEST_ASSERT_EQUAL_STRING("leaf", deviceOfTopic("sensactctrl/leaf/actuator/h1/set").c_str());
+  TEST_ASSERT_EQUAL_STRING("leaf", deviceOfTopic("sensactctrl/leaf/controller/c1/tune").c_str());
+  TEST_ASSERT_EQUAL_STRING("leaf", deviceOfTopic("sensactctrl/leaf/sensor/t1/ch/meta").c_str());
+  TEST_ASSERT_EQUAL_STRING("leaf", deviceOfTopic("leaf/actuator/h1/set").c_str());  // empty prefix
+  TEST_ASSERT_EQUAL_STRING("leaf", deviceOfTopic("a/b/leaf/sensor/t1").c_str());    // multi-segment prefix
+  TEST_ASSERT_TRUE(deviceOfTopic("a/b").empty());
+  TEST_ASSERT_TRUE(deviceOfTopic("").empty());
+}
+
+void test_is_command_topic() {
+  using SensActCtrl::websocket::isCommandTopic;
+  TEST_ASSERT_TRUE(isCommandTopic("sensactctrl/leaf/actuator/h1/set"));
+  TEST_ASSERT_TRUE(isCommandTopic("sensactctrl/leaf/controller/c1/tune"));
+  TEST_ASSERT_FALSE(isCommandTopic("sensactctrl/leaf/actuator/h1"));
+  TEST_ASSERT_FALSE(isCommandTopic("sensactctrl/leaf/actuator/h1/meta"));
+  TEST_ASSERT_FALSE(isCommandTopic("set"));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -133,5 +154,7 @@ int main(int, char**) {
   RUN_TEST(test_url_with_port_trailing_slash);
   RUN_TEST(test_url_rejects_invalid);
   RUN_TEST(test_url_failure_leaves_output_untouched);
+  RUN_TEST(test_device_of_topic);
+  RUN_TEST(test_is_command_topic);
   return UNITY_END();
 }
