@@ -4014,7 +4014,7 @@ components:
 
     UpdateStatus:
       type: object
-      required: [state, currentVersion, variant, channel, autoCheck, progress, error, available]
+      required: [state, currentVersion, variant, resetReason, channel, autoCheck, progress, error, available]
       properties:
         state:
           type: string
@@ -4023,6 +4023,14 @@ components:
           type: string
           description: "Build version — `git describe`, or the CI release tag."
         variant: { type: string, description: "PlatformIO environment, e.g. `esp32dev`." }
+        resetReason:
+          type: string
+          enum: [power_on, external, sw, panic, int_wdt, task_wdt, wdt, deep_sleep, brownout, sdio, unknown]
+          description: |
+            Why the device last started (`esp_reset_reason()`). `task_wdt` means
+            the loop watchdog fired: `loop()` did not come round for 30 s and
+            the device rebooted itself. `sw` covers every deliberate restart
+            (update, settings, backup restore).
         channel: { type: string, enum: [stable, preview] }
         autoCheck: { type: boolean }
         progress: { type: integer, description: "Percent, while downloading or flashing." }

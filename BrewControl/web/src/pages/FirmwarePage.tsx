@@ -16,6 +16,24 @@ import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary, btnSecondary } from '../ui';
 import { TriangleAlert, Package, CloudDownload, RefreshCw, Upload } from 'lucide-preact';
 
+const RESET_LABELS: Record<UpdateStatus['resetReason'], string> = {
+  power_on: 'Einschalten',
+  external: 'Reset-Taste',
+  sw: 'Neustart durch die Firmware (Update, Einstellungen)',
+  panic: 'Absturz',
+  int_wdt: 'Watchdog (Interrupt)',
+  task_wdt: 'Watchdog — die Steuerung hing länger als 30 s',
+  wdt: 'Watchdog',
+  deep_sleep: 'Aufwachen aus dem Tiefschlaf',
+  brownout: 'Spannungseinbruch',
+  sdio: 'SDIO',
+  unknown: 'unbekannt',
+};
+
+// Restarts nobody asked for: worth a red line, the device recovered on its own.
+const UNEXPECTED_RESETS: UpdateStatus['resetReason'][] =
+  ['panic', 'int_wdt', 'task_wdt', 'wdt', 'brownout'];
+
 export function FirmwarePage(_: { path?: string }) {
   const [st, setSt] = useState<UpdateStatus | null>(null);
   const [confirmInstall, setConfirmInstall] = useState(false);
@@ -68,7 +86,12 @@ export function FirmwarePage(_: { path?: string }) {
       <div class="mt-6">
         <SettingsGroup>
           <SettingsCard title="Aktuelle Version" icon={Package}
-            desc={<span class="font-mono">{st.currentVersion} · {st.variant}</span>}
+            desc={<>
+              <span class="font-mono">{st.currentVersion} · {st.variant}</span>
+              <span class={`block ${UNEXPECTED_RESETS.includes(st.resetReason) ? 'text-critical' : ''}`}>
+                Letzter Neustart: {RESET_LABELS[st.resetReason] ?? st.resetReason}
+              </span>
+            </>}
             control={
               <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
                 class={btnSecondary}>
