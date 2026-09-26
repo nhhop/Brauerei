@@ -46,8 +46,10 @@ void IdsActuator::applyEnabled(bool /*e*/) {
 }
 
 const char* IdsActuator::fault() const {
-  if (cooker_->getErrorCode() == 0) return nullptr;
-  return cooker_->getError().c_str();
+  if (cooker_->getErrorCode() != 0) return cooker_->getError().c_str();
+  // No free RMT channel: frames go out bit-banged and block loop() for ~139 ms.
+  if (cooker_->rmtFallback()) return "Kein RMT-Kanal, Software-Timing blockiert";
+  return nullptr;
 }
 
 }  // namespace SensActCtrl

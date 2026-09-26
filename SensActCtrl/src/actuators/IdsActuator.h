@@ -14,7 +14,9 @@ namespace SensActCtrl {
 // keep-alive cadence the cooker expects. Since 2026-09-23 sendCommand()
 // clocks the frame out through the RMT peripheral and returns immediately;
 // it used to bit-bang it and block the caller for ~139 ms per call.
-// fault() returns the cooker's error string when errorCode != 0, else nullptr.
+// fault() returns the cooker's error string when errorCode != 0, or a notice when
+// no RMT channel was free and the frame timing fell back to blocking software;
+// else nullptr.
 class IdsActuator : public Actuator {
  public:
   IdsActuator(const char* id, IdsType type,

@@ -5359,3 +5359,15 @@ und ruft bei `panic`/`int_wdt`/`task_wdt`/`wdt`/`brownout` `AlarmStore::onUnexpe
 sobald NTP synchronisiert hat (Zeitstempel und Push kommen so durch); ohne WLAN/NTP nach 2 min trotzdem, dann
 `ts: 0` und nur im Alert-Center. **Verifikation:** `pio run -e esp32dev`, Frontend-Typecheck, OpenAPI-Lint grün.
 Am Gerät nicht ausgelöst (kein Watchdog-Reset provoziert).
+
+## 2026-09-26 — RMT-Fallback der IDS-Platte wird gemeldet
+
+**Problem:** Findet `IdsCooker::Init()` keinen freien RMT-Kanal, fiel es still auf das Software-Timing zurück
+(~139 ms Blockade je Frame in `loop()`), ohne dass es jemand sah. Die Firmware lehnt überzählige Platten seit
+dem Pin-Manager ab (409), die Library selbst nicht.
+
+**Umsetzung:** `IdsInductionCooker` (`e4dbe90`): neues `rmtFallback()`, wahr nur wenn `rmtInit()` `NULL` lieferte
+(auf Core 3 / ESP8266 bewusst falsch, dort ist Software-Timing der Normalfall). `IdsActuator::fault()` liefert
+dann „Kein RMT-Kanal, Software-Timing blockiert“ (ein echter Cooker-Fehlercode hat Vorrang). SHA in
+`SensActCtrl/library.json` gebumpt. **Verifikation:** `pio run -e esp32dev` grün; am Gerät nicht
+ausgelöst (dafür wäre ein Kanalmangel nötig), keine native Tests, weil der Pfad hinter `ARDUINO` liegt.
