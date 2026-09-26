@@ -5259,4 +5259,19 @@ stehen unter festen Konfig-Schlüsseln in `DynamicItems.cpp`, geteilt wird nur O
   GPIO 7 → 409 mit Text und Item bleibt auf GPIO 8, eigener Pin beim Bearbeiten „frei“,
   regler-verdrahteter IDS1 → verständliche Meldung, nichts verändert, PWM/DAC-Auswahl fehlt ohne DAC,
   IDS-Typen gesperrt bei 1/1 RMT-Kanälen.
-- **Am Gerät noch nicht geprüft** (siehe unten, sobald geflasht).
+- **Am LilyGo per OTA** (nach Merge von `main` inkl. `fix/loop-starvation`, `v0.1.0-3-gcb07334`):
+  Config lädt unverändert, `GET /api/pins` meldet genau den GPIO-9-Konflikt (`IDS1.pin_white`),
+  `rmtUsed` 1/4, kein DAC. Anlegen auf GPIO 2 → 409 „already used by Riptide Pumpe (pin)“,
+  GPIO 7 → 409 reserviert (I2C), GPIO 30 → 400 Flash, GPIO 22 → 400 existiert nicht, DAC → 400
+  „this board has no DAC“, zweiter DS18B20 auf dem OneWire-Pin 1 → 204. `PUT` auf einen Test-Aktor:
+  Pin belegt → 409, Config ohne `pin` → 400 und das Item steht unverändert an seiner Stelle
+  (Rückfall greift), gleiche ID, Umbenennen, Pin-Wechsel 47 → 48 → 3 → 204. `PUT` auf `IDS1` → 409
+  (Regler `Maischen`), unbekanntes Item → 404. `PUT` auf den Regler (Kp 8 → 9, Sollwert 72 und
+  `enabled` im Body) → übernommen, übersteht einen Neustart; danach zurück auf 8.
+- **Eine Panic:** der erste `PUT` mit Umbenennen **und** Pin-Wechsel (47 → 3) endete in einem
+  Neustart (`resetReason: panic`, nichts gespeichert, Config intakt). Fünf Wiederholungen derselben
+  bzw. ähnlicher Änderungen liefen sauber. Wahrscheinlichste Ursache ist die bekannte fehlende Sperre
+  zwischen Item-Änderungen (AsyncTCP, jetzt fest auf Core 0) und `registry.tick()`/Display im
+  loopTask (Core 1) — derselbe Mechanismus trifft DELETE und POST. Nicht belegt, weil der Backtrace
+  fehlt. PLAN.md-Punkt entsprechend erweitert.
+- Nicht am Gerät geprüft: die UI-Pfade selbst (nur gegen den Mock), das RMT-Limit (nur eine Platte).
