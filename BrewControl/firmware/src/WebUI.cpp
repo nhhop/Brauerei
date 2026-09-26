@@ -15,6 +15,7 @@
 
 #include "BoardPins.h"
 #include "Hostname.h"
+#include "RegistryLock.h"
 #include "SdLock.h"
 #include "version.h"
 
@@ -23,6 +24,27 @@ namespace {
 
 constexpr size_t kSnapshotCap = 4160;
 constexpr uint32_t kRebootDelayMs = 500;
+
+// How long a REST handler waits for loop() to release the registry lock.
+// loop() normally holds it for a few ms (up to ~140 ms while the display
+// animates, up to kPairTimeoutMs during a pairing call); longer means
+// something in loop() is stuck, and the AsyncTCP task must not stall with it.
+constexpr uint32_t kRegistryWaitMs = 3000;
+
+// Runs fn — one items_ mutation — under the registry lock (RegistryLock.h),
+// so loop() is never inside the item being created, replaced or freed. SD
+// writes (saveToSD) come after, outside the lock. Answers 503 and returns
+// false if the lock could not be taken in time.
+template <typename F>
+bool underRegistryLock(AsyncWebServerRequest* req, DynamicItems::Result& r, F fn) {
+  RegistryTryLock lock(kRegistryWaitMs);
+  if (!lock.locked()) {
+    req->send(503, "text/plain", "busy, retry");
+    return false;
+  }
+  r = fn();
+  return true;
+}
 
 // Timeout for the outbound pairing calls (see WebUI::runPendingPairing_).
 // Deliberately short: it runs from loopTask, so every second of it is a second
@@ -605,14 +627,18 @@ void WebUI::begin() {
         if (id.endsWith("/calibration")) {
           id.remove(id.length() - strlen("/calibration"));
           const String channel = req->hasParam("channel") ? req->getParam("channel")->value() : String();
-          auto r = items_.clearCalibration(id.c_str(), req->hasParam("channel") ? channel.c_str() : nullptr);
+          DynamicItems::Result r{false};
+          if (!underRegistryLock(req, r, [&] {
+                return items_.clearCalibration(id.c_str(), req->hasParam("channel") ? channel.c_str() : nullptr);
+              })) return;
           if (!r.ok) { req->send(strcmp(r.error, "sensor not found") == 0 ? 404 : 400, "text/plain", r.error); return; }
           items_.saveToSD(fs_);
           pushSnapshot_();
           req->send(204);
           return;
         }
-        auto r = items_.removeSensor(id.c_str(), reg_);
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.removeSensor(id.c_str(), reg_); })) return;
         if (!r.ok) { req->send(405, "text/plain", r.error); return; }
         items_.saveToSD(fs_);
         pushSnapshot_();
@@ -622,7 +648,8 @@ void WebUI::begin() {
   server_.addHandler(new DeletePrefixHandler("/api/actuators/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/actuators/"));
-        auto r = items_.removeActuator(id.c_str(), reg_);
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.removeActuator(id.c_str(), reg_); })) return;
         if (!r.ok) { req->send(405, "text/plain", r.error); return; }
         items_.saveToSD(fs_);
         pushSnapshot_();
@@ -632,7 +659,8 @@ void WebUI::begin() {
   server_.addHandler(new DeletePrefixHandler("/api/controllers/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/controllers/"));
-        auto r = items_.removeController(id.c_str(), reg_);
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.removeController(id.c_str(), reg_); })) return;
         if (!r.ok) { req->send(405, "text/plain", r.error); return; }
         items_.saveToSD(fs_);
         pushSnapshot_();
@@ -668,7 +696,8 @@ void WebUI::begin() {
           }
           String path = url.substring(strlen("/api/sensors/"));
           String id   = path.substring(0, path.length() - strlen("/label"));
-          auto r = items_.setSensorLabel(id.c_str(), reg_, doc["label"] | "");
+          DynamicItems::Result r{false};
+          if (!underRegistryLock(req, r, [&] { return items_.setSensorLabel(id.c_str(), reg_, doc["label"] | ""); })) return;
           if (!r.ok) { req->send(404, "text/plain", r.error); return; }
           items_.saveToSD(fs_);
           pushSnapshot_();
@@ -683,7 +712,8 @@ void WebUI::begin() {
           }
           String path = url.substring(strlen("/api/sensors/"));
           String id   = path.substring(0, path.length() - strlen("/calibration"));
-          auto r = items_.calibrateSensor(id.c_str(), doc.as<JsonObjectConst>());
+          DynamicItems::Result r{false};
+          if (!underRegistryLock(req, r, [&] { return items_.calibrateSensor(id.c_str(), doc.as<JsonObjectConst>()); })) return;
           if (!r.ok) { req->send(strcmp(r.error, "sensor not found") == 0 ? 404 : 400, "text/plain", r.error); return; }
           items_.saveToSD(fs_);
           pushSnapshot_();
@@ -696,7 +726,8 @@ void WebUI::begin() {
         }
         String path = url.substring(strlen("/api/sensors/"));
         String id   = path.substring(0, path.length() - strlen("/reset"));
-        auto r = items_.resetSensor(id.c_str());
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.resetSensor(id.c_str()); })) return;
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
         pushSnapshot_();
         req->send(204);
@@ -715,7 +746,8 @@ void WebUI::begin() {
           if (!doc.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
           String path = url.substring(strlen("/api/actuators/"));
           String id   = path.substring(0, path.length() - strlen("/label"));
-          auto r = items_.setActuatorLabel(id.c_str(), reg_, doc["label"] | "");
+          DynamicItems::Result r{false};
+          if (!underRegistryLock(req, r, [&] { return items_.setActuatorLabel(id.c_str(), reg_, doc["label"] | ""); })) return;
           if (!r.ok) { req->send(404, "text/plain", r.error); return; }
           items_.saveToSD(fs_);
           pushSnapshot_();
@@ -798,7 +830,8 @@ void WebUI::begin() {
         if (isLabel) {
           String path = url.substring(strlen("/api/controllers/"));
           String id   = path.substring(0, path.length() - strlen("/label"));
-          auto r = items_.setControllerLabel(id.c_str(), reg_, doc["label"] | "");
+          DynamicItems::Result r{false};
+          if (!underRegistryLock(req, r, [&] { return items_.setControllerLabel(id.c_str(), reg_, doc["label"] | ""); })) return;
           if (!r.ok) { req->send(404, "text/plain", r.error); return; }
           items_.saveToSD(fs_);
           pushSnapshot_();
@@ -828,7 +861,8 @@ void WebUI::begin() {
   // ── Create ────────────────────────────────────────────────────────────────
   server_.addHandler(new PostJsonHandler("/api/sensors",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
-        auto r = items_.addSensor(json.as<JsonObject>(), reg_);
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.addSensor(json.as<JsonObject>(), reg_); })) return;
         if (!r.ok) { req->send(r.conflict ? 409 : 400, "text/plain", r.error); return; }
         items_.saveToSD(fs_);
         pushSnapshot_();
@@ -837,12 +871,17 @@ void WebUI::begin() {
 
   server_.addHandler(new PostJsonHandler("/api/actuators",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
-        auto r = items_.addActuator(json.as<JsonObject>(), reg_);
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] {
+              DynamicItems::Result res = items_.addActuator(json.as<JsonObject>(), reg_);
+              // A latched stop must not be bypassed by a fresh item's default —
+              // disabled inside the lock, so loop() never ticks it enabled.
+              if (res.ok && estop_) {
+                if (auto* a = reg_.findActuator(json["id"] | "")) a->setEnabled(false);
+              }
+              return res;
+            })) return;
         if (!r.ok) { req->send(r.conflict ? 409 : 400, "text/plain", r.error); return; }
-        // A latched stop must not be bypassed by a fresh item's default.
-        if (estop_) {
-          if (auto* a = reg_.findActuator(json["id"] | "")) a->setEnabled(false);
-        }
         items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);
@@ -850,11 +889,15 @@ void WebUI::begin() {
 
   server_.addHandler(new PostJsonHandler("/api/controllers",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
-        auto r = items_.addController(json.as<JsonObject>(), reg_);
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] {
+              DynamicItems::Result res = items_.addController(json.as<JsonObject>(), reg_);
+              if (res.ok && estop_) {
+                if (auto* c = reg_.findController(json["id"] | "")) c->setEnabled(false);
+              }
+              return res;
+            })) return;
         if (!r.ok) { req->send(400, "text/plain", r.error); return; }
-        if (estop_) {
-          if (auto* c = reg_.findController(json["id"] | "")) c->setEnabled(false);
-        }
         items_.saveToSD(fs_);
         pushSnapshot_();
         req->send(204);
@@ -863,23 +906,26 @@ void WebUI::begin() {
   // ── Replace (edit) — full config, the id may change ──────────────────────
   // Atomic from the client's view: a rejected config leaves the old item as
   // it was (DynamicItems::replace*).
-  auto replaced = [this](AsyncWebServerRequest* req, const DynamicItems::Result& r,
-                         JsonVariant& json, bool isController) {
+  // replace() runs under the registry lock; with the stop latched, the rebuilt
+  // item is disabled inside the same lock, so loop() never ticks it enabled.
+  auto replaced = [this](AsyncWebServerRequest* req, JsonVariant& json,
+                         std::function<DynamicItems::Result()> replace) {
+    DynamicItems::Result r{false};
+    if (!underRegistryLock(req, r, [&] {
+          DynamicItems::Result res = replace();
+          if (res.ok && estop_) {
+            const char* id = json["id"] | "";
+            if (auto* c = reg_.findController(id)) c->setEnabled(false);
+            if (auto* a = reg_.findActuator(id)) a->setEnabled(false);
+          }
+          return res;
+        })) return;
     if (!r.ok) {
       const int status = strcmp(r.error, "not a dynamic item") == 0 ? 404
                          : r.conflict                               ? 409
                                                                     : 400;
       req->send(status, "text/plain", r.error);
       return;
-    }
-    // A latched stop must not be bypassed by the rebuilt item's default.
-    if (estop_) {
-      const char* id = json["id"] | "";
-      if (isController) {
-        if (auto* c = reg_.findController(id)) c->setEnabled(false);
-      } else if (auto* a = reg_.findActuator(id)) {
-        a->setEnabled(false);
-      }
     }
     items_.saveToSD(fs_);
     pushSnapshot_();
@@ -889,19 +935,19 @@ void WebUI::begin() {
   server_.addHandler(new PutJsonPrefixHandler("/api/sensors/",
       [this, replaced](AsyncWebServerRequest* req, JsonVariant& json) {
         const String id = req->url().substring(strlen("/api/sensors/"));
-        replaced(req, items_.replaceSensor(id.c_str(), json.as<JsonObject>(), reg_), json, false);
+        replaced(req, json, [&] { return items_.replaceSensor(id.c_str(), json.as<JsonObject>(), reg_); });
       }));
 
   server_.addHandler(new PutJsonPrefixHandler("/api/actuators/",
       [this, replaced](AsyncWebServerRequest* req, JsonVariant& json) {
         const String id = req->url().substring(strlen("/api/actuators/"));
-        replaced(req, items_.replaceActuator(id.c_str(), json.as<JsonObject>(), reg_), json, false);
+        replaced(req, json, [&] { return items_.replaceActuator(id.c_str(), json.as<JsonObject>(), reg_); });
       }));
 
   server_.addHandler(new PutJsonPrefixHandler("/api/controllers/",
       [this, replaced](AsyncWebServerRequest* req, JsonVariant& json) {
         const String id = req->url().substring(strlen("/api/controllers/"));
-        replaced(req, items_.replaceController(id.c_str(), json.as<JsonObject>(), reg_), json, true);
+        replaced(req, json, [&] { return items_.replaceController(id.c_str(), json.as<JsonObject>(), reg_); });
       }));
 
   // ── Admin ─────────────────────────────────────────────────────────────────

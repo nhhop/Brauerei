@@ -217,6 +217,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Validation failed. Body is the bare reason, e.g. `missing id`,
@@ -250,6 +251,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Invalid config — same reasons as `POST /api/sensors`, plus
@@ -275,6 +277,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "405":
           description: |
             Removal refused. Body is `not a dynamic item` (statically compiled
@@ -301,6 +304,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: Body is `sensor does not support reset` or `sensor not found`.
           content:
@@ -330,6 +334,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: Invalid JSON.
           content:
@@ -485,6 +490,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Body is `invalid JSON`, `unknown channel`, `invalid mode`,
@@ -513,6 +519,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: Body is `unknown channel`.
           content:
@@ -537,6 +544,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Validation failed, e.g. `missing id`, `id already in use`,
@@ -567,6 +575,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Invalid config — same reasons as `POST /api/actuators`, plus
@@ -619,6 +628,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "405":
           description: Body is `not a dynamic item` or `actuator is referenced by a controller`.
           content:
@@ -647,6 +657,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: Invalid JSON.
           content:
@@ -713,6 +724,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Validation failed, e.g. `missing sensor`, `missing actuator`,
@@ -742,6 +754,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: |
             Invalid config — same reasons as `POST /api/controllers`, plus
@@ -759,6 +772,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "405":
           description: Body is `not a dynamic item`.
           content:
@@ -785,6 +799,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
         "400":
           description: Invalid JSON.
           content:
@@ -2764,6 +2779,14 @@ components:
       description: Body is `invalid JSON`.
       content:
         text/plain: { schema: { type: string, const: invalid JSON } }
+
+    RegistryBusy:
+      description: |
+        Body is `busy, retry`. Item changes wait for the control loop to finish its
+        current pass over the items (normally a few ms); if it has not after 3 s,
+        the request gives up without changing anything. Safe to retry.
+      content:
+        text/plain: { schema: { type: string, const: "busy, retry" } }
 
     PinConflict:
       description: |
