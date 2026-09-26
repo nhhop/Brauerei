@@ -44,6 +44,20 @@ const char* resetReasonName(esp_reset_reason_t r) {
 FirmwareUpdater::FirmwareUpdater(fs::FS& fs, SettingsStore& settings)
     : fs_(fs), settings_(settings) {}
 
+const char* FirmwareUpdater::unexpectedResetReason() {
+  const esp_reset_reason_t r = esp_reset_reason();
+  switch (r) {
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_BROWNOUT:
+      return resetReasonName(r);
+    default:
+      return nullptr;
+  }
+}
+
 void FirmwareUpdater::begin() {
   currentVersion_ = BREWCTL_VERSION;
   variant_ = BREWCTL_VARIANT;

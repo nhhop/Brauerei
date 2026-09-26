@@ -3911,7 +3911,7 @@ components:
 
     AlertKind:
       type: string
-      enum: [threshold, fault, program, autotune, timer]
+      enum: [threshold, fault, program, autotune, timer, system]
 
     AlertState:
       type: string
@@ -3945,8 +3945,8 @@ components:
           type: string
           description: |
             What the alert is about: `sensor/<id>`, `actuator/<id>`,
-            `controller/<id>`, `program/<id>` or `timer/<id>`. For
-            `kind: threshold` this is the rule's `cond.ref`.
+            `controller/<id>`, `program/<id>`, `timer/<id>` or `system/reset`.
+            For `kind: threshold` this is the rule's `cond.ref`.
           example: sensor/kettle.temp
         name:
           type: string
@@ -3957,8 +3957,9 @@ components:
         detail:
           type: string
           description: |
-            The driver's `fault()` text, the program status, or the breached
-            comparison. Truncated to 47 characters. Omitted when empty.
+            The driver's `fault()` text, the program status, the breached
+            comparison, or for `kind: system` the reset reason (`panic`,
+            `int_wdt`, `task_wdt`, `wdt`, `brownout`). Truncated to 47 characters. Omitted when empty.
         v:
           type: number
           description: |

@@ -14,9 +14,10 @@
 
 namespace BrewControl {
 
-// Watches the registry and turns five things into a single stream of alerts:
+// Watches the registry and turns six things into a single stream of alerts:
 // user-defined threshold rules, driver fault() strings, setpoint-program
-// run-state changes, PID autotune completion, and timer expiry.
+// run-state changes, PID autotune completion, timer expiry, and an unplanned
+// restart of the device.
 //
 // Rules are persisted to /config/alarms.json; the alert history is a RAM ring
 // that is deliberately lost on reboot — an active threshold or fault re-raises
@@ -41,8 +42,8 @@ class AlarmStore {
     bool     hasV = false;
     uint8_t  sev  = SevWarning;
     bool     cleared = false;
-    char     kind[10]   = "";  // threshold | fault | program | autotune | timer
-    char     src[40]    = "";  // sensor/<id> | actuator/<id> | controller/<id> | program/<id> | timer/<id>
+    char     kind[10]   = "";  // threshold | fault | program | autotune | timer | system
+    char     src[40]    = "";  // sensor/<id> | actuator/<id> | controller/<id> | program/<id> | timer/<id> | system/reset
     char     name[32]   = "";
     char     rule[8]    = "";
     char     detail[48] = "";
@@ -95,6 +96,10 @@ class AlarmStore {
   // never call back into TimerStore.
   void onTimerExpired(const char* id, const char* name, time_t nowEpoch,
                       uint32_t nowMs);
+
+  // Unplanned restart (panic/watchdog/brownout), reported once from setup().
+  // `reason` is the firmware's reset-reason name and lands in `detail`.
+  void onUnexpectedReset(const char* reason, time_t nowEpoch);
 
   // Pops the oldest alert not yet pushed over SSE as a JSON object string.
   // False when the outbox is empty. Sending happens in WebUI::tick so that

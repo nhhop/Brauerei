@@ -412,4 +412,10 @@ void AlarmStore::onTimerExpired(const char* id, const char* name,
   raise_("timer", src.c_str(), name, "", SevInfo, false, nullptr, "", nowEpoch);
 }
 
+void AlarmStore::onUnexpectedReset(const char* reason, time_t nowEpoch) {
+  ScopedLock lk(mutex_);
+  raise_("system", "system/reset", "", "", SevCritical, false, nullptr, reason,
+         nowEpoch);
+}
+
 }  // namespace BrewControl

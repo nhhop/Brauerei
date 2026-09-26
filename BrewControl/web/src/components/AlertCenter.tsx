@@ -54,6 +54,15 @@ function fmtV(v: number): string {
   return String(Math.round(v * 100) / 100);
 }
 
+// `detail` of a `system` alert is the firmware's reset-reason name.
+const RESET_TEXT: Record<string, string> = {
+  panic: 'Absturz — das Gerät ist neu gestartet',
+  int_wdt: 'Watchdog (Interrupt) — das Gerät ist neu gestartet',
+  task_wdt: 'Watchdog — die Steuerung hing länger als 30 s, das Gerät ist neu gestartet',
+  wdt: 'Watchdog — das Gerät ist neu gestartet',
+  brownout: 'Spannungseinbruch — das Gerät ist neu gestartet',
+};
+
 export function alertText(a: Alert): { title: string; body: string } {
   const who = a.name || srcLabel(a.src);
   switch (a.kind) {
@@ -80,6 +89,11 @@ export function alertText(a: Alert): { title: string; body: string } {
       return { title: who, body: 'AutoTune abgeschlossen' };
     case 'timer':
       return { title: who, body: 'Timer abgelaufen' };
+    case 'system':
+      return {
+        title: 'Ungeplanter Neustart',
+        body: RESET_TEXT[a.detail ?? ''] ?? 'Das Gerät ist neu gestartet',
+      };
     default:
       return { title: who, body: '' };
   }

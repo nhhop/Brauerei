@@ -159,6 +159,9 @@ static bool connectStation(const String& ssid, const String& password,
   return true;
 }
 
+// Set in setup() after an unplanned restart, cleared once the alert is raised.
+static const char* pendingResetReason = nullptr;
+
 void setup() {
   Serial.begin(115200);
   // On USB-CDC (ESP32-S2/S3 with ARDUINO_USB_CDC_ON_BOOT=1), enumeration +
@@ -341,6 +344,10 @@ void setup() {
     alarmStore.onTimerExpired(id, name, time(nullptr), millis());
   });
 
+  // Raised from loop() once NTP has synced: PushService drops alerts while the
+  // clock is unset, and this one should reach the phone.
+  pendingResetReason = BrewControl::FirmwareUpdater::unexpectedResetReason();
+
   pushService.begin(hostname_);  // no-op until a browser subscribed
   webUI.begin();
   firmwareUpdater.begin();
@@ -403,6 +410,12 @@ void loop() {
   }
   firmwareUpdater.tick();
   mdnsBrowser.tick(millis());
+  // Wait for the clock so the alert carries a timestamp and can be pushed; give
+  // up waiting after 2 min (no WiFi/NTP) so it still shows in the alert center.
+  if (pendingResetReason && (time(nullptr) > 1600000000 || millis() > 120000)) {
+    alarmStore.onUnexpectedReset(pendingResetReason, time(nullptr));
+    pendingResetReason = nullptr;
+  }
   pushService.tick();
   maintainWiFi();
   delay(5);

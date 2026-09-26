@@ -5346,3 +5346,16 @@ und LilyGo je 1 von 1. Danach überall `v0.1.1`, UI 200, Items unverändert, kei
 lolin meldete nach dem Boot sogar `noUpdate` — die Auto-Prüfung früh nach dem Boot kommt dort
 durch. **Nicht provoziert:** der Fehlerpfad im Update-Modus (gespeicherter Fehler nach dem Boot),
 es gab keinen billigen Weg, einen Download gezielt scheitern zu lassen.
+
+## 2026-09-26 — Alert bei ungeplantem Neustart
+
+Neue Alarm-Art `system` (`src` = `system/reset`): `setup()` fragt `FirmwareUpdater::unexpectedResetReason()`
+und ruft bei `panic`/`int_wdt`/`task_wdt`/`wdt`/`brownout` `AlarmStore::onUnexpectedReset()` auf
+(Severity `critical`, `detail` = Reset-Grund). Geplante Resets (`sw`, `power_on`, `external`,
+`deep_sleep`) melden nichts. Frontend: `AlertKind` um `system` erweitert, Text in
+`AlertCenter.alertText`; `PushService::describe_` und `openapi.yaml` nachgezogen.
+
+**Push:** `PushService` verwirft Alerts ohne gültige Uhr, deshalb wird der Alert erst aus `loop()` erzeugt,
+sobald NTP synchronisiert hat (Zeitstempel und Push kommen so durch); ohne WLAN/NTP nach 2 min trotzdem, dann
+`ts: 0` und nur im Alert-Center. **Verifikation:** `pio run -e esp32dev`, Frontend-Typecheck, OpenAPI-Lint grün.
+Am Gerät nicht ausgelöst (kein Watchdog-Reset provoziert).

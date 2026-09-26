@@ -355,7 +355,7 @@ export interface AlarmConfig {
   resolved: boolean;      // false → cond.ref points at nothing; rule is dormant
 }
 
-export type AlertKind = 'threshold' | 'fault' | 'program' | 'autotune' | 'timer';
+export type AlertKind = 'threshold' | 'fault' | 'program' | 'autotune' | 'timer' | 'system';
 
 export type AlertState = 'raised' | 'cleared';
 

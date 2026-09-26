@@ -47,6 +47,10 @@ class FirmwareUpdater {
   // Serialized status for GET /api/update/status.
   String statusJson() const;
 
+  // Name (same as `resetReason` in the status) of the last reset if nobody asked
+  // for it — panic, watchdog, brownout — else nullptr.
+  static const char* unexpectedResetReason();
+
  private:
   void doCheck(const String& channel);
   void doInstall(const String& channel);
