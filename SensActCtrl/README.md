@@ -113,7 +113,8 @@ Faktor).
 **Aktoren** (`src/actuators/`): `DigitalOutputActuator` (binär oder
 Time-Proportional/SSR), `PulseOutputActuator` (nicht-blockierende
 Puls-Queue), `AnalogOutputActuator` (PWM/DAC), `IdsActuator` (IDS1/IDS2
-Induktionskochfeld, Arduino-only), `MqttGenericActuator` (frei
+Induktionskochfeld, Arduino-only; sendet per RMT, `fault()` meldet neben Plattenfehlern
+auch einen fehlenden RMT-Kanal, dann blockiert das Software-Timing `loop()` ~139 ms je Frame), `MqttGenericActuator` (frei
 konfigurierbarer Topic + Payload-Template, für Fremdgeräte).
 
 **Controller** (`src/controllers/`): `TwoPointController` (Bang-Bang mit
