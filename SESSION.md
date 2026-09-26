@@ -5294,4 +5294,4 @@ Verifikation: drei Envs bauen, 53/53 nativ, Redocly sauber. Am LilyGo per OTA 40
 120 × 204, kein Neustart (Uptime durchgehend, `resetReason: sw` vom OTA), Antwortzeit Median 256 ms,
 Maximum 507 ms (überwiegend SD). Danach Ausgangszustand wiederhergestellt. Die ursprüngliche Panic
 war nicht deterministisch reproduzierbar; dass die Sperre sie behebt, ist also plausibel, aber nicht
-bewiesen. Display-Bedienung unter der Sperre am Gerät noch vom Nutzer zu prüfen.
+bewiesen. Display-Bedienung unter der Sperre vom Nutzer am Gerät bestätigt.
