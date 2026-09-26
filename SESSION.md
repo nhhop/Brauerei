@@ -5295,3 +5295,54 @@ Verifikation: drei Envs bauen, 53/53 nativ, Redocly sauber. Am LilyGo per OTA 40
 Maximum 507 ms (überwiegend SD). Danach Ausgangszustand wiederhergestellt. Die ursprüngliche Panic
 war nicht deterministisch reproduzierbar; dass die Sperre sie behebt, ist also plausibel, aber nicht
 bewiesen. Display-Bedienung unter der Sperre vom Nutzer am Gerät bestätigt.
+
+## 2026-09-26 — „Installieren“ auf allen Boards: nur `.gz` im Release, Update-Modus beim Boot
+
+Nach `v0.1.0` war offen, dass „Installieren“ auf den 256-KB-Boards scheitert. Zwei Ursachen, und
+beim Nachmessen kam eine dritte dazu.
+
+**1. Release-Tar zu groß.** `release.yml` gzippte mit `gzip -k9`, das `webui.tar` enthielt jede
+`.js`/`.css`/`.html` roh und gzip (~610 KB). Die Rohdateien braucht das Gerät nicht:
+ESPAsyncWebServer liefert `.gz` transparent aus, `AsyncFileResponse` auch beim SPA-Fallback auf
+`index.html`. Nutzer-Entscheidung: nur `.gz` ins Tar, kein Filter auf dem Gerät. `pnpm build:sd`
+(`scripts/gzip-dist.js`) ersetzt die Originale jetzt durch ihre `.gz`, `release.yml` nutzt es —
+~160 KB. Das normale `webui.tar` passt damit auch beim manuellen Upload auf die kleinen Boards.
+
+**2. `doInstall()` ohne In-place-Logik.** Es entpackte immer nach `/www.new` neben `/www` und
+prüfte den Platz nicht (ohne `littleFsHasRoomFor` panict esp_littlefs bei voller Partition). Die
+Logik des manuellen Uploads — Ziel, Aufräumen, Platzprüfung, `index.html` als `.part` bis zum
+Schluss — steckt jetzt in `src/AssetInstall.h` und wird von beiden Pfaden benutzt.
+
+Released als `v0.1.1`. esp32dev und LilyGo installierten sauber, **beide S2 nicht**:
+„asset download/extract failed“, der lolin scheiterte schon an der Prüfung. Die bisherige Meldung
+verriet nichts; mit HTTP-/TLS-Fehler und Heap im Fehlertext zeigte sich
+`SSL - Memory allocation failed` bei 58–68 KB freiem Heap und 32 KB größtem Block.
+
+**3. TLS-Speicher auf dem S2.** Der vorkompilierte Core reserviert pro Verbindung feste
+16-KB-mbedTLS-Puffer (`CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384`, keine dynamischen Puffer), ein
+Handshake braucht so ~50 KB mit zwei ~17-KB-Blöcken. Der S2 hat 320 KB internen RAM, im Betrieb
+bleiben 58–65 KB, zerstückelt. Zusätzlich hielt `HTTPClient` bei der 302-Weiterleitung auf den
+Asset-Host die erste TLS-Sitzung offen (`setURL()` setzt `_canReuse`). Die Weiterleitung von Hand
+allein reichte nicht: In drei Runden scheiterte der brautomat zweimal (Handshake zu
+`release-assets.githubusercontent.com` beim Firmware-Download), der lolin dreimal schon bei
+`api.github.com`.
+
+**Fix (Nutzer-Entscheidung „Update-Modus beim Boot“):** „Installieren“ schreibt den Kanal in NVS
+(`brewctrl/ota_install`) und startet neu. `setup()` ruft direkt nach dem WLAN
+`FirmwareUpdater::runPendingInstall()` auf, bevor ESP-NOW, MQTT, Registry und Webserver Heap
+belegen; der Eintrag wird vor dem Versuch gelöscht, ein Absturz wird also nicht zur Boot-Schleife.
+Erfolg → Neustart in die neue Firmware. Fehlschlag → Grund in `brewctrl/ota_error`, normaler Boot,
+`begin()` zeigt ihn als `state: error` an (und hält damit die Boot-Auto-Prüfung davon ab, ihn zu
+überschreiben). Mitgenommen: Weiterleitungen von Hand mit frischem Client je Hop; `/www` wird erst
+geleert, wenn der Tar-Download mit 200 antwortet (vorher kostete ein reiner Netzwerkfehler auf den
+kleinen Boards die UI); Fehlertexte nennen Host, HTTP-/TLS-Fehler und Heap. Die UI zeigte beim
+Installieren ohnehin schon „Gerät startet neu“, am Frontend ändert sich nichts.
+
+**Verifikation:** `pio run` alle drei Envs, `pio test -e native` (53), Typecheck, OpenAPI-Lint.
+Manueller Upload des neuen `.gz`-Tars am lolin (in place) und LilyGo (staged) → 200, UI inkl.
+SPA-Route über `index.html.gz`. „Installieren“ von `v0.1.1` im Update-Modus: **beide S2 je
+3 von 3** (vorher 1 von 6), der lolin, obwohl seine Prüfung im Betrieb weiter scheitert; esp32dev
+und LilyGo je 1 von 1. Danach überall `v0.1.1`, UI 200, Items unverändert, kein `/www.new`. Der
+lolin meldete nach dem Boot sogar `noUpdate` — die Auto-Prüfung früh nach dem Boot kommt dort
+durch. **Nicht provoziert:** der Fehlerpfad im Update-Modus (gespeicherter Fehler nach dem Boot),
+es gab keinen billigen Weg, einen Download gezielt scheitern zu lassen.
