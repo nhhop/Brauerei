@@ -6,6 +6,7 @@
 #include <WiFiClientSecure.h>
 #include <esp_system.h>
 
+#include "AssetInstall.h"
 #include "SdLock.h"
 #include "SdTarSink.h"
 #include "TarExtractor.h"
@@ -17,25 +18,6 @@ constexpr char kApiHost[] = "https://api.github.com";
 constexpr char kRepo[] = BREWCTL_GITHUB_REPO;  // "owner/repo", from build flag
 constexpr char kUserAgent[] = "BrewControl-OTA";
 constexpr uint32_t kAutoCheckIntervalMs = 24UL * 60UL * 60UL * 1000UL;  // daily
-constexpr char kAssetsLive[] = "/www";
-constexpr char kAssetsStaging[] = "/www.new";
-
-void removeRecursive(fs::FS& fs, const char* path) {
-  File dir = fs.open(path);
-  if (!dir) return;
-  if (!dir.isDirectory()) { dir.close(); fs.remove(path); return; }
-  File e = dir.openNextFile();
-  while (e) {
-    String child = String(path) + "/" + e.name();
-    bool isDir = e.isDirectory();
-    e.close();
-    if (isDir) removeRecursive(fs, child.c_str());
-    else fs.remove(child);
-    e = dir.openNextFile();
-  }
-  dir.close();
-  fs.rmdir(path);
-}
 
 const char* resetReasonName(esp_reset_reason_t r) {
   switch (r) {
@@ -227,30 +209,35 @@ void FirmwareUpdater::doInstall(const String& channel) {
     return;
   }
 
-  // 1) UI assets (non-fatal if absent): extract webui.tar → /www.new, swap.
+  // 1) UI assets (non-fatal if absent): extract webui.tar the same way as a
+  //    manual upload (AssetInstall.h) — staged + swap, or in place on the
+  //    boards with the small data partition. A failure stops here, before the
+  //    firmware is touched.
   if (tarUrl.length() > 0) {
     state_ = State::Downloading;
     progress_ = 0;
-    {
-      SdLock lock;
-      removeRecursive(fs_, kAssetsStaging);
-      fs_.mkdir(kAssetsStaging);
-    }
-    SdTarSink sink(fs_, kAssetsStaging);
-    TarExtractor ex(sink.openCb(), sink.writeCb(), sink.closeCb());
+    AssetInstall::prepare(fs_);
+    String noSpace;
+    SdTarSink sink(fs_, AssetInstall::kTarget);
+    TarExtractor ex(AssetInstall::wrapOpen(sink.openCb(), noSpace), sink.writeCb(),
+                    sink.closeCb());
     bool ok = streamDownload(tarUrl, [&ex](const uint8_t* d, size_t n) {
       return ex.feed(d, n);
     });
     if (!ok || ex.hasError()) {
-      error_ = "asset download/extract failed";
+      error_ = noSpace.length() ? noSpace : String("asset download/extract failed");
       state_ = State::Error;
       return;
     }
+#ifdef BREWCTL_ASSETS_IN_PLACE
+    AssetInstall::finish(fs_);
+#else
+    AssetInstall::removeRecursive(fs_, "/www");
     {
       SdLock lock;
-      removeRecursive(fs_, kAssetsLive);
-      fs_.rename(kAssetsStaging, kAssetsLive);
+      fs_.rename("/www.new", "/www");
     }
+#endif
   }
 
   // 2) Firmware: stream firmware.bin → Update (flash).

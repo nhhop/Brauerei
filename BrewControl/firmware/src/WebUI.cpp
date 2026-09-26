@@ -13,6 +13,7 @@
 #include <LittleFS.h>
 #endif
 
+#include "AssetInstall.h"
 #include "BoardPins.h"
 #include "Hostname.h"
 #include "RegistryLock.h"
@@ -57,20 +58,6 @@ constexpr uint16_t kPairTimeoutMs = 2000;
 // and only for as long as the request lives.
 constexpr size_t kMaxBodyBytes = 16384;
 
-// Where a UI package upload is extracted. Normally a staging dir swapped in
-// only after a complete extraction, so a failed upload leaves the running UI
-// intact. BREWCTL_ASSETS_IN_PLACE is for boards whose data partition cannot
-// hold the old and the new bundle at once (the 256 KB partition of
-// partitions_4mb_littlefs.csv): /www is cleared first and overwritten
-// directly — a failed upload then leaves no UI (kRecoveryPageHtml takes over).
-// It is about partition size, not LittleFS: a board with a larger data
-// partition keeps the staged swap.
-#ifdef BREWCTL_ASSETS_IN_PLACE
-constexpr char kAssetTarget[] = "/www";
-#else
-constexpr char kAssetTarget[] = "/www.new";
-#endif
-
 // Flash usage around a UI package upload — the small LittleFS data partition
 // is the usual reason such an upload fails.
 void logFsUsage(const char* when) {
@@ -81,18 +68,6 @@ void logFsUsage(const char* when) {
   (void)when;
 #endif
 }
-
-#ifdef BREWCTL_USE_LITTLEFS
-// esp_littlefs panics (IntegerDivideByZero in lfs_alloc) instead of returning
-// an error when a write finds no free block, rebooting mid-request. So check
-// before opening each archived file that it fits, with headroom for block
-// rounding, CTZ skip-list pointers and a metadata block.
-bool littleFsHasRoomFor(uint32_t fileSize) {
-  constexpr size_t kBlock = 4096;
-  size_t freeBytes = LittleFS.totalBytes() - LittleFS.usedBytes();
-  return freeBytes >= fileSize + fileSize / 64 + 2 * kBlock;
-}
-#endif
 
 std::unique_ptr<char[]> makeSnapshot(SensActCtrl::Registry& reg, bool estop,
                                      size_t* outLen) {
@@ -1968,8 +1943,8 @@ void WebUI::begin() {
         }
       });
 
-  // Multipart UI package (.tar) upload → extract to kAssetTarget; for the
-  // staged /www.new, swap on loopTask afterwards.
+  // Multipart UI package (.tar) upload → extract to AssetInstall::kTarget;
+  // for the staged /www.new, swap on loopTask afterwards.
   server_.on("/api/update/assets", HTTP_POST,
       [](AsyncWebServerRequest* req) { /* response sent in upload cb */ },
       [this](AsyncWebServerRequest* req, const String& filename, size_t index,
@@ -1977,44 +1952,11 @@ void WebUI::begin() {
         if (index == 0) {
           uploadUnauthorized_ = !requireAuth(req);
           if (uploadUnauthorized_) return;
-          assetSink_.reset(new SdTarSink(fs_, kAssetTarget));
-          TarExtractor::OpenCb open = assetSink_->openCb();
-          assetNoSpace_ = "";
-#ifdef BREWCTL_USE_LITTLEFS
-          open = [this, open](const std::string& path, uint32_t size) {
-            if (!littleFsHasRoomFor(size)) {
-              assetNoSpace_ = "not enough space (" + String(path.c_str()) + ", " +
-                              String(size) + " bytes)";
-              return false;
-            }
-            return open(path, size);
-          };
-#endif
-#ifdef BREWCTL_ASSETS_IN_PLACE
-          // index.html is what makes /www count as a UI (see onNotFound). Hold
-          // it back under a .part name until the whole package is extracted,
-          // so an aborted upload — also a dropped connection that never
-          // reaches `final` — ends on the recovery page, not on a broken UI.
-          open = [open](const std::string& path, uint32_t size) {
-            bool isIndex = path == "index.html" || path == "./index.html" ||
-                           path == "index.html.gz" || path == "./index.html.gz";
-            return open(isIndex ? path + ".part" : path, size);
-          };
-#endif
-          assetTar_.reset(new TarExtractor(open,
-                                           assetSink_->writeCb(),
-                                           assetSink_->closeCb()));
-          // Recursive: plain rmdir() silently no-ops on a non-empty dir, so a
-          // previous failed/partial extraction would otherwise leave stale
-          // files behind for this run to write into (FILE_WRITE appends
-          // rather than truncates on this platform). /www.new is cleared in
-          // place mode too: leftovers of an earlier staged attempt eat space.
-          removeRecursive_("/www.new");
-#ifdef BREWCTL_ASSETS_IN_PLACE
-          removeRecursive_("/www");
-#endif
-          SdLock lock;
-          fs_.mkdir(kAssetTarget);
+          assetSink_.reset(new SdTarSink(fs_, AssetInstall::kTarget));
+          assetTar_.reset(new TarExtractor(
+              AssetInstall::wrapOpen(assetSink_->openCb(), assetNoSpace_),
+              assetSink_->writeCb(), assetSink_->closeCb()));
+          AssetInstall::prepare(fs_);
           logFsUsage("start");
         }
         if (uploadUnauthorized_) return;
@@ -2036,13 +1978,7 @@ void WebUI::begin() {
           assetSink_.reset();
 #ifdef BREWCTL_ASSETS_IN_PLACE
           if (ok) {
-            {
-              SdLock lock;
-              for (const char* f : {"/www/index.html", "/www/index.html.gz"}) {
-                String part = String(f) + ".part";
-                if (fs_.exists(part)) fs_.rename(part, f);
-              }
-            }
+            AssetInstall::finish(fs_);
             req->send(200, "text/plain", "ok");
           }
 #else
