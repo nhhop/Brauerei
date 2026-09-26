@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <WiFiClientSecure.h>
+#include <esp_system.h>
 
 #include "SdLock.h"
 #include "SdTarSink.h"
@@ -34,6 +35,22 @@ void removeRecursive(fs::FS& fs, const char* path) {
   }
   dir.close();
   fs.rmdir(path);
+}
+
+const char* resetReasonName(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON: return "power_on";
+    case ESP_RST_EXT: return "external";
+    case ESP_RST_SW: return "sw";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "int_wdt";
+    case ESP_RST_TASK_WDT: return "task_wdt";
+    case ESP_RST_WDT: return "wdt";
+    case ESP_RST_DEEPSLEEP: return "deep_sleep";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_SDIO: return "sdio";
+    default: return "unknown";
+  }
 }
 }  // namespace
 
@@ -108,6 +125,7 @@ bool FirmwareUpdater::streamDownload(
   WiFiClient* stream = http.getStreamPtr();
   uint8_t buf[1024];
   while (http.connected() && (total < 0 || got < total)) {
+    feedLoopWDT();  // runs on loopTask; a full image takes longer than its WDT
     size_t avail = stream->available();
     if (avail) {
       int n = stream->readBytes(buf, avail > sizeof(buf) ? sizeof(buf) : avail);
@@ -314,6 +332,7 @@ String FirmwareUpdater::statusJson() const {
   doc["state"] = stateName(state_);
   doc["currentVersion"] = currentVersion_;
   doc["variant"] = variant_;
+  doc["resetReason"] = resetReasonName(esp_reset_reason());
   doc["channel"] = settings_.firmwareChannel();
   doc["autoCheck"] = settings_.firmwareAutoCheck();
   doc["progress"] = progress_;

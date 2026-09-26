@@ -5135,6 +5135,82 @@ Verifikation: 273 native Tests grün (2 neue für `deviceOfTopic`/`isCommandTopi
 `BrewControl/firmware` `pio run -e esp32dev` baut. **Am Gerät nicht geprüft** — das Mapping liegt im
 ARDUINO-Zweig und ist nativ nicht testbar.
 
+## 2026-09-26 — `loop()` unter Datei-Downloads: AsyncTCP auf Core 0, Watchdog auf dem loopTask
+
+Offener Punkt vom 2026-09-23: Unter parallelen `GET /api/files/download` wurden **alle**
+Abschnitte von `loop()` gleichzeitig langsam, auch solche, die das Dateisystem nie anfassen
+(`registry.tick()` bis 188 ms). Zwei Hypothesen standen: **H1** AsyncTCP (Priorität 10, ohne
+Core-Bindung) landet auf Core 1 und hungert den loopTask (Priorität 1) aus; **H2** LittleFS liest
+aus dem internen Flash, und jeder SPI-Flash-Zugriff legt den Cache beider Cores still.
+
+**Messung** auf dem Wegwerf-Branch `spike/loop-starvation` (Worktree): `loop()`-Periode als
+Histogramm plus Zeit je Service-`tick()`, abrufbar über `GET :81/spike`; dazu
+`GET :81/spike/fsread`, das eine Datei aus einem auf Core 0 gebundenen Task liest, ganz ohne
+Netzwerk. Last jeweils 60 s mit 1 SSE-Abonnent + 2 Download-Schleifen auf das UI-Bundle (mehr
+Verbindungen laufen ins lwIP-Socket-Limit, siehe 2026-09-23).
+
+| Board / Fall | `loop()` p99 | max | Durchläufe > 50 ms |
+|---|---|---|---|
+| esp32dev Leerlauf | 13 ms | 18 ms | 0 |
+| esp32dev Downloads | **71 ms** | **168 ms** | 126 |
+| esp32dev nur Flash-Lesen auf Core 0 | 26 ms | 61 ms | 9 |
+| esp32dev Downloads, AsyncTCP auf Core 0 | 29 ms | 45 ms | 0 |
+| esp32dev Downloads, **Fix-Firmware** | **12 ms** | **33 ms** | 0 |
+| LilyGo Leerlauf (mit Display) | 22 ms | 159 ms | 6 |
+| LilyGo Downloads | **190 ms** | **400 ms** | 315 |
+| LilyGo nur SD-Lesen auf Core 0 | 22 ms | 195 ms | 2 |
+| LilyGo Downloads, AsyncTCP auf Core 0 | **24 ms** | 119 ms | 2 |
+| S2 Leerlauf | 7 ms | 14 ms | 0 |
+| S2 Downloads | **420 ms** | **576 ms** | 183 |
+| S2 Downloads, AsyncTCP-Priorität 1 | **22 ms** | 34 ms | 0 |
+
+**Ergebnis:** H1 ist die Ursache, auf allen drei Boards. Der Handler von `:81/spike` lief ungebunden
+jedes Mal auf Core 1, gebunden auf Core 0. Am LilyGo (SD) bremst reines Lesen `loop()` überhaupt
+nicht, dort ist es ausschließlich die Aushungerung — und sie ist dort stärker (`loop()` lief
+unter Last nur noch mit einem Fünftel der Rate). H2 gibt es auf dem esp32dev messbar, aber klein
+(p99 13 → 26 ms bei Dauerlesen), und unter echter Download-Last ist davon mit der Fix-Firmware
+nichts mehr zu sehen. Der Download-Durchsatz ist gebunden wie ungebunden gleich (~190 KB/s für
+das 124-KB-Bundle). Der 14,2-s-Ausreißer vom 2026-09-23 trat in keiner Messung wieder auf.
+
+**Fix:** `-DCONFIG_ASYNC_TCP_RUNNING_CORE=0` in `[common]`. Der S2 hat nur einen Core, dort hilft
+das nicht, und er war am schwersten betroffen. Für ihn setzt `[env:lolin_s2_mini]` zusätzlich
+`-DCONFIG_ASYNC_TCP_PRIORITY=1`: Bei gleicher Priorität teilt der Scheduler die CPU zwischen
+AsyncTCP und loopTask im Wechsel auf. Durchsatz unverändert (~300 KB/s), `/api/snapshot` unter
+Download-Last 50–125 ms statt 20 ms — für die UI unkritisch. Auf den Dual-Core-Boards bleibt die
+Priorität beim Library-Default.
+
+**Watchdog auf dem loopTask** (Nutzer-Entscheidung): Die API läuft auf dem AsyncTCP-Task und
+antwortet weiter, während `loop()` steht — genau so sah der Programm-Hänger vom 2026-09-12 aus.
+`setup()` stellt am Ende den Task-Watchdog, den der Arduino-Core schon betreibt (5 s, beobachtet
+IDLE0), per `esp_task_wdt_init(30, true)` auf 30 s um und meldet mit `enableLoopWDT()` den
+loopTask an; der Core füttert ihn vor jedem `loop()`. `FirmwareUpdater::streamDownload()` füttert
+ihn zusätzlich, weil ein OTA-Pull im loopTask länger laufen kann. Den Grund des letzten
+Neustarts meldet `GET /api/update/status` als `resetReason`; die Firmware-Seite zeigt ihn an und
+färbt ungeplante Neustarts (Watchdog, Absturz, Spannungseinbruch) rot. Einen Alert dafür gibt es
+nicht, `AlarmStore` bräuchte eine neue Art — als eigener Punkt in PLAN.md.
+
+**Verifikation:** `GET :81/spike/hang?s=40` blockiert den loopTask. Am esp32dev antwortete die
+API währenddessen weiter (Uptime lief hoch), nach ~30 s startete das Board neu und meldete
+`resetReason: "task_wdt"`. Am LilyGo dasselbe mit laufendem Programm „Hermann-Weizen“ im zweiten
+Schritt (`currentStep: 1`, 60 s): nach dem Neustart lief es im selben Schritt mit unverändertem `stepStartedEpoch` weiter,
+Restzeit passend zur Uhr (3 s), und schaltete danach regulär weiter. Der Stromlos-Zyklus meldete
+`power_on`, OTA-Flashes `sw`. Zum Schluss laufen alle drei Boards auf der Fix-Firmware ohne
+Messwerkzeug. Die Update-Prüfung beim Boot (TLS im loopTask) lief ohne Auslösen
+durch. Checks: `pio run` für alle drei Envs, `pio test -e native` (37), `pnpm typecheck`,
+`pnpm build`, OpenAPI-Lint.
+
+**Zwischenfall am LilyGo:** Der erste `fsread`-Task gab nie ab und hungerte IDLE0 aus — Reset
+durch den Task-Watchdog (`esp_reset_reason()` 6), zweimal mitten im SD-Lesen. Mit `vTaskDelay(1)`
+nach jeder Datei lief er sauber. Nach dem nächsten OTA-Flash hing die SD-Karte nicht mehr ein
+(Registry leer, Einstellungen auf Code-Defaults, auf die Karte wurde nichts geschrieben), auch
+nicht nach zwei Software-Neustarts — die nehmen der Karte nicht den Strom. Nach einem
+Stromlos-Zyklus war sie vollständig wieder da (Config, Logs, Items) — mit unveränderter
+Fix-Firmware, die damit als Ursache ausscheidet. Der Lesepfad des Spikes war bewusst ungesperrt
+wie `AsyncFileResponse`; daraus der neue PLAN.md-Punkt zum fehlenden `SdLock` bei Downloads auf
+SD-Boards.
+
+**Nachtrag — erstes Release und OTA-Pull:** `main` gepusht, Tag `v0.1.0` gesetzt (erster Tag im Repo), `release.yml` baute alle drei Images plus `webui.tar`. Am LilyGo `POST /api/update/check` → `updateAvailable: v0.1.0`, dann `POST /api/update/install`: ~13 s Asset-Download, ~30 s Firmware-Flash, zusammen gut 40 s im loopTask — länger als der 30-s-Watchdog, trotzdem `resetReason: "sw"`, das Füttern in `streamDownload()` wirkt. Danach `currentVersion: v0.1.0`, UI aus dem Release ausgeliefert, Items/Config/Logs unverändert. Auf den LittleFS-Boards bewusst nicht ausgelöst: `doInstall()` legt das Release-Tar neben `/www` ab, das passt nicht in die 256-KB-Partition (neuer PLAN.md-Punkt). esp32dev und beide S2 (`brewcontrol-lolin`, `brewcontrol-brautomat`) laufen auf `5213589`, inhaltlich gleich mit `v0.1.0`.
+
 ## 2026-09-26 — Pin-Manager Stufe 1 und Bearbeiten per PUT (Branch `feature/pin-manager`)
 
 Anlass waren die Pin-Konflikte am LilyGo (zweimal in drei Tagen, einmal auf einem Strapping-Pin) und

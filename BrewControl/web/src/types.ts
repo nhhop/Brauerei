@@ -592,6 +592,9 @@ export interface UpdateStatus {
   state: UpdateState;
   currentVersion: string;
   variant: string;
+  resetReason:
+    | 'power_on' | 'external' | 'sw' | 'panic' | 'int_wdt' | 'task_wdt'
+    | 'wdt' | 'deep_sleep' | 'brownout' | 'sdio' | 'unknown';
   channel: 'stable' | 'preview';
   autoCheck: boolean;
   progress: number;

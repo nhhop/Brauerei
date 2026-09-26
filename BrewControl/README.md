@@ -45,6 +45,20 @@ Browser einen vollständigen Snapshot.
 - **`ESPAsyncWebServer`** statt sync `WebServer`: SSE braucht persistente
   Verbindungen — `AsyncEventSource` macht das in wenigen Zeilen, AsyncTCP
   läuft in einem eigenen Task und blockiert `Registry::tick()` nicht.
+  Dieser Task (Priorität 10) ist per `CONFIG_ASYNC_TCP_RUNNING_CORE=0`
+  auf Core 0 gebunden, damit Core 1 dem loopTask (Priorität 1) bleibt —
+  ungebunden hungerte er ihn beim Streamen von Dateien aus
+  (`loop()`-p99 bis 190 ms, siehe `SESSION.md` 2026-09-26). Der S2 hat
+  nur einen Core; dort läuft AsyncTCP stattdessen mit Priorität 1, gleich
+  dem loopTask (`CONFIG_ASYNC_TCP_PRIORITY` in `[env:lolin_s2_mini]`).
+- **Watchdog auf dem loopTask** (30 s): Die Web-API läuft auf dem
+  AsyncTCP-Task und antwortet auch dann weiter, wenn `loop()` hängt — ohne
+  Watchdog wirkte das Gerät gesund, während Regler und Programme standen.
+  Jetzt startet es neu, Programme/Timer setzen aus ihrem gespeicherten
+  Zustand fort, und `GET /api/update/status` meldet den Grund
+  (`resetReason`, Anzeige auf der Firmware-Seite). Wer im loopTask bewusst
+  länger als ein paar Sekunden arbeitet, ruft zwischendurch
+  `feedLoopWDT()` (wie `FirmwareUpdater::streamDownload()`).
 - **Vite + Preact** statt React: Preact (~3 KB gzipped) passt zum
   Library-Stil ("Simplicity First"), gleiche API, kleineres Bundle.
 - **Tailwind CSS 4**: utility-first, kein `tailwind.config.ts`/
@@ -62,6 +76,8 @@ Browser einen vollständigen Snapshot.
   LittleFS-Zugriffe selbst sind über einen globalen rekursiven Mutex
   (`SdLock.h`) synchronisiert — Grund war ein realer Concurrency-Bug
   zwischen `loopTask` und `async_tcp` (siehe `SESSION.md` 2026-08-19/20).
+  Ausnahme: Datei-Downloads und die statische UI-Auslieferung lesen über
+  `AsyncFileResponse` ohne `SdLock` (offener Punkt in `PLAN.md`).
 
 ## Voraussetzungen
 
@@ -615,6 +631,13 @@ aufrufen — die Binary ist über `@esbuild/win32-x64` auch ohne Script da.
 **SD mount FAILED nach Anstecken**
 Strapping-Pin-Konflikt auf GPIO 5 (siehe oben). Pull-up auf CS oder
 anderen Pin probieren.
+
+**Gerät startet unerwartet neu, Firmware-Seite zeigt „Letzter Neustart: Watchdog“**
+`resetReason: "task_wdt"` heißt: `loop()` kam 30 s lang nicht herum, der
+Watchdog hat neu gestartet. Das ist ein echter Hänger im loopTask (oder,
+seltener, ein Task auf Core 0, der nie abgibt) — den Umstand notieren
+(was lief, welche Aktion kurz vorher) und im `PLAN.md`-Punkt zur stehen
+gebliebenen Ablaufsteuerung nachtragen.
 
 **UI lädt, aber Sensor zeigt `—` + "stale" Badge**
 `state.ok = false` aus der Library — Sensor-Treiber meldet Fehler.
