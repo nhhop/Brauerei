@@ -100,12 +100,14 @@ pnpm typecheck
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
   ESPAsyncWebServer serviert .gz transparent); Deploy über `pio run -t uploadfs` (USB) oder,
-  wenn kein serieller Zugriff möglich ist, über `POST /api/update/assets` mit einem Tar aus
-  **nur den .gz-Dateien** — das normale `webui.tar` (roh+gzip, ~440 KB) passt nicht in die
-  256-KB-Partition. Beide Envs setzen `BREWCTL_ASSETS_IN_PLACE`: `/www` wird vor dem Entpacken
+  wenn kein serieller Zugriff möglich ist, über `POST /api/update/assets` oder „Installieren“
+  mit dem normalen `webui.tar`. Das enthält seit 2026-09-26 **nur `.gz`-Dateien** (~160 KB,
+  `pnpm build:sd` ersetzt die Originale); roh + gzip (~610 KB) passte nicht in die 256-KB-
+  Partition. Beide Envs setzen `BREWCTL_ASSETS_IN_PLACE`: `/www` wird vor dem Entpacken
   geleert (altes + neues Bundle passen nicht gleichzeitig), bei Fehlschlag liefert die
-  Firmware eine eingebettete Notfall-Upload-Seite. Das Flag gehört zur **kleinen Partition,
-  nicht zu LittleFS** — ein neues Board ohne SD, aber mit größerer Datenpartition lässt es weg
+  Firmware eine eingebettete Notfall-Upload-Seite. Upload und „Installieren“ teilen sich
+  diese Logik in `src/AssetInstall.h` — dort ändern, nicht in einem der beiden Aufrufer.
+  Das Flag gehört zur **kleinen Partition, nicht zu LittleFS** — ein neues Board ohne SD, aber mit größerer Datenpartition lässt es weg
   und behält den atomaren `/www.new`-Tausch.
 - Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md`/`SESSION-archive.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).
 - Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum Root-SESSION.md-Eintrag im Root-`PLAN.md` → „Bugs & bekannte Einschränkungen" eintragen, statt nur im Session-Log zu vergraben.
