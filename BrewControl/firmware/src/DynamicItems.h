@@ -13,6 +13,8 @@
 #include <transport/ITransport.h>
 #include <vector>
 
+#include "PinMap.h"
+
 namespace BrewControl {
 
 class WebhookService;
@@ -23,14 +25,30 @@ class WebhookService;
 // Persists to /config/registry.json on the SD filesystem.
 class DynamicItems {
  public:
-  struct Result { bool ok; const char* error = ""; };
+  // conflict: the request clashes with the current state (pin taken, no RMT
+  // channel left, still referenced by a controller) — callers send 409.
+  struct Result { bool ok; const char* error = ""; bool conflict = false; };
 
   // Create and register a new item. Calls item.begin() immediately (if
   // markInitialized() has already been called; otherwise begin() is deferred
-  // to registry.begin(), which loadFromSD() relies on).
+  // to registry.begin(), which loadFromSD() relies on). Sensors and actuators
+  // are checked against the board's pin table first (PinMap.h).
   Result addSensor(const JsonObject& cfg, SensActCtrl::Registry& reg);
   Result addActuator(const JsonObject& cfg, SensActCtrl::Registry& reg);
   Result addController(const JsonObject& cfg, SensActCtrl::Registry& reg);
+
+  // Replace a dynamic item by a new config (full config, the id may change).
+  // Pins are checked with the old item's own pins counted as free; then the
+  // old item is removed and the new one created. If creating fails, the old
+  // item is recreated from its saved config, so a failed edit loses nothing.
+  // {false, "not a dynamic item"} → 404; a sensor/actuator still referenced
+  // by a controller is refused with conflict set, as in remove*.
+  Result replaceSensor(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
+  Result replaceActuator(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
+  Result replaceController(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
+
+  // GPIOs occupied by the current sensors and actuators (GET /api/pins).
+  std::vector<PinUse> pinUses() const;
 
   // Unregister and free a dynamic item. Returns {false, reason} if the id is
   // not found in dynamic items (caller should send 405) or if a sensor /
@@ -192,6 +210,17 @@ class DynamicItems {
   Result addSensorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);
   Result addActuatorNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);
   Result addControllerNoBegin(const JsonObject& cfg, SensActCtrl::Registry& reg);
+
+  // add*() without the pin check — replace*() checks up front and must be
+  // able to restore an old item even if its stored pins clash.
+  Result addSensorUnchecked(const JsonObject& cfg, SensActCtrl::Registry& reg);
+  Result addActuatorUnchecked(const JsonObject& cfg, SensActCtrl::Registry& reg);
+
+  // Pin check against the board table; replaceId's own pins count as free.
+  // The message of a failed check lives in pinError_, which Result.error then
+  // points to (valid until the next check).
+  Result checkPins(const JsonObject& cfg, const char* replaceId);
+  std::string pinError_;
 
   OneWire& getOrCreateBus(int pin);
   static bool parseHexAddress(const char* hex, uint8_t out[8]);

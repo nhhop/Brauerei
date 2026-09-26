@@ -1,7 +1,7 @@
 // BrewControl/web/src/pages/DevicesPage.tsx
-import { useState } from 'preact/hooks';
-import type { Snapshot, ItemConfig } from '../types';
-import { deleteSensor, deleteActuator, deleteController, getConfig } from '../api';
+import { useState, useEffect } from 'preact/hooks';
+import type { Snapshot, ItemConfig, PinConflict } from '../types';
+import { deleteSensor, deleteActuator, deleteController, getConfig, getPins } from '../api';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
@@ -33,6 +33,17 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
   const [deletePending, setDeletePending] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [calibrateId, setCalibrateId] = useState<string | null>(null);
+  const [pinConflicts, setPinConflicts] = useState<PinConflict[]>([]);
+
+  // Pin conflicts of the stored config (GET /api/pins). Reloaded whenever the
+  // item set changes — the snapshot itself arrives every second.
+  const itemKey = snap
+    ? [...snap.sensors, ...snap.actuators].map((i) => i.id).join('|')
+    : '';
+  useEffect(() => {
+    if (!snap) return;
+    getPins().then((p) => setPinConflicts(p.conflicts)).catch(() => setPinConflicts([]));
+  }, [itemKey]);
 
   async function startEdit(role: Role, id: string) {
     setEditPending(id);
@@ -100,6 +111,22 @@ export function DevicesPage({ snap }: { snap: Snapshot | null; path?: string }) 
 
         {!snap && <SkeletonList count={3} />}
         {editErr && <p class="text-sm text-critical">{editErr}</p>}
+        {pinConflicts.length > 0 && (
+          <div class="rounded-md border border-critical/40 bg-critical/10 p-3 text-sm">
+            <p class="font-medium text-fg">Pin-Konflikte in der Konfiguration</p>
+            <ul class="mt-1 list-disc pl-5 text-muted">
+              {pinConflicts.map((c) => (
+                <li key={`${c.gpio}-${c.reason}`}>
+                  GPIO {c.gpio} ({c.reason}): {c.users.map((u) => `${u.id} (${u.key})`).join(', ')}
+                </li>
+              ))}
+            </ul>
+            <p class="mt-1 text-xs text-muted">
+              Die Geräte laufen trotzdem, können sich aber gegenseitig stören — ein Gerät bearbeiten und
+              auf einen freien Pin legen.
+            </p>
+          </div>
+        )}
         {empty && (
           <p class="text-sm text-muted">
             Noch keine Geräte konfiguriert — über „+ Hinzufügen“ anlegen.

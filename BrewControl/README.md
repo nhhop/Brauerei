@@ -110,16 +110,16 @@ pio run -e esp32dev -t upload     # flash über USB
 pio device monitor                # serial @ 115200, mit exception_decoder
 ```
 
-Pins werden per `-DBREWCTL_*`-Build-Flags in `platformio.ini` pro Board
-gesetzt; `main.cpp` hat `#ifndef`-Defaults für `esp32dev`.
+Board-Pins (SD, I²C) werden per `-DBREWCTL_*`-Build-Flags in `platformio.ini`
+pro Board gesetzt; `main.cpp` hat `#ifndef`-Defaults für `esp32dev`. Die Pins
+der Sensoren und Aktoren legt nicht die Firmware fest, sondern die Nutzer-Config
+(siehe „Pin-Prüfung“ unten).
 
 **`esp32dev` (Defaults)**
 
 | Pin     | Funktion                | Konstante           |
 |---------|-------------------------|---------------------|
 | GPIO 0  | BOOT/Reset-Trigger      | `kBootButtonPin`    |
-| GPIO 4  | DS18B20 (1-Wire)        | `kOneWirePin`       |
-| GPIO 16 | SSR (TPO-Modus)         | `kSsrPin`           |
 
 Kein SD-Pin mehr im Standard-Build (`BREWCTL_USE_LITTLEFS=1`, s.u.) — `kSdCsPin`
 (GPIO 5, ⚠ Strapping-Pin/MTDI) existiert im Code weiter, wird aber nur noch im
@@ -139,8 +139,12 @@ die Firmware als neuer COM-Port (TinyUSB-CDC).
 | GPIO 41 | SD-Karte SCK            | `BREWCTL_SD_SCK=41`         |
 | GPIO 39 | SD-Karte MOSI           | `BREWCTL_SD_MOSI=39`        |
 | GPIO 40 | SD-Karte MISO           | `BREWCTL_SD_MISO=40`        |
-| GPIO 1  | DS18B20 (1-Wire)        | `BREWCTL_ONEWIRE_PIN=1`     |
-| GPIO 2  | SSR (TPO-Modus)         | `BREWCTL_SSR_PIN=2`         |
+| GPIO 7  | I²C SDA (Touch/RTC/PMU) | `BREWCTL_I2C_SDA=7`         |
+| GPIO 6  | I²C SCL                 | `BREWCTL_I2C_SCL=6`         |
+
+Dazu das Display auf GPIO 10–17 (`src/display/DisplayUI.cpp`) und die
+Touch-/RTC-Interrupt-Leitung auf GPIO 9 (von der Firmware nicht genutzt, aber
+elektrisch belegt).
 
 ⚠ **OPI-PSRAM-Konflikt:** GPIO 33–37 sind auf ESP32-S3-Varianten mit
 Octal-PSRAM intern vom PSRAM-Controller belegt. SPI-Pins müssen diesen
@@ -148,6 +152,35 @@ Bereich meiden — sonst hängt `SD.begin()` und der Task-Watchdog feuert.
 **Pin-Quellen variieren zwischen AMOLED-Sub-Varianten** (1.43, 1.64,
 1.75, 1.91, Plus, Touch) — vor einer neuen Variante Silkscreen am Board
 ablesen, nicht Web-Snippets vertrauen.
+
+### Pin-Prüfung
+
+`src/BoardPins.h` beschreibt je Board jeden GPIO: **frei**, **bedenklich**
+(funktioniert, hat aber eine Zweitaufgabe — Strapping-Pin, USB, UART0,
+Batterie-ADC), **reserviert** (vom Board selbst belegt — SD, Display, I²C,
+BOOT-Taste) oder **verboten** (Flash/PSRAM); dazu Input-only-Pins, DAC-Pins und
+die Zahl sendefähiger RMT-Kanäle. `src/PinMap.h` prüft damit jedes Anlegen
+(`POST`) und Ersetzen (`PUT`) von Sensoren und Aktoren:
+
+- Ein Pin hat keine vorab festgelegte Rolle — das erste Item auf einem freien
+  Pin bestimmt sie. Teilen dürfen sich nur Items derselben Bus-Art: mehrere
+  DS18B20 an einem OneWire-Pin, MAX31865 an gemeinsamen SPI-Leitungen (CS
+  bleibt exklusiv). Alles andere → **409** mit dem Namen des Belegers.
+- Verbotene oder nicht vorhandene Pins, Ausgänge auf Input-only-Pins und
+  `mode: dac` ohne DAC → **400**; reservierte Pins → **409**.
+- Jede IDS-Platte braucht einen RMT-Sendekanal (ESP32: 8, S2/S3: 4); sind alle
+  vergeben → **409** statt des stillen, blockierenden Software-Fallbacks.
+- Bedenkliche Pins lässt die Firmware zu; die Web-UI fragt vor dem Speichern
+  nach.
+- Konflikte in einer bereits gespeicherten Config werden trotzdem geladen (ein
+  stillschweigend fehlender Heizungs-Aktor wäre schlimmer), seriell geloggt
+  (`[pins] GPIO …`), in `GET /api/pins` gemeldet und auf der Geräte-Seite als
+  Banner angezeigt.
+
+Bearbeiten in der UI nutzt `PUT` (Ersetzen in einem Schritt): Scheitert die neue
+Config, bleibt das alte Item unverändert bestehen. Ein Sensor oder Aktor, der an
+einem Regler hängt, lässt sich weiterhin nicht ersetzen (409) — nur der
+Anzeigename.
 
 ## Web-UI bauen + auf SD deployen (`lilygo_t_display_s3_amoled`)
 
@@ -367,15 +400,15 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/snapshot` | GET | Aktueller Registry-State |
 | `/api/events` | GET | SSE-Stream: `snapshot`-Event nach Connect, alle 1 s und nach jedem Write; `alert`-Event je neuer Meldung |
 | `/api/sensors` | POST | Sensor anlegen |
-| `/api/sensors/<id>` | DELETE | Sensor entfernen |
+| `/api/sensors/<id>` | PUT, DELETE | Sensor ersetzen (Bearbeiten; bei Fehler bleibt der alte) / entfernen |
 | `/api/sensors/<id>/reset` | POST | Akkumulierten Sensorwert zurücksetzen (z.B. YF-S201-Volumen) |
 | `/api/sensors/<id>/calibration` | GET / POST / DELETE | Live-Rohwert + kalibrierter Wert je Kanal; Kanal kalibrieren (Offset / Faktor / Zwei-Punkt / Mehrpunkt-Kurve); Kalibrierung zurücksetzen |
 | `/api/sensors/<id>/label` | POST | Anzeigename setzen/löschen (unabhängig von `id`, funktioniert auch bei Regler-Zuordnung) |
 | `/api/actuators` | POST | Aktor anlegen |
-| `/api/actuators/<id>` | POST, DELETE | Wert / `enabled` / Takt-Intervall schreiben; Aktor entfernen |
+| `/api/actuators/<id>` | POST, PUT, DELETE | Wert / `enabled` / Takt-Intervall schreiben; Aktor ersetzen (Bearbeiten); Aktor entfernen |
 | `/api/actuators/<id>/label` | POST | Anzeigename setzen/löschen (unabhängig von `id`, funktioniert auch bei Regler-Zuordnung) |
 | `/api/controllers` | POST | Regler anlegen |
-| `/api/controllers/<id>` | DELETE | Regler entfernen |
+| `/api/controllers/<id>` | PUT, DELETE | Regler ersetzen (Bearbeiten) / entfernen |
 | `/api/controllers/<id>/setpoint` | POST | Sollwert setzen |
 | `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
 | `/api/controllers/<id>/label` | POST | Anzeigename setzen/löschen |
@@ -385,6 +418,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |
 | `/api/remote/pair` | GET, POST | Kopplungsergebnis lesen / ein Board an den eigenen Hub koppeln |
 | `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items |
+| `/api/pins` | GET | GPIO-Tabelle des Boards: frei / bedenklich / reserviert / verboten, Nutzer je Pin, Konflikte |
 | `/api/dashboards` | GET, POST | Dashboards auflisten / anlegen |
 | `/api/dashboards/<id>` | POST, DELETE | Dashboard ändern / löschen |
 | `/api/dashboards/<id>/move` | POST | Dashboard eine Position nach links/rechts verschieben |

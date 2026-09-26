@@ -35,6 +35,7 @@
 #include "ProfileStore.h"
 #include "ProgramRunner.h"
 #include "PushService.h"
+#include "RegistryLock.h"
 #include "RemoteDiscovery.h"
 #include "SettingsStore.h"
 #include "TimerStore.h"
@@ -373,27 +374,32 @@ static void maintainWiFi() {
 }
 
 void loop() {
-  registry.tick();
-  webUI.tick();
+  {
+    // Everything that walks the live items, so a REST handler cannot free
+    // one mid-walk (RegistryLock.h). Long network waits stay outside.
+    BrewControl::RegistryLock lock;
+    registry.tick();
+    webUI.tick();
+    mqttService.tick();
+    webhookService.tick();
+    webSocketService.tick();
+    if (espNowTransport) espNowTransport->tick();
+    espNowPublishService.tick();
+    remoteDiscovery.tick();
+#ifdef BREWCTL_HAS_DISPLAY
+    // A new alert wakes a dimmed or dark display, as the latched stop does.
+    static uint32_t seenAlert = 0;
+    const uint32_t alert = alarmStore.lastSeq();
+    if (alert != seenAlert) {
+      seenAlert = alert;
+      displayUI.wake();
+    }
+    displayUI.tick(webUI.estopLatched());
+#endif
+  }
   firmwareUpdater.tick();
-  mqttService.tick();
-  webhookService.tick();
-  webSocketService.tick();
-  if (espNowTransport) espNowTransport->tick();
-  espNowPublishService.tick();
-  remoteDiscovery.tick();
   mdnsBrowser.tick(millis());
   pushService.tick();
   maintainWiFi();
-#ifdef BREWCTL_HAS_DISPLAY
-  // A new alert wakes a dimmed or dark display, as the latched stop does.
-  static uint32_t seenAlert = 0;
-  const uint32_t alert = alarmStore.lastSeq();
-  if (alert != seenAlert) {
-    seenAlert = alert;
-    displayUI.wake();
-  }
-  displayUI.tick(webUI.estopLatched());
-#endif
   delay(5);
 }

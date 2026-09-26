@@ -1,5 +1,8 @@
 #include "DynamicItems.h"
 
+#include <algorithm>
+
+#include "BoardPins.h"
 #include "SdLock.h"
 #include "WebhookService.h"
 
@@ -464,6 +467,13 @@ DynamicItems::Result DynamicItems::clearCalibration(const char* id,
 
 DynamicItems::Result DynamicItems::addSensor(const JsonObject& cfg,
                                               Registry& reg) {
+  Result pins = checkPins(cfg, "");
+  if (!pins.ok) return pins;
+  return addSensorUnchecked(cfg, reg);
+}
+
+DynamicItems::Result DynamicItems::addSensorUnchecked(const JsonObject& cfg,
+                                                       Registry& reg) {
   auto r = addSensorNoBegin(cfg, reg);
   if (r.ok && initialized_) {
     sensors_.back()->ptr->begin();
@@ -603,6 +613,13 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
 
 DynamicItems::Result DynamicItems::addActuator(const JsonObject& cfg,
                                                 Registry& reg) {
+  Result pins = checkPins(cfg, "");
+  if (!pins.ok) return pins;
+  return addActuatorUnchecked(cfg, reg);
+}
+
+DynamicItems::Result DynamicItems::addActuatorUnchecked(const JsonObject& cfg,
+                                                         Registry& reg) {
   auto r = addActuatorNoBegin(cfg, reg);
   if (r.ok && initialized_) {
     actuators_.back()->ptr->begin();
@@ -795,6 +812,105 @@ DynamicItems::Result DynamicItems::removeController(const char* id,
   return {false, "not a dynamic item"};
 }
 
+// ── Replace ───────────────────────────────────────────────────────────────
+
+namespace {
+// Shared by replace{Sensor,Actuator,Controller}: remove the old entry, add the
+// new one, recreate the old one from its saved config if that fails, and move
+// the resulting entry back to the old position so the list order is stable.
+template <typename Vec, typename Remove, typename Add>
+DynamicItems::Result replaceEntry(Vec& vec, const std::string& oldId,
+                                  const JsonObject& cfg, Registry& reg,
+                                  Remove remove, Add add) {
+  size_t pos = 0;
+  while (pos < vec.size() && vec[pos]->id != oldId) ++pos;
+  if (pos == vec.size()) return {false, "not a dynamic item"};
+  const char* newId = cfg["id"] | "";
+  if (!newId[0]) return {false, "missing id"};
+  if (oldId != newId &&
+      (reg.findSensor(newId) || reg.findActuator(newId) || reg.findController(newId)))
+    return {false, "id already in use"};
+
+  const std::string oldCfg = vec[pos]->cfgJson;
+  DynamicItems::Result removed = remove(oldId.c_str());
+  if (!removed.ok) {
+    removed.conflict = true;  // still referenced by a controller
+    return removed;
+  }
+  DynamicItems::Result added = add(cfg);
+  if (!added.ok) {
+    JsonDocument doc;
+    deserializeJson(doc, oldCfg);
+    if (!add(doc.as<JsonObject>()).ok) {
+      Serial.printf("[items] replacing %s failed (%s) and its old config could not be restored\n",
+                    oldId.c_str(), added.error);
+      return added;
+    }
+  }
+  std::rotate(vec.begin() + pos, vec.end() - 1, vec.end());
+  return added;
+}
+}  // namespace
+
+DynamicItems::Result DynamicItems::replaceSensor(const char* oldId,
+                                                 const JsonObject& cfg,
+                                                 Registry& reg) {
+  const std::string id = oldId;
+  if (!findSensorEntry(id.c_str())) return {false, "not a dynamic item"};
+  Result pins = checkPins(cfg, id.c_str());
+  if (!pins.ok) return pins;
+  return replaceEntry(
+      sensors_, id, cfg, reg,
+      [&](const char* i) { return removeSensor(i, reg); },
+      [&](const JsonObject& c) { return addSensorUnchecked(c, reg); });
+}
+
+DynamicItems::Result DynamicItems::replaceActuator(const char* oldId,
+                                                   const JsonObject& cfg,
+                                                   Registry& reg) {
+  const std::string id = oldId;
+  bool found = false;
+  for (auto& e : actuators_) found |= (e->id == id);
+  if (!found) return {false, "not a dynamic item"};
+  Result pins = checkPins(cfg, id.c_str());
+  if (!pins.ok) return pins;
+  return replaceEntry(
+      actuators_, id, cfg, reg,
+      [&](const char* i) { return removeActuator(i, reg); },
+      [&](const JsonObject& c) { return addActuatorUnchecked(c, reg); });
+}
+
+DynamicItems::Result DynamicItems::replaceController(const char* oldId,
+                                                     const JsonObject& cfg,
+                                                     Registry& reg) {
+  return replaceEntry(
+      controllers_, oldId, cfg, reg,
+      [&](const char* i) { return removeController(i, reg); },
+      [&](const JsonObject& c) { return addController(c, reg); });
+}
+
+// ── Pins ──────────────────────────────────────────────────────────────────
+
+std::vector<PinUse> DynamicItems::pinUses() const {
+  std::vector<PinUse> uses;
+  auto collect = [&](const std::string& json) {
+    JsonDocument doc;
+    if (deserializeJson(doc, json) == DeserializationError::Ok)
+      collectPins(doc.as<JsonObjectConst>(), uses);
+  };
+  for (const auto& e : sensors_) collect(e->cfgJson);
+  for (const auto& e : actuators_) collect(e->cfgJson);
+  return uses;
+}
+
+DynamicItems::Result DynamicItems::checkPins(const JsonObject& cfg,
+                                             const char* replaceId) {
+  const PinCheck c = checkItemPins(currentBoard(), pinUses(), cfg, replaceId);
+  if (c.ok) return {true};
+  pinError_ = c.error;
+  return {false, pinError_.c_str(), c.status == 409};
+}
+
 // ── Label ─────────────────────────────────────────────────────────────────
 // Unlike an id change (delete+recreate, blocked while a controller
 // references the item — see removeSensor/removeActuator above), a label
@@ -865,6 +981,15 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
     addActuatorNoBegin(cfg, reg);
   for (JsonObject cfg : doc["controllers"].as<JsonArray>())
     addControllerNoBegin(cfg, reg);
+
+  // Stored conflicts still load (dropping e.g. a heater silently would be
+  // worse); they are reported here and in GET /api/pins.
+  const std::vector<PinUse> uses = pinUses();
+  for (const PinConflict& c : findPinConflicts(currentBoard(), uses)) {
+    std::string who;
+    for (const PinUse* u : c.users) who += " " + u->item + "." + u->key;
+    Serial.printf("[pins] GPIO %d conflict (%s):%s\n", c.gpio, c.reason.c_str(), who.c_str());
+  }
 }
 
 void DynamicItems::saveToSD(fs::FS& sd) const {

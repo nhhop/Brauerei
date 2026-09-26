@@ -5210,3 +5210,88 @@ wie `AsyncFileResponse`; daraus der neue PLAN.md-Punkt zum fehlenden `SdLock` be
 SD-Boards.
 
 **Nachtrag — erstes Release und OTA-Pull:** `main` gepusht, Tag `v0.1.0` gesetzt (erster Tag im Repo), `release.yml` baute alle drei Images plus `webui.tar`. Am LilyGo `POST /api/update/check` → `updateAvailable: v0.1.0`, dann `POST /api/update/install`: ~13 s Asset-Download, ~30 s Firmware-Flash, zusammen gut 40 s im loopTask — länger als der 30-s-Watchdog, trotzdem `resetReason: "sw"`, das Füttern in `streamDownload()` wirkt. Danach `currentVersion: v0.1.0`, UI aus dem Release ausgeliefert, Items/Config/Logs unverändert. Auf den LittleFS-Boards bewusst nicht ausgelöst: `doInstall()` legt das Release-Tar neben `/www` ab, das passt nicht in die 256-KB-Partition (neuer PLAN.md-Punkt). esp32dev und beide S2 (`brewcontrol-lolin`, `brewcontrol-brautomat`) laufen auf `5213589`, inhaltlich gleich mit `v0.1.0`.
+
+## 2026-09-26 — Pin-Manager Stufe 1 und Bearbeiten per PUT (Branch `feature/pin-manager`)
+
+Anlass waren die Pin-Konflikte am LilyGo (zweimal in drei Tagen, einmal auf einem Strapping-Pin) und
+der DAC-Aktor, der auch am S3 angeboten wurde. Bewusst **ohne** die Peripherie-Abstraktion: alle Pins
+stehen unter festen Konfig-Schlüsseln in `DynamicItems.cpp`, geteilt wird nur OneWire und SPI.
+
+### Umsetzung
+
+- **`firmware/src/BoardPins.h`**: Tabelle je Board (esp32dev, lolin_s2_mini, LilyGo-AMOLED), gewählt
+  per `CONFIG_IDF_TARGET_*`. Klassen `free`, `risky` (Strapping, USB, UART0, Batterie-ADC,
+  Onboard-LED), `reserved` (BOOT-Taste, SD, I²C, Display, Touch-/RTC-Interrupt), `forbidden`
+  (Flash/PSRAM); dazu Input-only, DAC-Pins und RMT-TX-Kanäle (8/4/4). SD- und I²C-Pins des LilyGo
+  sind per `static_assert` an die Build-Flags gekoppelt.
+- **`firmware/src/PinMap.h`** (header-only, nativ getestet): `collectPins` liest die Pins einer
+  Item-Config, `checkItemPins` prüft ein neues/ersetzendes Item (400 unmöglich, 409 belegt/reserviert/
+  kein RMT-Kanal, Warnungen für bedenkliche Pins), `findPinConflicts` findet Konflikte im Bestand,
+  `writePinsJson` baut `GET /api/pins`. Ein Pin hat keine vorab festgelegte Rolle — das erste Item
+  bestimmt sie, teilen dürfen nur Items derselben Bus-Art.
+- **`DynamicItems`**: `addSensor`/`addActuator` prüfen die Pins; der Boot-Pfad (`NoBegin`) lädt
+  unverändert und loggt Konflikte seriell (`[pins] GPIO …`). Neu `replaceSensor/Actuator/Controller`:
+  Pins vorab prüfen (eigene zählen als frei), altes Item über `remove*` entfernen, neues über `add*`
+  anlegen, bei Fehlschlag das alte aus seiner gespeicherten Config wiederherstellen, Listenposition
+  beibehalten.
+- **WebUI**: `PUT /api/{sensors,actuators,controllers}/{id}` (neue `PutJsonPrefixHandler`),
+  `GET /api/pins`, 409 an den POST-Routen. OpenAPI und README-Routentabelle nachgezogen.
+- **Frontend**: Bearbeiten nutzt `PUT` statt delete + create — ein abgelehntes Bearbeiten ließ früher
+  das Item verschwinden. `PinHint` unter jedem Pin-Feld (frei / gemeinsamer Bus / bedenklich / belegt
+  von X / vom Board belegt), Bestätigungs-Checkbox für bedenkliche Pins (die Firmware lässt sie zu),
+  PWM/DAC-Auswahl nur bei Boards mit DAC, IDS-Typen gesperrt ohne freien RMT-Kanal,
+  Konflikt-Banner auf der Geräte-Seite.
+- **Nebenfund**: `BREWCTL_ONEWIRE_PIN`/`BREWCTL_SSR_PIN` wurden nirgends gelesen — die LilyGo-Konflikte
+  kamen aus der Nutzer-Config, nicht aus Board-Defaults. Flags und die veraltete README-Pintabelle
+  (`kOneWirePin`, `kSsrPin`) entfernt.
+- **Gefunden**: `IDS1.pin_white` am LilyGo liegt seit der Bereinigung vom 2026-09-25 auf GPIO 9, der
+  Touch-/RTC-Interrupt-Leitung — jetzt als Konflikt gemeldet, Punkt in PLAN.md.
+
+### Verifikation
+
+- Native Tests: 53/53 in der Firmware (16 neu in `test_pin_map`: Schlüssel je Typ, OneWire-/SPI-Teilen,
+  CS exklusiv, Input-only, DAC, RMT-Budget, Ersetzen, Bestandskonflikte, JSON). Frontend: 46/46
+  vitest (7 neu für `pins.ts`), Typecheck und Build sauber. Redocly-Lint sauber (bekannte
+  `info-license`-Warnung).
+- Alle drei Envs bauen.
+- UI gegen einen Node-Mock (LilyGo-ähnliche Tabelle, IDS1 auf GPIO 9): Banner, Hinweis „bedenklich“
+  bei GPIO 3, Speichern erst nach Haken und dann genau **ein** `PUT` (kein DELETE im Request-Log),
+  GPIO 7 → 409 mit Text und Item bleibt auf GPIO 8, eigener Pin beim Bearbeiten „frei“,
+  regler-verdrahteter IDS1 → verständliche Meldung, nichts verändert, PWM/DAC-Auswahl fehlt ohne DAC,
+  IDS-Typen gesperrt bei 1/1 RMT-Kanälen.
+- **Am LilyGo per OTA** (nach Merge von `main` inkl. `fix/loop-starvation`, `v0.1.0-3-gcb07334`):
+  Config lädt unverändert, `GET /api/pins` meldet genau den GPIO-9-Konflikt (`IDS1.pin_white`),
+  `rmtUsed` 1/4, kein DAC. Anlegen auf GPIO 2 → 409 „already used by Riptide Pumpe (pin)“,
+  GPIO 7 → 409 reserviert (I2C), GPIO 30 → 400 Flash, GPIO 22 → 400 existiert nicht, DAC → 400
+  „this board has no DAC“, zweiter DS18B20 auf dem OneWire-Pin 1 → 204. `PUT` auf einen Test-Aktor:
+  Pin belegt → 409, Config ohne `pin` → 400 und das Item steht unverändert an seiner Stelle
+  (Rückfall greift), gleiche ID, Umbenennen, Pin-Wechsel 47 → 48 → 3 → 204. `PUT` auf `IDS1` → 409
+  (Regler `Maischen`), unbekanntes Item → 404. `PUT` auf den Regler (Kp 8 → 9, Sollwert 72 und
+  `enabled` im Body) → übernommen, übersteht einen Neustart; danach zurück auf 8.
+- **Eine Panic:** der erste `PUT` mit Umbenennen **und** Pin-Wechsel (47 → 3) endete in einem
+  Neustart (`resetReason: panic`, nichts gespeichert, Config intakt). Fünf Wiederholungen derselben
+  bzw. ähnlicher Änderungen liefen sauber. Wahrscheinlichste Ursache ist die bekannte fehlende Sperre
+  zwischen Item-Änderungen (AsyncTCP, jetzt fest auf Core 0) und `registry.tick()`/Display im
+  loopTask (Core 1) — derselbe Mechanismus trifft DELETE und POST. Nicht belegt, weil der Backtrace
+  fehlt. PLAN.md-Punkt entsprechend erweitert.
+- Nicht am Gerät geprüft: die UI-Pfade selbst (nur gegen den Mock), das RMT-Limit (nur eine Platte).
+
+### Nachtrag: Registry-Sperre
+
+Als Folge der Panic: `RegistryLock.h` (rekursiver Mutex nach dem Muster von `SdLock.h`). `loop()` hält
+ihn um alles, was die Items durchläuft — `registry.tick()`, `webUI.tick()`, MQTT/Webhook/WebSocket/
+ESP-NOW-Publisher und -Transports, Remote-Discovery, Display. Außerhalb bleiben OTA, Web Push, mDNS
+und WLAN-Reconnect, weil sie lange blockieren können. Die REST-Handler nehmen ihn um jede
+Item-Änderung (anlegen, ersetzen, löschen, Label, Kalibrierung, Reset) **mit 3 s Zeitlimit** — der
+AsyncTCP-Task steht unter Watchdog und darf nicht auf einen hängenden `loop()` warten; sonst 503
+`busy, retry`, nichts geändert. `saveToSD` läuft erst nach der Freigabe, damit gilt immer „Registry
+vor SD“ (kein Deadlock). Die Not-Aus-Deaktivierung neuer oder ersetzter Items liegt mit in der Sperre,
+vorher konnte ein frisches Item bei eingerastetem Not-Aus einen `tick()` lang aktiv sein. Der Not-Aus
+selbst nimmt die Sperre bewusst nicht. OpenAPI: 503 an allen 15 betroffenen Operationen.
+
+Verifikation: drei Envs bauen, 53/53 nativ, Redocly sauber. Am LilyGo per OTA 40 Runden aus
+`PUT` (Umbenennen + Pin 47/48/3 im Wechsel), `POST` und `DELETE` eines DS18B20 auf dem OneWire-Pin —
+120 × 204, kein Neustart (Uptime durchgehend, `resetReason: sw` vom OTA), Antwortzeit Median 256 ms,
+Maximum 507 ms (überwiegend SD). Danach Ausgangszustand wiederhergestellt. Die ursprüngliche Panic
+war nicht deterministisch reproduzierbar; dass die Sperre sie behebt, ist also plausibel, aber nicht
+bewiesen. Display-Bedienung unter der Sperre vom Nutzer am Gerät bestätigt.

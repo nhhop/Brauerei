@@ -146,18 +146,19 @@ export function AddItemWizard({
 
 // One selectable card. Steps 1 and 2 stack icon over text on desktop; step 3
 // stays a row at every width (`row`). Mobile is always a row.
-export function ChoiceCard({ icon: Icon, label, desc, selected, row, onPick }: {
+export function ChoiceCard({ icon: Icon, label, desc, selected, row, disabled, onPick }: {
   icon: LucideIcon;
   label: string;
   desc?: string;
   selected: boolean;
   row?: boolean;
+  disabled?: boolean;
   onPick: () => void;
 }) {
   return (
-    <button type="button" role="radio" aria-checked={selected} onClick={onPick}
+    <button type="button" role="radio" aria-checked={selected} onClick={onPick} disabled={disabled}
       class={`relative flex w-full items-center gap-3 rounded-md border px-3 py-3 pr-9 text-left transition-colors
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50 ${
         row ? '' : 'md:flex-col md:items-start md:gap-0 md:px-4 md:py-4'
       } ${
         selected
