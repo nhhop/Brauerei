@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 #include <Update.h>
 #include <WiFiClientSecure.h>
 #include <esp_system.h>
@@ -18,6 +19,10 @@ constexpr char kApiHost[] = "https://api.github.com";
 constexpr char kRepo[] = BREWCTL_GITHUB_REPO;  // "owner/repo", from build flag
 constexpr char kUserAgent[] = "BrewControl-OTA";
 constexpr uint32_t kAutoCheckIntervalMs = 24UL * 60UL * 60UL * 1000UL;  // daily
+// Update mode hand-over across the reboot (see runPendingInstall()).
+constexpr char kNvsNamespace[] = "brewctrl";
+constexpr char kNvsPendingInstall[] = "ota_install";  // channel to install from
+constexpr char kNvsInstallError[] = "ota_error";      // why the last one failed
 
 const char* resetReasonName(esp_reset_reason_t r) {
   switch (r) {
@@ -43,6 +48,36 @@ void FirmwareUpdater::begin() {
   currentVersion_ = BREWCTL_VERSION;
   variant_ = BREWCTL_VARIANT;
   lastAutoCheckMs_ = millis();
+  // A failed install in update mode left its reason behind. Showing it keeps
+  // state_ off Idle, so the boot-time auto-check does not overwrite it.
+  Preferences prefs;
+  prefs.begin(kNvsNamespace, false);
+  const String err = prefs.getString(kNvsInstallError, "");
+  if (err.length()) prefs.remove(kNvsInstallError);
+  prefs.end();
+  if (err.length()) {
+    error_ = err;
+    state_ = State::Error;
+  }
+}
+
+void FirmwareUpdater::runPendingInstall() {
+  Preferences prefs;
+  prefs.begin(kNvsNamespace, false);
+  const String channel = prefs.getString(kNvsPendingInstall, "");
+  if (channel.length()) prefs.remove(kNvsPendingInstall);
+  prefs.end();
+  if (channel.isEmpty()) return;
+
+  currentVersion_ = BREWCTL_VERSION;
+  variant_ = BREWCTL_VARIANT;
+  Serial.printf("update mode: installing from channel %s (heap %u free / %u max block)\n",
+                channel.c_str(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+  doInstall(channel);  // reboots on success
+  Serial.printf("update mode: install failed: %s\n", error_.c_str());
+  prefs.begin(kNvsNamespace, false);
+  prefs.putString(kNvsInstallError, error_);
+  prefs.end();
 }
 
 const char* FirmwareUpdater::stateName(State s) {
@@ -71,9 +106,15 @@ void FirmwareUpdater::requestInstall(const String& channel) {
 
 void FirmwareUpdater::tick() {
   if (pendingInstall_) {
+    // Not installed here: see runPendingInstall(). The 202 is already out.
     pendingInstall_ = false;
-    doInstall(pendingChannel_);
-    return;
+    Preferences prefs;
+    prefs.begin(kNvsNamespace, false);
+    prefs.putString(kNvsPendingInstall, pendingChannel_);
+    prefs.end();
+    Serial.println(F("install requested — rebooting into update mode"));
+    delay(200);
+    ESP.restart();
   }
   if (pendingCheck_) {
     pendingCheck_ = false;
@@ -92,16 +133,53 @@ void FirmwareUpdater::tick() {
   }
 }
 
+void FirmwareUpdater::noteNetError_(int code, WiFiClientSecure& client, const String& url) {
+  const int h0 = url.indexOf("//") + 2;
+  netError_ = url.substring(h0, url.indexOf('/', h0)) + ": " +
+              (code < 0 ? HTTPClient::errorToString(code) : String("HTTP ") + code) +
+              ", heap " + ESP.getFreeHeap() + " free / " + ESP.getMaxAllocHeap() +
+              " max block";
+  char tls[80];
+  if (client.lastError(tls, sizeof(tls)) != 0) netError_ += String(", TLS: ") + tls;
+}
+
 bool FirmwareUpdater::streamDownload(
-    const String& url, std::function<bool(const uint8_t*, size_t)> sink) {
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  if (!http.begin(client, url)) return false;
-  http.addHeader("User-Agent", kUserAgent);
-  int code = http.GET();
-  if (code != HTTP_CODE_OK) { http.end(); return false; }
+    const String& url, std::function<bool(const uint8_t*, size_t)> sink,
+    std::function<void()> onConnected) {
+  // Release assets answer with a redirect to another host. HTTPClient's own
+  // redirect handling keeps the first TLS session open while it handshakes
+  // with the second (setURL() sets _canReuse), so two sessions' mbedTLS
+  // buffers are live at once — on the S2 (~68 KB heap, 32 KB largest block)
+  // that ends in "SSL - Memory allocation failed". So follow redirects by
+  // hand, with the previous client fully torn down before the next connect.
+  String target = url;
+  for (int hop = 0; hop < 5; ++hop) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    const char* keys[] = {"Location"};
+    http.collectHeaders(keys, 1);
+    if (!http.begin(client, target)) { noteNetError_(HTTPC_ERROR_CONNECTION_REFUSED, client, target); return false; }
+    http.addHeader("User-Agent", kUserAgent);
+    int code = http.GET();
+    if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND ||
+        code == HTTP_CODE_TEMPORARY_REDIRECT || code == HTTP_CODE_PERMANENT_REDIRECT) {
+      target = http.header("Location");
+      http.end();
+      if (target.isEmpty()) { netError_ = String("HTTP ") + code + " without Location"; return false; }
+      continue;
+    }
+    if (code != HTTP_CODE_OK) { noteNetError_(code, client, target); http.end(); return false; }
+    if (onConnected) onConnected();
+    return streamBody_(http, sink);
+  }
+  netError_ = "too many redirects";
+  return false;
+}
+
+bool FirmwareUpdater::streamBody_(HTTPClient& http,
+                                  std::function<bool(const uint8_t*, size_t)>& sink) {
   int total = http.getSize();
   int got = 0;
   WiFiClient* stream = http.getStreamPtr();
@@ -120,7 +198,11 @@ bool FirmwareUpdater::streamDownload(
     }
   }
   http.end();
-  return total < 0 || got >= total;
+  if (total >= 0 && got < total) {
+    netError_ = String("connection lost after ") + got + " of " + total + " bytes";
+    return false;
+  }
+  return true;
 }
 
 bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
@@ -132,11 +214,11 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   String url = String(kApiHost) + "/repos/" + kRepo + "/releases" +
                (channel == "stable" ? String("/latest") : String("?per_page=10"));
-  if (!http.begin(client, url)) return false;
+  if (!http.begin(client, url)) { noteNetError_(HTTPC_ERROR_CONNECTION_REFUSED, client, url); return false; }
   http.addHeader("User-Agent", kUserAgent);
   http.addHeader("Accept", "application/vnd.github+json");
   int code = http.GET();
-  if (code != HTTP_CODE_OK) { http.end(); return false; }
+  if (code != HTTP_CODE_OK) { noteNetError_(code, client, url); http.end(); return false; }
 
   // Filter to keep only the fields we need (releases JSON is large).
   JsonDocument filter;
@@ -150,7 +232,7 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   DeserializationError err = deserializeJson(
       doc, http.getStream(), DeserializationOption::Filter(filter));
   http.end();
-  if (err) return false;
+  if (err) { netError_ = String("release JSON: ") + err.c_str(); return false; }
 
   JsonObject rel;
   if (channel == "stable") {
@@ -181,9 +263,11 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
 void FirmwareUpdater::doCheck(const String& channel) {
   state_ = State::Checking;
   error_ = "";
+  netError_ = "";
   String tag, fwUrl, tarUrl, notes;
   if (!fetchReleaseMeta(channel, tag, fwUrl, tarUrl, notes)) {
     error_ = "check failed";
+    if (netError_.length()) error_ += " (" + netError_ + ")";
     state_ = State::Error;
     return;
   }
@@ -201,10 +285,12 @@ void FirmwareUpdater::doCheck(const String& channel) {
 void FirmwareUpdater::doInstall(const String& channel) {
   state_ = State::Checking;
   error_ = "";
+  netError_ = "";
   progress_ = 0;
   String tag, fwUrl, tarUrl, notes;
   if (!fetchReleaseMeta(channel, tag, fwUrl, tarUrl, notes) || fwUrl.length() == 0) {
     error_ = "no installable release";
+    if (netError_.length()) error_ += " (" + netError_ + ")";
     state_ = State::Error;
     return;
   }
@@ -216,16 +302,18 @@ void FirmwareUpdater::doInstall(const String& channel) {
   if (tarUrl.length() > 0) {
     state_ = State::Downloading;
     progress_ = 0;
-    AssetInstall::prepare(fs_);
     String noSpace;
     SdTarSink sink(fs_, AssetInstall::kTarget);
     TarExtractor ex(AssetInstall::wrapOpen(sink.openCb(), noSpace), sink.writeCb(),
                     sink.closeCb());
-    bool ok = streamDownload(tarUrl, [&ex](const uint8_t* d, size_t n) {
-      return ex.feed(d, n);
-    });
+    // prepare() only once the download is actually answering: in place it
+    // clears /www, and a network failure must not cost the running UI.
+    bool ok = streamDownload(
+        tarUrl, [&ex](const uint8_t* d, size_t n) { return ex.feed(d, n); },
+        [this]() { AssetInstall::prepare(fs_); });
     if (!ok || ex.hasError()) {
       error_ = noSpace.length() ? noSpace : String("asset download/extract failed");
+      if (!noSpace.length() && netError_.length()) error_ += " (" + netError_ + ")";
       state_ = State::Error;
       return;
     }
@@ -254,6 +342,7 @@ void FirmwareUpdater::doInstall(const String& channel) {
   });
   if (!ok || !Update.end(true)) {
     error_ = Update.errorString();
+    if (!ok && netError_.length()) error_ += " (" + netError_ + ")";
     state_ = State::Error;
     return;
   }

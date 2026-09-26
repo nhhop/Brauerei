@@ -2135,15 +2135,22 @@ paths:
       operationId: installUpdate
       summary: Download and flash the available firmware
       description: |
-        Queues the install and returns immediately — poll `GET /api/update/status`
-        for progress. Pulls `firmware-<variant>.bin` plus `webui.tar` from the
-        matching release and reboots when done. A non-empty body must be sent.
+        Returns immediately, then **the device reboots into update mode**: the
+        install runs early in the next boot, right after WiFi is up and before
+        the web server and the other services start — two TLS downloads from
+        GitHub need more contiguous heap than the S2 has in normal operation.
+        The API is unreachable meanwhile (roughly 30–60 s). Pulls
+        `firmware-<variant>.bin` plus `webui.tar` from the matching release and
+        reboots into the new firmware; `GET /api/update/status` then reports the
+        new `currentVersion`. A non-empty body must be sent.
 
         The UI package is extracted first, exactly like `POST /api/update/assets`
-        (staged swap, or in place on the 256 KB boards). If that fails, the
-        firmware is not flashed and `GET /api/update/status` reports `error`
-        with `asset download/extract failed`, or on LittleFS
-        `not enough space (<member>, <size> bytes)`.
+        (staged swap, or in place on the 256 KB boards; `/www` is only touched
+        once the download answers). If anything fails, the firmware is not
+        flashed, the device boots normally, and `GET /api/update/status`
+        reports `state: error` with the reason — e.g. `asset download/extract
+        failed (<host>: <HTTP or TLS error>, heap …)`, or on LittleFS
+        `not enough space (<member>, <size> bytes)`. One attempt per request.
       requestBody:
         required: true
         content:

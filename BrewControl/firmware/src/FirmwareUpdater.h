@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 #include "SettingsStore.h"
 
@@ -27,6 +29,17 @@ class FirmwareUpdater {
   // continues normally). Runs before WiFi so it works without a network.
   bool flashFromSdImage(const char* path = "/firmware.bin");
 
+  // Update mode: a release install does not run in normal operation. The
+  // request is stored in NVS and the device reboots; setup() calls this right
+  // after WiFi is up, before the web server, MQTT, the registry and the other
+  // services take their share of the heap. Two TLS downloads from GitHub need
+  // ~50 KB with two ~17 KB contiguous blocks (fixed 16 KB mbedTLS buffers in
+  // the prebuilt core), which the S2 does not reliably have at runtime. On
+  // success it reboots into the new firmware; on failure it stores the error
+  // for begin() and returns, and the boot continues normally. One attempt per
+  // request — a crash mid-install must not become a boot loop.
+  void runPendingInstall();
+
   // Called from WebUI HTTP handlers (AsyncTCP task) — only set flags.
   void requestCheck(const String& channel);
   void requestInstall(const String& channel);
@@ -38,13 +51,21 @@ class FirmwareUpdater {
   void doCheck(const String& channel);
   void doInstall(const String& channel);
   // Streams an HTTP(S) GET body to `sink`, updating progress_. Follows
-  // redirects, sets User-Agent + setInsecure. Returns false on any HTTP/IO error.
+  // redirects, sets User-Agent + setInsecure. `onConnected` runs once the
+  // final response is 200, before the first byte reaches `sink`. Returns false
+  // on any HTTP/IO error (reason in netError_).
   bool streamDownload(const String& url,
-                      std::function<bool(const uint8_t*, size_t)> sink);
+                      std::function<bool(const uint8_t*, size_t)> sink,
+                      std::function<void()> onConnected = nullptr);
+  bool streamBody_(HTTPClient& http, std::function<bool(const uint8_t*, size_t)>& sink);
   // Parses the releases JSON for `channel` into tag/fwUrl/tarUrl/notes.
   bool fetchReleaseMeta(const String& channel, String& tag, String& fwUrl,
                         String& tarUrl, String& notes);
   static const char* stateName(State s);
+  // Records why the last HTTP request failed, with the heap at that moment —
+  // a TLS handshake needs a large contiguous block, the usual failure on the
+  // S2. Appended to error_ so GET /api/update/status says what went wrong.
+  void noteNetError_(int code, WiFiClientSecure& client, const String& url);
 
   fs::FS& fs_;
   SettingsStore& settings_;
@@ -55,6 +76,7 @@ class FirmwareUpdater {
   String availVersion_;
   String availNotes_;
   String error_;
+  String netError_;
   uint8_t progress_ = 0;
 
   bool pendingCheck_ = false;

@@ -259,6 +259,10 @@ void setup() {
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
 
+  // A pending release install runs here, while nothing but WiFi holds heap
+  // yet — see FirmwareUpdater::runPendingInstall(). Reboots on success.
+  firmwareUpdater.runPendingInstall();
+
   // Modem sleep drops ESP-NOW packets that arrive while the radio is
   // dozing between beacons — disable it so ESP-NOW is reliable alongside
   // the STA link.
