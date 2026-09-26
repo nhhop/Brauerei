@@ -5208,3 +5208,5 @@ Stromlos-Zyklus war sie vollständig wieder da (Config, Logs, Items) — mit unv
 Fix-Firmware, die damit als Ursache ausscheidet. Der Lesepfad des Spikes war bewusst ungesperrt
 wie `AsyncFileResponse`; daraus der neue PLAN.md-Punkt zum fehlenden `SdLock` bei Downloads auf
 SD-Boards.
+
+**Nachtrag — erstes Release und OTA-Pull:** `main` gepusht, Tag `v0.1.0` gesetzt (erster Tag im Repo), `release.yml` baute alle drei Images plus `webui.tar`. Am LilyGo `POST /api/update/check` → `updateAvailable: v0.1.0`, dann `POST /api/update/install`: ~13 s Asset-Download, ~30 s Firmware-Flash, zusammen gut 40 s im loopTask — länger als der 30-s-Watchdog, trotzdem `resetReason: "sw"`, das Füttern in `streamDownload()` wirkt. Danach `currentVersion: v0.1.0`, UI aus dem Release ausgeliefert, Items/Config/Logs unverändert. Auf den LittleFS-Boards bewusst nicht ausgelöst: `doInstall()` legt das Release-Tar neben `/www` ab, das passt nicht in die 256-KB-Partition (neuer PLAN.md-Punkt). esp32dev und beide S2 (`brewcontrol-lolin`, `brewcontrol-brautomat`) laufen auf `5213589`, inhaltlich gleich mit `v0.1.0`.
