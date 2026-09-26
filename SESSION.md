@@ -5275,3 +5275,23 @@ stehen unter festen Konfig-Schlüsseln in `DynamicItems.cpp`, geteilt wird nur O
   loopTask (Core 1) — derselbe Mechanismus trifft DELETE und POST. Nicht belegt, weil der Backtrace
   fehlt. PLAN.md-Punkt entsprechend erweitert.
 - Nicht am Gerät geprüft: die UI-Pfade selbst (nur gegen den Mock), das RMT-Limit (nur eine Platte).
+
+### Nachtrag: Registry-Sperre
+
+Als Folge der Panic: `RegistryLock.h` (rekursiver Mutex nach dem Muster von `SdLock.h`). `loop()` hält
+ihn um alles, was die Items durchläuft — `registry.tick()`, `webUI.tick()`, MQTT/Webhook/WebSocket/
+ESP-NOW-Publisher und -Transports, Remote-Discovery, Display. Außerhalb bleiben OTA, Web Push, mDNS
+und WLAN-Reconnect, weil sie lange blockieren können. Die REST-Handler nehmen ihn um jede
+Item-Änderung (anlegen, ersetzen, löschen, Label, Kalibrierung, Reset) **mit 3 s Zeitlimit** — der
+AsyncTCP-Task steht unter Watchdog und darf nicht auf einen hängenden `loop()` warten; sonst 503
+`busy, retry`, nichts geändert. `saveToSD` läuft erst nach der Freigabe, damit gilt immer „Registry
+vor SD“ (kein Deadlock). Die Not-Aus-Deaktivierung neuer oder ersetzter Items liegt mit in der Sperre,
+vorher konnte ein frisches Item bei eingerastetem Not-Aus einen `tick()` lang aktiv sein. Der Not-Aus
+selbst nimmt die Sperre bewusst nicht. OpenAPI: 503 an allen 15 betroffenen Operationen.
+
+Verifikation: drei Envs bauen, 53/53 nativ, Redocly sauber. Am LilyGo per OTA 40 Runden aus
+`PUT` (Umbenennen + Pin 47/48/3 im Wechsel), `POST` und `DELETE` eines DS18B20 auf dem OneWire-Pin —
+120 × 204, kein Neustart (Uptime durchgehend, `resetReason: sw` vom OTA), Antwortzeit Median 256 ms,
+Maximum 507 ms (überwiegend SD). Danach Ausgangszustand wiederhergestellt. Die ursprüngliche Panic
+war nicht deterministisch reproduzierbar; dass die Sperre sie behebt, ist also plausibel, aber nicht
+bewiesen. Display-Bedienung unter der Sperre am Gerät noch vom Nutzer zu prüfen.
