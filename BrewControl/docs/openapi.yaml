@@ -2138,6 +2138,12 @@ paths:
         Queues the install and returns immediately — poll `GET /api/update/status`
         for progress. Pulls `firmware-<variant>.bin` plus `webui.tar` from the
         matching release and reboots when done. A non-empty body must be sent.
+
+        The UI package is extracted first, exactly like `POST /api/update/assets`
+        (staged swap, or in place on the 256 KB boards). If that fails, the
+        firmware is not flashed and `GET /api/update/status` reports `error`
+        with `asset download/extract failed`, or on LittleFS
+        `not enough space (<member>, <size> bytes)`.
       requestBody:
         required: true
         content:
@@ -2204,9 +2210,11 @@ paths:
         the board instead of failing.
 
         The tar must contain the *gzipped* build output with paths relative to
-        the dist root (`tar -C dist -cf webui.tar .`). On the 256 KB boards
-        ship only the `.gz` files. The multipart field name is irrelevant;
-        there is no size limit beyond the free space.
+        the dist root (`pnpm build:sd`, then `tar -C dist -cf webui.tar .`) —
+        only `.gz` files, as in the release package; the device serves them
+        transparently. Raw copies next to them would not fit the 256 KB
+        boards. The multipart field name is irrelevant; there is no size limit
+        beyond the free space.
       requestBody:
         required: true
         content:

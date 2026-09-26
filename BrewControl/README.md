@@ -187,12 +187,9 @@ Anzeigename.
 ```powershell
 cd web
 pnpm install                      # einmalig
-pnpm build                        # → web/dist/  (Vite produziert ~77 KB gzip total)
-
-# Pre-gzip (optional) — AsyncWebServer serviert .gz transparent bei
-# Accept-Encoding: gzip; spart spürbar SPI-SD-Reads
-Get-ChildItem .\dist -Recurse -Include *.js,*.css,*.html |
-  ForEach-Object { & gzip -k9 -- $_.FullName }
+pnpm build:sd                     # → web/dist/, nur .gz (scripts/gzip-dist.js)
+# AsyncWebServer serviert .gz transparent, auch für index.html beim SPA-Fallback;
+# spart spürbar SPI-SD-Reads
 
 # SD-Karten-Root (Laufwerksbuchstabe anpassen):
 Copy-Item -Recurse -Force .\dist\* D:\
@@ -206,22 +203,16 @@ liefert ab sofort `index.html` + Assets unter `/`.
 Diese beiden Boards haben keinen SD-Slot — die UI landet stattdessen per USB auf einer
 internen LittleFS-Partition (`pio run -t uploadfs`, s. „Partition-Layout" unten). Nur die
 **gzippten** Assets werden geshippt (`ESPAsyncWebServer` serviert `.gz` transparent, auch
-ohne die unkomprimierten Originale) — die volle `dist/` (roh+gzip, ~320 KB) passt nicht in
-die 256-KB-Partition, nur-gzip (~77 KB) passt komfortabel:
+ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ihre `.gz`
+(~150 KB), roh + gzip passte nicht in die 256-KB-Partition:
 
 ```powershell
 cd web
 pnpm install                      # einmalig
-pnpm build:sd                     # vite build + gzip (scripts/gzip-dist.js)
+pnpm build:sd                     # vite build + gzip, dist/ enthält nur .gz
 
-# Nur die .gz-Dateien nach firmware/data/www kopieren (Struktur erhalten)
 Remove-Item -Recurse -Force ..\firmware\data\www -ErrorAction SilentlyContinue
-Get-ChildItem -Recurse -File .\dist -Filter *.gz | ForEach-Object {
-    $rel = $_.FullName.Substring((Resolve-Path .\dist).Path.Length + 1)
-    $dest = Join-Path (Resolve-Path ..\firmware).Path "data\www\$rel"
-    New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
-    Copy-Item $_.FullName $dest
-}
+Copy-Item -Recurse .\dist ..\firmware\data\www
 
 cd ..\firmware
 pio run -e esp32dev -t buildfs        # optional: Größen-Check ohne Hardware
@@ -235,22 +226,18 @@ pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
 ### Ohne USB: UI über das Netzwerk aufspielen
 
 `uploadfs` braucht die serielle Verbindung — beim esp32dev-Testboard heißt das,
-den BOOT-Button von Hand zu halten (kein zuverlässiger Auto-Reset). Es geht auch
-über `POST /api/update/assets`, wenn man dem Tar dieselbe Diät verordnet wie
-`data/www`: **nur die `.gz`-Dateien**. Das übliche `webui.tar` aus dem
-SD-Abschnitt oben enthält roh + gzip (~440 KB) und sprengt die 256-KB-Partition,
-nur-gzip sind ~100 KB.
+den BOOT-Button von Hand zu halten (kein zuverlässiger Auto-Reset). Ohne USB geht
+es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
+„webui.tar manuell bauen“ unten, ~160 KB, nur `.gz`) oder über „Installieren“
+aus einem Release, das dasselbe Tar mitbringt:
 
 ```bash
-mkdir -p /tmp/gzonly/assets
-cp web/dist/index.html.gz /tmp/gzonly/
-cp web/dist/assets/*.gz   /tmp/gzonly/assets/
-tar -C /tmp/gzonly -cf /tmp/webui-gz.tar .
-curl -F "f=@/tmp/webui-gz.tar" http://<ip>/api/update/assets
+curl -F "f=@webui.tar" http://<ip>/api/update/assets
 ```
 
 Beide Boards entpacken das Tar **in-place**, gesteuert über das Build-Flag
-`BREWCTL_ASSETS_IN_PLACE` in `platformio.ini`. Die 256-KB-Partition fasst altes
+`BREWCTL_ASSETS_IN_PLACE` in `platformio.ini` — beim Upload wie beim
+„Installieren“ (gemeinsame Logik in `src/AssetInstall.h`). Die 256-KB-Partition fasst altes
 und neues Bundle nicht gleichzeitig, also wird `/www` vor dem Entpacken geleert,
 statt erst nach `/www.new` zu entpacken und dann zu tauschen. Die UI ist während
 des Uploads weg. Die API bleibt erreichbar. Schlägt der Upload fehl, zum Beispiel
@@ -672,8 +659,8 @@ Die SPA wird aus `/www` auf der SD-Karte serviert (vorher SD-Root). Beim Deploy:
 verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an).
 
 ### webui.tar manuell bauen
-Das `webui.tar` ist das gebaute, **gzippte** `dist/` als Tar — Pfade relativ zur
-dist-Wurzel (nicht unter `dist/`). Aus `web/`:
+Das `webui.tar` ist das gebaute, **gzippte** `dist/` als Tar, nur `.gz`-Dateien
+(~160 KB) — Pfade relativ zur dist-Wurzel (nicht unter `dist/`). Aus `web/`:
 
 ```powershell
 pnpm build:sd            # vite build + gzip-dist (NICHT nur `pnpm build` — sonst fehlen die .gz)
