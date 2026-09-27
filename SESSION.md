@@ -5497,3 +5497,39 @@ Registry-Bus. Auf Pin 1 zusätzlich `T2` (Dummy-Adresse → `ok:false`, erwartet
 400, T3 bleibt. T3 und T4 gelöscht: HLT lieferte in jedem Schritt Werte, kein Neustart (`resetReason`
 `sw` vom OTA), die Config danach wieder identisch. Abbauen des letzten Nutzers am Gerät nicht
 beobachtbar (HLT bleibt), das decken die nativen Tests ab.
+
+## 2026-09-27 — Pin-Manager Stufe 3a: Pins vorschlagen (Branch `feature/pin-manager-3a`)
+
+**Ziel:** Das Item-Formular schlägt je Pin-Feld passende GPIOs vor, statt dass man Nummern
+auswendig kennen muss — freie Pins zuerst, bestehende Busse bevorzugt, bedenkliche gekennzeichnet.
+
+**Befund vor der Umsetzung:** Die für „bestehenden Bus bevorzugen" nötige Information steckt
+bereits in `GET /api/pins` — `PinMap.h::collectPins` setzt `Share::OneWire/Spi` pro `PinUse`,
+`writePinsJson` schreibt das als `users[].share` (+ `key`) in die Antwort. Ein Pin mit einem
+User `{share:"onewire", key:"pin"}` *ist* der Pin eines bestehenden OneWire-Busses. Die in
+PLAN.md vorgesehene Erweiterung von `GET /api/pins` um Bus-Ids aus der `PeripheralRegistry`
+(Etappe 1 der Peripherie-Abstraktion) war damit unnötig — reines Frontend-Feature, Firmware und
+`PeripheralRegistry.h` unangetastet.
+
+**Umsetzung:** `web/src/pins.ts::suggestPins(info, key, opts)` — filtert `info.pins` durch die
+bestehende `pinStatus`-Logik (alles, was die schon als `error` einstuft, fällt raus: Board-Klasse,
+falsche Richtung, belegt ohne kompatiblen Share, fehlende ADC-Fähigkeit), markiert Pins mit einem
+kompatiblen Bus-User desselben Config-Keys als `bus: true` und sortiert Bus-Pins vor freien vor
+bedenklichen. `opts.exclude` nimmt die GPIOs, die Schwester-Felder desselben Items schon gewählt
+haben. `PinHint.tsx` rendert bei gesetztem `configKey` zusätzlich eine Reihe klickbarer Chips
+unter dem Status-Text (gedeckelt auf 8), Klick ruft `onPick` und füllt das Feld — die freie
+Eingabe bleibt unverändert möglich. `AddItemModal.tsx`: alle 12 bestehenden `PinHint`-Stellen
+bekommen `configKey` + `onPick`, Mehrfeld-Items (MAX31865 CS/CLK/MISO/MOSI, HC-SR04 TRIG/ECHO,
+HX711 DOUT/SCK, IDS White/Yellow/Interrupt) zusätzlich `exclude` mit den Werten ihrer
+Geschwisterfelder.
+
+**Verifikation:** `pnpm typecheck`, `pnpm test` (56/56, 11 neue Fälle in `pins.test.ts` für
+`suggestPins`: nur ADC-Pins bei `analog`, keine Input-only-Pins bei `output`, bestehender
+OneWire-Bus-Pin vorn, eigener Pin beim Bearbeiten zählt als frei, Exclude zwischen Schwesterfeldern,
+leer ohne Pin-Daten), `pnpm build`. UI gegen einen Node-Mock im Scratchpad (esp32dev-ähnliche
+Tabelle, ein bestehender DS18B20 auf GPIO 4 mit `share:onewire`, ein MAX31865 auf CLK 18/MISO
+19/MOSI 23 mit `share:spi`): DS18B20-Formular zeigt „4 (Bus)" als ersten Chip, danach freie Pins
+aufsteigend; MAX31865-Custom-SPI schlägt für CLK „18 (Bus)" vor, für MISO/MOSI die jeweils eigene
+Bus-Leitung, und nach Wahl von CLK=18 fehlt 18 in den MISO/MOSI-Listen; HC-SR04 TRIG/ECHO schlagen
+sich gegenseitig nichts vor (nach TRIG=2 verschwindet 2 aus ECHOs Liste, ein neunter Pin rutscht
+nach). Nicht am echten Board geprüft (reines Frontend, keine Firmware-Änderung).
