@@ -18,7 +18,9 @@
 #include <SPI.h>
 #include <SensActCtrl.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
+#include <mbedtls/platform.h>
 #ifdef BREWCTL_I2C_SDA
 #include <Wire.h>
 #endif
@@ -29,6 +31,7 @@
 #include "DynamicItems.h"
 #include "EspNowPublishService.h"
 #include "FirmwareUpdater.h"
+#include "HeapDiag.h"
 #include "LogStore.h"
 #include "MdnsBrowser.h"
 #include "MqttService.h"
@@ -159,6 +162,23 @@ static bool connectStation(const String& ssid, const String& password,
   return true;
 }
 
+// TLS buffers go to PSRAM where there is some. The prebuilt core allocates
+// mbedTLS from internal RAM only (CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC) with fixed
+// 16 KB record buffers — a handshake takes ~50 KB, more than the S2 has left
+// in one piece at runtime ("SSL - Memory allocation failed" on update checks,
+// SESSION.md 2026-09-27). It is built with MBEDTLS_PLATFORM_MEMORY, so the
+// allocator can be swapped at runtime. Internal RAM stays the fallback, and
+// boards without PSRAM (esp32dev) are left as they are.
+static void tlsAllocToPsram() {
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0) return;
+  mbedtls_platform_set_calloc_free(
+      [](size_t n, size_t size) -> void* {
+        void* p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      },
+      heap_caps_free);
+}
+
 // Set in setup() after an unplanned restart, cleared once the alert is raised.
 static const char* pendingResetReason = nullptr;
 
@@ -171,6 +191,8 @@ void setup() {
   while (!Serial && millis() - waitStart < 3000) delay(10);
   delay(200);
   Serial.println(F("BrewControl boot"));
+  tlsAllocToPsram();  // before anything opens a TLS connection
+  BrewControl::HeapDiag::mark("start");
 
 #ifdef BREWCTL_I2C_SDA
   // Boards whose variant header defaults Wire to the wrong pins: claim the
@@ -231,6 +253,8 @@ void setup() {
   }
 #endif
 
+  BrewControl::HeapDiag::mark("fs");
+
   Preferences prefs;
   prefs.begin("brewctrl", true);
   const String ssid = prefs.getString("ssid", "");
@@ -261,6 +285,7 @@ void setup() {
   }
 
   Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
+  BrewControl::HeapDiag::mark("wifi");
 
   // A pending release install runs here, while nothing but WiFi holds heap
   // yet — see FirmwareUpdater::runPendingInstall(). Reboots on success.
@@ -274,6 +299,7 @@ void setup() {
   // STA is up — safe to bring up ESP-Now now (initEspNow_() rides the
   // current WiFi channel instead of forcing one, so it must come after this).
   espNowTransport = std::make_unique<EspNowTransport>();
+  BrewControl::HeapDiag::mark("espnow");
 
   // Re-announce mDNS on every STA_GOT_IP (it doesn't survive reconnects). The
   // initial GOT_IP already fired during connectStation, so also start it once
@@ -287,13 +313,16 @@ void setup() {
                                           // below needs it before actuators load
   }
   startMDNS();
+  BrewControl::HeapDiag::mark("settings+mdns");
 
   mqttService.begin(hostname_);  // creates the transport (if enabled) before
                                   // dynamicItems.loadFromSD() constructs any
                                   // actuator that publishes over MQTT itself
+  BrewControl::HeapDiag::mark("mqtt");
   webhookService.beginPublish(settingsStore, hostname_);  // no-op if disabled
   webSocketService.begin(settingsStore, hostname_);  // hub and/or publish, each no-op if disabled
   espNowPublishService.begin(*espNowTransport, settingsStore, hostname_);  // no-op if disabled
+  BrewControl::HeapDiag::mark("publishers");
   dynamicItems.setMqttTransport(mqttService.transport());  // nullable
   dynamicItems.setWebhookService(&webhookService);  // always available, no toggle
   dynamicItems.setEspNowTransport(espNowTransport.get());  // always available, no toggle
@@ -308,6 +337,7 @@ void setup() {
       webSocketService.hubTransport(),
       settingsStore.websocketClientId().isEmpty() ? hostname_
                                                   : settingsStore.websocketClientId());
+  BrewControl::HeapDiag::mark("discovery");
 
   if (fsOk) {
     dynamicItems.loadFromSD(deviceFs, registry);
@@ -318,6 +348,7 @@ void setup() {
     alarmStore.loadFromSD(deviceFs);
     profileStore.loadFromSD(deviceFs);
   }
+  BrewControl::HeapDiag::mark("stores");
 
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
              settingsStore.ntpServer().c_str());
@@ -330,6 +361,7 @@ void setup() {
   webhookService.attachExistingPublish(registry, dynamicItems);
   webSocketService.attachExistingPublish(registry, dynamicItems);
   espNowPublishService.attachExisting(registry, dynamicItems);
+  BrewControl::HeapDiag::mark("registry");
 
   // Program run-state transitions feed the alert centre. Fires with the
   // runner's lock held, so the callback must not call back into it.
@@ -349,13 +381,16 @@ void setup() {
   pendingResetReason = BrewControl::FirmwareUpdater::unexpectedResetReason();
 
   pushService.begin(hostname_);  // no-op until a browser subscribed
+  BrewControl::HeapDiag::mark("push");
   webUI.begin();
   firmwareUpdater.begin();
+  BrewControl::HeapDiag::mark("webui");
 #ifdef BREWCTL_HAS_DISPLAY
   displayUI.begin(settingsStore);
   if (displayUI.ready())
     displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
                        webUI);
+  BrewControl::HeapDiag::mark("display");
 #endif
   // Watchdog on loopTask. The web API runs on the AsyncTCP task and keeps
   // answering while loopTask hangs, so a stuck loop() (no control, no program
