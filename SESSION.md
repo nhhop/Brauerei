@@ -5452,4 +5452,10 @@ und PLAN.md (Pin-Manager nur noch Stufe 3) nachgezogen.
 **Verifikation:** `pio test -e native` (58, davon 5 neue in `test_pin_map`), `pio run` für alle drei Envs,
 `pnpm typecheck`/`vitest` (50)/`build`, OpenAPI-Lint. UI gegen den Node-Mock: AI-Pin 21 → rot
 „kein ADC-Pin“, GPIO 12 (ADC2) → Warnung und Bestätigungsbox beim Speichern, YF-S201 auf einem Pin ohne
-Pull-up → beide Warnungen.
+Pull-up → beide Warnungen. LilyGo per OTA (mit `main` inkl. Heap-Diagnose): `GET /api/pins` zeigt ADC1 an
+1–10, ADC2 an 11–20, `adc2Wifi: shared`, keine Konflikte in der bestehenden Config; `AnalogInput` auf
+GPIO 48 → 400 `GPIO 48 has no ADC`, auf GPIO 1 → 409 (HLT); auf GPIO 4 (Batterie-ADC) → 204 und misst
+2,11 V; `PUT` desselben Sensors auf GPIO 48 → 400, der Sensor bleibt unverändert; danach gelöscht,
+Config identisch mit dem Stand vor dem Test. ADC2 und die Pull-up-/Glitch-Warnungen nicht am Gerät
+geprüft (am LilyGo liegen die freien ADC2-Pins nur auf USB 19/20, Pull-up/Glitch betrifft nur
+esp32dev/S2) — die decken die nativen Tests ab.
