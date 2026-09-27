@@ -15,6 +15,7 @@
 
 #include "AssetInstall.h"
 #include "BoardPins.h"
+#include "HeapDiag.h"
 #include "Hostname.h"
 #include "RegistryLock.h"
 #include "SdLock.h"
@@ -1888,6 +1889,15 @@ void WebUI::begin() {
           rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 
+  // ── Diagnostics (HeapDiag.h) ───────────────────────────────────────────────
+  server_.on("/api/diag/heap", HTTP_GET, [](AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    HeapDiag::writeJson(doc.to<JsonObject>());
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
+  });
+
   // ── Firmware update ────────────────────────────────────────────────────────
   server_.on("/api/update/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
     req->send(200, "application/json", updater_.statusJson());
@@ -2265,6 +2275,7 @@ void WebUI::begin() {
     }
   });
 
+  HeapDiag::mark("routes");
   server_.begin();
 }
 

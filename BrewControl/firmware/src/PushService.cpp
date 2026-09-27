@@ -118,8 +118,8 @@ void PushService::applyConfig_() {
   vapid.privateKeyBase64 = vapidPriv_;
 
   WebPushConfig cfg;
-  // The library defaults to PSRAM, which esp32dev and lolin_s2_mini do not
-  // have. Not `Internal` though: that maps to MALLOC_CAP_INTERNAL, which means
+  // The library defaults to PSRAM, which esp32dev does not have (lolin_s2_mini
+  // does: 2 MB, see GET /api/diag/heap). Not `Internal` though: that maps to MALLOC_CAP_INTERNAL, which means
   // "not PSRAM" and therefore includes IRAM — and IRAM only allows 32-bit
   // accesses. Once DRAM got tight on the esp32dev the queue item landed there,
   // and constructing the std::string members of PushMessage byte-wise panicked

@@ -5371,3 +5371,57 @@ dem Pin-Manager ab (409), die Library selbst nicht.
 dann „Kein RMT-Kanal, Software-Timing blockiert“ (ein echter Cooker-Fehlercode hat Vorrang). SHA in
 `SensActCtrl/library.json` gebumpt. **Verifikation:** `pio run -e esp32dev` grün; am Gerät nicht
 ausgelöst (dafür wäre ein Kanalmangel nötig), keine native Tests, weil der Pfad hinter `ARDUINO` liegt.
+
+## 2026-09-27 — Heap-Fresser: Messung mit `GET /api/diag/heap` (Branch `feat/heap-diag`)
+
+**Anlass:** Auf den S2 scheitert „Auf Updates prüfen“ im Betrieb an TLS-Speicher, und niemand wusste,
+wer den internen RAM belegt. **Umsetzung:** `src/HeapDiag.h` + `GET /api/diag/heap` (dauerhaft, nur API,
+Nutzer-Entscheidung): interner Heap (`free`/`largest`/`minFree`), PSRAM, Heap nach jedem `setup()`-Block
+(`boot`, Marken in `main.cpp` und vor `server_.begin()`) und Stack-Reserve der bekannten Tasks
+(`xTaskGetHandle`; eine vollständige Task-Liste gibt der Core ohne Trace-Facility nicht her).
+
+**Boot-Verlauf, interner Heap in KB (Abnahme je Block):**
+
+| Block | lolin (S2) | brautomat (S2) | esp32dev | LilyGo (S3) |
+|---|---|---|---|---|
+| frei bei `setup()`-Start | 153,8 | 153,8 | 277,0 | 278,0 |
+| WLAN | 35,7 | 35,7 | 50,5 | 38,1 |
+| Settings + mDNS | 7,3 | 7,3 | 7,0 | 6,7 |
+| Stores (Items, Logs, Programme …) | 3,8 | 2,5 | 5,6 | 16,7 |
+| Registry + Publisher-Anbindung | 6,1 | 0,9 | 4,9 | 7,8 |
+| Push (webpush-Task, nur wenn eingerichtet) | – | – | 18,0 | – |
+| Routen registrieren (85 Handler) | 13,5 | ≈ 30,7 zus. | ≈ 27,9 zus. | ≈ 30,6 zus. |
+| `server_.begin()` (async_tcp-Task, 16 KB Stack) | 17,0 | (mit Routen) | (mit Routen) | (mit Routen) |
+| Display (LVGL) | – | – | – | 39,3 |
+| **frei im Betrieb** | **~59** | **~71** | **~144** | **~110** (+8 MB PSRAM) |
+
+Vor `setup()` fehlen auf dem S2 schon ~170 KB der 320 KB: 66 KB IRAM-Code (auf dem S2 aus demselben SRAM),
+66 KB `.data`/`.bss`, dazu Caches und System-Tasks. WLAN-Puffer und IRAM-Umfang legt der vorkompilierte Core
+fest — ohne eigenen Core-Build bzw. Core 3 nicht änderbar.
+
+**Laufzeit (lolin):** SSE kostet wenig — 1 Client ~0,6 KB, 3 Clients ~6 KB; ein Client, der nicht liest,
+staut nichts auf (Verdacht „32 × 4 KB Queue“ widerlegt). Ein UI-Seitenaufruf drückt kurzzeitig 20 KB, der
+größte Block fällt dabei auf 9 KB, danach alles zurück. **Stacks:** `async_tcp` nutzt von 16 KB höchstens
+~2 KB (S2) bzw. ~3,9 KB (S3); `loopTask` ~4,6 KB (S2) bzw. ~5,6 KB (esp32dev) von 8 KB.
+
+**PSRAM:** Das S2 hat 2 MB PSRAM aktiv (Board-JSON setzt `BOARD_HAS_PSRAM`, Core-sdkconfig `CONFIG_SPIRAM`),
+davon ~20 KB belegt. Der Kommentar in `PushService.cpp` („lolin_s2_mini hat keins“) ist korrigiert. mbedTLS
+nutzt es nicht (`CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC`).
+
+**TLS-Befund:** „Auf Updates prüfen“ im Betrieb: lolin scheitert reproduzierbar („SSL - Memory allocation
+failed“ bei 54 KB frei / 31,7 KB größter Block, `minFree` 13 KB), brautomat kommt durch (71 KB frei,
+`minFree` 19 KB — der Handshake braucht also ~51 KB). **Experiment** (nicht committet):
+`mbedtls_platform_set_calloc_free()` auf einen Allokator, der erst PSRAM, dann internen RAM nimmt — am lolin
+**3 von 3** Prüfungen erfolgreich, `minFree` blieb bei 50 KB. Der Core baut mbedTLS mit
+`MBEDTLS_PLATFORM_MEMORY`, der Umbieger greift also zur Laufzeit.
+
+**Fix (Nutzer-Auswahl aus der Fix-Liste):** `tlsAllocToPsram()` in `main.cpp`, erste Zeile nach dem Boot-Log
+(also auch vor dem Update-Modus): mbedTLS allokiert aus PSRAM, interner RAM bleibt Rückfall; ohne PSRAM
+(esp32dev) unverändert. Damit ist der PLAN-Punkt „S2: Auf Updates prüfen scheitert im Betrieb“ erledigt.
+**Nicht umgesetzt:** `async_tcp`-Stack 16 → 8 KB (vom Nutzer nicht gewählt); Routen-Handler zusammenlegen
+(13,5 KB, großer Umbau) steht in PLAN.md.
+
+**Verifikation:** `pio run` alle drei Envs, OpenAPI-Lint; `/api/diag/heap` auf allen vier Boards geprüft.
+Mit dem Fix je 3 Prüfungen im Betrieb auf allen vier Boards: **12 von 12** erfolgreich; `minFree` lolin
+50 KB (vorher 13), brautomat 64 KB (vorher 19). „Installieren“ am lolin im Update-Modus mit TLS im PSRAM →
+`v0.1.2` sauber installiert, danach Fix-Stand per Push-OTA zurück, UI 200.
