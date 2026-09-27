@@ -96,38 +96,42 @@ export function DisplayPage(_: { path?: string }) {
     <PageShell>
       {header}
 
-      <SettingsGroup title="Burn-in-Schutz">
-        <SettingsCard title="Helligkeit" icon={Sun} desc="Helligkeit im normalen Betrieb"
-          control={<span class="text-sm tabular-nums">{settings.brightness} %</span>}>
-          <Slider min={10} max={100} step={1} value={settings.brightness} color="var(--accent)"
-            onInput={(v) => setSettings((prev) => ({ ...prev, brightness: v }))}
-            onChange={(v) => update({ brightness: v })} />
-        </SettingsCard>
+      <div class="space-y-6">
+        <SettingsGroup>
+          <SettingsCard title="Helligkeit" icon={Sun} desc="Helligkeit im normalen Betrieb"
+            control={<span class="text-sm tabular-nums">{settings.brightness} %</span>}>
+            <Slider min={10} max={100} step={1} value={settings.brightness} color="var(--accent)"
+              onInput={(v) => setSettings((prev) => ({ ...prev, brightness: v }))}
+              onChange={(v) => update({ brightness: v })} />
+          </SettingsCard>
+        </SettingsGroup>
 
-        <SettingsCard title="Dimmen nach" icon={Moon} desc="Zeit ohne Berührung, bis das Display dunkler wird"
-          control={
-            <ChoiceSelect value={settings.dimAfterSec} choices={DIM_AFTER} format={formatSec}
-              onChange={(v) => update({ dimAfterSec: v })} />
-          } />
+        <SettingsGroup title="Burn-in-Schutz">
+          <SettingsCard title="Dimmen nach" icon={Moon} desc="Zeit ohne Berührung, bis das Display dunkler wird"
+            control={
+              <ChoiceSelect value={settings.dimAfterSec} choices={DIM_AFTER} format={formatSec}
+                onChange={(v) => update({ dimAfterSec: v })} />
+            } />
 
-        <SettingsCard title="Helligkeit gedimmt" icon={SunDim} desc="Anteil der eingestellten Helligkeit"
-          control={
-            <ChoiceSelect value={settings.dimPercent} choices={DIM_PERCENT} format={formatPercent}
-              onChange={(v) => update({ dimPercent: v })} />
-          } />
+          <SettingsCard title="Helligkeit gedimmt" icon={SunDim} desc="Anteil der eingestellten Helligkeit"
+            control={
+              <ChoiceSelect value={settings.dimPercent} choices={DIM_PERCENT} format={formatPercent}
+                onChange={(v) => update({ dimPercent: v })} />
+            } />
 
-        <SettingsCard title="Ausschalten nach" icon={PowerOff} desc="Zeit ohne Berührung, bis das Display schwarz wird"
-          control={
-            <ChoiceSelect value={settings.offAfterSec} choices={OFF_AFTER} format={formatSec}
-              onChange={(v) => update({ offAfterSec: v })} />
-          } />
+          <SettingsCard title="Ausschalten nach" icon={PowerOff} desc="Zeit ohne Berührung, bis das Display schwarz wird"
+            control={
+              <ChoiceSelect value={settings.offAfterSec} choices={OFF_AFTER} format={formatSec}
+                onChange={(v) => update({ offAfterSec: v })} />
+            } />
 
-        <SettingsCard title="Pixel-Shift" icon={Move} desc="Verschiebt das Bild jede Minute um wenige Pixel"
-          control={
-            <ToggleSwitch checked={settings.pixelShift}
-              onChange={(v) => update({ pixelShift: v })} />
-          } />
-      </SettingsGroup>
+          <SettingsCard title="Pixel-Shift" icon={Move} desc="Verschiebt das Bild jede Minute um wenige Pixel"
+            control={
+              <ToggleSwitch checked={settings.pixelShift}
+                onChange={(v) => update({ pixelShift: v })} />
+            } />
+        </SettingsGroup>
+      </div>
 
       <p class="mt-4 px-1 text-xs text-muted">
         Tippen weckt das Display; der erste Tipp löst nichts aus. Not-Aus und Meldungen wecken es ebenfalls.
