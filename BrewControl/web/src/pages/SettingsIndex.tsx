@@ -6,7 +6,7 @@ import { PageShell } from '../components/PageShell';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Network, FolderOpen,
-  ShieldCheck, BellRing, Smartphone, Monitor,
+  ShieldCheck, BellRing, Smartphone, Monitor, Activity,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -22,6 +22,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/display', icon: Monitor, title: 'Gerätedisplay', desc: 'Dimmen, Ausschalten, Pixel-Shift' },
   { href: '/settings/devices', icon: Cpu, title: 'Geräte', desc: 'Sensoren, Regler, Aktoren verwalten' },
   { href: '/settings/firmware', icon: CloudDownload, title: 'Firmware-Update', desc: 'Version, Kanal, Upload' },
+  { href: '/settings/system', icon: Activity, title: 'Systemstatus', desc: 'Version, letzter Neustart, Speicher' },
   { href: '/settings/backup', icon: DatabaseBackup, title: 'Backup & Restore', desc: 'Konfiguration exportieren / wiederherstellen' },
   { href: '/settings/files', icon: FolderOpen, title: 'Dateiverwaltung', desc: 'SD-Karte durchsuchen, hoch-/herunterladen, löschen' },
   { href: '/settings/time', icon: Clock, title: 'Zeit & Formate', desc: 'Zeitzone, NTP-Server, Uhrzeit- und Datumsformat' },

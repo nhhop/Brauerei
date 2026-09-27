@@ -4304,6 +4304,15 @@ components:
             size: { type: integer }
             free: { type: integer }
             largest: { type: integer }
+        storage:
+          type: object
+          required: [total, used]
+          description: |
+            Nur auf Boards ohne SD-Karte (LittleFS als Datenpartition,
+            `BREWCTL_USE_LITTLEFS`) — sonst fehlt das Feld ganz.
+          properties:
+            total: { type: integer }
+            used: { type: integer }
         boot:
           type: array
           items:
@@ -4324,7 +4333,7 @@ components:
 
     UpdateStatus:
       type: object
-      required: [state, currentVersion, variant, resetReason, channel, autoCheck, progress, error, available]
+      required: [state, currentVersion, variant, resetReason, channel, autoCheck, lastCheckedAt, progress, error, available]
       properties:
         state:
           type: string
@@ -4343,6 +4352,11 @@ components:
             (update, settings, backup restore).
         channel: { type: string, enum: [stable, preview] }
         autoCheck: { type: boolean }
+        lastCheckedAt:
+          type: integer
+          description: |
+            Unix-Zeitstempel (Sekunden) der letzten Update-Prüfung (manuell
+            oder automatisch), 0 = noch nie geprüft.
         progress: { type: integer, description: "Percent, while downloading or flashing." }
         error: { type: string, description: Empty unless `state` is `error`. }
         available:

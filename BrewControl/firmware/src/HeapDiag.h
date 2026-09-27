@@ -5,6 +5,9 @@
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#ifdef BREWCTL_USE_LITTLEFS
+#include <LittleFS.h>
+#endif
 
 // Heap diagnostics for GET /api/diag/heap. mark() records the internal heap
 // after each setup() block, so the deltas show what each subsystem takes at
@@ -49,6 +52,12 @@ inline void writeJson(JsonObject out) {
   psram["size"] = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
   psram["free"] = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   psram["largest"] = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+
+#ifdef BREWCTL_USE_LITTLEFS
+  JsonObject storage = out["storage"].to<JsonObject>();
+  storage["total"] = LittleFS.totalBytes();
+  storage["used"] = LittleFS.usedBytes();
+#endif
 
   JsonArray boot = out["boot"].to<JsonArray>();
   for (size_t i = 0; i < markCount; ++i) {

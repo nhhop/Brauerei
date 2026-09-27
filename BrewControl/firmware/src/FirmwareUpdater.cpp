@@ -6,6 +6,7 @@
 #include <Update.h>
 #include <WiFiClientSecure.h>
 #include <esp_system.h>
+#include <time.h>
 
 #include "AssetInstall.h"
 #include "SdLock.h"
@@ -278,6 +279,7 @@ void FirmwareUpdater::doCheck(const String& channel) {
   state_ = State::Checking;
   error_ = "";
   netError_ = "";
+  lastCheckedAt_ = time(nullptr);
   String tag, fwUrl, tarUrl, notes;
   if (!fetchReleaseMeta(channel, tag, fwUrl, tarUrl, notes)) {
     error_ = "check failed";
@@ -425,6 +427,7 @@ String FirmwareUpdater::statusJson() const {
   doc["resetReason"] = resetReasonName(esp_reset_reason());
   doc["channel"] = settings_.firmwareChannel();
   doc["autoCheck"] = settings_.firmwareAutoCheck();
+  doc["lastCheckedAt"] = lastCheckedAt_;
   doc["progress"] = progress_;
   doc["error"] = error_;
   if (state_ == State::UpdateAvailable || state_ == State::NoUpdate) {

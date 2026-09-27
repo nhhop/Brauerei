@@ -16,23 +16,10 @@ import { ToggleSwitch } from '../components/ToggleSwitch';
 import { btnPrimary, btnSecondary } from '../ui';
 import { TriangleAlert, Package, CloudDownload, RefreshCw, Upload } from 'lucide-preact';
 
-const RESET_LABELS: Record<UpdateStatus['resetReason'], string> = {
-  power_on: 'Einschalten',
-  external: 'Reset-Taste',
-  sw: 'Neustart durch die Firmware (Update, Einstellungen)',
-  panic: 'Absturz',
-  int_wdt: 'Watchdog (Interrupt)',
-  task_wdt: 'Watchdog — die Steuerung hing länger als 30 s',
-  wdt: 'Watchdog',
-  deep_sleep: 'Aufwachen aus dem Tiefschlaf',
-  brownout: 'Spannungseinbruch',
-  sdio: 'SDIO',
-  unknown: 'unbekannt',
-};
-
-// Restarts nobody asked for: worth a red line, the device recovered on its own.
-const UNEXPECTED_RESETS: UpdateStatus['resetReason'][] =
-  ['panic', 'int_wdt', 'task_wdt', 'wdt', 'brownout'];
+function formatCheckedAt(epoch: number): string {
+  if (!epoch) return 'noch nie geprüft';
+  return new Date(epoch * 1000).toLocaleString();
+}
 
 export function FirmwarePage(_: { path?: string }) {
   const [st, setSt] = useState<UpdateStatus | null>(null);
@@ -79,18 +66,12 @@ export function FirmwarePage(_: { path?: string }) {
     <PageShell>
       {header}
 
-      <div class="mt-4 flex items-center gap-2 rounded-md border border-caution/40 bg-[color-mix(in_srgb,var(--caution)_12%,transparent)] px-4 py-3 text-sm text-caution">
-        <TriangleAlert size={16} class="shrink-0" /> Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
-      </div>
-
       <div class="mt-6">
         <SettingsGroup>
           <SettingsCard title="Aktuelle Version" icon={Package}
             desc={<>
               <span class="font-mono">{st.currentVersion} · {st.variant}</span>
-              <span class={`block ${UNEXPECTED_RESETS.includes(st.resetReason) ? 'text-critical' : ''}`}>
-                Letzter Neustart: {RESET_LABELS[st.resetReason] ?? st.resetReason}
-              </span>
+              <span class="block">Letzte Prüfung: {formatCheckedAt(st.lastCheckedAt)}</span>
             </>}
             control={
               <button onClick={() => checkUpdate(channel).then(refresh)} disabled={busy}
@@ -99,13 +80,6 @@ export function FirmwarePage(_: { path?: string }) {
                   ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />Prüfe…</>
                   : 'Auf Updates prüfen'}
               </button>
-            } />
-
-          <SettingsCard title="Server-Update (GitHub)" icon={CloudDownload} desc="Kanal wählen und auf neue Releases prüfen"
-            control={
-              <Segmented value={channel} disabled={busy}
-                options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
-                onChange={setChannel} />
             }>
             {(st.available || st.state === 'downloading' || st.state === 'flashing' || st.state === 'error') && (
               <div class="space-y-3">
@@ -114,9 +88,11 @@ export function FirmwarePage(_: { path?: string }) {
                     <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
                     {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
                     {st.state === 'updateAvailable' && (
-                      <button onClick={() => setConfirmInstall(true)} class={`mt-2 ${btnPrimary}`}>
-                        Installieren
-                      </button>
+                      <div class="mt-2 flex justify-end">
+                        <button onClick={() => setConfirmInstall(true)} class={btnPrimary}>
+                          Installieren
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -128,6 +104,13 @@ export function FirmwarePage(_: { path?: string }) {
               </div>
             )}
           </SettingsCard>
+
+          <SettingsCard title="Release-Kanal" icon={CloudDownload} desc="Stabil oder Vorschau — wovon neue Releases bezogen werden"
+            control={
+              <Segmented value={channel} disabled={busy}
+                options={[{ value: 'stable', label: 'Stabil' }, { value: 'preview', label: 'Vorschau' }]}
+                onChange={setChannel} />
+            } />
 
           <SettingsCard title="Automatisch prüfen" icon={RefreshCw} desc="Täglich auf neue Releases prüfen"
             control={<ToggleSwitch checked={st.autoCheck} disabled={busy} onChange={setAuto}
@@ -153,6 +136,10 @@ export function FirmwarePage(_: { path?: string }) {
             </div>
           </SettingsCard>
         </SettingsGroup>
+      </div>
+
+      <div class="mt-6 flex items-center gap-2 rounded-md border border-caution/40 bg-[color-mix(in_srgb,var(--caution)_12%,transparent)] px-4 py-3 text-sm text-caution">
+        <TriangleAlert size={16} class="shrink-0" /> Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
       </div>
 
       <ConfirmModal open={confirmInstall} title="Update installieren?"

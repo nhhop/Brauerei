@@ -601,9 +601,20 @@ export interface UpdateStatus {
     | 'wdt' | 'deep_sleep' | 'brownout' | 'sdio' | 'unknown';
   channel: 'stable' | 'preview';
   autoCheck: boolean;
+  lastCheckedAt: number;  // epoch (s), 0 = never checked
   progress: number;
   error: string;
   available: { version: string; notes: string } | null;
+}
+
+// Wire format of GET /api/diag/heap.
+export interface HeapDiag {
+  uptimeS: number;
+  internal: { free: number; largest: number; minFree: number };
+  psram: { size: number; free: number; largest: number };
+  storage?: { total: number; used: number };  // LittleFS boards only
+  boot: { phase: string; free: number; largest: number }[];
+  tasks: { name: string; stackFree: number }[];
 }
 
 // ── SD file manager ─────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -650,6 +650,12 @@ export function checkUpdate(channel: 'stable' | 'preview'): Promise<void> {
 
 export function installUpdate(channel: 'stable' | 'preview'): Promise<void> {
   return postJson('/api/update/install', { channel });
+}
+
+export async function getHeapDiag(): Promise<HeapDiag> {
+  const r = await fetch('/api/diag/heap');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as HeapDiag;
 }
 
 function uploadFile(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {

@@ -5533,3 +5533,22 @@ aufsteigend; MAX31865-Custom-SPI schlägt für CLK „18 (Bus)" vor, für MISO/M
 Bus-Leitung, und nach Wahl von CLK=18 fehlt 18 in den MISO/MOSI-Listen; HC-SR04 TRIG/ECHO schlagen
 sich gegenseitig nichts vor (nach TRIG=2 verschwindet 2 aus ECHOs Liste, ein neunter Pin rutscht
 nach). Nicht am echten Board geprüft (reines Frontend, keine Firmware-Änderung).
+
+## 2026-09-27 — Firmware-Update-Seite: Layout + neue Systemstatus-Seite
+
+Auf `/settings/firmware`: Hinweiskarte ans Seitenende verschoben, Installieren-Button
+rechtsbündig, das "verfügbares Update"-Panel aus der GitHub-Karte (jetzt "Release-Kanal",
+Untertitel entschärft) in die "Aktuelle Version"-Karte verschoben, dort "Letzter Neustart"
+durch "Letzte Prüfung" ersetzt (neues Feld `lastCheckedAt` in `FirmwareUpdater`, gesetzt in
+`doCheck()`, über `/api/update/status` exportiert). Der Neustart-Grund zieht auf eine neue
+Seite `/settings/system` (Systemstatus, im Einstellungen-Index verlinkt) um, zusammen mit
+Board-Infos (Variante + Hostname/IP/MAC aus `GET /api/network`), Version, Betriebszeit und
+Speicherbelegung — letztere beide neu aus dem bisher ungenutzten `GET /api/diag/heap`
+(`HeapDiag.h` bekam dafür ein `storage`-Feld, nur auf LittleFS-Boards). Zusätzlich eine
+Karte "Aktive Störungen": reine Frontend-Auswertung von `GET /api/alerts` (letztes
+`fault`-Ereignis pro `src`, nur `state === 'raised'` zählt als aktiv) — kein neuer Endpoint,
+das bestehende Alert-System (`AlertCenter.tsx`) deckt Fehlermeldungen schon ab.
+
+**Verifikation:** `pio run -e esp32dev` (compile-smoke, LittleFS-Zweig mitkompiliert),
+Redocly-Lint grün, `pnpm typecheck` grün, Node-Mock-Preview: beide Seiten inkl. aktiver und
+leerer Störungsliste geprüft.

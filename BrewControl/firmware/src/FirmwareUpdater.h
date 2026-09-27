@@ -4,6 +4,7 @@
 #include <FS.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <time.h>
 
 #include "SettingsStore.h"
 
@@ -82,6 +83,7 @@ class FirmwareUpdater {
   String error_;
   String netError_;
   uint8_t progress_ = 0;
+  time_t lastCheckedAt_ = 0;  // epoch seconds, 0 = never checked
 
   bool pendingCheck_ = false;
   bool pendingInstall_ = false;
