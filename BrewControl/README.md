@@ -439,6 +439,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW, Gerätedisplay |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
 | `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |
+| `/api/diag/heap` | GET | Heap-Diagnose: interner RAM, PSRAM, Heap-Verlauf beim Boot, Stack-Reserve der Tasks |
 | `/api/update/status` | GET | Updater-Zustand |
 | `/api/update/check` · `/install` | POST | Server-Pull: prüfen / installieren |
 | `/api/update/firmware` | POST | Firmware-`.bin` hochladen + flashen (rebootet) |

@@ -2500,6 +2500,26 @@ paths:
             text/plain: { schema: { type: string, const: rename failed } }
 
   # ── Admin ──────────────────────────────────────────────────────────────────
+  /api/diag/heap:
+    get:
+      tags: [Admin]
+      operationId: getHeapDiag
+      summary: Heap, PSRAM and task-stack diagnostics
+      description: |
+        Internal RAM is the scarce part — mbedTLS and DMA can only use it —
+        so `internal` is what matters for TLS failures. `boot` holds the
+        internal heap after each block of `setup()`; the difference between
+        two entries is what that block allocated. `tasks` lists the stack
+        reserve (lowest ever free stack, bytes) of the known tasks that exist.
+        All sizes in bytes; `psram` is all zeros without PSRAM.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Current heap state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HeapDiag" }
+
   /api/admin/wifi-reset:
     post:
       tags: [Admin]
@@ -4247,6 +4267,43 @@ components:
           type: string
           enum: [stable, preview]
           description: Overrides the configured channel for this request only.
+
+    HeapDiag:
+      type: object
+      required: [uptimeS, internal, psram, boot, tasks]
+      properties:
+        uptimeS: { type: integer }
+        internal:
+          type: object
+          required: [free, largest, minFree]
+          properties:
+            free: { type: integer }
+            largest: { type: integer, description: Largest contiguous free block. }
+            minFree: { type: integer, description: Lowest `free` since boot. }
+        psram:
+          type: object
+          required: [size, free, largest]
+          properties:
+            size: { type: integer }
+            free: { type: integer }
+            largest: { type: integer }
+        boot:
+          type: array
+          items:
+            type: object
+            required: [phase, free, largest]
+            properties:
+              phase: { type: string, examples: [start, wifi, mqtt, stores, webui] }
+              free: { type: integer }
+              largest: { type: integer }
+        tasks:
+          type: array
+          items:
+            type: object
+            required: [name, stackFree]
+            properties:
+              name: { type: string, examples: [loopTask, async_tcp] }
+              stackFree: { type: integer, description: Stack high-water mark in bytes. }
 
     UpdateStatus:
       type: object
