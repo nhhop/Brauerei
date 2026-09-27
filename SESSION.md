@@ -5459,3 +5459,41 @@ GPIO 48 → 400 `GPIO 48 has no ADC`, auf GPIO 1 → 409 (HLT); auf GPIO 4 (Batt
 Config identisch mit dem Stand vor dem Test. ADC2 und die Pull-up-/Glitch-Warnungen nicht am Gerät
 geprüft (am LilyGo liegen die freien ADC2-Pins nur auf USB 19/20, Pull-up/Glitch betrifft nur
 esp32dev/S2) — die decken die nativen Tests ab.
+
+## 2026-09-27 — Peripherie-Abstraktion Etappe 1: PeripheralRegistry für OneWire und SPI
+
+**Ausgangslage:** `DynamicItems::getOrCreateBus` legte pro Pin eine `OneWire` in `onewireBuses_` an, aber nur
+für DS18B20 mit `address`. Ohne Adresse baute sich der Sensor einen eigenen Treiber auf demselben GPIO.
+Busse wurden nie abgebaut. MAX31865 mit `clk` bit-bangt pro Instanz; ein geteiltes SPI-Objekt gab es nicht.
+`GET /api/bus/scan` lief ohne RegistryLock, bit-bangte also womöglich gleichzeitig mit `loop()` auf dem Pin.
+
+**Entscheidungen** (Plan: `docs/superpowers/plans/2026-09-27-peripherie-etappe-1.md`): Die Registry liegt
+in der **Firmware** (`src/PeripheralRegistry.h`, header-only, Arduino-frei). Die Library bekommt ihre Busse
+schon heute per Dependency Injection; wann ein Bus entsteht und wann er wegfällt, ist Anwendungslogik.
+So entsteht keine neue öffentliche Library-API. Das Interface hat `id`/`type`/`begin`/`end`, **kein
+`tick`** (braucht noch kein Gerät). Die Nutzerzählung läuft über eine kopierbare RAII-`Ref`. `PinMap.h`
+bleibt **getrennt**, weil die Pin-Prüfung vor der Instanz laufen muss und auch über nicht ladbare
+Configs. SPI ist vorerst nur Buchführung, ohne Wechsel auf Hardware-SPI (ohne MAX31865-Hardware nicht
+prüfbar). Andockpunkte für I²C und Fähigkeiten stehen im Plan.
+
+**Umsetzung:** `PeripheralRegistry` (`acquire<T>(id, args…)` legt an oder findet, `begin()` beim ersten
+Nutzer, `end()` und `delete` beim letzten). `DynamicItems`: `peripherals_` ersetzt `onewireBuses_` an
+derselben Stelle (vor `sensors_`, wird also nach den Sensoren zerstört). `SensorEntry::bus` steht vor
+dem Sensor. Neue Klassen `OneWireBus` (`onewire:<pin>`) und `SpiBus` (`spi:<clk>/<miso>/<mosi>`).
+`replaceSensor` hält die `Ref` des alten Sensors, bis das Ersetzen fertig ist, sodass Ersetzen und
+Wiederherstellen denselben Bus behalten. Alle DS18B20 hängen jetzt am Registry-Bus, dafür gibt es in
+SensActCtrl den Konstruktor `DS18B20Sensor(id, OneWire&, bits)` (fremder Bus, ohne Adresse). Der Bus-Scan
+läuft unter `RegistryTryLock`, deshalb in `openapi.yaml` 503 `RegistryBusy`. Doku: README beider
+Projekte, PLAN.md (Etappen 2/3 offen, Pin-Manager 3a präzisiert).
+
+**Verifikation:** Firmware `pio test -e native` 68/68 (10 neue in `test_peripheral_registry`: Teilen,
+ersten löschen → Bus bleibt, letzten löschen → `end()`, Ersetzen am selben Pin → gleiche Instanz ohne
+`end`/`begin`, gescheitertes Ersetzen + Wiederherstellen, Pin-Wechsel, Ref-Kopie/-Move). SensActCtrl
+275/275 (2 neue in `test_ds18b20`). `pio run` für esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled;
+OpenAPI-Lint. LilyGo per OTA (keine andere Session aktiv): `/api/config` vor und nach dem Flash
+byte-identisch, HLT (Pin 1, adressiert) liefert weiter 22,56 °C, Scan auf Pin 1 findet ihn über den
+Registry-Bus. Auf Pin 1 zusätzlich `T2` (Dummy-Adresse → `ok:false`, erwartet) und `T4` ohne Adresse
+(liest das erste Gerät, 22,56 °C) angelegt, dann `PUT` T2 → T3 (204), `PUT` mit ungültiger Adresse →
+400, T3 bleibt. T3 und T4 gelöscht: HLT lieferte in jedem Schritt Werte, kein Neustart (`resetReason`
+`sw` vom OTA), die Config danach wieder identisch. Abbauen des letzten Nutzers am Gerät nicht
+beobachtbar (HLT bleibt), das decken die nativen Tests ab.

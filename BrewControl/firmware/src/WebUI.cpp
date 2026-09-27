@@ -1030,7 +1030,17 @@ void WebUI::begin() {
     int pin = req->getParam("pin")->value().toInt();
 
     uint8_t addrs[8][8] = {};
-    uint8_t n = items_.scanOneWireBus(pin, addrs, 8);
+    uint8_t n;
+    {
+      // The bus may be the one loop() ticks DS18B20 on, and a sensor added or
+      // removed meanwhile may create or tear it down (PeripheralRegistry.h).
+      RegistryTryLock lock(kRegistryWaitMs);
+      if (!lock.locked()) {
+        req->send(503, "text/plain", "busy, retry");
+        return;
+      }
+      n = items_.scanOneWireBus(pin, addrs, 8);
+    }
 
     JsonDocument doc;
     doc["type"] = "onewire";

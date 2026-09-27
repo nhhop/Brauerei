@@ -91,7 +91,9 @@ void loop() {
 
 **Sensoren** (`src/sensors/`): `DigitalInputSensor`, `AnalogInputSensor`
 (lineare Kalibrierung), `PulseCounterSensor` (Total-/Rate-Modus),
-`DS18B20Sensor` (OneWire, async), `BME280Sensor` (I2C, Temp/Feuchte/Druck),
+`DS18B20Sensor` (OneWire, async; eigener Bus per Pin oder ein fremder
+`OneWire&`, den sich mehrere Sensoren teilen — mit ROM-Adresse oder ohne, dann
+erstes Gerät), `BME280Sensor` (I2C, Temp/Feuchte/Druck),
 `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss +
 Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei

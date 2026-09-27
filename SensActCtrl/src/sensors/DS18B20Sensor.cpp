@@ -51,6 +51,11 @@ DS18B20Sensor::DS18B20Sensor(const char* id, OneWire& bus,
   hasAddress_ = true;
 }
 
+DS18B20Sensor::DS18B20Sensor(const char* id, OneWire& bus, uint8_t resolutionBits)
+    : id_(id), resolutionBits_(resolutionBits),
+      ownsBus_(false), bus_(&bus),
+      conversionTimeMs_(conversionMsFor(resolutionBits)) {}
+
 DS18B20Sensor::~DS18B20Sensor() {
   delete dallas_;
   if (ownsBus_) delete bus_;

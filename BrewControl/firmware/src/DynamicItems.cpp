@@ -1,5 +1,7 @@
 #include "DynamicItems.h"
 
+#include <OneWire.h>
+
 #include <algorithm>
 
 #include "BoardPins.h"
@@ -9,6 +11,34 @@
 using namespace SensActCtrl;
 
 namespace BrewControl {
+
+// ── Buses (PeripheralRegistry) ────────────────────────────────────────────
+
+namespace {
+
+// One OneWire driver per pin, shared by every DS18B20 on it.
+class OneWireBus : public Peripheral {
+ public:
+  explicit OneWireBus(int pin) : ow(pin) {}
+  const char* type() const override { return "onewire"; }
+  OneWire ow;
+};
+
+// SCK/MISO/MOSI shared by MAX31865 in software-SPI mode. Only bookkeeping so
+// far: each MAX31865 still drives the lines itself, the id records which ones.
+class SpiBus : public Peripheral {
+ public:
+  const char* type() const override { return "spi"; }
+};
+
+std::string oneWireBusId(int pin) { return "onewire:" + std::to_string(pin); }
+
+std::string spiBusId(int clk, int miso, int mosi) {
+  return "spi:" + std::to_string(clk) + "/" + std::to_string(miso) + "/" +
+         std::to_string(mosi);
+}
+
+}  // namespace
 
 // ── Remote transport resolution ──────────────────────────────────────────
 
@@ -81,12 +111,14 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
     const char* addrHex = cfg["address"] | "";
+    uint8_t addr[8] = {};
+    if (addrHex[0] && !parseHexAddress(addrHex, addr)) return {false, "invalid address"};
+    e->bus = peripherals_.acquire<OneWireBus>(oneWireBusId(pin), pin);
+    OneWire& ow = e->bus.as<OneWireBus>().ow;
     if (addrHex[0]) {
-      uint8_t addr[8] = {};
-      if (!parseHexAddress(addrHex, addr)) return {false, "invalid address"};
-      e->ptr = std::make_unique<DS18B20Sensor>(e->id.c_str(), getOrCreateBus(pin), addr);
+      e->ptr = std::make_unique<DS18B20Sensor>(e->id.c_str(), ow, addr);
     } else {
-      e->ptr = std::make_unique<DS18B20Sensor>(e->id.c_str(), pin);
+      e->ptr = std::make_unique<DS18B20Sensor>(e->id.c_str(), ow);
     }
   } else if (strcmp(type, "MAX31865") == 0) {
     int cs = cfg["cs"] | -1;
@@ -113,6 +145,7 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
       int miso = cfg["miso"] | -1;
       int mosi = cfg["mosi"] | -1;
       if (miso < 0 || mosi < 0) return {false, "clk set but miso/mosi missing"};
+      e->bus = peripherals_.acquire<SpiBus>(spiBusId(clk, miso, mosi));
       e->ptr = std::make_unique<MAX31865Sensor>(
           e->id.c_str(), cs, clk, miso, mosi, wiresEnum, rtd, rref);
     } else {
@@ -856,9 +889,14 @@ DynamicItems::Result DynamicItems::replaceSensor(const char* oldId,
                                                  const JsonObject& cfg,
                                                  Registry& reg) {
   const std::string id = oldId;
-  if (!findSensorEntry(id.c_str())) return {false, "not a dynamic item"};
+  const SensorEntry* old = findSensorEntry(id.c_str());
+  if (!old) return {false, "not a dynamic item"};
   Result pins = checkPins(cfg, id.c_str());
   if (!pins.ok) return pins;
+  // Holding the old sensor's bus across the swap keeps it from being torn
+  // down and rebuilt when the new config — or the restored old one — sits on
+  // the same bus. A bus left without users goes when this Ref does.
+  const PeripheralRegistry::Ref held = old->bus;
   return replaceEntry(
       sensors_, id, cfg, reg,
       [&](const char* i) { return removeSensor(i, reg); },
@@ -1042,18 +1080,9 @@ String DynamicItems::serializeConfig() const {
 // ── Bus helpers ───────────────────────────────────────────────────────────────
 
 uint8_t DynamicItems::scanOneWireBus(int pin, uint8_t out[][8], uint8_t max) {
-  for (auto& e : onewireBuses_) {
-    if (e.pin == pin)
-      return DS18B20Sensor::scanBus(*e.ow, out, max);
-  }
+  if (Peripheral* bus = peripherals_.find(oneWireBusId(pin)))
+    return DS18B20Sensor::scanBus(static_cast<OneWireBus*>(bus)->ow, out, max);
   return DS18B20Sensor::scanBus(pin, out, max);
-}
-
-OneWire& DynamicItems::getOrCreateBus(int pin) {
-  for (auto& e : onewireBuses_)
-    if (e.pin == pin) return *e.ow;
-  onewireBuses_.push_back({pin, std::make_unique<OneWire>(pin)});
-  return *onewireBuses_.back().ow;
 }
 
 bool DynamicItems::parseHexAddress(const char* hex, uint8_t out[8]) {
