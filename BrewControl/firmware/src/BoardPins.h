@@ -5,8 +5,10 @@
 namespace BrewControl {
 
 // Pin tables for the three boards BrewControl builds for (see platformio.ini).
-// Chip facts from the Espressif datasheets; board wiring from the build flags,
-// main.cpp and display/DisplayUI.cpp — keep them in sync when those change.
+// Chip facts from the Espressif datasheets (ADC channels, pull-ups) and the
+// ESP32 errata (3.11: GPIO 36/39 glitch while the SAR ADC is powered); board
+// wiring from the build flags, main.cpp and display/DisplayUI.cpp — keep them
+// in sync when those change.
 // GPIO 0 is the BOOT button everywhere, which main.cpp reads for the factory
 // reset (kBootButtonPin), so it counts as reserved, not merely as strapping.
 
@@ -32,6 +34,11 @@ inline constexpr Board kEsp32Dev = {
     pinBit(25) | pinBit(26),
     kEsp32DevSpecial, sizeof(kEsp32DevSpecial) / sizeof(PinDef),
     8,
+    pinRange(32, 39),
+    pinBit(0) | pinBit(2) | pinBit(4) | pinRange(12, 15) | pinRange(25, 27),
+    pinRange(34, 39),
+    pinBit(36) | pinBit(39),
+    true,  // ADC2 reads fail while Wi-Fi is on
 };
 
 // ── lolin_s2_mini (ESP32-S2FN4R2) ────────────────────────────────────────────
@@ -58,6 +65,11 @@ inline constexpr Board kLolinS2Mini = {
     pinBit(17) | pinBit(18),
     kLolinS2MiniSpecial, sizeof(kLolinS2MiniSpecial) / sizeof(PinDef),
     4,
+    pinRange(1, 10),
+    pinRange(11, 20),
+    pinBit(46),  // fixed pull-down
+    0,
+    false,  // ADC2 arbitrated with Wi-Fi
 };
 
 // ── lilygo_t_display_s3_amoled (ESP32-S3R8, T-Display-S3-AMOLED-1.75) ────────
@@ -107,6 +119,11 @@ inline constexpr Board kLilyGoAmoled = {
     0,
     kLilyGoAmoledSpecial, sizeof(kLilyGoAmoledSpecial) / sizeof(PinDef),
     4,
+    pinRange(1, 10),
+    pinRange(11, 20),
+    0,
+    0,
+    false,  // ADC2 arbitrated with Wi-Fi
 };
 
 #if defined(BREWCTL_I2C_SDA) && defined(BREWCTL_HAS_DISPLAY)

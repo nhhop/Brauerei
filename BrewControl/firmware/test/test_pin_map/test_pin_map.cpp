@@ -202,6 +202,86 @@ void test_pins_json() {
   TEST_ASSERT_EQUAL(1, doc["conflicts"].size());  // GPIO 9
 }
 
+void test_analog_input_needs_adc() {
+  auto r = check(kEsp32Dev, {}, R"({"type":"AnalogInput","id":"a","pin":16})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("GPIO 16 has no ADC", r.error.c_str());
+  r = check(kLilyGoAmoled, {}, R"({"type":"AnalogInput","id":"a","pin":21})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  // Only analog inputs care: a digital input on the same pin is fine.
+  TEST_ASSERT_TRUE(check(kEsp32Dev, {}, R"({"type":"DigitalInput","id":"a","pin":16})").ok);
+}
+
+void test_adc2_blocked_on_esp32_shared_on_s2_s3() {
+  auto r = check(kEsp32Dev, {}, R"({"type":"AnalogInput","id":"a","pin":27})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("GPIO 27 is on ADC2, which Wi-Fi blocks", r.error.c_str());
+
+  r = check(kLilyGoAmoled, {}, R"({"type":"AnalogInput","id":"a","pin":18})");
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL(1, r.warnings.size());
+  TEST_ASSERT_EQUAL_STRING("GPIO 18: ADC2 – Messung kann bei WLAN-Verkehr ausfallen",
+                           r.warnings[0].c_str());
+  TEST_ASSERT_TRUE(check(kLolinS2Mini, {}, R"({"type":"AnalogInput","id":"a","pin":12})").ok);
+
+  r = check(kLilyGoAmoled, {}, R"({"type":"AnalogInput","id":"a","pin":1})");  // ADC1
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL(0, r.warnings.size());
+}
+
+void test_pullup_and_irq_glitch_warn() {
+  auto r = check(kEsp32Dev, {}, R"({"type":"YF-S201","id":"f","pin":36})");
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL(2, r.warnings.size());
+  TEST_ASSERT_EQUAL_STRING("GPIO 36: kein interner Pull-up – externen Widerstand vorsehen",
+                           r.warnings[0].c_str());
+  TEST_ASSERT_EQUAL_STRING("GPIO 36: Fehlauslöser möglich (ESP32-Errata)", r.warnings[1].c_str());
+
+  // Pull-up only matters when the input asks for it.
+  TEST_ASSERT_EQUAL(0, check(kEsp32Dev, {}, R"({"type":"DigitalInput","id":"d","pin":34})").warnings.size());
+  TEST_ASSERT_EQUAL(1, check(kEsp32Dev, {}, R"({"type":"DigitalInput","id":"d","pin":34,"pullup":true})").warnings.size());
+  // S2 GPIO 46: strapping pin and fixed pull-down.
+  TEST_ASSERT_EQUAL(2, check(kLolinS2Mini, {}, R"({"type":"DigitalInput","id":"d","pin":46,"pullup":true})").warnings.size());
+  // HC-SR04 echo interrupt on 39: glitch only, no pull-up used.
+  TEST_ASSERT_EQUAL(1, check(kEsp32Dev, {}, R"({"type":"HCSR04","id":"h","trig":16,"echo":39})").warnings.size());
+}
+
+void test_adc_conflicts_in_stored_config() {
+  auto uses = usesOf({R"({"type":"AnalogInput","id":"a","pin":16})",
+                      R"({"type":"AnalogInput","id":"b","pin":27})",
+                      R"({"type":"AnalogInput","id":"c","pin":34})"});
+  auto c = findPinConflicts(kEsp32Dev, uses);
+  TEST_ASSERT_EQUAL(2, c.size());
+  TEST_ASSERT_EQUAL(16, c[0].gpio);
+  TEST_ASSERT_EQUAL_STRING("kein ADC", c[0].reason.c_str());
+  TEST_ASSERT_EQUAL(27, c[1].gpio);
+  TEST_ASSERT_EQUAL_STRING("ADC2 – bei WLAN nicht nutzbar", c[1].reason.c_str());
+  // The same ADC2 pin is fine on the S3.
+  TEST_ASSERT_TRUE(findPinConflicts(kLilyGoAmoled,
+                                    usesOf({R"({"type":"AnalogInput","id":"b","pin":18})"})).empty());
+}
+
+void test_pins_json_capabilities() {
+  JsonDocument doc;
+  writePinsJson(kEsp32Dev, "esp32dev", {}, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_STRING("blocked", doc["caps"]["adc2Wifi"]);
+  auto pin = [&](int gpio) {
+    for (JsonObjectConst p : doc["pins"].as<JsonArrayConst>())
+      if (p["gpio"] == gpio) return p;
+    return JsonObjectConst();
+  };
+  TEST_ASSERT_EQUAL(2, pin(4)["adc"].as<int>());
+  TEST_ASSERT_EQUAL(1, pin(36)["adc"].as<int>());
+  TEST_ASSERT_TRUE(pin(36)["noPullup"].as<bool>());
+  TEST_ASSERT_TRUE(pin(36)["irqGlitch"].as<bool>());
+  TEST_ASSERT_TRUE(pin(16)["adc"].isNull());
+  TEST_ASSERT_TRUE(pin(16)["noPullup"].isNull());
+
+  JsonDocument s3;
+  writePinsJson(kLilyGoAmoled, "lilygo", {}, s3.to<JsonObject>());
+  TEST_ASSERT_EQUAL_STRING("shared", s3["caps"]["adc2Wifi"]);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_collect_keys_per_type);
@@ -220,5 +300,10 @@ int main(int, char**) {
   RUN_TEST(test_replace_ignores_own_pins);
   RUN_TEST(test_conflicts_in_stored_config);
   RUN_TEST(test_pins_json);
+  RUN_TEST(test_analog_input_needs_adc);
+  RUN_TEST(test_adc2_blocked_on_esp32_shared_on_s2_s3);
+  RUN_TEST(test_pullup_and_irq_glitch_warn);
+  RUN_TEST(test_adc_conflicts_in_stored_config);
+  RUN_TEST(test_pins_json_capabilities);
   return UNITY_END();
 }

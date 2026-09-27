@@ -5371,3 +5371,31 @@ dem Pin-Manager ab (409), die Library selbst nicht.
 dann „Kein RMT-Kanal, Software-Timing blockiert“ (ein echter Cooker-Fehlercode hat Vorrang). SHA in
 `SensActCtrl/library.json` gebumpt. **Verifikation:** `pio run -e esp32dev` grün; am Gerät nicht
 ausgelöst (dafür wäre ein Kanalmangel nötig), keine native Tests, weil der Pfad hinter `ARDUINO` liegt.
+
+## 2026-09-27 — Pin-Manager Stufe 2: Fähigkeiten der Pins (ADC, Pull-up, Interrupt)
+
+**Problem:** Stufe 1 prüfte nur Existenz, Klasse und Belegung eines Pins, nicht ob er kann, was das Feld
+braucht. `analogRead` auf einem Pin ohne ADC oder auf ESP32-ADC2 (bei aktivem WLAN, also in BrewControl
+immer) liefert still 0 — die Karte zeigt einen gültig aussehenden Wert. YF-S201 und der IDS-Interrupt setzen
+`INPUT_PULLUP`, was auf ESP32-GPIO 34–39 und S2-GPIO 46 wirkungslos ist.
+
+**Bestandsaufnahme:** ADC braucht nur `AnalogInput.pin`; Interrupts `YF-S201.pin`, `HCSR04.echo`,
+`IDS*.pin_interrupt` (auf allen drei Chips kann jeder GPIO Interrupts, einzige Ausnahme ist die ESP32-Errata 3.11
+zu GPIO 36/39); den internen Pull-up `YF-S201.pin`, `IDS*.pin_interrupt` und `DigitalInput` mit `pullup`.
+Einen UART nutzt kein Item-Typ — die serielle Prüfung entfällt, bis ein solches Gerät kommt (PLAN.md).
+
+**Umsetzung:** `Board` (`PinMap.h`) bekommt die Masken `adc1`, `adc2`, `noPullup`, `irqGlitch` und
+`adc2BlockedByWifi`, `PinUse` die Bedarfs-Flags `analog`/`pullup`/`irq` (gesetzt in `collectPins`).
+`checkItemPins`: `AnalogInput` ohne ADC → 400 `GPIO n has no ADC`, auf ESP32-ADC2 → 400
+`GPIO n is on ADC2, which Wi-Fi blocks`; ADC2 am S2/S3 (Arbiter mit dem WLAN, einzelne Lesungen können
+scheitern), fehlender Pull-up und der 36/39-Glitch sind Warnungen. `findPinConflicts` meldet Bestands-
+Configs mit „kein ADC“ bzw. „ADC2 – bei WLAN nicht nutzbar“. `GET /api/pins` liefert je Pin `adc`,
+`noPullup`, `irqGlitch` und `caps.adc2Wifi`. Frontend: `pinStatus`/`PinHint` kennen die Bedarfe (AI-Pin
+`analog`, YF-S201 und IDS-Interrupt `pullup irq`, HC-SR04-Echo `irq`, DigitalInput `pullup` je nach Haken),
+`riskyPins` nimmt die Fähigkeits-Warnungen in die Bestätigungsbox auf. OpenAPI, README („Pin-Prüfung“)
+und PLAN.md (Pin-Manager nur noch Stufe 3) nachgezogen.
+
+**Verifikation:** `pio test -e native` (58, davon 5 neue in `test_pin_map`), `pio run` für alle drei Envs,
+`pnpm typecheck`/`vitest` (50)/`build`, OpenAPI-Lint. UI gegen den Node-Mock: AI-Pin 21 → rot
+„kein ADC-Pin“, GPIO 12 (ADC2) → Warnung und Bestätigungsbox beim Speichern, YF-S201 auf einem Pin ohne
+Pull-up → beide Warnungen.

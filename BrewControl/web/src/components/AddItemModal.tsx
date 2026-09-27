@@ -1078,7 +1078,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <label class={lbl}>GPIO-Pin</label>
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
-                <PinHint pins={pins} value={pin} selfId={selfId} />
+                <PinHint pins={pins} value={pin} selfId={selfId} pullup irq />
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -1128,7 +1128,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={diPin}
                   onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 15" class={inp} required />
-                <PinHint pins={pins} value={diPin} selfId={selfId} />
+                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} />
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -1159,7 +1159,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={aiPin}
                   onInput={(e) => setAiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 34" class={inp} required />
-                <PinHint pins={pins} value={aiPin} selfId={selfId} />
+                <PinHint pins={pins} value={aiPin} selfId={selfId} analog />
               </div>
               <div class="grid grid-cols-3 gap-2">
                 <div><label class={lbl}>Min</label>
@@ -1302,7 +1302,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={echoPin}
                     onInput={(e) => setEchoPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 18" class={inp} required />
-                  <PinHint pins={pins} value={echoPin} selfId={selfId} />
+                  <PinHint pins={pins} value={echoPin} selfId={selfId} irq />
                 </div>
               </div>
               <div class="flex gap-4">
@@ -1518,7 +1518,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={val}
                     onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
                     placeholder="GPIO" class={inp} required />
-                  <PinHint pins={pins} value={val} selfId={selfId} output={label !== 'Interrupt'} />
+                  <PinHint pins={pins} value={val} selfId={selfId} output={label !== 'Interrupt'}
+                    pullup={label === 'Interrupt'} irq={label === 'Interrupt'} />
                 </div>
               ))}
             </div>
@@ -1924,8 +1925,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 {riskyWarn.map((w) => <li key={w}>{w}</li>)}
               </ul>
               <p class="mt-1 text-muted">
-                Funktioniert, der Pin hat aber eine Zweitaufgabe — z. B. kann ein Ausgang beim
-                Booten kurz schalten oder das Board nicht mehr starten.
+                Funktioniert, aber mit Einschränkung — z. B. kann ein Ausgang beim Booten kurz
+                schalten, das Board nicht mehr starten oder eine Messung ausfallen.
               </p>
               <label class="mt-2 flex items-center gap-2 text-sm text-fg cursor-pointer">
                 <input type="checkbox" class="accent-accent"

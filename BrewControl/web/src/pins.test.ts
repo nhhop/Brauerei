@@ -4,15 +4,18 @@ import type { PinsInfo } from './types';
 
 const info: PinsInfo = {
   board: 'test',
-  caps: { dac: false, rmtTx: 4, rmtUsed: 1 },
+  caps: { dac: false, rmtTx: 4, rmtUsed: 1, adc2Wifi: 'shared' },
   pins: [
     { gpio: 1, class: 'free', users: [{ id: 't1', key: 'pin', share: 'onewire' }] },
     { gpio: 2, class: 'free', users: [{ id: 'pump', key: 'pin' }] },
     { gpio: 3, class: 'risky', note: 'Strapping-Pin', users: [] },
     { gpio: 7, class: 'reserved', note: 'I2C SDA', users: [] },
+    { gpio: 5, class: 'free', adc: 1, users: [] },
     { gpio: 8, class: 'free', users: [] },
+    { gpio: 18, class: 'free', adc: 2, users: [] },
     { gpio: 30, class: 'forbidden', note: 'Flash', users: [] },
-    { gpio: 34, class: 'free', inputOnly: true, users: [] },
+    { gpio: 34, class: 'free', inputOnly: true, noPullup: true, users: [] },
+    { gpio: 36, class: 'free', inputOnly: true, noPullup: true, irqGlitch: true, adc: 1, users: [] },
   ],
   conflicts: [],
 };
@@ -48,7 +51,43 @@ describe('pinStatus', () => {
   });
 });
 
+describe('pin capabilities', () => {
+  it('requires an ADC for analog inputs', () => {
+    expect(pinStatus(info, 5, { analog: true })).toEqual({ level: 'ok', text: 'frei' });
+    expect(pinStatus(info, 8, { analog: true })).toEqual({ level: 'error', text: 'kein ADC-Pin' });
+    expect(pinStatus(info, 8).level).toBe('ok');
+  });
+
+  it('warns about ADC2 when shared with Wi-Fi and rejects it when blocked', () => {
+    expect(pinStatus(info, 18, { analog: true }).level).toBe('warn');
+    const blocked: PinsInfo = { ...info, caps: { ...info.caps, adc2Wifi: 'blocked' } };
+    expect(pinStatus(blocked, 18, { analog: true }))
+      .toEqual({ level: 'error', text: 'ADC2 – bei WLAN nicht nutzbar' });
+  });
+
+  it('warns about missing pull-ups and interrupt glitches only when needed', () => {
+    expect(pinStatus(info, 34).level).toBe('ok');
+    expect(pinStatus(info, 34, { pullup: true }).text).toContain('kein interner Pull-up');
+    const s = pinStatus(info, 36, { pullup: true, irq: true });
+    expect(s.level).toBe('warn');
+    expect(s.text).toContain('Fehlauslöser');
+  });
+});
+
 describe('riskyPins', () => {
+  it('lists weak capabilities per type', () => {
+    expect(riskyPins(info, { type: 'YF-S201', pin: 36 })).toEqual([
+      'GPIO 36: kein interner Pull-up – externen Widerstand vorsehen',
+      'GPIO 36: Fehlauslöser möglich (ESP32-Errata)',
+    ]);
+    expect(riskyPins(info, { type: 'DigitalInput', pin: 34, pullup: false })).toEqual([]);
+    expect(riskyPins(info, { type: 'DigitalInput', pin: 34, pullup: true })).toHaveLength(1);
+    expect(riskyPins(info, { type: 'AnalogInput', pin: 18 }))
+      .toEqual(['GPIO 18: ADC2 – Messung kann bei WLAN-Verkehr ausfallen']);
+    expect(riskyPins(info, { type: 'DigitalInput', pin: 18 })).toEqual([]);
+  });
+
+
   it('lists every risky pin in a config once', () => {
     expect(riskyPins(info, { type: 'HCSR04', trig: 3, echo: 8 })).toEqual(['GPIO 3: Strapping-Pin']);
     expect(riskyPins(info, { type: 'DigitalOutput', pin: 8 })).toEqual([]);

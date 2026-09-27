@@ -38,6 +38,12 @@ struct Board {
   const PinDef* special;
   size_t specialCount;
   uint8_t rmtTx;       // RMT channels that can transmit (one per IDS cooker)
+  uint64_t adc1;
+  uint64_t adc2;
+  uint64_t noPullup;   // no internal pull-up (INPUT_PULLUP does nothing)
+  uint64_t irqGlitch;  // spurious interrupts from a chip erratum
+  bool adc2BlockedByWifi;  // true: ADC2 reads fail while Wi-Fi runs (ESP32);
+                           // false: shared with Wi-Fi, single reads may fail
 };
 
 enum class Share : uint8_t { None, OneWire, Spi };
@@ -49,13 +55,16 @@ struct PinUse {
   Share share;
   bool output;
   bool rmt;         // occupies an RMT TX channel
+  bool analog;      // read with analogRead()
+  bool pullup;      // relies on the internal pull-up
+  bool irq;         // attachInterrupt() on this pin
 };
 
 struct PinCheck {
   bool ok = true;
   int status = 200;  // 400 invalid pin, 409 pin taken / no RMT channel left
   std::string error;
-  std::vector<std::string> warnings;  // risky pins, for the UI to confirm
+  std::vector<std::string> warnings;  // risky pins and weak capabilities, for the UI to confirm
 };
 
 struct PinConflict {
@@ -90,6 +99,14 @@ inline PinClass classifyPin(const Board& b, int gpio, const char** note = nullpt
   return PinClass::Free;
 }
 
+// Why an analog input cannot work on gpio, or nullptr if it can. Wi-Fi is
+// always on in BrewControl (station or setup AP).
+inline const char* adcProblem(const Board& b, int gpio) {
+  if (b.adc1 & pinBit(gpio)) return nullptr;
+  if (!(b.adc2 & pinBit(gpio))) return "kein ADC";
+  return b.adc2BlockedByWifi ? "ADC2 – bei WLAN nicht nutzbar" : nullptr;
+}
+
 inline const char* pinClassName(PinClass c) {
   switch (c) {
     case PinClass::Forbidden: return "forbidden";
@@ -105,35 +122,41 @@ inline const char* pinClassName(PinClass c) {
 inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
   const char* type = cfg["type"] | "";
   const char* id   = cfg["id"]   | "";
-  auto add = [&](const char* key, Share share, bool output, bool rmt = false) {
+  enum : uint8_t { Out = 1, Rmt = 2, Analog = 4, Pullup = 8, Irq = 16 };
+  auto add = [&](const char* key, Share share, uint8_t f = 0) {
     if (!cfg[key].is<int>()) return;
     const int gpio = cfg[key].as<int>();
     if (gpio < 0) return;
-    out.push_back({id, key, gpio, share, output, rmt});
+    out.push_back({id, key, gpio, share, (f & Out) != 0, (f & Rmt) != 0,
+                   (f & Analog) != 0, (f & Pullup) != 0, (f & Irq) != 0});
   };
   auto is = [&](const char* t) { return strcmp(type, t) == 0; };
 
   if (is("DS18B20")) {
-    add("pin", Share::OneWire, false);
+    add("pin", Share::OneWire);
   } else if (is("MAX31865")) {
-    add("cs", Share::None, true);
-    add("clk", Share::Spi, true);
-    add("miso", Share::Spi, false);
-    add("mosi", Share::Spi, true);
-  } else if (is("YF-S201") || is("DigitalInput") || is("AnalogInput")) {
-    add("pin", Share::None, false);
+    add("cs", Share::None, Out);
+    add("clk", Share::Spi, Out);
+    add("miso", Share::Spi);
+    add("mosi", Share::Spi, Out);
+  } else if (is("YF-S201")) {
+    add("pin", Share::None, Pullup | Irq);
+  } else if (is("DigitalInput")) {
+    add("pin", Share::None, (cfg["pullup"] | false) ? Pullup : 0);
+  } else if (is("AnalogInput")) {
+    add("pin", Share::None, Analog);
   } else if (is("HCSR04")) {
-    add("trig", Share::None, true);
-    add("echo", Share::None, false);
+    add("trig", Share::None, Out);
+    add("echo", Share::None, Irq);
   } else if (is("HX711")) {
-    add("dout", Share::None, false);
-    add("sck", Share::None, true);
+    add("dout", Share::None);
+    add("sck", Share::None, Out);
   } else if (is("DigitalOutput") || is("PulseOutput") || is("AnalogOutput")) {
-    add("pin", Share::None, true);
+    add("pin", Share::None, Out);
   } else if (is("IDS1") || is("IDS2")) {
-    add("pin_white", Share::None, true);
-    add("pin_yellow", Share::None, true, /*rmt=*/true);
-    add("pin_interrupt", Share::None, false);
+    add("pin_white", Share::None, Out);
+    add("pin_yellow", Share::None, Out | Rmt);
+    add("pin_interrupt", Share::None, Pullup | Irq);
   }
 }
 
@@ -188,11 +211,22 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
       if (e.item == replace || e.gpio != u.gpio || pinsCompatible(e, u)) continue;
       return fail(409, g + " already used by " + e.item + " (" + e.key + ")");
     }
+    if (u.analog) {
+      if (!(b.adc1 & pinBit(u.gpio)) && !(b.adc2 & pinBit(u.gpio)))
+        return fail(400, g + " has no ADC");
+      if (adcProblem(b, u.gpio)) return fail(400, g + " is on ADC2, which Wi-Fi blocks");
+    }
     if (cls == PinClass::Risky) {
       bool dup = false;
       for (size_t j = 0; j < i; ++j) dup |= (mine[j].gpio == u.gpio);
       if (!dup) r.warnings.push_back(g + ": " + note);
     }
+    if (u.analog && (b.adc2 & pinBit(u.gpio)))
+      r.warnings.push_back(g + ": ADC2 – Messung kann bei WLAN-Verkehr ausfallen");
+    if (u.pullup && (b.noPullup & pinBit(u.gpio)))
+      r.warnings.push_back(g + ": kein interner Pull-up – externen Widerstand vorsehen");
+    if (u.irq && (b.irqGlitch & pinBit(u.gpio)))
+      r.warnings.push_back(g + ": Fehlauslöser möglich (ESP32-Errata)");
   }
 
   const char* type = cfg["type"] | "";
@@ -212,8 +246,9 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
 }
 
 // Conflicts already present in a loaded config: two incompatible items on one
-// GPIO, or an item on a pin the board reserves or forbids (reason is shown in
-// the UI as is). Risky pins are not conflicts — the pin list shows them.
+// GPIO, an item on a pin the board reserves or forbids, or an analog input
+// without a usable ADC (reason is shown in the UI as is). Risky pins are not
+// conflicts — the pin list shows them.
 inline std::vector<PinConflict> findPinConflicts(const Board& b,
                                                  const std::vector<PinUse>& uses) {
   std::vector<PinConflict> out;
@@ -235,6 +270,8 @@ inline std::vector<PinConflict> findPinConflicts(const Board& b,
       addUser(entry(u.gpio, "existiert auf diesem Board nicht"), &u);
     } else if (cls == PinClass::Forbidden || cls == PinClass::Reserved) {
       addUser(entry(u.gpio, note), &u);
+    } else if (u.analog && adcProblem(b, u.gpio)) {
+      addUser(entry(u.gpio, adcProblem(b, u.gpio)), &u);
     }
     for (size_t j = 0; j < i; ++j) {
       const PinUse& e = uses[j];
@@ -256,6 +293,7 @@ inline void writePinsJson(const Board& b, const char* boardName,
   caps["dac"] = b.dac != 0;
   caps["rmtTx"] = b.rmtTx;
   caps["rmtUsed"] = rmtItems(uses);
+  caps["adc2Wifi"] = b.adc2BlockedByWifi ? "blocked" : "shared";
 
   auto writeUsers = [](JsonArray arr, const PinUse& u) {
     JsonObject o = arr.add<JsonObject>();
@@ -276,6 +314,10 @@ inline void writePinsJson(const Board& b, const char* boardName,
     if (note[0]) p["note"] = note;
     if (b.inputOnly & pinBit(g)) p["inputOnly"] = true;
     if (b.dac & pinBit(g)) p["dac"] = true;
+    if (b.adc1 & pinBit(g)) p["adc"] = 1;
+    if (b.adc2 & pinBit(g)) p["adc"] = 2;
+    if (b.noPullup & pinBit(g)) p["noPullup"] = true;
+    if (b.irqGlitch & pinBit(g)) p["irqGlitch"] = true;
     JsonArray users = p["users"].to<JsonArray>();
     for (const PinUse& u : uses)
       if (u.gpio == g) writeUsers(users, u);

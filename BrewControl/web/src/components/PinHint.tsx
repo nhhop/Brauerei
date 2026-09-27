@@ -1,5 +1,5 @@
 import type { PinsInfo } from '../types';
-import { pinStatus, type PinShare } from '../pins';
+import { pinStatus, type PinNeeds, type PinShare } from '../pins';
 
 const LEVEL_CLASS = {
   ok: 'text-faint',
@@ -9,16 +9,16 @@ const LEVEL_CLASS = {
 
 // One line under a GPIO input: free, shared bus, risky, taken or unusable.
 // Renders nothing until the pin list has loaded or while the field is empty.
-export function PinHint({ pins, value, selfId, output, share }: {
+export function PinHint({ pins, value, selfId, output, share, analog, pullup, irq }: {
   pins: PinsInfo | null;
   value: string;
   selfId?: string;
   output?: boolean;
   share?: PinShare;
-}) {
+} & PinNeeds) {
   if (!pins || value.trim() === '') return null;
   const gpio = parseInt(value, 10);
   if (isNaN(gpio)) return null;
-  const s = pinStatus(pins, gpio, { selfId, output, share });
+  const s = pinStatus(pins, gpio, { selfId, output, share, analog, pullup, irq });
   return <p class={`mt-1 text-xs ${LEVEL_CLASS[s.level]}`}>{s.text}</p>;
 }

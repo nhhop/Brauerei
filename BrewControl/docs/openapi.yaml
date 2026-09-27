@@ -224,7 +224,10 @@ paths:
             `id already in use`, `missing pin`, `invalid address`,
             `unknown sensor type`, or a pin the board cannot use:
             `GPIO 6 is not usable (Flash)`, `GPIO 22 does not exist on this board`,
-            `GPIO 34 is input-only (trig)`, `GPIO 4 used twice (trig, echo)`.
+            `GPIO 34 is input-only (trig)`, `GPIO 4 used twice (trig, echo)`,
+            or an `AnalogInput` on a pin without a usable ADC: `GPIO 16 has no ADC`,
+            `GPIO 27 is on ADC2, which Wi-Fi blocks` (ESP32 only; on S2/S3 ADC2
+            is accepted and only the UI warns).
           content:
             text/plain: { schema: { type: string } }
         "409": { $ref: "#/components/responses/PinConflict" }
@@ -1081,6 +1084,10 @@ paths:
         (`share`) may join. `conflicts` lists clashes already present in the
         stored config — they load anyway and are reported here. Creating and
         replacing items enforce the same rules (400/409).
+        Capabilities (`adc`, `noPullup`, `irqGlitch`, `caps.adc2Wifi`) let the
+        UI check what a field needs: an `AnalogInput` needs an ADC pin (ADC2 is
+        rejected on the ESP32 and only warned about on S2/S3); a missing pull-up
+        or the GPIO 36/39 interrupt glitch are warnings to confirm.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -3316,11 +3323,17 @@ components:
         board: { type: string, description: 'PlatformIO env name (`BREWCTL_VARIANT`).' }
         caps:
           type: object
-          required: [dac, rmtTx, rmtUsed]
+          required: [dac, rmtTx, rmtUsed, adc2Wifi]
           properties:
             dac: { type: boolean, description: Board has a DAC (ESP32-S3 has none). }
             rmtTx: { type: integer, description: 'RMT channels able to transmit — one per IDS cooker.' }
             rmtUsed: { type: integer, description: IDS cookers configured. }
+            adc2Wifi:
+              type: string
+              enum: [blocked, shared]
+              description: |
+                ADC2 while Wi-Fi runs: `blocked` = unusable (ESP32, analog inputs
+                there are rejected), `shared` = single reads may fail (S2/S3).
         pins:
           type: array
           items:
@@ -3332,6 +3345,9 @@ components:
               note: { type: string, description: 'Why the pin is risky/reserved/forbidden (German, shown in the UI).' }
               inputOnly: { type: boolean }
               dac: { type: boolean }
+              adc: { type: integer, enum: [1, 2], description: ADC unit; absent = no ADC. }
+              noPullup: { type: boolean, description: No internal pull-up (YF-S201 and IDS interrupt need an external one). }
+              irqGlitch: { type: boolean, description: 'Spurious interrupts (ESP32 erratum, GPIO 36/39).' }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         conflicts:
           type: array
@@ -3340,14 +3356,14 @@ components:
             required: [gpio, reason, users]
             properties:
               gpio: { type: integer }
-              reason: { type: string, description: 'e.g. `mehrfach belegt` or the note of a reserved pin.' }
+              reason: { type: string, description: 'e.g. `mehrfach belegt`, `kein ADC`, `ADC2 – bei WLAN nicht nutzbar` or the note of a reserved pin.' }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
       example:
         board: lilygo_t_display_s3_amoled
-        caps: { dac: false, rmtTx: 4, rmtUsed: 1 }
+        caps: { dac: false, rmtTx: 4, rmtUsed: 1, adc2Wifi: shared }
         pins:
-          - { gpio: 2, class: free, users: [{ id: pump, key: pin }] }
-          - { gpio: 3, class: risky, note: Strapping-Pin, users: [] }
+          - { gpio: 2, class: free, adc: 1, users: [{ id: pump, key: pin }] }
+          - { gpio: 3, class: risky, note: Strapping-Pin, adc: 1, users: [] }
           - { gpio: 9, class: reserved, note: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
         conflicts:
           - { gpio: 9, reason: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
