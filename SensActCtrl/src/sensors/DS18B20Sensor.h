@@ -20,8 +20,8 @@ namespace SensActCtrl {
 // the conversion is due — never blocks the loop.
 //
 // Multiple devices on a shared bus are supported via 64-bit ROM addressing
-// — pass the address; otherwise the sensor is the only one on its bus
-// (constructor without address).
+// — pass the address; otherwise the sensor reads the first device on its bus
+// (constructors without address).
 class DS18B20Sensor : public Sensor {
  public:
   // Constructor for a sensor that owns its bus. Pin must be the OneWire pin.
@@ -31,6 +31,11 @@ class DS18B20Sensor : public Sensor {
   // sensor. address is the 8-byte ROM code; copied internally.
   DS18B20Sensor(const char* id, OneWire& bus, const uint8_t address[8],
                 uint8_t resolutionBits = 12);
+
+  // Constructor for a bus the caller owns, without address: reads the first
+  // device like the pin constructor. The OneWire instance must outlive this
+  // sensor.
+  DS18B20Sensor(const char* id, OneWire& bus, uint8_t resolutionBits = 12);
 
   ~DS18B20Sensor() override;
 

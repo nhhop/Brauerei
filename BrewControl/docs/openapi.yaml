@@ -896,6 +896,7 @@ paths:
           description: Body is `missing type or pin` or `unsupported bus type`.
           content:
             text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
 
   # ── Remote Discovery ───────────────────────────────────────────────────────
   /api/remote/discover:

@@ -2,7 +2,6 @@
 
 #include <ArduinoJson.h>
 #include <FS.h>
-#include <OneWire.h>
 #include <SensActCtrl.h>
 #ifdef ARDUINO
 #include <actuators/IdsActuator.h>
@@ -13,6 +12,7 @@
 #include <transport/ITransport.h>
 #include <vector>
 
+#include "PeripheralRegistry.h"
 #include "PinMap.h"
 
 namespace BrewControl {
@@ -94,9 +94,9 @@ class DynamicItems {
   // Serialize original config JSON for all dynamic items — used by GET /api/config.
   String serializeConfig() const;
 
-  // Scan a OneWire bus for DS18B20 ROM addresses. Reuses an existing bus
-  // instance managed by DynamicItems if the pin is already in use, to avoid
-  // creating a second conflicting OneWire driver on the same GPIO.
+  // Scan a OneWire bus for DS18B20 ROM addresses. Reuses the bus from
+  // peripherals_ if a sensor already uses the pin, to avoid creating a second
+  // conflicting OneWire driver on the same GPIO. Call under the RegistryLock.
   uint8_t scanOneWireBus(int pin, uint8_t out[][8], uint8_t maxDevices);
 
   // Optional observers, fired around add*()/remove*() (only for items added
@@ -145,6 +145,10 @@ class DynamicItems {
   struct SensorEntry {
     std::string id;
     std::string cfgJson;
+    // The shared bus the sensor sits on (DS18B20: OneWire, MAX31865 with
+    // clk: SPI), empty otherwise. Declared before the sensor so it outlives
+    // it; dropping the entry releases the bus.
+    PeripheralRegistry::Ref bus;
     // innerPtr holds the concrete sensor; ptr is the CalibratedSensor wrapped
     // around it and is what's registered with the Registry (cal points at it).
     // Declared inner-first so the wrapper is destroyed before what it wraps.
@@ -181,10 +185,10 @@ class DynamicItems {
     std::unique_ptr<SensActCtrl::Controller> ptr;
   };
 
-  // Shared OneWire bus instances keyed by pin. Declared before sensors_ so
-  // that C++ destroys sensors first (reverse declaration order), then buses.
-  struct BusEntry { int pin; std::unique_ptr<OneWire> ow; };
-  std::vector<BusEntry> onewireBuses_;
+  // Shared buses, created by the first sensor on them and torn down with the
+  // last (PeripheralRegistry.h). Declared before sensors_ so that C++ destroys
+  // sensors first (reverse declaration order), then buses.
+  PeripheralRegistry peripherals_;
 
   // Entries are heap-allocated so that vector reallocation doesn't
   // invalidate id.c_str() pointers held by the library objects.
@@ -222,7 +226,6 @@ class DynamicItems {
   Result checkPins(const JsonObject& cfg, const char* replaceId);
   std::string pinError_;
 
-  OneWire& getOrCreateBus(int pin);
   static bool parseHexAddress(const char* hex, uint8_t out[8]);
 
   // Resolves the ITransport for a "Remote" sensor/actuator from

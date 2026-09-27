@@ -190,6 +190,31 @@ Config, bleibt das alte Item unverändert bestehen. Ein Sensor oder Aktor, der a
 einem Regler hängt, lässt sich weiterhin nicht ersetzen (409) — nur der
 Anzeigename.
 
+### Geteilte Busse
+
+`src/PeripheralRegistry.h` verwaltet Hardware, die sich mehrere Items teilen.
+Busse entstehen anhand der Pins, eine Bus-Id im Item-Config gibt es (noch) nicht:
+
+- **`onewire:<pin>`**: ein `OneWire`-Treiber pro Pin, den alle DS18B20 an diesem Pin
+  nutzen, mit oder ohne `address`. `GET /api/bus/scan` verwendet ihn mit, sobald
+  ein Sensor den Pin belegt.
+- **`spi:<clk>/<miso>/<mosi>`**: MAX31865 mit `clk`. Vorerst nur Buchführung, denn
+  jeder MAX31865 treibt die Leitungen weiter selbst per Software-SPI. MAX31865 ohne
+  `clk` (Hardware-SPI mit den Board-Default-Pins) hängt an keinem Bus.
+
+Ein Bus wird beim ersten Item angelegt (`begin()`) und nach dem letzten wieder
+abgebaut (`end()`). Die Nutzer zählt eine `PeripheralRegistry::Ref` im Sensor-Eintrag
+von `DynamicItems`, deshalb stimmt die Zahl auch dann, wenn ein Anlegen scheitert.
+`PUT` hält den Bus des alten Sensors fest, bis das Ersetzen fertig ist. Bleibt der
+neue Sensor auf demselben Bus, oder wird der alte nach einem Fehlschlag
+wiederhergestellt, läuft der Bus ohne Unterbrechung weiter.
+
+Die Registry hat keine eigene Sperre. Sie wird nur unter dem `RegistryLock`
+angefasst: bei Item-Änderungen und beim Bus-Scan, der deshalb mit **503** abbrechen
+kann. Die Pin-Prüfung (`Share::OneWire/Spi` in `PinMap.h`) bleibt davon getrennt.
+Sie muss prüfen, bevor es den Bus gibt, und auch gespeicherte Configs, die sich gar
+nicht laden ließen.
+
 ## Web-UI bauen + auf SD deployen (`lilygo_t_display_s3_amoled`)
 
 ```powershell
