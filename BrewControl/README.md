@@ -650,9 +650,11 @@ Vier Wege:
   zusammenhängenden ~17-KB-Blöcken (feste 16-KB-mbedTLS-Puffer im vorkompilierten
   Core), im laufenden Betrieb sind nur 58–65 KB frei und zerstückelt. Während der
   Installation ist das Gerät 30–60 s nicht erreichbar. Scheitert sie, bootet es
-  normal, und die Firmware-Seite zeigt den Grund. Die reine Prüfung läuft weiter im
-  Betrieb und kann auf einem vollen S2 scheitern; „Installieren“ braucht sie nicht,
-  und die automatische Prüfung direkt nach dem Boot klappt dort in der Regel.
+  normal, und die Firmware-Seite zeigt den Grund. Seit 2026-09-27 legt die Firmware
+  die TLS-Puffer auf Boards mit PSRAM (S2, S3) ins PSRAM (`tlsAllocToPsram()` in
+  `main.cpp`); damit kommt auch die reine Prüfung im Betrieb auf dem S2 durch. Der
+  Update-Modus bleibt als Reserve für den großen Download. Heap-Stand abfragen:
+  `GET /api/diag/heap`.
 - **Browser-Upload:** dieselbe Seite — `.bin` (Firmware) bzw. `.tar` (UI-Paket).
 - **SD-Boot-Flash (Recovery, ohne WiFi):** Eine Datei `firmware.bin` in den
   **SD-Root** kopieren → beim nächsten Boot wird sie geflasht, danach gelöscht und

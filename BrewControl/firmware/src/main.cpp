@@ -18,7 +18,9 @@
 #include <SPI.h>
 #include <SensActCtrl.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
+#include <mbedtls/platform.h>
 #ifdef BREWCTL_I2C_SDA
 #include <Wire.h>
 #endif
@@ -160,6 +162,23 @@ static bool connectStation(const String& ssid, const String& password,
   return true;
 }
 
+// TLS buffers go to PSRAM where there is some. The prebuilt core allocates
+// mbedTLS from internal RAM only (CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC) with fixed
+// 16 KB record buffers — a handshake takes ~50 KB, more than the S2 has left
+// in one piece at runtime ("SSL - Memory allocation failed" on update checks,
+// SESSION.md 2026-09-27). It is built with MBEDTLS_PLATFORM_MEMORY, so the
+// allocator can be swapped at runtime. Internal RAM stays the fallback, and
+// boards without PSRAM (esp32dev) are left as they are.
+static void tlsAllocToPsram() {
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) == 0) return;
+  mbedtls_platform_set_calloc_free(
+      [](size_t n, size_t size) -> void* {
+        void* p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      },
+      heap_caps_free);
+}
+
 // Set in setup() after an unplanned restart, cleared once the alert is raised.
 static const char* pendingResetReason = nullptr;
 
@@ -172,6 +191,7 @@ void setup() {
   while (!Serial && millis() - waitStart < 3000) delay(10);
   delay(200);
   Serial.println(F("BrewControl boot"));
+  tlsAllocToPsram();  // before anything opens a TLS connection
   BrewControl::HeapDiag::mark("start");
 
 #ifdef BREWCTL_I2C_SDA

@@ -5415,5 +5415,13 @@ failed“ bei 54 KB frei / 31,7 KB größter Block, `minFree` 13 KB), brautomat 
 **3 von 3** Prüfungen erfolgreich, `minFree` blieb bei 50 KB. Der Core baut mbedTLS mit
 `MBEDTLS_PLATFORM_MEMORY`, der Umbieger greift also zur Laufzeit.
 
+**Fix (Nutzer-Auswahl aus der Fix-Liste):** `tlsAllocToPsram()` in `main.cpp`, erste Zeile nach dem Boot-Log
+(also auch vor dem Update-Modus): mbedTLS allokiert aus PSRAM, interner RAM bleibt Rückfall; ohne PSRAM
+(esp32dev) unverändert. Damit ist der PLAN-Punkt „S2: Auf Updates prüfen scheitert im Betrieb“ erledigt.
+**Nicht umgesetzt:** `async_tcp`-Stack 16 → 8 KB (vom Nutzer nicht gewählt); Routen-Handler zusammenlegen
+(13,5 KB, großer Umbau) steht in PLAN.md.
+
 **Verifikation:** `pio run` alle drei Envs, OpenAPI-Lint; `/api/diag/heap` auf allen vier Boards geprüft.
-Fix-Auswahl steht aus (Nutzer-Entscheidung).
+Mit dem Fix je 3 Prüfungen im Betrieb auf allen vier Boards: **12 von 12** erfolgreich; `minFree` lolin
+50 KB (vorher 13), brautomat 64 KB (vorher 19). „Installieren“ am lolin im Update-Modus mit TLS im PSRAM →
+`v0.1.2` sauber installiert, danach Fix-Stand per Push-OTA zurück, UI 200.
