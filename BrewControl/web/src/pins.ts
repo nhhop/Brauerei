@@ -81,6 +81,39 @@ export function pinStatus(
   return { level: 'ok', text: 'frei' };
 }
 
+export interface PinSuggestion {
+  gpio: number;
+  level: 'ok' | 'warn';
+  bus: boolean; // already carries a compatible user for this same config key
+}
+
+// Usable pins for one config key, best first: pins that already carry a
+// compatible bus user for this key, then free pins, then risky-but-usable
+// ones — everything pinStatus rejects (board class, wrong direction, taken,
+// no ADC, …) is left out. exclude drops pins another field of the same item
+// already picked, so e.g. HC-SR04's trig and echo never suggest each other's pin.
+export function suggestPins(
+  info: PinsInfo | null, key: string,
+  opts: { selfId?: string; output?: boolean; share?: PinShare; exclude?: number[] } & PinNeeds = {},
+): PinSuggestion[] {
+  if (!info) return [];
+  const exclude = new Set(opts.exclude ?? []);
+  const out: PinSuggestion[] = [];
+  for (const p of info.pins) {
+    if (exclude.has(p.gpio)) continue;
+    const s = pinStatus(info, p.gpio, opts);
+    if (s.level === 'error') continue;
+    const bus = !!opts.share &&
+      p.users.some((u) => u.id !== opts.selfId && u.share === opts.share && u.key === key);
+    out.push({ gpio: p.gpio, level: s.level === 'warn' ? 'warn' : 'ok', bus });
+  }
+  out.sort((a, b) =>
+    (Number(b.bus) - Number(a.bus)) ||
+    (Number(a.level === 'warn') - Number(b.level === 'warn')) ||
+    a.gpio - b.gpio);
+  return out;
+}
+
 // "GPIO n: reason" for every risky pin and every weak capability in an item
 // config — the user has to confirm these before saving.
 export function riskyPins(info: PinsInfo | null, cfg: Record<string, unknown>): string[] {

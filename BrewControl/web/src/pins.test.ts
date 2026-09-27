@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pinStatus, riskyPins } from './pins';
+import { pinStatus, riskyPins, suggestPins } from './pins';
 import type { PinsInfo } from './types';
 
 const info: PinsInfo = {
@@ -95,5 +95,42 @@ describe('riskyPins', () => {
 
   it('is empty without pin data', () => {
     expect(riskyPins(null, { pin: 3 })).toEqual([]);
+  });
+});
+
+describe('suggestPins', () => {
+  it('suggests only ADC pins for an analog field, free ones before risky', () => {
+    const s = suggestPins(info, 'pin', { analog: true });
+    expect(s.map((x) => x.gpio)).toEqual([5, 36, 18]);
+    expect(s.map((x) => x.level)).toEqual(['ok', 'ok', 'warn']);
+    expect(s.every((x) => !x.bus)).toBe(true);
+  });
+
+  it('excludes input-only pins for an output field', () => {
+    const s = suggestPins(info, 'pin', { output: true });
+    expect(s.map((x) => x.gpio)).not.toContain(34);
+    expect(s.map((x) => x.gpio)).not.toContain(36);
+    expect(s.map((x) => x.gpio)).toEqual([5, 8, 18, 3]);
+  });
+
+  it('puts an existing OneWire bus pin first, ahead of plain free pins', () => {
+    const s = suggestPins(info, 'pin', { share: 'onewire' });
+    expect(s[0]).toEqual({ gpio: 1, level: 'ok', bus: true });
+    expect(s.map((x) => x.gpio)).not.toContain(2); // taken, not a compatible bus
+  });
+
+  it('treats the edited item\'s own pin as suggestible', () => {
+    const s = suggestPins(info, 'pin', { selfId: 'pump' });
+    expect(s.map((x) => x.gpio)).toContain(2);
+  });
+
+  it('drops pins a sibling field of the same item already picked', () => {
+    const s = suggestPins(info, 'pin', { output: true, exclude: [5, 8] });
+    expect(s.map((x) => x.gpio)).not.toContain(5);
+    expect(s.map((x) => x.gpio)).not.toContain(8);
+  });
+
+  it('is empty without pin data', () => {
+    expect(suggestPins(null, 'pin')).toEqual([]);
   });
 });

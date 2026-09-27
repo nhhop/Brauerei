@@ -55,6 +55,12 @@ function onlyLabelDiffers(cfg: Record<string, unknown>, editConfig: Record<strin
   return stableStringify(a) === stableStringify(b);
 }
 
+// GPIO values already picked by sibling pin fields of the same item, so one
+// field's suggestions never include a pin another field of the item already uses.
+function parsedPins(...values: string[]): number[] {
+  return values.map((v) => parseInt(v, 10)).filter((n) => !isNaN(n));
+}
+
 const STEP_TEXT: Record<Step, { label: string; title: string; sub: string }> = {
   1: { label: 'Art des Geräts', title: 'Was möchtest du hinzufügen?',
        sub: 'Sensoren messen, Aktoren schalten, Regler verbinden beides.' },
@@ -985,7 +991,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     {scanning ? '…' : 'Scan'}
                   </button>
                 </div>
-                <PinHint pins={pins} value={pin} selfId={selfId} share="onewire" />
+                <PinHint pins={pins} value={pin} selfId={selfId} share="onewire" configKey="pin"
+                  onPick={(g) => { setPin(String(g)); setScanned(false); setScannedDevices([]); setSelectedAddress(''); }} />
               </div>
               {scannedDevices.length > 0 && (
                 <div>
@@ -1021,7 +1028,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={csPin}
                   onInput={(e) => setCsPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 5" class={inp} required />
-                <PinHint pins={pins} value={csPin} selfId={selfId} output />
+                <PinHint pins={pins} value={csPin} selfId={selfId} output configKey="cs"
+                  exclude={parsedPins(clkPin, misoPin, mosiPin)} onPick={(g) => setCsPin(String(g))} />
               </div>
               <div>
                 <label class={lbl}>Wires</label>
@@ -1054,14 +1062,20 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 </button>
                 {showCustomSpi && (
                   <div class="mt-2 grid grid-cols-3 gap-2">
-                    {([['CLK', clkPin, setClkPin], ['MISO', misoPin, setMisoPin], ['MOSI', mosiPin, setMosiPin]] as const).map(
-                      ([label, val, setter]) => (
+                    {([
+                      ['CLK', 'clk', clkPin, setClkPin, [misoPin, mosiPin]],
+                      ['MISO', 'miso', misoPin, setMisoPin, [clkPin, mosiPin]],
+                      ['MOSI', 'mosi', mosiPin, setMosiPin, [clkPin, misoPin]],
+                    ] as const).map(
+                      ([label, key, val, setter, siblings]) => (
                         <div key={label}>
                           <label class={lbl}>{label}</label>
                           <input type="number" value={val}
                             onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
                             placeholder="GPIO" class={inp} />
-                          <PinHint pins={pins} value={val} selfId={selfId} share="spi" output={label !== 'MISO'} />
+                          <PinHint pins={pins} value={val} selfId={selfId} share="spi" output={label !== 'MISO'}
+                            configKey={key} exclude={parsedPins(csPin, ...siblings)}
+                            onPick={(g) => (setter as (v: string) => void)(String(g))} />
                         </div>
                       )
                     )}
@@ -1078,7 +1092,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <label class={lbl}>GPIO-Pin</label>
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
-                <PinHint pins={pins} value={pin} selfId={selfId} pullup irq />
+                <PinHint pins={pins} value={pin} selfId={selfId} pullup irq configKey="pin"
+                  onPick={(g) => setPin(String(g))} />
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -1104,14 +1119,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={hx711Dout}
                     onInput={(e) => setHx711Dout((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 4" class={inp} required />
-                  <PinHint pins={pins} value={hx711Dout} selfId={selfId} />
+                  <PinHint pins={pins} value={hx711Dout} selfId={selfId} configKey="dout"
+                    exclude={parsedPins(hx711Sck)} onPick={(g) => setHx711Dout(String(g))} />
                 </div>
                 <div>
                   <label class={lbl}>SCK Pin (GPIO)</label>
                   <input type="number" value={hx711Sck}
                     onInput={(e) => setHx711Sck((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 5" class={inp} required />
-                  <PinHint pins={pins} value={hx711Sck} selfId={selfId} output />
+                  <PinHint pins={pins} value={hx711Sck} selfId={selfId} output configKey="sck"
+                    exclude={parsedPins(hx711Dout)} onPick={(g) => setHx711Sck(String(g))} />
                 </div>
               </div>
               <p class="text-xs text-faint">
@@ -1128,7 +1145,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={diPin}
                   onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 15" class={inp} required />
-                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} />
+                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} configKey="pin"
+                  onPick={(g) => setDiPin(String(g))} />
               </div>
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -1159,7 +1177,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={aiPin}
                   onInput={(e) => setAiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 34" class={inp} required />
-                <PinHint pins={pins} value={aiPin} selfId={selfId} analog />
+                <PinHint pins={pins} value={aiPin} selfId={selfId} analog configKey="pin"
+                  onPick={(g) => setAiPin(String(g))} />
               </div>
               <div class="grid grid-cols-3 gap-2">
                 <div><label class={lbl}>Min</label>
@@ -1295,14 +1314,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={trigPin}
                     onInput={(e) => setTrigPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 5" class={inp} required />
-                  <PinHint pins={pins} value={trigPin} selfId={selfId} output />
+                  <PinHint pins={pins} value={trigPin} selfId={selfId} output configKey="trig"
+                    exclude={parsedPins(echoPin)} onPick={(g) => setTrigPin(String(g))} />
                 </div>
                 <div>
                   <label class={lbl}>ECHO Pin (GPIO)</label>
                   <input type="number" value={echoPin}
                     onInput={(e) => setEchoPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 18" class={inp} required />
-                  <PinHint pins={pins} value={echoPin} selfId={selfId} irq />
+                  <PinHint pins={pins} value={echoPin} selfId={selfId} irq configKey="echo"
+                    exclude={parsedPins(trigPin)} onPick={(g) => setEchoPin(String(g))} />
                 </div>
               </div>
               <div class="flex gap-4">
@@ -1394,7 +1415,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 16" class={inp} required />
-                <PinHint pins={pins} value={pin} selfId={selfId} output />
+                <PinHint pins={pins} value={pin} selfId={selfId} output configKey="pin"
+                  onPick={(g) => setPin(String(g))} />
               </div>
               <div>
                 <label class={lbl}>Mode</label>
@@ -1422,7 +1444,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={analogPin}
                   onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 25" class={inp} required />
-                <PinHint pins={pins} value={analogPin} selfId={selfId} output />
+                <PinHint pins={pins} value={analogPin} selfId={selfId} output configKey="pin"
+                  onPick={(g) => setAnalogPin(String(g))} />
               </div>
               {/* DAC only where the board has one (the ESP32-S3 has none); an
                   existing DAC item keeps the option so its mode stays visible. */}
@@ -1478,7 +1501,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={pulsePin}
                   onInput={(e) => setPulsePin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 17" class={inp} required />
-                <PinHint pins={pins} value={pulsePin} selfId={selfId} output />
+                <PinHint pins={pins} value={pulsePin} selfId={selfId} output configKey="pin"
+                  onPick={(g) => setPulsePin(String(g))} />
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
@@ -1509,17 +1533,19 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {role === 'actuator' && (actuatorType === 'IDS1' || actuatorType === 'IDS2') && (
             <div class="grid grid-cols-3 gap-2">
               {([
-                ['White (Relais)', pinWhite, setPinWhite],
-                ['Yellow (Cmd)',   pinYellow, setPinYellow],
-                ['Interrupt',      pinInterrupt, setPinInterrupt],
-              ] as const).map(([label, val, setter]) => (
+                ['White (Relais)', 'pin_white', pinWhite, setPinWhite, [pinYellow, pinInterrupt]],
+                ['Yellow (Cmd)',   'pin_yellow', pinYellow, setPinYellow, [pinWhite, pinInterrupt]],
+                ['Interrupt',      'pin_interrupt', pinInterrupt, setPinInterrupt, [pinWhite, pinYellow]],
+              ] as const).map(([label, key, val, setter, siblings]) => (
                 <div key={label}>
                   <label class={lbl}>{label}</label>
                   <input type="number" value={val}
                     onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
                     placeholder="GPIO" class={inp} required />
                   <PinHint pins={pins} value={val} selfId={selfId} output={label !== 'Interrupt'}
-                    pullup={label === 'Interrupt'} irq={label === 'Interrupt'} />
+                    pullup={label === 'Interrupt'} irq={label === 'Interrupt'}
+                    configKey={key} exclude={parsedPins(...siblings)}
+                    onPick={(g) => (setter as (v: string) => void)(String(g))} />
                 </div>
               ))}
             </div>

@@ -180,6 +180,11 @@ ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `sr
   Fehlauslöser). Serielle Schnittstellen nutzt noch kein Item-Typ.
 - Bedenkliche Pins und Fähigkeits-Warnungen lässt die Firmware zu; die Web-UI
   fragt vor dem Speichern nach.
+- Das Item-Formular schlägt je Pin-Feld passende GPIOs vor (`web/src/pins.ts::suggestPins`,
+  ausschließlich aus `GET /api/pins` abgeleitet): freie Pins zuerst, ein Pin mit einem
+  bestehenden Bus-User desselben Feld-Keys (OneWire, SPI) ganz oben, bedenkliche danach und
+  als solche markiert; Pins, die ein anderes Feld desselben Items schon gewählt hat, werden
+  nicht doppelt vorgeschlagen. Reiner Vorschlag per Klick — die freie Eingabe bleibt.
 - Konflikte in einer bereits gespeicherten Config werden trotzdem geladen (ein
   stillschweigend fehlender Heizungs-Aktor wäre schlimmer), seriell geloggt
   (`[pins] GPIO …`), in `GET /api/pins` gemeldet und auf der Geräte-Seite als
