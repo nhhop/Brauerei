@@ -182,6 +182,9 @@ export interface PinInfo {
   note?: string;
   inputOnly?: boolean;
   dac?: boolean;
+  adc?: 1 | 2; // ADC unit, absent = no ADC
+  noPullup?: boolean; // no internal pull-up
+  irqGlitch?: boolean; // spurious interrupts (ESP32 erratum)
   users: PinUser[];
 }
 
@@ -193,7 +196,8 @@ export interface PinConflict {
 
 export interface PinsInfo {
   board: string;
-  caps: { dac: boolean; rmtTx: number; rmtUsed: number };
+  // adc2Wifi: 'blocked' = ADC2 unusable while Wi-Fi runs, 'shared' = may drop reads
+  caps: { dac: boolean; rmtTx: number; rmtUsed: number; adc2Wifi: 'blocked' | 'shared' };
   pins: PinInfo[];
   conflicts: PinConflict[];
 }

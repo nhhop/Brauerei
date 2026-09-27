@@ -158,8 +158,8 @@ ablesen, nicht Web-Snippets vertrauen.
 `src/BoardPins.h` beschreibt je Board jeden GPIO: **frei**, **bedenklich**
 (funktioniert, hat aber eine Zweitaufgabe — Strapping-Pin, USB, UART0,
 Batterie-ADC), **reserviert** (vom Board selbst belegt — SD, Display, I²C,
-BOOT-Taste) oder **verboten** (Flash/PSRAM); dazu Input-only-Pins, DAC-Pins und
-die Zahl sendefähiger RMT-Kanäle. `src/PinMap.h` prüft damit jedes Anlegen
+BOOT-Taste) oder **verboten** (Flash/PSRAM); dazu Input-only-Pins, DAC- und
+ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `src/PinMap.h` prüft damit jedes Anlegen
 (`POST`) und Ersetzen (`PUT`) von Sensoren und Aktoren:
 
 - Ein Pin hat keine vorab festgelegte Rolle — das erste Item auf einem freien
@@ -170,8 +170,16 @@ die Zahl sendefähiger RMT-Kanäle. `src/PinMap.h` prüft damit jedes Anlegen
   `mode: dac` ohne DAC → **400**; reservierte Pins → **409**.
 - Jede IDS-Platte braucht einen RMT-Sendekanal (ESP32: 8, S2/S3: 4); sind alle
   vergeben → **409** statt des stillen, blockierenden Software-Fallbacks.
-- Bedenkliche Pins lässt die Firmware zu; die Web-UI fragt vor dem Speichern
-  nach.
+- Fähigkeiten je Pin (ADC1/ADC2, fehlender interner Pull-up, Interrupt-Errata)
+  werden gegen den Bedarf des Feldes geprüft: `AnalogInput` braucht einen
+  ADC-Pin, sonst **400**. ADC2 ist mit aktivem WLAN am ESP32 nicht lesbar
+  (**400**), am S2/S3 teilt er sich den ADC mit dem WLAN und einzelne Messungen
+  können ausfallen (Warnung). YF-S201, IDS-Interrupt und `DigitalInput` mit
+  `pullup` warnen auf Pins ohne internen Pull-up (ESP32 34–39, S2 46). Interrupts
+  (YF-S201, HC-SR04-Echo, IDS) warnen am ESP32 auf GPIO 36/39 (Errata 3.11,
+  Fehlauslöser). Serielle Schnittstellen nutzt noch kein Item-Typ.
+- Bedenkliche Pins und Fähigkeits-Warnungen lässt die Firmware zu; die Web-UI
+  fragt vor dem Speichern nach.
 - Konflikte in einer bereits gespeicherten Config werden trotzdem geladen (ein
   stillschweigend fehlender Heizungs-Aktor wäre schlimmer), seriell geloggt
   (`[pins] GPIO …`), in `GET /api/pins` gemeldet und auf der Geräte-Seite als
