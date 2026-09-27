@@ -85,15 +85,15 @@ export function FirmwarePage(_: { path?: string }) {
               <div class="space-y-3">
                 {st.available && (
                   <div class="rounded-md bg-fg/5 p-3 text-sm">
-                    <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
-                    {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
-                    {st.state === 'updateAvailable' && (
-                      <div class="mt-2 flex justify-end">
-                        <button onClick={() => setConfirmInstall(true)} class={btnPrimary}>
+                    <div class="flex items-center justify-between gap-3">
+                      <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
+                      {st.state === 'updateAvailable' && (
+                        <button onClick={() => setConfirmInstall(true)} class={`shrink-0 ${btnPrimary}`}>
                           Installieren
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    {st.available.notes && <pre class="mt-1 whitespace-pre-wrap text-xs text-muted">{st.available.notes}</pre>}
                   </div>
                 )}
 
