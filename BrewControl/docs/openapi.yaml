@@ -870,21 +870,30 @@ paths:
     get:
       tags: [Bus Discovery]
       operationId: scanBus
-      summary: Scan a 1-Wire bus for devices
+      summary: Scan a 1-Wire or I2C bus for devices
       description: |
-        For several DS18B20 on one pin: scan first, then create one sensor per
-        returned `address`. The firmware manages the shared bus instance
-        internally. At most 8 devices are reported.
+        `onewire`: for several DS18B20 on one pin, scan first, then create one
+        sensor per returned `address`. Requires `pin`.
+
+        `i2c`: probes the board's one fixed I2C bus (addresses 1–127). Only
+        runs once that bus already exists in the firmware's peripheral
+        registry — on the LilyGo that's always true (claimed at boot for the
+        display/touch), on esp32dev/lolin_s2_mini only after a BME280/GY521
+        item has been added; otherwise `409`. This avoids starting the bus on
+        pins another item may already use, and avoids blocking on 127
+        unanswered probes. `pin` is not accepted.
+
+        The firmware manages the shared bus instance internally.
       parameters:
         - name: type
           in: query
           required: true
-          schema: { type: string, enum: [onewire] }
+          schema: { type: string, enum: [onewire, i2c] }
         - name: pin
           in: query
-          required: true
+          required: false
           schema: { type: integer }
-          description: GPIO number the bus is attached to.
+          description: GPIO number the bus is attached to. Required for `onewire`, ignored for `i2c`.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -893,7 +902,13 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BusScanResult" }
         "400":
-          description: Body is `missing type or pin` or `unsupported bus type`.
+          description: Body is `missing type`, `missing pin` (onewire without `pin`) or `unsupported bus type`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            `i2c` only: the board's I2C bus does not exist yet — add a
+            BME280/GY521 item first.
           content:
             text/plain: { schema: { type: string } }
         "503": { $ref: "#/components/responses/RegistryBusy" }
@@ -2837,7 +2852,15 @@ components:
         `GPIO 7 is reserved by the board (I2C SDA (Touch, RTC, PMU))`, or for IDS
         cookers `no free RMT channel (4 in use)`. Only items of the same bus
         kind may share a pin (DS18B20 on one OneWire pin, MAX31865 on common
-        SPI lines). See `GET /api/pins`.
+        SPI lines, BME280/GY521 on the board's fixed I2C SDA/SCL). See
+        `GET /api/pins` — I2C SDA/SCL show a `share: "i2c"` user like any
+        other shared pin, but on the LilyGo they stay `class: "reserved"`
+        instead (the board's onboard RTC/Touch/PMU already reserve them).
+
+        For BME280/GY521 only, a separate 409 covers the I2C *address* (not a
+        pin): `0x51 is reserved by the board (RTC (PCF8563))`, or
+        `0x76 already used by amb`. Unlike pins, this is never surfaced by
+        `GET /api/pins` — only caught here, at create/replace time.
       content:
         text/plain: { schema: { type: string } }
 
@@ -3139,7 +3162,7 @@ components:
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin: { type: integer }
-        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68)." }
+        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68). BME280/GY521 share the board's one fixed I2C bus — no pin fields — and are rejected with 409 if the address is already used or reserved by an onboard device (see `PinConflict`)." }
         cs: { type: integer }
         clk: { type: integer }
         miso: { type: integer }
@@ -3392,24 +3415,30 @@ components:
     # ── Bus discovery ────────────────────────────────────────────────────────
     BusScanResult:
       type: object
-      required: [type, pin, devices]
+      required: [type, devices]
       properties:
-        type: { type: string, const: onewire }
-        pin: { type: integer }
+        type: { type: string, enum: [onewire, i2c] }
+        pin:
+          type: integer
+          description: >-
+            GPIO number the bus is attached to. Present for `onewire` only —
+            the board's I2C bus is fixed, so `i2c` scans omit it.
         devices:
           type: array
-          maxItems: 8
+          maxItems: 16
           items:
             type: object
             required: [index, address]
             properties:
               index: { type: integer }
-              address: { type: string, pattern: "^[0-9a-f]{16}$" }
-      example:
-        type: onewire
-        pin: 4
-        devices:
-          - { index: 0, address: 28ff64c8815604ef }
+              address:
+                type: string
+                description: >-
+                  16 lowercase hex chars (DS18B20 ROM code) for `onewire`, or
+                  a `"0xNN"` 7-bit I2C address for `i2c`.
+      examples:
+        - { type: onewire, pin: 4, devices: [{ index: 0, address: 28ff64c8815604ef }] }
+        - { type: i2c, devices: [{ index: 0, address: "0x51" }, { index: 1, address: "0x5a" }] }
 
     # ── Remote discovery ─────────────────────────────────────────────────────
     RemoteDiscoveryResult:

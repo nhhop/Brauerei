@@ -51,6 +51,23 @@ void test_tick_reports_stub_values_after_begin() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, s.channel(5).reading.value);
 }
 
+// ── Caller-owned bus (Peripherie-Abstraktion Etappe 2) ──────────────────────
+// Same definition as the native shim in GY521Sensor.cpp, so the test can own
+// a bus the way BrewControl's PeripheralRegistry does.
+class TwoWire { public: TwoWire() {} };
+
+void test_caller_bus_leaves_it_alone() {
+  TwoWire* bus = new TwoWire();
+  {
+    GY521Sensor sensor("imu2", *bus, 0x69);
+    sensor.begin();
+    sensor.tick();
+    TEST_ASSERT_EQUAL_STRING("imu2", sensor.id());
+    TEST_ASSERT_EQUAL(6, sensor.channelCount());
+  }
+  delete bus;
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -60,5 +77,6 @@ int main(int, char**) {
   RUN_TEST(test_channel_meta);
   RUN_TEST(test_readings_invalid_before_begin);
   RUN_TEST(test_tick_reports_stub_values_after_begin);
+  RUN_TEST(test_caller_bus_leaves_it_alone);
   return UNITY_END();
 }

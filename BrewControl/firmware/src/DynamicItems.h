@@ -12,6 +12,7 @@
 #include <transport/ITransport.h>
 #include <vector>
 
+#include "I2cAddressMap.h"
 #include "PeripheralRegistry.h"
 #include "PinMap.h"
 
@@ -49,6 +50,18 @@ class DynamicItems {
 
   // GPIOs occupied by the current sensors and actuators (GET /api/pins).
   std::vector<PinUse> pinUses() const;
+
+  // Claims the board's I2C bus once at boot (LilyGo: the display/touch needs
+  // it before any dynamic item exists). No-op if BREWCTL_I2C_SDA is not
+  // defined for this board — there the bus is created lazily by the first
+  // BME280/GY521 item instead.
+  void acquireBoardI2cBus();
+
+  // Whether the board's I2C bus already exists in the registry — a scan may
+  // only run then (see WebUI.cpp: an unclaimed bus on esp32dev/lolin_s2_mini
+  // may share its default pins with another item, and probing 127 addresses
+  // without pull-ups can block for a while).
+  bool i2cBusExists() const;
 
   // Unregister and free a dynamic item. Returns {false, reason} if the id is
   // not found in dynamic items (caller should send 405) or if a sensor /
@@ -98,6 +111,11 @@ class DynamicItems {
   // peripherals_ if a sensor already uses the pin, to avoid creating a second
   // conflicting OneWire driver on the same GPIO. Call under the RegistryLock.
   uint8_t scanOneWireBus(int pin, uint8_t out[][8], uint8_t maxDevices);
+
+  // Scans the board's I2C bus for devices. Only meaningful if i2cBusExists()
+  // — callers must check that first. Fills out[0..n-1] with 7-bit addresses.
+  // Returns the number found (<= max). Call under the RegistryLock.
+  uint8_t scanI2cBus(uint8_t out[], uint8_t max);
 
   // Optional observers, fired around add*()/remove*() (only for items added
   // after markInitialized() — loadFromSD() uses the NoBegin path and does not
@@ -189,6 +207,9 @@ class DynamicItems {
   // last (PeripheralRegistry.h). Declared before sensors_ so that C++ destroys
   // sensors first (reverse declaration order), then buses.
   PeripheralRegistry peripherals_;
+  // The board's I2C bus, held for as long as acquireBoardI2cBus() has been
+  // called (LilyGo: forever, from main.cpp) — see acquireBoardI2cBus().
+  PeripheralRegistry::Ref boardI2cBus_;
 
   // Entries are heap-allocated so that vector reallocation doesn't
   // invalidate id.c_str() pointers held by the library objects.
@@ -225,6 +246,17 @@ class DynamicItems {
   // points to (valid until the next check).
   Result checkPins(const JsonObject& cfg, const char* replaceId);
   std::string pinError_;
+
+  // I2C address occupied by the current sensors (GET /api/pins does not
+  // expose this — only create/replace check against it).
+  std::vector<AddressUse> addressUses() const;
+
+  // I2C address check against the board's reserved addresses and the
+  // addresses already in use; replaceId's own address counts as free. The
+  // message of a failed check lives in i2cAddressError_, which Result.error
+  // then points to (valid until the next check).
+  Result checkI2cAddress(const JsonObject& cfg, const char* replaceId);
+  std::string i2cAddressError_;
 
   static bool parseHexAddress(const char* hex, uint8_t out[8]);
 

@@ -4,8 +4,9 @@
 
 #include "core/Sensor.h"
 
-// Forward decl to keep Adafruit_MPU6050 out of the umbrella header.
+// Forward decls to keep Adafruit_MPU6050/TwoWire out of the umbrella header.
 class Adafruit_MPU6050;
+class TwoWire;
 
 namespace SensActCtrl {
 
@@ -28,6 +29,11 @@ namespace SensActCtrl {
 class GY521Sensor : public Sensor {
  public:
   explicit GY521Sensor(const char* id, uint8_t i2cAddress = 0x68);
+
+  // Constructor for a bus the caller owns (e.g. BrewControl's shared board
+  // I2C bus). The TwoWire instance must outlive this sensor.
+  GY521Sensor(const char* id, TwoWire& bus, uint8_t i2cAddress = 0x68);
+
   ~GY521Sensor();
 
   const char* id()                const override { return id_; }
@@ -40,6 +46,7 @@ class GY521Sensor : public Sensor {
  private:
   const char*       id_;
   uint8_t           address_;
+  TwoWire*          bus_         = nullptr;
   Adafruit_MPU6050* dev_         = nullptr;
   bool              initialized_ = false;
 

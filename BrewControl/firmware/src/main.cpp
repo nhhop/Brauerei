@@ -21,9 +21,6 @@
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
 #include <mbedtls/platform.h>
-#ifdef BREWCTL_I2C_SDA
-#include <Wire.h>
-#endif
 #include <memory>
 
 #include "AlarmStore.h"
@@ -196,11 +193,12 @@ void setup() {
 
 #ifdef BREWCTL_I2C_SDA
   // Boards whose variant header defaults Wire to the wrong pins: claim the
-  // real bus before any item can. BME280/GY521 call Wire.begin() without pins
-  // (via Adafruit BusIO), which is a no-op on an already running bus - but on
-  // a fresh one it would pick the defaults, on the AMOLED-1.75 SCL 17 = panel
-  // reset.
-  Wire.begin(BREWCTL_I2C_SDA, BREWCTL_I2C_SCL);
+  // real bus before any item can, and hold it forever — the display/touch
+  // needs it before any BME280/GY521 item exists. A later Wire.begin() (e.g.
+  // via Adafruit BusIO in a dynamic item) is a no-op on an already running
+  // bus - but on a fresh one it would pick the defaults, on the AMOLED-1.75
+  // SCL 17 = panel reset.
+  dynamicItems.acquireBoardI2cBus();
 #endif
 
   if (resetHeldAtBoot()) {

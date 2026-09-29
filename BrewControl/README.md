@@ -206,17 +206,34 @@ Busse entstehen anhand der Pins, eine Bus-Id im Item-Config gibt es (noch) nicht
 - **`spi:<clk>/<miso>/<mosi>`**: MAX31865 mit `clk`. Vorerst nur Buchführung, denn
   jeder MAX31865 treibt die Leitungen weiter selbst per Software-SPI. MAX31865 ohne
   `clk` (Hardware-SPI mit den Board-Default-Pins) hängt an keinem Bus.
+- **`i2c:<sda>/<scl>`** (bzw. `i2c:default` ohne `BREWCTL_I2C_SDA`): der eine, feste
+  I2C-Bus des Boards (`Wire`), den BME280 und GY521 nutzen. Am LilyGo claimt
+  `main.cpp` ihn schon beim Boot über `DynamicItems::acquireBoardI2cBus()` und hält
+  ihn für immer — die Onboard-RTC/Touch/PMU brauchen ihn unabhängig von jedem
+  dynamischen Item. Auf esp32dev/lolin_s2_mini entsteht er erst mit dem ersten
+  BME280/GY521-Item. `GET /api/bus/scan?type=i2c` scannt nur, wenn der Bus schon
+  existiert (sonst 409) — ein unclaimter Scan könnte die Board-Default-Pins
+  belegen, die ein anderes Item schon nutzt, und 127 Sondierungen ohne Pull-ups
+  blockieren sonst spürbar.
 
 Ein Bus wird beim ersten Item angelegt (`begin()`) und nach dem letzten wieder
-abgebaut (`end()`). Die Nutzer zählt eine `PeripheralRegistry::Ref` im Sensor-Eintrag
-von `DynamicItems`, deshalb stimmt die Zahl auch dann, wenn ein Anlegen scheitert.
+abgebaut (`end()`) — außer dem I2C-Bus: dessen `end()` ist bewusst ein No-op, weil
+am LilyGo auch feste Nutzer (Touch) daran hängen, die die Registry nicht kennt.
+Die Nutzer zählt eine `PeripheralRegistry::Ref` im Sensor-Eintrag von
+`DynamicItems`, deshalb stimmt die Zahl auch dann, wenn ein Anlegen scheitert.
 `PUT` hält den Bus des alten Sensors fest, bis das Ersetzen fertig ist. Bleibt der
 neue Sensor auf demselben Bus, oder wird der alte nach einem Fehlschlag
 wiederhergestellt, läuft der Bus ohne Unterbrechung weiter.
 
 Die Registry hat keine eigene Sperre. Sie wird nur unter dem `RegistryLock`
 angefasst: bei Item-Änderungen und beim Bus-Scan, der deshalb mit **503** abbrechen
-kann. Die Pin-Prüfung (`Share::OneWire/Spi` in `PinMap.h`) bleibt davon getrennt.
+kann. Die Pin-Prüfung (`Share::OneWire/Spi/I2c` in `PinMap.h`) bleibt davon
+getrennt — BME280/GY521 belegen dort die feste SDA/SCL des Boards, außer sie sind
+schon als `Reserved` geführt (LilyGo: die Pins gehören bereits Touch/RTC/PMU). Die
+I2C-**Adresse** selbst prüft eine eigene, dritte Datei, `I2cAddressMap.h`: zwei
+Items dürfen nie dieselbe Adresse haben, und die Onboard-Geräte des LilyGo
+(0x51 RTC, 0x5A Touch, 0x6A PMU, siehe `BoardPins.h`) sind reserviert — beides nur
+beim Anlegen/Ersetzen geprüft (409), nicht in `GET /api/pins`.
 Sie muss prüfen, bevor es den Bus gibt, und auch gespeicherte Configs, die sich gar
 nicht laden ließen.
 
@@ -438,7 +455,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
 | `/api/controllers/<id>/label` | POST | Anzeigename setzen/löschen |
 | `/api/estop` | POST, DELETE | Not-Aus auslösen (rastet ein, überlebt Neustart) / Verriegelung aufheben |
-| `/api/bus/scan` | GET | 1-Wire-Bus nach Geräten scannen |
+| `/api/bus/scan` | GET | 1-Wire- oder I2C-Bus nach Geräten scannen |
 | `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |
 | `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |
 | `/api/remote/pair` | GET, POST | Kopplungsergebnis lesen / ein Board an den eigenen Hub koppeln |
