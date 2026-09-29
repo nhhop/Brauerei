@@ -413,6 +413,23 @@ hinter `BREWCTL_HAS_DISPLAY`, die anderen Envs bauen unverändert.
   (`BREWCTL_I2C_SDA/SCL`), weil der Variant-Default SCL 17 der Panel-Reset
   ist.
 
+## Energiemanagement
+
+Einstellungen → Energiemanagement (`/settings/energy`, Abschnitt `energy` in
+`/config/settings.json`). Stand heute nur die Batteriespannung; Deep-Sleep
+folgt (Plan: `docs/superpowers/plans/2026-09-29-energiemanagement.md`).
+
+- Die Batterie ist ein **normales Sensor-Item**, meist ein `AnalogInput` mit
+  Einheit `V`. Die Seite wählt es nur aus (`energy.batterySensor`). Publish,
+  Datalog, Dashboard und Kalibrierung laufen dadurch wie bei jedem Sensor.
+- „Batteriesensor anlegen“ legt so ein Item an: Bereich `0 … 3,3 V × Teiler`,
+  Glättung 16, Beschriftung „Batterie“. Boards mit eigenem Batterie-Messeingang
+  liefern Pin und Teiler in `GET /api/pins` → `battery` (Tabelle in
+  `BoardPins.h`, bisher nur LilyGo: GPIO 4, 1:2). Der ESP32-ADC ist nicht
+  linear, für genaue Werte den Sensor per Zwei-Punkt-Kalibrierung abgleichen.
+- Die Prozentangabe ist eine grobe LiPo-Kennlinie in der UI (`web/src/energy.ts`),
+  gilt nur für eine Zelle ohne Last und nicht beim Laden.
+
 ## API-Vertrag
 
 Der vollständige Vertrag — Request-/Response-Schemas, Status-Codes, Fehler-Bodies

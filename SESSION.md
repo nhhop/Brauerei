@@ -5552,3 +5552,27 @@ das bestehende Alert-System (`AlertCenter.tsx`) deckt Fehlermeldungen schon ab.
 **Verifikation:** `pio run -e esp32dev` (compile-smoke, LittleFS-Zweig mitkompiliert),
 Redocly-Lint grün, `pnpm typecheck` grün, Node-Mock-Preview: beide Seiten inkl. aktiver und
 leerer Störungsliste geprüft.
+
+## 2026-09-29 — Energiemanagement Stufe 1: Einstellungsseite + Batteriequelle
+
+Plan für den ganzen Energiemanagement-Punkt (Deep-Sleep, Wach-Pin, Kurz-Wach-Profil) mit den
+Nutzer-Entscheidungen liegt in `docs/superpowers/plans/2026-09-29-energiemanagement.md`; umgesetzt
+ist Stufe 1. Neue Seite `/settings/energy` („Energiemanagement“ im Einstellungen-Index, alle
+Boards). Die Batterie ist bewusst **kein eigener Firmware-Pfad**, sondern ein normales
+Sensor-Item, das die Seite auswählt (`energy.batterySensor` in `SettingsStore`, neuer neunter
+Abschnitt in `/api/settings`, Validierung nur des Typs). Die Auswahl listet Sensoren mit Einheit
+`V`/Größe `Voltage`, die Statuszeile zeigt Spannung und einen groben LiPo-Prozentwert
+(`web/src/energy.ts`). „Batteriesensor anlegen“ erzeugt ein `AnalogInput` (0 … 3,3 V × Teiler,
+Glättung 16, Label „Batterie“) und wählt es aus; die Voreinstellung kommt aus dem neuen
+`battery`-Feld von `GET /api/pins` (`Board::batteryPin/batteryDivider`, bisher nur LilyGo:
+GPIO 4, 1:2 — abgeleitet aus den 2,11 V am ADC vom 2026-09-26, am Gerät noch gegen ein Multimeter
+zu prüfen). Auf dem Board-eigenen Batterie-Pin blendet die Seite den „bedenklich“-Hinweis des
+PinHint aus.
+
+**Verifikation:** `pio test -e native` (68/68, `test_pin_map` prüft das `battery`-Feld),
+`pio run` für `lilygo_t_display_s3_amoled`, `esp32dev`, `lolin_s2_mini`, Redocly-Lint grün (nur
+die bekannte `info-license`-Warnung), `pnpm typecheck`, `pnpm test` (60/60, neu
+`energy.test.ts`), `pnpm build`. UI gegen Node-Mock im Scratchpad: Auswahl filtert auf
+Spannungssensoren, Anlegen schickt `{"type":"AnalogInput","id":"battery","pin":4,"unit":"V",
+"value_min":0,"value_max":6.6,"smoothing":16}` + Label + Settings-Patch, Auswahl übersteht
+Reload. Nicht am echten Board geprüft.

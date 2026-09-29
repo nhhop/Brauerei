@@ -78,6 +78,10 @@ class SettingsStore {
   uint32_t displayOffAfterSec() const { return displayOffAfterSec_; }
   bool displayPixelShift() const { return displayPixelShift_; }
 
+  // Energy management: id of the sensor item that measures the battery
+  // voltage ("" = none). The item itself is a normal AnalogInput.
+  const String& energyBatterySensor() const { return energyBatterySensor_; }
+
  private:
   uint32_t revision_ = 0;
   String mode_       = "system";   // "light" | "dark" | "system"
@@ -125,6 +129,8 @@ class SettingsStore {
   uint8_t  displayDimPercent_  = 20;
   uint32_t displayOffAfterSec_ = 600;
   bool     displayPixelShift_  = false;
+
+  String   energyBatterySensor_ = "";
 };
 
 }  // namespace BrewControl

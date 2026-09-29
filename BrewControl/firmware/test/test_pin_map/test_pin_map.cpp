@@ -276,10 +276,13 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_TRUE(pin(36)["irqGlitch"].as<bool>());
   TEST_ASSERT_TRUE(pin(16)["adc"].isNull());
   TEST_ASSERT_TRUE(pin(16)["noPullup"].isNull());
+  TEST_ASSERT_TRUE(doc["battery"].isNull());  // no onboard divider
 
   JsonDocument s3;
   writePinsJson(kLilyGoAmoled, "lilygo", {}, s3.to<JsonObject>());
   TEST_ASSERT_EQUAL_STRING("shared", s3["caps"]["adc2Wifi"]);
+  TEST_ASSERT_EQUAL(4, s3["battery"]["gpio"].as<int>());
+  TEST_ASSERT_EQUAL_FLOAT(2.0f, s3["battery"]["divider"].as<float>());
 }
 
 int main(int, char**) {

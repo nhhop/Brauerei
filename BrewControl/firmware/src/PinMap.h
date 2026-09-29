@@ -44,6 +44,10 @@ struct Board {
   uint64_t irqGlitch;  // spurious interrupts from a chip erratum
   bool adc2BlockedByWifi;  // true: ADC2 reads fail while Wi-Fi runs (ESP32);
                            // false: shared with Wi-Fi, single reads may fail
+  // Onboard battery voltage divider, -1 = none. Only a preset for the
+  // battery sensor the energy settings page offers to create.
+  int batteryPin = -1;
+  float batteryDivider = 0;
 };
 
 enum class Share : uint8_t { None, OneWire, Spi };
@@ -294,6 +298,11 @@ inline void writePinsJson(const Board& b, const char* boardName,
   caps["rmtTx"] = b.rmtTx;
   caps["rmtUsed"] = rmtItems(uses);
   caps["adc2Wifi"] = b.adc2BlockedByWifi ? "blocked" : "shared";
+  if (b.batteryPin >= 0) {
+    JsonObject bat = out["battery"].to<JsonObject>();
+    bat["gpio"] = b.batteryPin;
+    bat["divider"] = b.batteryDivider;
+  }
 
   auto writeUsers = [](JsonArray arr, const PinUse& u) {
     JsonObject o = arr.add<JsonObject>();

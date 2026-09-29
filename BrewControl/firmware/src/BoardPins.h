@@ -124,6 +124,8 @@ inline constexpr Board kLilyGoAmoled = {
     0,
     0,
     false,  // ADC2 arbitrated with Wi-Fi
+    4,      // BATTERY_VOLTAGE_ADC_DATA in LilyGo's pin_config.h
+    2.0f,   // 1:2 divider: GPIO 4 read 2.11 V on a charged cell (SESSION.md)
 };
 
 #if defined(BREWCTL_I2C_SDA) && defined(BREWCTL_HAS_DISPLAY)

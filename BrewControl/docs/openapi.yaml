@@ -1089,6 +1089,8 @@ paths:
         UI check what a field needs: an `AnalogInput` needs an ADC pin (ADC2 is
         rejected on the ESP32 and only warned about on S2/S3); a missing pull-up
         or the GPIO 36/39 interrupt glitch are warnings to confirm.
+        `battery` is present on boards with an onboard battery divider — the
+        preset for the battery sensor the energy settings page can create.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -1991,6 +1993,7 @@ paths:
 
         Sending a `time` section re-applies the NTP configuration immediately.
         A `display` section takes effect on the next display tick, no reboot.
+        An `energy` section is stored only, no reboot.
         **Sending an `mqtt`, `webhook`, `websocket` or `espnow` section reboots
         the device ~500 ms after the response** — those transports are only
         established at boot.
@@ -2024,7 +2027,7 @@ paths:
             `invalid websocket clientId`, `invalid espnow topicPrefix`,
             `invalid espnow clientId`, `invalid display brightness`,
             `invalid display dimAfterSec`, `invalid display dimPercent`,
-            `invalid display offAfterSec`.
+            `invalid display offAfterSec`, `invalid energy batterySensor`.
           content:
             text/plain: { schema: { type: string } }
 
@@ -3379,9 +3382,17 @@ components:
               gpio: { type: integer }
               reason: { type: string, description: 'e.g. `mehrfach belegt`, `kein ADC`, `ADC2 – bei WLAN nicht nutzbar` or the note of a reserved pin.' }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
+        battery:
+          type: object
+          required: [gpio, divider]
+          description: Onboard battery voltage divider; absent on boards without one.
+          properties:
+            gpio: { type: integer, description: ADC pin behind the divider. }
+            divider: { type: number, description: 'Battery voltage / ADC voltage, e.g. 2 for 1:2.' }
       example:
         board: lilygo_t_display_s3_amoled
         caps: { dac: false, rmtTx: 4, rmtUsed: 1, adc2Wifi: shared }
+        battery: { gpio: 4, divider: 2 }
         pins:
           - { gpio: 2, class: free, adc: 1, users: [{ id: pump, key: pin }] }
           - { gpio: 3, class: risky, note: Strapping-Pin, adc: 1, users: [] }
@@ -4208,13 +4219,26 @@ components:
           readOnly: true
           description: Compile-time capability of this firmware build (a display is driven).
 
+    EnergySettings:
+      type: object
+      description: |
+        Energy management. The battery is a normal sensor item (typically an
+        `AnalogInput` with unit `V`) picked here; the id is not checked against
+        the registry, so it may point to a deleted item.
+      required: [batterySensor]
+      properties:
+        batterySensor:
+          type: string
+          default: ""
+          description: Id of the sensor that measures the battery voltage. "" = none.
+
     AppSettings:
       type: object
       description: |
-        All eight sections are always emitted. On `GET /api/settings` the
+        All nine sections are always emitted. On `GET /api/settings` the
         `mqtt`, `webhook`, `websocket` and `espnow` sections additionally carry
         the live `connected` and `error` fields (`websocket` also `hubClients`).
-      required: [theme, firmware, time, mqtt, webhook, websocket, espnow, display]
+      required: [theme, firmware, time, mqtt, webhook, websocket, espnow, display, energy]
       properties:
         theme: { $ref: "#/components/schemas/ThemeSettings" }
         firmware: { $ref: "#/components/schemas/FirmwareSettings" }
@@ -4224,6 +4248,7 @@ components:
         websocket: { $ref: "#/components/schemas/WebSocketSettings" }
         espnow: { $ref: "#/components/schemas/EspNowSettings" }
         display: { $ref: "#/components/schemas/DisplaySettings" }
+        energy: { $ref: "#/components/schemas/EnergySettings" }
 
     AppSettingsPatch:
       type: object
@@ -4239,6 +4264,7 @@ components:
         websocket: { type: object, description: Subset of `WebSocketSettings`. Triggers a reboot. }
         espnow: { type: object, description: Subset of `EspNowSettings`. Triggers a reboot. }
         display: { type: object, description: Subset of `DisplaySettings`. }
+        energy: { type: object, description: Subset of `EnergySettings`. }
 
     # ── Network ──────────────────────────────────────────────────────────────
     NetworkStatus:

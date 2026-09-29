@@ -1884,6 +1884,14 @@ void WebUI::begin() {
             }
           }
         }
+        JsonObject energy = obj["energy"].as<JsonObject>();
+        if (!energy.isNull()) {
+          // Not checked against the registry: the item may be deleted later
+          // anyway, the UI shows a dangling reference as "not found".
+          if (!energy["batterySensor"].isNull() && !energy["batterySensor"].is<const char*>()) {
+            req->send(400, "text/plain", "invalid energy batterySensor"); return;
+          }
+        }
         settings_.update(obj);
         settings_.saveToSD(fs_);
         if (!t.isNull()) {
