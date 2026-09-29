@@ -213,11 +213,12 @@ Die Id ergibt sich aus Typ und Pins:
   höchstens zwei I2C-Busse; jeder bekommt beim Anlegen einen fest (`port`: 0 = `Wire`,
   1 = `Wire1`), damit er nie wechselt, solange Items darauf laufen.
 - **Feste Busse** des Boards (`BoardPins.h`, nie gespeichert, nicht änderbar): am LilyGo
-  `i2c-board` (SDA 7 / SCL 6, `Wire`) mit RTC 0x51, Touch 0x5A und PMU 0x6A, die
-  herausgeführten Leitungen liegen am Qwiic-Stecker. `main.cpp` claimt ihn beim Boot über
-  `DynamicItems::acquireBoardI2cBus()` und hält ihn für immer. Seine Pins schützt die
-  `Reserved`-Klasse der Pin-Tabelle; ein zweiter, frei wählbarer I2C-Bus (`Wire1`) steht
-  daneben für eigene Sensoren zur Verfügung. esp32dev/lolin_s2_mini haben keine festen Busse.
+  `i2c-board` (SDA 7 / SCL 6, `Wire`) mit RTC 0x51, Touch 0x5A und PMU 0x6A; SDA/SCL liegen
+  am Header und am Qwiic-Stecker, eigene Sensoren können also mit auf diesen Bus.
+  `main.cpp` claimt ihn beim Boot über `DynamicItems::acquireBoardI2cBus()` und hält ihn für
+  immer. Seine Pins schützt die `Reserved`-Klasse der Pin-Tabelle; ein zweiter, frei
+  wählbarer I2C-Bus (`Wire1`) steht daneben zur Verfügung, etwa wenn ein Sensor eine Adresse
+  braucht, die am Board-Bus schon belegt ist. esp32dev/lolin_s2_mini haben keine festen Busse.
 
 Bus-Pins gehören exklusiv dem Bus: `GET /api/pins` führt den Bus als Nutzer (`bus: true`),
 ein Item oder zweiter Bus auf derselben Leitung ist ein **409**. Die Pins eines Busses

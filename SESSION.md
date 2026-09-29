@@ -5609,9 +5609,10 @@ grün. Hardware-Verifikation am LilyGo steht noch aus (siehe PLAN.md, falls offe
 
 ## 2026-09-30 — Bus-Schnittstellen: zentral definierte Busse + Settings-Seite
 
-**Ausgangslage:** Am echten LilyGo zeigte sich nach Etappe 2, dass der feste I²C-Bus (SDA 7 / SCL 6)
-am Qwiic-Stecker herausgeführt ist — ohne passendes Kabel nicht testbar, und die UI verriet nirgends,
-wo I²C-Geräte hingehören. Feste Bus-Pins pro Board waren damit unpraktisch. Gewünscht: eine
+**Ausgangslage:** Die UI verriet nirgends, an welchen Pins I²C-Geräte angeschlossen werden. Am LilyGo
+fand sich der feste I²C-Bus (SDA 7 / SCL 6) zunächst nur am Qwiic-Stecker, für den kein Kabel da war.
+(Korrektur später am Tag: SDA/SCL liegen zusätzlich am Header, waren dort nur übersehen worden — für
+den Umbau unerheblich, ein zweiter Bus hilft ohnehin bei Adresskonflikten.) Gewünscht: eine
 Einstellungsseite, die alle Bus-Schnittstellen zeigt (I²C, OneWire, SPI, später CAN/RS485) und die
 Pins umkonfigurieren lässt, wo die Hardware sie nicht festlegt.
 
@@ -5621,8 +5622,9 @@ Pins umkonfigurieren lässt, wo die Hardware sie nicht festlegt.
   PLAN-Punkte „Bus-Id im Item-Config" (für I²C/OneWire/SPI) und „Bus-Vorschläge im Item-Formular"
   (SPI-Tripel gemischt vorgeschlagen — Bus-Pins tauchen im Item-Formular gar nicht mehr auf).
 - **Zwei I²C-Busse** statt umkonfigurierbarem Board-Bus: der ESP32 hat zwei Controller (`Wire`,
-  `Wire1`). Am LilyGo bleibt `i2c-board` fest (RTC/Touch/PMU, read-only, Hinweis „Qwiic-Stecker"),
-  daneben ist ein frei wählbarer Bus auf `Wire1` möglich; esp32dev/lolin_s2_mini haben keinen festen Bus.
+  `Wire1`). Am LilyGo bleibt `i2c-board` fest (RTC/Touch/PMU, read-only, Hinweis „am Header und am
+  Qwiic-Stecker"), daneben ist ein frei wählbarer Bus auf `Wire1` möglich — nützlich bei
+  Adresskonflikten mit den Onboard-Geräten; esp32dev/lolin_s2_mini haben keinen festen Bus.
 - **CAN/RS485** nur im Typ-Modell vorgesehen (`kBusTypes`), nicht anlegbar — kein Item-Typ, keine Hardware.
 - Ablage als Array `buses` in `registry.json` (nicht in `settings.json`): Items und Busse bleiben in
   einer Datei konsistent, Backup/Restore und `GET /api/config` nehmen sie automatisch mit.
@@ -5659,7 +5661,7 @@ Id-Ableitung, Controller-Zuordnung, Migration inkl. zwei DS18B20 auf einem Bus, 
 esp32dev → `i2c-21-22`, lolin → `i2c-33-35`; `test_pin_map`/`test_i2c_address_map` auf das Bus-Modell
 umgestellt). `pio run` für alle drei Envs, Redocly-Lint, `pnpm typecheck`, `pnpm test` (57) und
 `pnpm build` grün. UI gegen einen Node-Mock im Browser geprüft: Busseite mit festem LilyGo-Bus und
-Qwiic-Hinweis, Scan (OneWire-ROMs, I²C mit benannten reservierten Adressen), Anlegen mit Konflikt (409 auf
+Anschluss-Hinweis, Scan (OneWire-ROMs, I²C mit benannten reservierten Adressen), Anlegen mit Konflikt (409 auf
 GPIO 7) und mit freien Pins (→ `Wire1`), I²C danach im Anlegen-Dialog gesperrt, Pins eines genutzten
 Busses gesperrt, BME280/DS18B20 im Item-Formular mit Bus-Auswahl (gesendet wird `bus`).
 

@@ -137,7 +137,7 @@ inline constexpr AddrDef kLilyGoAmoledI2cReserved[] = {
 };
 inline constexpr FixedBus kLilyGoAmoledBuses[] = {
     {"i2c-board", "i2c", {7, 6, -1},
-     "Fest verdrahtet mit RTC, Touch und PMU; herausgeführt am Qwiic-Stecker",
+     "Fest verdrahtet mit RTC, Touch und PMU; SDA/SCL liegen am Header und am Qwiic-Stecker",
      kLilyGoAmoledI2cReserved, sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef)},
 };
 

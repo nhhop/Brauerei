@@ -908,7 +908,7 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/BusCreate" }
-            example: { type: i2c, sda: 1, scl: 2, label: Qwiic-Ersatz }
+            example: { type: i2c, sda: 1, scl: 2, label: Zweitbus }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "201":
@@ -3623,10 +3623,10 @@ components:
             scl: 6
             port: 0
             fixed: true
-            note: Fest verdrahtet mit RTC, Touch und PMU; herausgeführt am Qwiic-Stecker
+            note: Fest verdrahtet mit RTC, Touch und PMU; SDA/SCL liegen am Header und am Qwiic-Stecker
             reserved: [{ address: "0x51", note: RTC (PCF8563) }, { address: "0x5a", note: Touch (CST9217) }, { address: "0x6a", note: PMU (SY6970) }]
             users: []
-          - { id: i2c-1-2, type: i2c, label: Qwiic-Ersatz, sda: 1, scl: 2, port: 1, users: [ambient] }
+          - { id: i2c-1-2, type: i2c, label: Zweitbus, sda: 1, scl: 2, port: 1, users: [ambient] }
           - { id: onewire-5, type: onewire, pin: 5, users: [kettle, mash] }
         types:
           - { type: onewire, pins: [pin] }

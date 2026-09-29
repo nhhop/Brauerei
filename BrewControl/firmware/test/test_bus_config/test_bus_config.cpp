@@ -52,9 +52,9 @@ void tearDown() {}
 void test_parse_derives_id_from_pins() {
   BusDef d;
   std::string err;
-  TEST_ASSERT_TRUE(parseDef(R"({"type":"i2c","sda":4,"scl":5,"label":"Qwiic","id":"ignored"})", d, err));
+  TEST_ASSERT_TRUE(parseDef(R"({"type":"i2c","sda":4,"scl":5,"label":"Zweitbus","id":"ignored"})", d, err));
   TEST_ASSERT_EQUAL_STRING("i2c-4-5", d.id.c_str());
-  TEST_ASSERT_EQUAL_STRING("Qwiic", d.label.c_str());
+  TEST_ASSERT_EQUAL_STRING("Zweitbus", d.label.c_str());
   TEST_ASSERT_EQUAL(-1, d.port);  // assigned by DynamicItems, not by the client
 
   TEST_ASSERT_TRUE(parseDef(R"({"type":"spi","clk":18,"miso":19,"mosi":23})", d, err));

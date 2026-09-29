@@ -30,7 +30,7 @@ export function busPinsText(b: BusStored): string {
   return keys.map((k) => `${pinLabel(k)} ${pins[k]}`).join(' · ');
 }
 
-// "Qwiic-Ersatz (SDA 1 · SCL 2)" or, without a label, "i2c-1-2 (SDA 1 · SCL 2)".
+// "Zweitbus (SDA 1 · SCL 2)" or, without a label, "i2c-1-2 (SDA 1 · SCL 2)".
 export function busTitle(b: BusStored): string {
   return `${b.label || b.id} (${busPinsText(b)})`;
 }
