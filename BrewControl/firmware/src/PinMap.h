@@ -14,9 +14,10 @@ namespace BrewControl {
 // Header-only and Arduino-free so the checks run in the native tests; the
 // concrete board tables live in BoardPins.h.
 //
-// A pin's role is not predefined — the first item that picks a free pin owns
-// it. Items of the same shareable kind may join (several DS18B20 on one
-// OneWire pin, MAX31865 sharing SCK/MISO/MOSI); anything else is a conflict.
+// A pin's role is not predefined — the first item or bus that picks a free
+// pin owns it; anything else on the same pin is a conflict. Shared lines
+// (OneWire, SPI, I2C) belong to a bus definition (BusConfig.h), which the
+// items on it reference by id instead of repeating the pins.
 
 enum class PinClass : uint8_t {
   Free,
@@ -44,17 +45,18 @@ struct Board {
   uint64_t irqGlitch;  // spurious interrupts from a chip erratum
   bool adc2BlockedByWifi;  // true: ADC2 reads fail while Wi-Fi runs (ESP32);
                            // false: shared with Wi-Fi, single reads may fail
-  int i2cSda;  // the board's one I2C bus, so I2C items occupy these too
+  // Arduino's default Wire pins. BME280/GY521 configs from before buses were
+  // configurable sat there implicitly; BusConfig.h migrates them onto an I2C
+  // bus with these pins (unless the board has a fixed I2C bus).
+  int i2cSda;
   int i2cScl;
 };
 
-enum class Share : uint8_t { None, OneWire, Spi, I2c };
-
 struct PinUse {
-  std::string item;
-  const char* key;  // config key, a string literal
+  std::string item;  // item id, or bus id when bus is set
+  const char* key;   // config key, a string literal
   int gpio;
-  Share share;
+  bool bus;          // a line of a bus definition (BusConfig.h)
   bool output;
   bool rmt;         // occupies an RMT TX channel
   bool analog;      // read with analogRead()
@@ -119,62 +121,43 @@ inline const char* pinClassName(PinClass c) {
 }
 
 // Appends the GPIOs one item config occupies. Keys mirror
-// DynamicItems::add{Sensor,Actuator}NoBegin; types without pins (remote,
-// MQTT, controllers) add nothing. I2C items (BME280, GY521) occupy the
-// board's fixed SDA/SCL — unless the board already marks them Reserved
-// (LilyGo: shared with the onboard RTC/Touch/PMU), in which case that
-// classification already protects them and a second PinUse would only
-// produce a false 409/conflict.
-inline void collectPins(const Board& b, JsonObjectConst cfg, std::vector<PinUse>& out) {
+// DynamicItems::add{Sensor,Actuator}NoBegin; types without pins of their own
+// (remote, MQTT, controllers, BME280/GY521/DS18B20 on a bus) add nothing.
+// Bus lines are counted once, for the bus (BusConfig.h busPinUses).
+inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
   const char* type = cfg["type"] | "";
   const char* id   = cfg["id"]   | "";
   enum : uint8_t { Out = 1, Rmt = 2, Analog = 4, Pullup = 8, Irq = 16 };
-  auto add = [&](const char* key, Share share, uint8_t f = 0) {
+  auto add = [&](const char* key, uint8_t f = 0) {
     if (!cfg[key].is<int>()) return;
     const int gpio = cfg[key].as<int>();
     if (gpio < 0) return;
-    out.push_back({id, key, gpio, share, (f & Out) != 0, (f & Rmt) != 0,
+    out.push_back({id, key, gpio, false, (f & Out) != 0, (f & Rmt) != 0,
                    (f & Analog) != 0, (f & Pullup) != 0, (f & Irq) != 0});
-  };
-  auto addFixed = [&](const char* key, int gpio, Share share) {
-    if (classifyPin(b, gpio) == PinClass::Reserved) return;
-    out.push_back({id, key, gpio, share, false, false, false, false, false});
   };
   auto is = [&](const char* t) { return strcmp(type, t) == 0; };
 
-  if (is("BME280") || is("GY521")) {
-    addFixed("sda", b.i2cSda, Share::I2c);
-    addFixed("scl", b.i2cScl, Share::I2c);
-  } else if (is("DS18B20")) {
-    add("pin", Share::OneWire);
-  } else if (is("MAX31865")) {
-    add("cs", Share::None, Out);
-    add("clk", Share::Spi, Out);
-    add("miso", Share::Spi);
-    add("mosi", Share::Spi, Out);
+  if (is("MAX31865")) {
+    add("cs", Out);
   } else if (is("YF-S201")) {
-    add("pin", Share::None, Pullup | Irq);
+    add("pin", Pullup | Irq);
   } else if (is("DigitalInput")) {
-    add("pin", Share::None, (cfg["pullup"] | false) ? Pullup : 0);
+    add("pin", (cfg["pullup"] | false) ? Pullup : 0);
   } else if (is("AnalogInput")) {
-    add("pin", Share::None, Analog);
+    add("pin", Analog);
   } else if (is("HCSR04")) {
-    add("trig", Share::None, Out);
-    add("echo", Share::None, Irq);
+    add("trig", Out);
+    add("echo", Irq);
   } else if (is("HX711")) {
-    add("dout", Share::None);
-    add("sck", Share::None, Out);
+    add("dout");
+    add("sck", Out);
   } else if (is("DigitalOutput") || is("PulseOutput") || is("AnalogOutput")) {
-    add("pin", Share::None, Out);
+    add("pin", Out);
   } else if (is("IDS1") || is("IDS2")) {
-    add("pin_white", Share::None, Out);
-    add("pin_yellow", Share::None, Out | Rmt);
-    add("pin_interrupt", Share::None, Pullup | Irq);
+    add("pin_white", Out);
+    add("pin_yellow", Out | Rmt);
+    add("pin_interrupt", Pullup | Irq);
   }
-}
-
-inline bool pinsCompatible(const PinUse& a, const PinUse& b) {
-  return a.share != Share::None && a.share == b.share;
 }
 
 // Number of items holding an RMT TX channel, not counting excludeItem.
@@ -189,11 +172,11 @@ inline size_t rmtItems(const std::vector<PinUse>& uses, const std::string& exclu
   return seen.size();
 }
 
-// Checks a new or replacing item config against the board and the pins
-// already in use. replaceId names the item being replaced, whose own pins do
-// not count as taken.
-inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
-                              JsonObjectConst cfg, const char* replaceId = "") {
+// Checks the pins of one new or replacing item or bus (mine) against the
+// board and the pins already in use. replaceId names the item or bus being
+// replaced, whose own pins do not count as taken.
+inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
+                             const std::vector<PinUse>& mine, const char* replaceId = "") {
   PinCheck r;
   auto fail = [&](int status, const std::string& msg) {
     r.ok = false;
@@ -202,9 +185,6 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
     return r;
   };
   const std::string replace = replaceId ? replaceId : "";
-
-  std::vector<PinUse> mine;
-  collectPins(b, cfg, mine);
 
   for (size_t i = 0; i < mine.size(); ++i) {
     const PinUse& u = mine[i];
@@ -217,37 +197,26 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
     if (u.output && (b.inputOnly & pinBit(u.gpio)))
       return fail(400, g + " is input-only (" + u.key + ")");
     for (size_t j = 0; j < i; ++j) {
-      if (mine[j].gpio == u.gpio && !pinsCompatible(mine[j], u))
+      if (mine[j].gpio == u.gpio)
         return fail(400, g + " used twice (" + mine[j].key + ", " + u.key + ")");
     }
     for (const PinUse& e : uses) {
-      if (e.item == replace || e.gpio != u.gpio || pinsCompatible(e, u)) continue;
-      return fail(409, g + " already used by " + e.item + " (" + e.key + ")");
+      if (e.item == replace || e.gpio != u.gpio) continue;
+      return fail(409, g + " already used by " + (e.bus ? "bus " : "") + e.item +
+                           " (" + e.key + ")");
     }
     if (u.analog) {
       if (!(b.adc1 & pinBit(u.gpio)) && !(b.adc2 & pinBit(u.gpio)))
         return fail(400, g + " has no ADC");
       if (adcProblem(b, u.gpio)) return fail(400, g + " is on ADC2, which Wi-Fi blocks");
     }
-    if (cls == PinClass::Risky) {
-      bool dup = false;
-      for (size_t j = 0; j < i; ++j) dup |= (mine[j].gpio == u.gpio);
-      if (!dup) r.warnings.push_back(g + ": " + note);
-    }
+    if (cls == PinClass::Risky) r.warnings.push_back(g + ": " + note);
     if (u.analog && (b.adc2 & pinBit(u.gpio)))
       r.warnings.push_back(g + ": ADC2 – Messung kann bei WLAN-Verkehr ausfallen");
     if (u.pullup && (b.noPullup & pinBit(u.gpio)))
       r.warnings.push_back(g + ": kein interner Pull-up – externen Widerstand vorsehen");
     if (u.irq && (b.irqGlitch & pinBit(u.gpio)))
       r.warnings.push_back(g + ": Fehlauslöser möglich (ESP32-Errata)");
-  }
-
-  const char* type = cfg["type"] | "";
-  if (strcmp(type, "AnalogOutput") == 0 && strcmp(cfg["mode"] | "", "dac") == 0) {
-    const int pin = cfg["pin"] | -1;
-    if (!(b.dac & pinBit(pin)))
-      return fail(400, b.dac ? "GPIO " + std::to_string(pin) + " has no DAC"
-                             : std::string("this board has no DAC"));
   }
 
   bool needsRmt = false;
@@ -258,7 +227,29 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
   return r;
 }
 
-// Conflicts already present in a loaded config: two incompatible items on one
+// Checks a new or replacing item config against the board and the pins
+// already in use (see checkPinUses).
+inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
+                              JsonObjectConst cfg, const char* replaceId = "") {
+  std::vector<PinUse> mine;
+  collectPins(cfg, mine);
+  PinCheck r = checkPinUses(b, uses, mine, replaceId);
+  if (!r.ok) return r;
+
+  const char* type = cfg["type"] | "";
+  if (strcmp(type, "AnalogOutput") == 0 && strcmp(cfg["mode"] | "", "dac") == 0) {
+    const int pin = cfg["pin"] | -1;
+    if (!(b.dac & pinBit(pin))) {
+      r.ok = false;
+      r.status = 400;
+      r.error = b.dac ? "GPIO " + std::to_string(pin) + " has no DAC"
+                      : std::string("this board has no DAC");
+    }
+  }
+  return r;
+}
+
+// Conflicts already present in a loaded config: two users on one
 // GPIO, an item on a pin the board reserves or forbids, or an analog input
 // without a usable ADC (reason is shown in the UI as is). Risky pins are not
 // conflicts — the pin list shows them.
@@ -288,7 +279,7 @@ inline std::vector<PinConflict> findPinConflicts(const Board& b,
     }
     for (size_t j = 0; j < i; ++j) {
       const PinUse& e = uses[j];
-      if (e.gpio != u.gpio || pinsCompatible(e, u)) continue;
+      if (e.gpio != u.gpio) continue;
       PinConflict& c = entry(u.gpio, "mehrfach belegt");
       addUser(c, &e);
       addUser(c, &u);
@@ -312,9 +303,7 @@ inline void writePinsJson(const Board& b, const char* boardName,
     JsonObject o = arr.add<JsonObject>();
     o["id"] = u.item;
     o["key"] = u.key;
-    if (u.share == Share::OneWire) o["share"] = "onewire";
-    if (u.share == Share::Spi) o["share"] = "spi";
-    if (u.share == Share::I2c) o["share"] = "i2c";
+    if (u.bus) o["bus"] = true;
   };
 
   JsonArray pins = out["pins"].to<JsonArray>();

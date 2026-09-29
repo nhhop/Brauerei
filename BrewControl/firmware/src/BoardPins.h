@@ -1,6 +1,6 @@
 #pragma once
 
-#include "I2cAddressMap.h"
+#include "BusConfig.h"
 #include "PinMap.h"
 
 namespace BrewControl {
@@ -42,7 +42,6 @@ inline constexpr Board kEsp32Dev = {
     true,  // ADC2 reads fail while Wi-Fi is on
     21, 22,  // Arduino-ESP32 default Wire pins (variants/esp32/pins_arduino.h)
 };
-inline constexpr AddrDef kEsp32DevI2cReserved[] = {};
 
 // ── lolin_s2_mini (ESP32-S2FN4R2) ────────────────────────────────────────────
 inline constexpr PinDef kLolinS2MiniSpecial[] = {
@@ -75,7 +74,6 @@ inline constexpr Board kLolinS2Mini = {
     false,  // ADC2 arbitrated with Wi-Fi
     33, 35,  // Arduino-ESP32 default Wire pins (variants/lolin_s2_mini/pins_arduino.h)
 };
-inline constexpr AddrDef kLolinS2MiniI2cReserved[] = {};
 
 // ── lilygo_t_display_s3_amoled (ESP32-S3R8, T-Display-S3-AMOLED-1.75) ────────
 // No DAC; only RMT channels 0–3 can transmit. SD, I2C and display pins as in
@@ -137,10 +135,15 @@ inline constexpr AddrDef kLilyGoAmoledI2cReserved[] = {
     {0x5A, "Touch (CST9217)"},
     {0x6A, "PMU (SY6970)"},
 };
+inline constexpr FixedBus kLilyGoAmoledBuses[] = {
+    {"i2c-board", "i2c", {7, 6, -1},
+     "Fest verdrahtet mit RTC, Touch und PMU; SDA/SCL liegen am Header und am Qwiic-Stecker",
+     kLilyGoAmoledI2cReserved, sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef)},
+};
 
 #if defined(BREWCTL_I2C_SDA) && defined(BREWCTL_HAS_DISPLAY)
 static_assert(BREWCTL_I2C_SDA == 7 && BREWCTL_I2C_SCL == 6,
-              "update kLilyGoAmoledSpecial to the new I2C pins");
+              "update kLilyGoAmoledSpecial and kLilyGoAmoledBuses to the new I2C pins");
 #endif
 #if defined(BREWCTL_SD_CS) && defined(BREWCTL_HAS_DISPLAY)
 static_assert(BREWCTL_SD_CS == 38 && BREWCTL_SD_MOSI == 39 &&
@@ -159,19 +162,14 @@ inline const Board& currentBoard() {
 #endif
 }
 
-// Reserved I2C addresses of the current board's bus (RTC/Touch/PMU on the
-// LilyGo; empty elsewhere), analogous to currentBoard().
-inline const AddrDef* currentI2cReserved(size_t& count) {
+// The buses the current board wires itself (none on esp32dev/lolin_s2_mini:
+// there every bus is user-defined), analogous to currentBoard().
+inline std::vector<BusDef> currentFixedBuses() {
+  std::vector<BusDef> out;
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
-  count = sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef);
-  return kLilyGoAmoledI2cReserved;
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-  count = sizeof(kLolinS2MiniI2cReserved) / sizeof(AddrDef);
-  return kLolinS2MiniI2cReserved;
-#else
-  count = sizeof(kEsp32DevI2cReserved) / sizeof(AddrDef);
-  return kEsp32DevI2cReserved;
+  for (const FixedBus& f : kLilyGoAmoledBuses) out.push_back(busFromFixed(f));
 #endif
+  return out;
 }
 
 }  // namespace BrewControl

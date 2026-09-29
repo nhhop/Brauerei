@@ -1,15 +1,15 @@
 // Client-side view of GET /api/pins for the item form. The firmware checks
 // every create/replace itself (PinMap.h) — this only gives early hints and the
 // "risky pin" confirmation, which the firmware deliberately does not enforce.
-import type { PinInfo, PinsInfo } from './types';
+import type { PinInfo, PinsInfo, PinUser } from './types';
 
-// Config keys that hold a GPIO number (mirrors collectPins() in PinMap.h).
+// Config keys that hold a GPIO number in an item config (mirrors collectPins()
+// in PinMap.h) or a bus definition (BusConfig.h).
 const PIN_KEYS = [
-  'pin', 'cs', 'clk', 'miso', 'mosi', 'trig', 'echo', 'dout', 'sck',
+  'pin', 'cs', 'trig', 'echo', 'dout', 'sck',
   'pin_white', 'pin_yellow', 'pin_interrupt',
+  'clk', 'miso', 'mosi', 'sda', 'scl',
 ] as const;
-
-export type PinShare = 'onewire' | 'spi';
 
 // What a field needs from its pin beyond plain digital I/O.
 export interface PinNeeds {
@@ -56,12 +56,17 @@ export interface PinStatus {
   text: string;
 }
 
-// Status of one GPIO for a form field. selfId: the item being edited, whose
-// own pins count as free. output: the field drives the pin. share: the field
-// may join other users of the same bus kind (DS18B20 OneWire, MAX31865 SPI).
+// "pump (pin)" or "Bus i2c-4-5 (sda)".
+export function pinUserText(u: PinUser): string {
+  return `${u.bus ? `Bus ${u.id}` : u.id} (${u.key})`;
+}
+
+// Status of one GPIO for a form field. selfId: the item or bus being edited,
+// whose own pins count as free. output: the field drives the pin. Every pin
+// has one user — items share bus lines by referencing the bus, not the pins.
 export function pinStatus(
   info: PinsInfo, gpio: number,
-  opts: { selfId?: string; output?: boolean; share?: PinShare } & PinNeeds = {},
+  opts: { selfId?: string; output?: boolean } & PinNeeds = {},
 ): PinStatus {
   const p = info.pins.find((x) => x.gpio === gpio);
   if (!p) return { level: 'error', text: `GPIO ${gpio} gibt es auf diesem Board nicht` };
@@ -69,32 +74,26 @@ export function pinStatus(
   if (p.class === 'reserved') return { level: 'error', text: `vom Board belegt (${p.note})` };
   if (opts.output && p.inputOnly) return { level: 'error', text: 'nur als Eingang nutzbar' };
   const others = p.users.filter((u) => u.id !== opts.selfId);
-  const blocking = others.filter((u) => !opts.share || u.share !== opts.share);
-  if (blocking.length) {
-    return { level: 'error', text: `belegt von ${blocking.map((u) => `${u.id} (${u.key})`).join(', ')}` };
-  }
+  if (others.length) return { level: 'error', text: `belegt von ${others.map(pinUserText).join(', ')}` };
   const adc = opts.analog ? adcError(info, p) : null;
   if (adc) return { level: 'error', text: adc };
   const weak = weakPoints(info, p, opts);
   if (weak.length) return { level: 'warn', text: `bedenklich: ${weak.join('; ')}` };
-  if (others.length) return { level: 'ok', text: `gemeinsamer Bus mit ${others.map((u) => u.id).join(', ')}` };
   return { level: 'ok', text: 'frei' };
 }
 
 export interface PinSuggestion {
   gpio: number;
   level: 'ok' | 'warn';
-  bus: boolean; // already carries a compatible user for this same config key
 }
 
-// Usable pins for one config key, best first: pins that already carry a
-// compatible bus user for this key, then free pins, then risky-but-usable
-// ones — everything pinStatus rejects (board class, wrong direction, taken,
-// no ADC, …) is left out. exclude drops pins another field of the same item
-// already picked, so e.g. HC-SR04's trig and echo never suggest each other's pin.
+// Usable pins, best first: free pins, then risky-but-usable ones — everything
+// pinStatus rejects (board class, wrong direction, taken, no ADC, …) is left
+// out. exclude drops pins another field of the same item already picked, so
+// e.g. HC-SR04's trig and echo never suggest each other's pin.
 export function suggestPins(
-  info: PinsInfo | null, key: string,
-  opts: { selfId?: string; output?: boolean; share?: PinShare; exclude?: number[] } & PinNeeds = {},
+  info: PinsInfo | null,
+  opts: { selfId?: string; output?: boolean; exclude?: number[] } & PinNeeds = {},
 ): PinSuggestion[] {
   if (!info) return [];
   const exclude = new Set(opts.exclude ?? []);
@@ -103,19 +102,14 @@ export function suggestPins(
     if (exclude.has(p.gpio)) continue;
     const s = pinStatus(info, p.gpio, opts);
     if (s.level === 'error') continue;
-    const bus = !!opts.share &&
-      p.users.some((u) => u.id !== opts.selfId && u.share === opts.share && u.key === key);
-    out.push({ gpio: p.gpio, level: s.level === 'warn' ? 'warn' : 'ok', bus });
+    out.push({ gpio: p.gpio, level: s.level === 'warn' ? 'warn' : 'ok' });
   }
-  out.sort((a, b) =>
-    (Number(b.bus) - Number(a.bus)) ||
-    (Number(a.level === 'warn') - Number(b.level === 'warn')) ||
-    a.gpio - b.gpio);
+  out.sort((a, b) => (Number(a.level === 'warn') - Number(b.level === 'warn')) || a.gpio - b.gpio);
   return out;
 }
 
 // "GPIO n: reason" for every risky pin and every weak capability in an item
-// config — the user has to confirm these before saving.
+// config or bus definition — the user has to confirm these before saving.
 export function riskyPins(info: PinsInfo | null, cfg: Record<string, unknown>): string[] {
   if (!info) return [];
   const needs = needsOf(cfg);

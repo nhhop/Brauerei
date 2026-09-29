@@ -6,7 +6,7 @@ import { PageShell } from '../components/PageShell';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Network, FolderOpen,
-  ShieldCheck, BellRing, Smartphone, Monitor, Activity,
+  ShieldCheck, BellRing, Smartphone, Monitor, Activity, Cable,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -21,6 +21,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/appearance', icon: Palette, title: 'Darstellung', desc: 'Modus, Akzentfarbe, Hintergrund' },
   { href: '/settings/display', icon: Monitor, title: 'Gerätedisplay', desc: 'Dimmen, Ausschalten, Pixel-Shift' },
   { href: '/settings/devices', icon: Cpu, title: 'Geräte', desc: 'Sensoren, Regler, Aktoren verwalten' },
+  { href: '/settings/buses', icon: Cable, title: 'Bus-Schnittstellen', desc: 'I²C, OneWire, SPI: Pins festlegen, Busse scannen' },
   { href: '/settings/firmware', icon: CloudDownload, title: 'Firmware-Update', desc: 'Version, Kanal, Upload' },
   { href: '/settings/system', icon: Activity, title: 'Systemstatus', desc: 'Version, letzter Neustart, Speicher' },
   { href: '/settings/backup', icon: DatabaseBackup, title: 'Backup & Restore', desc: 'Konfiguration exportieren / wiederherstellen' },

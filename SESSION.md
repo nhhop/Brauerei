@@ -5606,3 +5606,71 @@ BrewControl `pio test -e native` 75/75 (5 neue in `test_i2c_address_map`, 2 neue
 `test_pin_map` — inkl. explizit BME280 auf LilyGo → kein Pin-Konflikt, auf esp32dev → SDA/SCL belegt,
 `DigitalOutput` auf GPIO 21 danach → 409). `pio run` für alle drei Envs, Redocly-Lint, `pnpm typecheck`
 grün. Hardware-Verifikation am LilyGo steht noch aus (siehe PLAN.md, falls offen geblieben).
+
+## 2026-09-30 — Bus-Schnittstellen: zentral definierte Busse + Settings-Seite
+
+**Ausgangslage:** Die UI verriet nirgends, an welchen Pins I²C-Geräte angeschlossen werden. Am LilyGo
+fand sich der feste I²C-Bus (SDA 7 / SCL 6) zunächst nur am Qwiic-Stecker, für den kein Kabel da war.
+(Korrektur später am Tag: SDA/SCL liegen zusätzlich am Header, waren dort nur übersehen worden — für
+den Umbau unerheblich, ein zweiter Bus hilft ohnehin bei Adresskonflikten.) Gewünscht: eine
+Einstellungsseite, die alle Bus-Schnittstellen zeigt (I²C, OneWire, SPI, später CAN/RS485) und die
+Pins umkonfigurieren lässt, wo die Hardware sie nicht festlegt.
+
+**Entscheidungen** (mit dem User):
+- **Busse werden zentral definiert** (Typ + Pins + optionales Label) statt implizit aus den Item-Pins
+  abgeleitet; DS18B20/MAX31865/BME280/GY521 verweisen per `"bus": "<id>"` darauf. Damit erledigt:
+  PLAN-Punkte „Bus-Id im Item-Config" (für I²C/OneWire/SPI) und „Bus-Vorschläge im Item-Formular"
+  (SPI-Tripel gemischt vorgeschlagen — Bus-Pins tauchen im Item-Formular gar nicht mehr auf).
+- **Zwei I²C-Busse** statt umkonfigurierbarem Board-Bus: der ESP32 hat zwei Controller (`Wire`,
+  `Wire1`). Am LilyGo bleibt `i2c-board` fest (RTC/Touch/PMU, read-only, Hinweis „am Header und am
+  Qwiic-Stecker"), daneben ist ein frei wählbarer Bus auf `Wire1` möglich — nützlich bei
+  Adresskonflikten mit den Onboard-Geräten; esp32dev/lolin_s2_mini haben keinen festen Bus.
+- **CAN/RS485** nur im Typ-Modell vorgesehen (`kBusTypes`), nicht anlegbar — kein Item-Typ, keine Hardware.
+- Ablage als Array `buses` in `registry.json` (nicht in `settings.json`): Items und Busse bleiben in
+  einer Datei konsistent, Backup/Restore und `GET /api/config` nehmen sie automatisch mit.
+- Bus-Id = Typ + Pins (`i2c-4-5`, `onewire-4`, `spi-18-19-23`); Pins eines Busses ändern bzw. ihn
+  löschen nur, solange kein Item daran hängt (409, sonst ließen sich laufende Treiber nicht sauber
+  umziehen). Jeder I²C-Bus bekommt beim Anlegen fest einen Controller (`port`), damit ein Löschen eines
+  anderen Busses ihn nie verschiebt.
+- Bus-Pins gehören exklusiv dem Bus — das „Teilen per `Share`" aus dem Pin-Manager entfällt komplett
+  (`Share` → `PinUse.bus`), `/api/pins` führt den Bus als Nutzer.
+
+**Umsetzung:** neue Datei `BusConfig.h` (Typ-Tabelle, `parseBusDef`/`writeBusDef`, `busPinUses`,
+`freeI2cPort`, `normalizeLegacyItem`); `BoardPins.h` mit `kLilyGoAmoledBuses`/`currentFixedBuses()` statt
+`currentI2cReserved()`; `PinMap.h`: `collectPins` ohne Board-Parameter und ohne Bus-Leitungen, neue
+`checkPinUses` (auch für Busse); `I2cAddressMap.h`: Adressen je Bus, Reserved nur am festen Bus.
+`DynamicItems`: `buses_` (feste zuerst), `addBus`/`updateBus`/`removeBus`/`writeBuses`/`scanBus`,
+`acquireBus` (Registry-Id = Bus-Id, `I2cBus(TwoWire&, sda, scl, keepRunning)` mit `Wire.end()` bei nicht
+festen Bussen), Migration in `loadFromSD` mit einmaligem `saveToSD`. `WebUI.cpp`: `GET/POST /api/buses`,
+`PUT/DELETE /api/buses/{id}`, `GET /api/bus/scan?bus=<id>` (ersetzt `type`/`pin`; ein unbenutzter Bus
+wird nur für den Scan gestartet — die Etappe-2-Regel „nur scannen, wenn er existiert" entfällt, weil
+die Pins eines definierten Busses geprüft sind). Web: neue Seite `/settings/buses` (`BusesPage.tsx`,
+Scan, Anlegen/Bearbeiten/Löschen, gesperrte Pins bei genutzten Bussen, I²C bei 2 Bussen gesperrt),
+Bus-Auswahl in `AddItemModal` (DS18B20-Scan über den gewählten Bus, MAX31865 „Hardware-SPI" oder Bus,
+Feld „Custom SPI Pins" entfällt), `DiscoverDevicesCard` scannt die angelegten OneWire-Busse,
+`pins.ts`/`PinHint` ohne Bus-Teilen. Doku: OpenAPI, README („Geteilte Busse", Routen, Pin-Prüfung),
+PLAN.md (Reste: gemeinsamer Hardware-SPI-Treiber, Hardware-SPI-MAX31865 ohne Tracking, Bus-Pins bei
+Nutzern ändern, I²C-Adressen im Formular).
+
+**Einschränkung:** Die Migration stellt alte Items (DS18B20 `pin`, MAX31865 `clk/miso/mosi`, BME280/GY521
+ohne `bus`) beim ersten Boot um und schreibt `registry.json` neu — ältere Firmware versteht das danach
+nicht mehr; vor einem Downgrade das Backup von vorher einspielen.
+
+**Verifikation:** BrewControl `pio test -e native` 85/85 (neu `test_bus_config` mit 10 Tests: Validierung,
+Id-Ableitung, Controller-Zuordnung, Migration inkl. zwei DS18B20 auf einem Bus, LilyGo → `i2c-board`,
+esp32dev → `i2c-21-22`, lolin → `i2c-33-35`; `test_pin_map`/`test_i2c_address_map` auf das Bus-Modell
+umgestellt). `pio run` für alle drei Envs, Redocly-Lint, `pnpm typecheck`, `pnpm test` (57) und
+`pnpm build` grün. UI gegen einen Node-Mock im Browser geprüft: Busseite mit festem LilyGo-Bus und
+Anschluss-Hinweis, Scan (OneWire-ROMs, I²C mit benannten reservierten Adressen), Anlegen mit Konflikt (409 auf
+GPIO 7) und mit freien Pins (→ `Wire1`), I²C danach im Anlegen-Dialog gesperrt, Pins eines genutzten
+Busses gesperrt, BME280/DS18B20 im Item-Formular mit Bus-Auswahl (gesendet wird `bus`).
+
+**Hardware (LilyGo, OTA, Backup vorher im Scratchpad):** Migration beim ersten Boot: `onewire-1` angelegt,
+HLT misst weiter (23 °C), alle Items/Regler wieder da. Scan `i2c-board` → 0x51/0x5A/0x6A, `onewire-1` →
+HLT-ROM. 409 am Gerät für: Bus auf GPIO 7, dritter I²C-Bus, Ausgang auf Bus-Leitung, 0x5A auf
+`i2c-board`, doppelte Adresse auf einem Bus, Pins/Löschen eines genutzten Busses, festen Bus löschen;
+0x5A auf dem zweiten Bus erlaubt, Label eines genutzten Busses änderbar. Echter GY-521 auf `i2c-48-3`
+(SDA 48 / SCL 3, `Wire1`): Scan 0x68, Winkel flach ≈ −1 °; Modul abgezogen → kein Hänger. Zwei Befunde
+(in PLAN.md): GY521 meldet ohne Gerät gültige Fantasiewerte (Library, älter als dieser Umbau), und ein
+einmaliger `task_wdt`-Neustart beim allerersten GY521 auf dem leeren zweiten Bus, danach nicht mehr
+reproduzierbar.

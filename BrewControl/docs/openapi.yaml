@@ -85,7 +85,10 @@ tags:
       controllers. Changes are persisted to `/config/registry.json` on the
       device filesystem (SD or LittteFS, board-dependent) and restored on boot.
   - name: Bus Discovery
-    description: Scan a hardware bus for attached devices.
+    description: |
+      Bus definitions (OneWire, SPI, I2C) and scanning them for attached
+      devices. Items on a bus (DS18B20, MAX31865, BME280, GY521) reference it
+      by id (`bus`) instead of carrying the bus pins themselves.
   - name: Remote Discovery
     description: |
       Find the sensors and actuators other SensActCtrl/BrewControl devices
@@ -209,11 +212,14 @@ paths:
             schema: { $ref: "#/components/schemas/SensorCreate" }
             examples:
               ds18b20:
-                summary: DS18B20 on a single-device bus
-                value: { type: DS18B20, id: kettle, pin: 4 }
+                summary: DS18B20, the only device on its bus
+                value: { type: DS18B20, id: kettle, bus: onewire-4 }
               ds18b20Addressed:
-                summary: DS18B20 addressed on a shared bus
-                value: { type: DS18B20, id: kettle, pin: 4, address: 28ff64c8815604ef }
+                summary: DS18B20 addressed on a bus with several
+                value: { type: DS18B20, id: kettle, bus: onewire-4, address: 28ff64c8815604ef }
+              bme280:
+                summary: BME280 on an I2C bus
+                value: { type: BME280, id: ambient, bus: i2c-4-5 }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
@@ -222,7 +228,10 @@ paths:
           description: |
             Validation failed. Body is the bare reason, e.g. `missing id`,
             `id already in use`, `missing pin`, `invalid address`,
-            `unknown sensor type`, or a pin the board cannot use:
+            `unknown sensor type`, `missing bus`, `unknown bus`,
+            `bus has the wrong type`, `clk/miso/mosi belong to an spi bus`
+            (MAX31865 with its own SPI lines — define an `spi` bus instead),
+            or a pin the board cannot use:
             `GPIO 6 is not usable (Flash)`, `GPIO 22 does not exist on this board`,
             `GPIO 34 is input-only (trig)`, `GPIO 4 used twice (trig, echo)`,
             or an `AnalogInput` on a pin without a usable ADC: `GPIO 16 has no ADC`,
@@ -250,7 +259,7 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/SensorCreate" }
-            example: { type: DS18B20, id: kettle, pin: 5 }
+            example: { type: DS18B20, id: kettle, bus: onewire-5 }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
@@ -866,34 +875,146 @@ paths:
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
   # ── Bus Discovery ──────────────────────────────────────────────────────────
+  /api/buses:
+    get:
+      tags: [Bus Discovery]
+      operationId: getBuses
+      summary: List the bus definitions and the bus types
+      description: |
+        Every bus: the board's fixed ones first (`fixed: true`, e.g. the
+        LilyGo's I2C bus of RTC, touch and PMU, with the addresses those
+        occupy in `reserved`), then the user-defined ones in the order they
+        were added. `users` are the items referencing the bus. `types` lists
+        the bus types that can be defined, with their pin keys and how many
+        the chip supports (`max`; I2C: 2 controllers, a fixed bus counts).
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Buses and types.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusesInfo" }
+    post:
+      tags: [Bus Discovery]
+      operationId: createBus
+      summary: Define a bus
+      description: |
+        The id is derived from type and pins (`i2c-4-5`, `onewire-4`,
+        `spi-18-19-23`); an `id` in the body is ignored. The pins are checked
+        like item pins and belong to the bus exclusively. An I2C bus gets the
+        next free controller (`port`). Persists to `/config/registry.json`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BusCreate" }
+            example: { type: i2c, sda: 1, scl: 2, label: Zweitbus }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusId" }
+        "400":
+          description: >-
+            Body is `unknown bus type`, `missing sda`, `sda and scl must differ`,
+            `label too long`, `invalid JSON`, or a pin the board cannot use
+            (same reasons as for items, e.g. `GPIO 34 is input-only (sda)`).
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            A pin is taken (`GPIO 16 already used by pump (pin)`, `GPIO 7 is
+            reserved by the board (I2C SDA (Touch, RTC, PMU))`), the bus exists
+            already (`bus i2c-1-2 already exists`), or the chip has no
+            controller left (`no free i2c controller (2 in use)`).
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+
+  /api/buses/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+        example: i2c-1-2
+    put:
+      tags: [Bus Discovery]
+      operationId: replaceBus
+      summary: Change a bus
+      description: |
+        Full definition, same shape as `POST /api/buses`; the type cannot
+        change. The label can always change. New pins give the bus a new id
+        and are only accepted while no item uses the bus (move or delete the
+        items first). Fixed buses cannot be changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BusCreate" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Changed; `id` is the (possibly new) id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusId" }
+        "400":
+          description: Same reasons as `POST /api/buses`, plus `bus type cannot change`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `bus not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            `bus i2c-1-2 is used by ambient, tilt`, `bus i2c-board is wired by
+            the board`, or a pin conflict as for `POST /api/buses`.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+    delete:
+      tags: [Bus Discovery]
+      operationId: deleteBus
+      summary: Delete a bus
+      description: Only while no item uses it; fixed buses cannot be deleted.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404":
+          description: Body is `bus not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: Body is `bus onewire-4 is used by kettle` or `bus i2c-board is wired by the board`.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+
   /api/bus/scan:
     get:
       tags: [Bus Discovery]
       operationId: scanBus
-      summary: Scan a 1-Wire or I2C bus for devices
+      summary: Scan a defined bus for devices
       description: |
-        `onewire`: for several DS18B20 on one pin, scan first, then create one
-        sensor per returned `address`. Requires `pin`.
+        `onewire`: DS18B20 ROM codes — for several DS18B20 on one bus, scan
+        first, then create one sensor per returned `address`.
 
-        `i2c`: probes the board's one fixed I2C bus (addresses 1–127). Only
-        runs once that bus already exists in the firmware's peripheral
-        registry — on the LilyGo that's always true (claimed at boot for the
-        display/touch), on esp32dev/lolin_s2_mini only after a BME280/GY521
-        item has been added; otherwise `409`. This avoids starting the bus on
-        pins another item may already use, and avoids blocking on 127
-        unanswered probes. `pin` is not accepted.
+        `i2c`: probes addresses 1–127 (50 ms timeout each). On a fixed bus the
+        onboard devices answer too (LilyGo: 0x51, 0x5a, 0x6a).
 
-        The firmware manages the shared bus instance internally.
+        A bus in use by items is scanned with their running driver; an unused
+        one is started for the scan and stopped again. SPI buses cannot be
+        scanned.
       parameters:
-        - name: type
+        - name: bus
           in: query
           required: true
-          schema: { type: string, enum: [onewire, i2c] }
-        - name: pin
-          in: query
-          required: false
-          schema: { type: integer }
-          description: GPIO number the bus is attached to. Required for `onewire`, ignored for `i2c`.
+          schema: { type: string }
+          example: onewire-4
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -902,13 +1023,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/BusScanResult" }
         "400":
-          description: Body is `missing type`, `missing pin` (onewire without `pin`) or `unsupported bus type`.
+          description: Body is `missing bus` or `spi buses cannot be scanned`.
           content:
             text/plain: { schema: { type: string } }
-        "409":
-          description: >-
-            `i2c` only: the board's I2C bus does not exist yet — add a
-            BME280/GY521 item first.
+        "404":
+          description: Body is `bus not found`.
           content:
             text/plain: { schema: { type: string } }
         "503": { $ref: "#/components/responses/RegistryBusy" }
@@ -1073,9 +1192,18 @@ paths:
       summary: Get the stored creation config of all dynamic items
       description: |
         Returns each item's original creation body verbatim (the same shape that
-        was POSTed to `/api/sensors`, `/api/actuators`, `/api/controllers`).
-        Used by the edit UI to prefill forms. Statically compiled items are not
-        included.
+        was POSTed to `/api/sensors`, `/api/actuators`, `/api/controllers`),
+        plus the user-defined buses (`/api/buses`, stored form). Used by the
+        edit UI to prefill forms. Statically compiled items and the board's
+        fixed buses are not included.
+
+        Configs from before buses were definable (DS18B20 `pin`, MAX31865
+        `clk`/`miso`/`mosi`, BME280/GY521 without `bus`) are migrated when the
+        firmware loads them — also when restored from an old backup: the item
+        gets a `bus` reference and a matching bus is added (on the LilyGo,
+        BME280/GY521 go to the fixed `i2c-board`; elsewhere to an `i2c-<sda>-<scl>`
+        bus on the Arduino default pins). Firmware older than this does not
+        understand the migrated form.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -1095,9 +1223,10 @@ paths:
         job — strapping pin, USB, UART0, battery ADC; the UI asks for
         confirmation), `reserved` (taken by the board itself — SD, display,
         I2C, BOOT button) or `forbidden` (flash/PSRAM). `users` lists the
-        dynamic items on each pin. A pin has no predefined role: the first item
-        that takes a free pin owns it, and only items of the same bus kind
-        (`share`) may join. `conflicts` lists clashes already present in the
+        dynamic items and buses on each pin. A pin has no predefined role: the
+        first item or bus that takes a free pin owns it exclusively; items share
+        bus lines by referencing the bus (`/api/buses`), which is the lines'
+        only user (`bus: true`). `conflicts` lists clashes already present in the
         stored config — they load anyway and are reported here. Creating and
         replacing items enforce the same rules (400/409).
         Capabilities (`adc`, `noPullup`, `irqGlitch`, `caps.adc2Wifi`) let the
@@ -2849,18 +2978,17 @@ components:
     PinConflict:
       description: |
         A pin is taken: `GPIO 16 already used by pump (pin)`,
+        `GPIO 18 already used by bus spi-18-19-23 (clk)`,
         `GPIO 7 is reserved by the board (I2C SDA (Touch, RTC, PMU))`, or for IDS
-        cookers `no free RMT channel (4 in use)`. Only items of the same bus
-        kind may share a pin (DS18B20 on one OneWire pin, MAX31865 on common
-        SPI lines, BME280/GY521 on the board's fixed I2C SDA/SCL). See
-        `GET /api/pins` — I2C SDA/SCL show a `share: "i2c"` user like any
-        other shared pin, but on the LilyGo they stay `class: "reserved"`
-        instead (the board's onboard RTC/Touch/PMU already reserve them).
+        cookers `no free RMT channel (4 in use)`. Every pin has one user; items
+        share bus lines by referencing the bus (`bus`), see `GET /api/pins` and
+        `/api/buses`.
 
         For BME280/GY521 only, a separate 409 covers the I2C *address* (not a
-        pin): `0x51 is reserved by the board (RTC (PCF8563))`, or
-        `0x76 already used by amb`. Unlike pins, this is never surfaced by
-        `GET /api/pins` — only caught here, at create/replace time.
+        pin), per bus: `0x51 is reserved on bus i2c-board (RTC (PCF8563))`, or
+        `0x76 already used by amb`. The same address on two different buses is
+        fine. Unlike pins, this is never surfaced by `GET /api/pins` — only
+        caught here, at create/replace time.
       content:
         text/plain: { schema: { type: string } }
 
@@ -3162,11 +3290,14 @@ components:
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin: { type: integer }
-        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68). BME280/GY521 share the board's one fixed I2C bus — no pin fields — and are rejected with 409 if the address is already used or reserved by an onboard device (see `PinConflict`)." }
-        cs: { type: integer }
-        clk: { type: integer }
-        miso: { type: integer }
-        mosi: { type: integer }
+        bus:
+          type: string
+          description: >-
+            Id of the bus the item sits on (`GET /api/buses`): required for
+            DS18B20 (`onewire`), BME280 and GY521 (`i2c`); optional for
+            MAX31865 (`spi` — without it, the chip's hardware SPI is used).
+        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68). BME280/GY521 are rejected with 409 if the address is already used on their bus or reserved there by an onboard device (see `PinConflict`)." }
+        cs: { type: integer, description: MAX31865 chip select — the only pin of its own; the SPI lines come from its bus. }
         wires: { type: integer, enum: [2, 3, 4], description: MAX31865 wiring. }
         rtd: { type: string, enum: [PT100, PT1000], default: PT100, description: MAX31865 RTD type. }
         rref: { type: number }
@@ -3341,9 +3472,14 @@ components:
 
     ConfigSnapshot:
       type: object
-      required: [sensors, actuators, controllers]
-      description: The stored creation bodies of all dynamic items, verbatim.
+      required: [buses, sensors, actuators, controllers]
+      description: |
+        The stored creation bodies of all dynamic items, verbatim, and the
+        user-defined buses (without the board's fixed ones). `buses` may be
+        absent in bundles from older firmware; such configs are migrated on
+        load (see `GET /api/config`).
       properties:
+        buses: { type: array, items: { $ref: "#/components/schemas/BusStored" } }
         sensors: { type: array, items: { $ref: "#/components/schemas/SensorCreate" } }
         actuators: { type: array, items: { $ref: "#/components/schemas/ActuatorCreate" } }
         controllers: { type: array, items: { $ref: "#/components/schemas/ControllerCreate" } }
@@ -3353,12 +3489,9 @@ components:
       type: object
       required: [id, key]
       properties:
-        id: { type: string, description: Item id. }
-        key: { type: string, description: 'Config key holding the pin, e.g. `pin`, `cs`, `pin_white`.' }
-        share:
-          type: string
-          enum: [onewire, spi]
-          description: Bus kind others may join; absent = exclusive.
+        id: { type: string, description: 'Item id, or bus id when `bus` is set.' }
+        key: { type: string, description: 'Config key holding the pin, e.g. `pin`, `cs`, `pin_white`, or a bus line (`sda`, `clk`).' }
+        bus: { type: boolean, description: 'The user is a bus definition (`/api/buses`), not an item.' }
 
     PinsInfo:
       type: object
@@ -3412,17 +3545,101 @@ components:
         conflicts:
           - { gpio: 9, reason: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
 
+    # ── Buses ────────────────────────────────────────────────────────────────
+    BusCreate:
+      type: object
+      required: [type]
+      description: |
+        A bus definition. The pin keys depend on `type` (see `types` in
+        `GET /api/buses`): `onewire` → `pin`; `spi` → `clk`, `miso`, `mosi`;
+        `i2c` → `sda`, `scl`. All pins required and distinct.
+      properties:
+        type: { type: string, enum: [onewire, spi, i2c] }
+        label: { type: string, maxLength: 32, description: Optional name shown in the UI. }
+        pin: { type: integer, minimum: 0 }
+        clk: { type: integer, minimum: 0 }
+        miso: { type: integer, minimum: 0 }
+        mosi: { type: integer, minimum: 0 }
+        sda: { type: integer, minimum: 0 }
+        scl: { type: integer, minimum: 0 }
+
+    BusStored:
+      description: A bus as stored in `registry.json` (and in `ConfigSnapshot`).
+      allOf:
+        - $ref: "#/components/schemas/BusCreate"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, description: 'Derived from type and pins: `onewire-4`, `spi-18-19-23`, `i2c-4-5`.' }
+            port:
+              type: integer
+              enum: [0, 1]
+              description: I2C only — the controller (0 = `Wire`, 1 = `Wire1`), fixed when the bus was added.
+
+    BusId:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+
+    BusesInfo:
+      type: object
+      required: [buses, types]
+      properties:
+        buses:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/BusStored"
+              - type: object
+                required: [users]
+                properties:
+                  fixed: { type: boolean, description: 'Wired by the board; cannot be changed or deleted.' }
+                  note: { type: string, description: 'Fixed buses: what the board connects to it (German, shown in the UI).' }
+                  reserved:
+                    type: array
+                    description: Fixed buses — addresses its onboard devices occupy.
+                    items:
+                      type: object
+                      required: [address, note]
+                      properties:
+                        address: { type: string, description: '`"0xNN"`' }
+                        note: { type: string }
+                  users: { type: array, items: { type: string }, description: Ids of the items on this bus. }
+        types:
+          type: array
+          items:
+            type: object
+            required: [type, pins]
+            properties:
+              type: { type: string }
+              pins: { type: array, items: { type: string }, description: Pin keys of a definition. }
+              max: { type: integer, description: 'How many buses of this type the chip supports; absent = no limit.' }
+      example:
+        buses:
+          - id: i2c-board
+            type: i2c
+            sda: 7
+            scl: 6
+            port: 0
+            fixed: true
+            note: Fest verdrahtet mit RTC, Touch und PMU; SDA/SCL liegen am Header und am Qwiic-Stecker
+            reserved: [{ address: "0x51", note: RTC (PCF8563) }, { address: "0x5a", note: Touch (CST9217) }, { address: "0x6a", note: PMU (SY6970) }]
+            users: []
+          - { id: i2c-1-2, type: i2c, label: Zweitbus, sda: 1, scl: 2, port: 1, users: [ambient] }
+          - { id: onewire-5, type: onewire, pin: 5, users: [kettle, mash] }
+        types:
+          - { type: onewire, pins: [pin] }
+          - { type: spi, pins: [clk, miso, mosi] }
+          - { type: i2c, pins: [sda, scl], max: 2 }
+
     # ── Bus discovery ────────────────────────────────────────────────────────
     BusScanResult:
       type: object
-      required: [type, devices]
+      required: [bus, type, devices]
       properties:
+        bus: { type: string, description: Id of the scanned bus. }
         type: { type: string, enum: [onewire, i2c] }
-        pin:
-          type: integer
-          description: >-
-            GPIO number the bus is attached to. Present for `onewire` only —
-            the board's I2C bus is fixed, so `i2c` scans omit it.
         devices:
           type: array
           maxItems: 16
@@ -3437,8 +3654,8 @@ components:
                   16 lowercase hex chars (DS18B20 ROM code) for `onewire`, or
                   a `"0xNN"` 7-bit I2C address for `i2c`.
       examples:
-        - { type: onewire, pin: 4, devices: [{ index: 0, address: 28ff64c8815604ef }] }
-        - { type: i2c, devices: [{ index: 0, address: "0x51" }, { index: 1, address: "0x5a" }] }
+        - { bus: onewire-4, type: onewire, devices: [{ index: 0, address: 28ff64c8815604ef }] }
+        - { bus: i2c-board, type: i2c, devices: [{ index: 0, address: "0x51" }, { index: 1, address: "0x5a" }] }
 
     # ── Remote discovery ─────────────────────────────────────────────────────
     RemoteDiscoveryResult:

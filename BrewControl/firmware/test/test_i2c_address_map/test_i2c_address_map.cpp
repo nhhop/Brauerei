@@ -49,9 +49,19 @@ void test_collect_keys_per_type() {
   TEST_ASSERT_EQUAL(1, u.size());
   TEST_ASSERT_EQUAL(0x68, u[0].addr);
 
-  u = usesOf({R"({"type":"DS18B20","id":"t","pin":4})",
+  u = usesOf({R"({"type":"GY521","id":"g","bus":"i2c-4-5"})"});
+  TEST_ASSERT_EQUAL_STRING("i2c-4-5", u[0].bus.c_str());
+
+  u = usesOf({R"({"type":"DS18B20","id":"t","bus":"onewire-4"})",
               R"({"type":"Remote","id":"r","device":"d","remote_id":"x"})"});
   TEST_ASSERT_EQUAL(0, u.size());
+}
+
+void test_same_address_on_two_buses_ok() {
+  auto uses = usesOf({R"({"type":"BME280","id":"amb","bus":"i2c-board"})"});
+  TEST_ASSERT_TRUE(check(nullptr, 0, uses, R"({"type":"BME280","id":"b2","bus":"i2c-4-5"})").ok);
+  TEST_ASSERT_EQUAL(409, check(nullptr, 0, uses,
+                               R"({"type":"BME280","id":"b2","bus":"i2c-board"})").status);
 }
 
 void test_free_address_ok() {
@@ -77,10 +87,10 @@ void test_reserved_address_is_409() {
   TEST_ASSERT_EQUAL(409, r.status);
   TEST_ASSERT_TRUE(r.error.find("RTC") != std::string::npos);
 
-  // LilyGo's real reserved table (BoardPins.h): touch's 0x5A blocks a BME280.
-  const size_t lilygoCount = sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef);
-  TEST_ASSERT_EQUAL(409, check(kLilyGoAmoledI2cReserved, lilygoCount, {},
-                                R"({"type":"BME280","id":"b","address":90})").status);  // 0x5A
+  // LilyGo's real fixed bus (BoardPins.h): touch's 0x5A blocks a BME280 there.
+  const BusDef board = busFromFixed(kLilyGoAmoledBuses[0]);
+  TEST_ASSERT_EQUAL(409, check(board.reserved, board.reservedCount, {},
+                                R"({"type":"BME280","id":"b","bus":"i2c-board","address":90})").status);
 }
 
 void test_replace_ignores_own_address() {
@@ -96,6 +106,7 @@ int main(int, char**) {
   RUN_TEST(test_collect_keys_per_type);
   RUN_TEST(test_free_address_ok);
   RUN_TEST(test_address_taken_is_409_naming_owner);
+  RUN_TEST(test_same_address_on_two_buses_ok);
   RUN_TEST(test_reserved_address_is_409);
   RUN_TEST(test_replace_ignores_own_address);
   return UNITY_END();
