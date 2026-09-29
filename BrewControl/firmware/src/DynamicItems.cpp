@@ -17,7 +17,7 @@ namespace BrewControl {
 
 namespace {
 
-// One OneWire driver per pin, shared by every DS18B20 on it.
+// One OneWire driver per bus, shared by every DS18B20 on it.
 class OneWireBus : public Peripheral {
  public:
   explicit OneWireBus(int pin) : ow(pin) {}
@@ -26,49 +26,200 @@ class OneWireBus : public Peripheral {
 };
 
 // SCK/MISO/MOSI shared by MAX31865 in software-SPI mode. Only bookkeeping so
-// far: each MAX31865 still drives the lines itself, the id records which ones.
+// far: each MAX31865 still drives the lines itself, from these pins.
 class SpiBus : public Peripheral {
  public:
+  SpiBus(int clk, int miso, int mosi) : clk(clk), miso(miso), mosi(mosi) {}
   const char* type() const override { return "spi"; }
+  const int clk, miso, mosi;
 };
 
-std::string oneWireBusId(int pin) { return "onewire:" + std::to_string(pin); }
-
-std::string spiBusId(int clk, int miso, int mosi) {
-  return "spi:" + std::to_string(clk) + "/" + std::to_string(miso) + "/" +
-         std::to_string(mosi);
-}
-
-// The board's one physical I2C bus (the global Wire). BME280/GY521 share it;
-// on the LilyGo, so do the onboard RTC/Touch/PMU (via acquireBoardI2cBus()).
+// One of the chip's two I2C controllers (Wire or Wire1) on the bus's pins.
 class I2cBus : public Peripheral {
  public:
-  I2cBus() {
-#ifdef BREWCTL_I2C_SDA
-    Wire.begin(BREWCTL_I2C_SDA, BREWCTL_I2C_SCL);
-#else
-    Wire.begin();
-#endif
+  // keepRunning: a fixed bus also carries onboard devices (LilyGo: the
+  // display's touch), so losing its last item must not stop the controller.
+  I2cBus(TwoWire& wire, int sda, int scl, bool keepRunning)
+      : wire(wire), keepRunning_(keepRunning) {
+    wire.begin(sda, scl);
     // Without pull-ups/a device, a transaction to a missing address would
     // otherwise block far longer than this per probed address.
-    Wire.setTimeOut(50);
+    wire.setTimeOut(50);
   }
   const char* type() const override { return "i2c"; }
-  // No end() override: releasing the last user must not tear down the
-  // board-wide bus (other fixed users like the display's touch may still be
-  // on it) — the default no-op is correct, a later acquire() just rebuilds
-  // the bookkeeping while Wire keeps running.
+  void end() override {
+    if (!keepRunning_) wire.end();
+  }
+  TwoWire& wire;
+
+ private:
+  const bool keepRunning_;
 };
 
-std::string i2cBusId() {
-#ifdef BREWCTL_I2C_SDA
-  return "i2c:" + std::to_string(BREWCTL_I2C_SDA) + "/" + std::to_string(BREWCTL_I2C_SCL);
-#else
-  return "i2c:default";
-#endif
+}  // namespace
+
+DynamicItems::DynamicItems() : buses_(currentFixedBuses()) {}
+
+// ── Buses ─────────────────────────────────────────────────────────────────
+
+PeripheralRegistry::Ref DynamicItems::acquireBus(const BusDef& d) {
+  const char* t = d.type->type;
+  if (strcmp(t, "onewire") == 0) return peripherals_.acquire<OneWireBus>(d.id, d.pins[0]);
+  if (strcmp(t, "spi") == 0)
+    return peripherals_.acquire<SpiBus>(d.id, d.pins[0], d.pins[1], d.pins[2]);
+  TwoWire& wire = d.port == 1 ? Wire1 : Wire;
+  return peripherals_.acquire<I2cBus>(d.id, wire, d.pins[0], d.pins[1], d.fixed);
 }
 
+const BusDef* DynamicItems::findBus(const char* id) const {
+  return findBusDef(buses_, id);
+}
+
+std::vector<std::string> DynamicItems::busUsers(const std::string& id) const {
+  std::vector<std::string> out;
+  for (const auto& e : sensors_) {
+    JsonDocument doc;
+    if (deserializeJson(doc, e->cfgJson) == DeserializationError::Ok &&
+        id == (doc["bus"] | ""))
+      out.push_back(e->id);
+  }
+  return out;
+}
+
+DynamicItems::Result DynamicItems::busFail(const std::string& msg, bool conflict) {
+  busError_ = msg;
+  return {false, busError_.c_str(), conflict};
+}
+
+namespace {
+std::string joined(const std::vector<std::string>& v) {
+  std::string s;
+  for (const auto& x : v) s += (s.empty() ? "" : ", ") + x;
+  return s;
+}
 }  // namespace
+
+DynamicItems::Result DynamicItems::addBus(const JsonObject& def, std::string& newId) {
+  BusDef d;
+  std::string err;
+  if (!parseBusDef(def, d, err)) return busFail(err, false);
+  if (findBus(d.id.c_str())) return busFail("bus " + d.id + " already exists", true);
+  if (d.type->max && busesOfType(buses_, d.type->type) >= d.type->max)
+    return busFail("no free " + std::string(d.type->type) + " controller (" +
+                       std::to_string(d.type->max) + " in use)", true);
+  std::vector<PinUse> mine;
+  busPinUses(d, mine);
+  const PinCheck c = checkPinUses(currentBoard(), pinUses(), mine);
+  if (!c.ok) return busFail(c.error, c.status == 409);
+  d.port = strcmp(d.type->type, "i2c") == 0 ? freeI2cPort(buses_) : -1;
+  newId = d.id;
+  buses_.push_back(d);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::updateBus(const char* id, const JsonObject& def,
+                                             std::string& newId) {
+  BusDef* old = nullptr;
+  for (BusDef& b : buses_) if (b.id == id) old = &b;
+  if (!old) return busFail("bus not found", false);
+  if (old->fixed) return busFail("bus " + old->id + " is wired by the board", true);
+  BusDef d;
+  std::string err;
+  if (!parseBusDef(def, d, err)) return busFail(err, false);
+  if (d.type != old->type) return busFail("bus type cannot change", false);
+  if (d.id != old->id) {
+    const std::vector<std::string> users = busUsers(old->id);
+    if (!users.empty()) return busFail("bus " + old->id + " is used by " + joined(users), true);
+    if (findBus(d.id.c_str())) return busFail("bus " + d.id + " already exists", true);
+    std::vector<PinUse> mine;
+    busPinUses(d, mine);
+    const PinCheck c = checkPinUses(currentBoard(), pinUses(), mine, old->id.c_str());
+    if (!c.ok) return busFail(c.error, c.status == 409);
+  }
+  d.port = old->port;
+  *old = d;
+  newId = d.id;
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::removeBus(const char* id) {
+  for (auto it = buses_.begin(); it != buses_.end(); ++it) {
+    if (it->id != id) continue;
+    if (it->fixed) return busFail("bus " + it->id + " is wired by the board", true);
+    const std::vector<std::string> users = busUsers(it->id);
+    if (!users.empty()) return busFail("bus " + it->id + " is used by " + joined(users), true);
+    buses_.erase(it);
+    return {true};
+  }
+  return busFail("bus not found", false);
+}
+
+void DynamicItems::writeBuses(JsonObject out) const {
+  JsonArray arr = out["buses"].to<JsonArray>();
+  for (const BusDef& d : buses_) {
+    JsonObject o = arr.add<JsonObject>();
+    writeBusDef(d, o);
+    if (d.fixed) {
+      o["fixed"] = true;
+      o["note"] = d.note;
+      JsonArray res = o["reserved"].to<JsonArray>();
+      for (size_t i = 0; i < d.reservedCount; ++i) {
+        char hex[6];
+        snprintf(hex, sizeof(hex), "0x%02x", d.reserved[i].addr);
+        JsonObject r = res.add<JsonObject>();
+        r["address"] = hex;
+        r["note"] = d.reserved[i].note;
+      }
+    }
+    JsonArray users = o["users"].to<JsonArray>();
+    for (const std::string& u : busUsers(d.id)) users.add(u);
+  }
+  JsonArray types = out["types"].to<JsonArray>();
+  for (const BusType& t : kBusTypes) {
+    JsonObject o = types.add<JsonObject>();
+    o["type"] = t.type;
+    JsonArray pins = o["pins"].to<JsonArray>();
+    for (uint8_t i = 0; i < t.pinCount; ++i) pins.add(t.pins[i]);
+    if (t.max) o["max"] = t.max;
+  }
+}
+
+DynamicItems::Result DynamicItems::scanBus(const char* id, JsonObject out) {
+  const BusDef* d = findBus(id);
+  if (!d) return busFail("bus not found", false);
+  const char* t = d->type->type;
+  if (strcmp(t, "spi") == 0) return busFail("spi buses cannot be scanned", false);
+  out["bus"] = d->id;
+  out["type"] = t;
+  JsonArray devs = out["devices"].to<JsonArray>();
+  // A Ref for the scan's duration: the bus of running items is reused, an
+  // unused one is started just for the scan and stopped again afterwards.
+  const PeripheralRegistry::Ref bus = acquireBus(*d);
+  if (strcmp(t, "onewire") == 0) {
+    uint8_t addrs[8][8] = {};
+    const uint8_t n = DS18B20Sensor::scanBus(bus.as<OneWireBus>().ow, addrs, 8);
+    for (uint8_t i = 0; i < n; ++i) {
+      char hex[17] = {};
+      for (uint8_t b = 0; b < 8; ++b) snprintf(hex + 2 * b, 3, "%02x", addrs[i][b]);
+      JsonObject o = devs.add<JsonObject>();
+      o["index"] = i;
+      o["address"] = hex;
+    }
+  } else {
+    TwoWire& wire = bus.as<I2cBus>().wire;
+    uint8_t i = 0;
+    for (int addr = 1; addr < 128 && i < 16; ++addr) {
+      wire.beginTransmission(addr);
+      if (wire.endTransmission() != 0) continue;
+      char hex[6];
+      snprintf(hex, sizeof(hex), "0x%02x", addr);
+      JsonObject o = devs.add<JsonObject>();
+      o["index"] = i++;
+      o["address"] = hex;
+    }
+  }
+  return {true};
+}
 
 // ── Remote transport resolution ──────────────────────────────────────────
 
@@ -137,13 +288,24 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
   e->id = id;
   serializeJson(cfg, e->cfgJson);
 
+  // The bus the item references; MAX31865 without one uses hardware SPI.
+  const BusDef* bus = nullptr;
+  if (const char* busType = itemBusType(type)) {
+    const char* busId = cfg["bus"] | "";
+    if (busId[0]) {
+      bus = findBus(busId);
+      if (!bus) return {false, "unknown bus"};
+      if (strcmp(bus->type->type, busType) != 0) return {false, "bus has the wrong type"};
+    } else if (strcmp(type, "MAX31865") != 0) {
+      return {false, "missing bus"};
+    }
+  }
+
   if (strcmp(type, "DS18B20") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
     const char* addrHex = cfg["address"] | "";
     uint8_t addr[8] = {};
     if (addrHex[0] && !parseHexAddress(addrHex, addr)) return {false, "invalid address"};
-    e->bus = peripherals_.acquire<OneWireBus>(oneWireBusId(pin), pin);
+    e->bus = acquireBus(*bus);
     OneWire& ow = e->bus.as<OneWireBus>().ow;
     if (addrHex[0]) {
       e->ptr = std::make_unique<DS18B20Sensor>(e->id.c_str(), ow, addr);
@@ -170,26 +332,26 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
                    : wires == 4 ? MAX31865Sensor::Wires::Four
                                 : MAX31865Sensor::Wires::Two;
 
-    int clk = cfg["clk"] | -1;
-    if (clk >= 0) {
-      int miso = cfg["miso"] | -1;
-      int mosi = cfg["mosi"] | -1;
-      if (miso < 0 || mosi < 0) return {false, "clk set but miso/mosi missing"};
-      e->bus = peripherals_.acquire<SpiBus>(spiBusId(clk, miso, mosi));
+    // Only an incomplete legacy config gets here with clk (normalizeLegacyItem
+    // moves complete ones onto a bus); the lines belong to the bus now.
+    if (!cfg["clk"].isNull()) return {false, "clk/miso/mosi belong to an spi bus"};
+    if (bus) {
+      e->bus = acquireBus(*bus);
+      const SpiBus& spi = e->bus.as<SpiBus>();
       e->ptr = std::make_unique<MAX31865Sensor>(
-          e->id.c_str(), cs, clk, miso, mosi, wiresEnum, rtd, rref);
+          e->id.c_str(), cs, spi.clk, spi.miso, spi.mosi, wiresEnum, rtd, rref);
     } else {
       e->ptr = std::make_unique<MAX31865Sensor>(
           e->id.c_str(), cs, wiresEnum, rtd, rref);
     }
   } else if (strcmp(type, "BME280") == 0) {
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x76);
-    e->bus = peripherals_.acquire<I2cBus>(i2cBusId());
-    e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), Wire, addr);
+    e->bus = acquireBus(*bus);
+    e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
   } else if (strcmp(type, "GY521") == 0) {
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x68);
-    e->bus = peripherals_.acquire<I2cBus>(i2cBusId());
-    e->ptr = std::make_unique<GY521TiltSensor>(e->id.c_str(), Wire, addr);
+    e->bus = acquireBus(*bus);
+    e->ptr = std::make_unique<GY521TiltSensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
   } else if (strcmp(type, "YF-S201") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
@@ -967,10 +1129,11 @@ DynamicItems::Result DynamicItems::replaceController(const char* oldId,
 
 std::vector<PinUse> DynamicItems::pinUses() const {
   std::vector<PinUse> uses;
+  for (const BusDef& d : buses_) busPinUses(d, uses);
   auto collect = [&](const std::string& json) {
     JsonDocument doc;
     if (deserializeJson(doc, json) == DeserializationError::Ok)
-      collectPins(currentBoard(), doc.as<JsonObjectConst>(), uses);
+      collectPins(doc.as<JsonObjectConst>(), uses);
   };
   for (const auto& e : sensors_) collect(e->cfgJson);
   for (const auto& e : actuators_) collect(e->cfgJson);
@@ -999,8 +1162,11 @@ std::vector<AddressUse> DynamicItems::addressUses() const {
 
 DynamicItems::Result DynamicItems::checkI2cAddress(const JsonObject& cfg,
                                                     const char* replaceId) {
-  size_t n = 0;
-  const AddrDef* reserved = currentI2cReserved(n);
+  // An unknown bus is reported by addSensorNoBegin; only a fixed bus has
+  // reserved addresses.
+  const BusDef* bus = findBus(cfg["bus"] | "");
+  const AddrDef* reserved = bus ? bus->reserved : nullptr;
+  const size_t n = bus ? bus->reservedCount : 0;
   const AddressCheck c = checkItemAddress(reserved, n, addressUses(), cfg, replaceId);
   if (c.ok) return {true};
   i2cAddressError_ = c.error;
@@ -1008,13 +1174,9 @@ DynamicItems::Result DynamicItems::checkI2cAddress(const JsonObject& cfg,
 }
 
 void DynamicItems::acquireBoardI2cBus() {
-#ifdef BREWCTL_I2C_SDA
-  boardI2cBus_ = peripherals_.acquire<I2cBus>(i2cBusId());
-#endif
-}
-
-bool DynamicItems::i2cBusExists() const {
-  return peripherals_.find(i2cBusId()) != nullptr;
+  for (const BusDef& d : buses_) {
+    if (d.fixed && strcmp(d.type->type, "i2c") == 0) boardI2cBus_ = acquireBus(d);
+  }
 }
 
 // ── Label ─────────────────────────────────────────────────────────────────
@@ -1070,19 +1232,41 @@ DynamicItems::Result DynamicItems::setControllerLabel(const char* id, Registry& 
 // ── Persistence ───────────────────────────────────────────────────────────
 
 void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
-  SdLock sdLock;
-  File f = sd.open("/config/registry.json");
-  if (!f) return;
-
   JsonDocument doc;
-  if (deserializeJson(doc, f) != DeserializationError::Ok) {
+  {
+    SdLock sdLock;
+    File f = sd.open("/config/registry.json");
+    if (!f) return;
+    const bool ok = deserializeJson(doc, f) == DeserializationError::Ok;
     f.close();
-    return;
+    if (!ok) return;
   }
-  f.close();
 
-  for (JsonObject cfg : doc["sensors"].as<JsonArray>())
+  for (JsonObject def : doc["buses"].as<JsonArray>()) {
+    BusDef d;
+    std::string err;
+    if (!parseBusDef(def, d, err) || findBus(d.id.c_str())) {
+      Serial.printf("[buses] skipping bus %s (%s)\n", (const char*)(def["id"] | "?"),
+                    err.empty() ? "duplicate" : err.c_str());
+      continue;
+    }
+    if (strcmp(d.type->type, "i2c") == 0) {
+      bool taken = false;
+      for (const BusDef& b : buses_) taken |= (b.port == d.port);
+      if (d.port < 0 || taken) d.port = freeI2cPort(buses_);
+      if (d.port < 0) {
+        Serial.printf("[buses] skipping bus %s (no free I2C controller)\n", d.id.c_str());
+        continue;
+      }
+    }
+    buses_.push_back(d);
+  }
+
+  bool migrated = false;
+  for (JsonObject cfg : doc["sensors"].as<JsonArray>()) {
+    migrated |= normalizeLegacyItem(cfg, buses_, currentBoard());
     addSensorNoBegin(cfg, reg);
+  }
   for (JsonObject cfg : doc["actuators"].as<JsonArray>())
     addActuatorNoBegin(cfg, reg);
   for (JsonObject cfg : doc["controllers"].as<JsonArray>())
@@ -1096,6 +1280,21 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
     for (const PinUse* u : c.users) who += " " + u->item + "." + u->key;
     Serial.printf("[pins] GPIO %d conflict (%s):%s\n", c.gpio, c.reason.c_str(), who.c_str());
   }
+
+  if (migrated) {
+    Serial.println("[buses] moved items from before bus definitions onto buses");
+    saveToSD(sd);
+  }
+}
+
+std::string DynamicItems::storedBusesJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (const BusDef& d : buses_)
+    if (!d.fixed) writeBusDef(d, arr.add<JsonObject>());
+  std::string out;
+  serializeJson(doc, out);
+  return out;
 }
 
 void DynamicItems::saveToSD(fs::FS& sd) const {
@@ -1104,7 +1303,9 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
   File f = sd.open("/config/registry.json", FILE_WRITE);
   if (!f) return;
 
-  f.print("{\"sensors\":[");
+  f.print("{\"buses\":");
+  f.print(storedBusesJson().c_str());
+  f.print(",\"sensors\":[");
   for (size_t i = 0; i < sensors_.size(); ++i) {
     if (i) f.print(",");
     f.print(sensors_[i]->cfgJson.c_str());
@@ -1126,7 +1327,9 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
 // ── Config serialization ──────────────────────────────────────────────────────
 
 String DynamicItems::serializeConfig() const {
-  String out = "{\"sensors\":[";
+  String out = "{\"buses\":";
+  out += storedBusesJson().c_str();
+  out += ",\"sensors\":[";
   for (size_t i = 0; i < sensors_.size(); ++i) {
     if (i) out += ',';
     out += sensors_[i]->cfgJson.c_str();
@@ -1143,23 +1346,6 @@ String DynamicItems::serializeConfig() const {
   }
   out += "]}";
   return out;
-}
-
-// ── Bus helpers ───────────────────────────────────────────────────────────────
-
-uint8_t DynamicItems::scanOneWireBus(int pin, uint8_t out[][8], uint8_t max) {
-  if (Peripheral* bus = peripherals_.find(oneWireBusId(pin)))
-    return DS18B20Sensor::scanBus(static_cast<OneWireBus*>(bus)->ow, out, max);
-  return DS18B20Sensor::scanBus(pin, out, max);
-}
-
-uint8_t DynamicItems::scanI2cBus(uint8_t out[], uint8_t max) {
-  uint8_t n = 0;
-  for (int addr = 1; addr < 128 && n < max; ++addr) {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) out[n++] = static_cast<uint8_t>(addr);
-  }
-  return n;
 }
 
 bool DynamicItems::parseHexAddress(const char* hex, uint8_t out[8]) {

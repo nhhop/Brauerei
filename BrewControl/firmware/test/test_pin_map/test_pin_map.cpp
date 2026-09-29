@@ -16,12 +16,23 @@ JsonDocument parse(const char* json) {
   return doc;
 }
 
-std::vector<PinUse> usesOf(const Board& b, std::initializer_list<const char*> configs) {
+std::vector<PinUse> usesOf(std::initializer_list<const char*> configs) {
   std::vector<PinUse> uses;
   for (const char* c : configs) {
     JsonDocument doc = parse(c);
-    collectPins(b, doc.as<JsonObjectConst>(), uses);
+    collectPins(doc.as<JsonObjectConst>(), uses);
   }
+  return uses;
+}
+
+// The pin uses of a bus definition (BusConfig.h).
+std::vector<PinUse> busUses(const char* def) {
+  JsonDocument doc = parse(def);
+  BusDef d;
+  std::string err;
+  TEST_ASSERT_TRUE_MESSAGE(parseBusDef(doc.as<JsonObjectConst>(), d, err), err.c_str());
+  std::vector<PinUse> uses;
+  busPinUses(d, uses);
   return uses;
 }
 
@@ -31,28 +42,34 @@ PinCheck check(const Board& b, const std::vector<PinUse>& uses, const char* cfg,
   return checkItemPins(b, uses, doc.as<JsonObjectConst>(), replaceId);
 }
 
+PinCheck checkBus(const Board& b, const std::vector<PinUse>& uses, const char* def,
+                  const char* replaceId = "") {
+  return checkPinUses(b, uses, busUses(def), replaceId);
+}
+
 }  // namespace
 
 void setUp() {}
 void tearDown() {}
 
 void test_collect_keys_per_type() {
-  auto u = usesOf(kEsp32Dev, {R"({"type":"IDS1","id":"ids","pin_white":9,"pin_yellow":42,"pin_interrupt":18})"});
+  auto u = usesOf({R"({"type":"IDS1","id":"ids","pin_white":9,"pin_yellow":42,"pin_interrupt":18})"});
   TEST_ASSERT_EQUAL(3, u.size());
   TEST_ASSERT_EQUAL_STRING("pin_white", u[0].key);
   TEST_ASSERT_TRUE(u[0].output);
   TEST_ASSERT_TRUE(u[1].rmt);
   TEST_ASSERT_FALSE(u[2].output);
 
-  u = usesOf(kEsp32Dev, {R"({"type":"MAX31865","id":"m","cs":5,"clk":18,"miso":19,"mosi":23})"});
-  TEST_ASSERT_EQUAL(4, u.size());
-  TEST_ASSERT_TRUE(u[0].share == Share::None);
-  TEST_ASSERT_TRUE(u[1].share == Share::Spi);
+  // A MAX31865 holds only its CS; the SPI lines belong to the bus.
+  u = usesOf({R"({"type":"MAX31865","id":"m","cs":5,"bus":"spi-18-19-23"})"});
+  TEST_ASSERT_EQUAL(1, u.size());
+  TEST_ASSERT_EQUAL_STRING("cs", u[0].key);
+  TEST_ASSERT_FALSE(u[0].bus);
 
-  u = usesOf(kEsp32Dev, {R"({"type":"MAX31865","id":"m","cs":5})"});  // default SPI bus
+  u = usesOf({R"({"type":"MAX31865","id":"m","cs":5})"});  // hardware SPI
   TEST_ASSERT_EQUAL(1, u.size());
 
-  u = usesOf(kEsp32Dev, {R"({"type":"HCSR04","id":"h","trig":4,"echo":5})",
+  u = usesOf({R"({"type":"HCSR04","id":"h","trig":4,"echo":5})",
                         R"({"type":"HX711","id":"x","dout":16,"sck":17})"});
   TEST_ASSERT_EQUAL(4, u.size());
   TEST_ASSERT_TRUE(u[0].output);   // trig
@@ -62,28 +79,23 @@ void test_collect_keys_per_type() {
 }
 
 void test_collect_ignores_pinless_items() {
-  auto u = usesOf(kEsp32Dev, {R"({"type":"Remote","id":"r","device":"d","remote_id":"x"})",
-                             R"({"type":"PID","id":"p","sensor":"s","actuator":"a"})"});
+  auto u = usesOf({R"({"type":"Remote","id":"r","device":"d","remote_id":"x"})",
+                   R"({"type":"PID","id":"p","sensor":"s","actuator":"a"})",
+                   R"({"type":"DS18B20","id":"t","bus":"onewire-4"})",
+                   R"({"type":"BME280","id":"b","bus":"i2c-21-22","address":118})"});
   TEST_ASSERT_EQUAL(0, u.size());
 }
 
-void test_collect_i2c_occupies_board_bus_unless_already_reserved() {
-  // esp32dev: SDA/SCL (21/22) are not otherwise reserved, so a BME280/GY521
-  // occupies them like any other Share pin.
-  auto u = usesOf(kEsp32Dev, {R"({"type":"BME280","id":"b","address":118})"});
-  TEST_ASSERT_EQUAL(2, u.size());
-  TEST_ASSERT_EQUAL_STRING("sda", u[0].key);
-  TEST_ASSERT_EQUAL(21, u[0].gpio);
-  TEST_ASSERT_TRUE(u[0].share == Share::I2c);
-  TEST_ASSERT_EQUAL_STRING("scl", u[1].key);
-  TEST_ASSERT_EQUAL(22, u[1].gpio);
-
-  // LilyGo: GPIO 6/7 are already PinClass::Reserved for I2C (onboard
-  // RTC/Touch/PMU) — adding a second PinUse there would only produce a false
-  // conflict, so collectPins skips it; the existing Reserved entry already
-  // protects the pins.
-  u = usesOf(kLilyGoAmoled, {R"({"type":"GY521","id":"g","address":104})"});
-  TEST_ASSERT_EQUAL(0, u.size());
+void test_bus_occupies_its_lines() {
+  auto u = busUses(R"({"type":"spi","clk":18,"miso":19,"mosi":23})");
+  TEST_ASSERT_EQUAL(3, u.size());
+  TEST_ASSERT_EQUAL_STRING("spi-18-19-23", u[0].item.c_str());
+  TEST_ASSERT_TRUE(u[0].bus);
+  TEST_ASSERT_TRUE(u[0].output);   // clk
+  TEST_ASSERT_FALSE(u[1].output);  // miso
+  TEST_ASSERT_TRUE(u[2].output);   // mosi
+  // SDA/SCL are driven (open drain), so an input-only pin cannot carry them.
+  TEST_ASSERT_EQUAL(400, checkBus(kEsp32Dev, {}, R"({"type":"i2c","sda":34,"scl":22})").status);
 }
 
 void test_free_pin_ok() {
@@ -93,39 +105,35 @@ void test_free_pin_ok() {
 }
 
 void test_pin_taken_is_409_naming_the_owner() {
-  auto uses = usesOf(kEsp32Dev, {R"({"type":"DigitalOutput","id":"pump","pin":16})"});
-  auto r = check(kEsp32Dev, uses, R"({"type":"DS18B20","id":"t","pin":16})");
+  auto uses = usesOf({R"({"type":"DigitalOutput","id":"pump","pin":16})"});
+  auto r = checkBus(kEsp32Dev, uses, R"({"type":"onewire","pin":16})");
   TEST_ASSERT_FALSE(r.ok);
   TEST_ASSERT_EQUAL(409, r.status);
   TEST_ASSERT_TRUE(r.error.find("pump") != std::string::npos);
 }
 
-void test_onewire_shared_between_ds18b20() {
-  auto uses = usesOf(kEsp32Dev, {R"({"type":"DS18B20","id":"t1","pin":4,"address":"28FF000000000001"})"});
-  auto r = check(kEsp32Dev, uses, R"({"type":"DS18B20","id":"t2","pin":4})");
-  TEST_ASSERT_TRUE(r.ok);
-  TEST_ASSERT_TRUE(findPinConflicts(kEsp32Dev, uses).empty());
-}
-
-void test_spi_shared_but_cs_exclusive() {
-  auto uses = usesOf(kEsp32Dev, {R"({"type":"MAX31865","id":"m1","cs":5,"clk":18,"miso":19,"mosi":23})"});
-  TEST_ASSERT_TRUE(check(kEsp32Dev, uses,
-      R"({"type":"MAX31865","id":"m2","cs":4,"clk":18,"miso":19,"mosi":23})").ok);
-  auto r = check(kEsp32Dev, uses,
-      R"({"type":"MAX31865","id":"m2","cs":5,"clk":18,"miso":19,"mosi":23})");
+void test_bus_pins_are_exclusive() {
+  auto uses = busUses(R"({"type":"spi","clk":18,"miso":19,"mosi":23})");
+  // SPI clock is no place for a relay, and the error names the bus.
+  auto r = check(kEsp32Dev, uses, R"({"type":"DigitalOutput","id":"a","pin":18})");
   TEST_ASSERT_EQUAL(409, r.status);
-  // SPI clock of a MAX31865 is no place for a relay.
-  TEST_ASSERT_EQUAL(409, check(kEsp32Dev, uses,
-      R"({"type":"DigitalOutput","id":"a","pin":18})").status);
+  TEST_ASSERT_TRUE(r.error.find("bus spi-18-19-23") != std::string::npos);
+  // A second bus may not share a line either, not even one of the same type.
+  TEST_ASSERT_EQUAL(409, checkBus(kEsp32Dev, uses, R"({"type":"spi","clk":18,"miso":16,"mosi":17})").status);
+  // Items on the bus only bring their own CS.
+  TEST_ASSERT_TRUE(check(kEsp32Dev, uses, R"({"type":"MAX31865","id":"m2","cs":4,"bus":"spi-18-19-23"})").ok);
+  TEST_ASSERT_TRUE(findPinConflicts(kEsp32Dev, uses).empty());
+  // Replacing the bus itself frees its own lines.
+  TEST_ASSERT_TRUE(checkBus(kEsp32Dev, uses, R"({"type":"spi","clk":18,"miso":16,"mosi":17})",
+                            "spi-18-19-23").ok);
 }
 
-void test_i2c_pin_conflict_and_lilygo_is_unaffected() {
-  // esp32dev: BME280 occupies SDA/SCL, a DigitalOutput on either pin now
-  // conflicts (409); on the LilyGo the same DigitalOutput was already 409
-  // because GPIO 7 is Reserved, independent of any I2C item.
-  auto uses = usesOf(kEsp32Dev, {R"({"type":"BME280","id":"b"})"});
-  TEST_ASSERT_EQUAL(409, check(kEsp32Dev, uses, R"({"type":"DigitalOutput","id":"a","pin":21})").status);
-  TEST_ASSERT_TRUE(check(kLilyGoAmoled, {}, R"({"type":"GY521","id":"g"})").ok);
+void test_user_bus_cannot_take_fixed_bus_pins() {
+  // LilyGo GPIO 6/7 are Reserved for the board's own I2C bus.
+  auto r = checkBus(kLilyGoAmoled, {}, R"({"type":"i2c","sda":7,"scl":6})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_TRUE(r.error.find("I2C") != std::string::npos);
+  TEST_ASSERT_TRUE(checkBus(kLilyGoAmoled, {}, R"({"type":"i2c","sda":1,"scl":2})").ok);
 }
 
 void test_forbidden_and_missing_pins_are_400() {
@@ -170,7 +178,7 @@ void test_dac() {
 }
 
 void test_rmt_budget() {
-  auto uses = usesOf(kLolinS2Mini, {
+  auto uses = usesOf({
       R"({"type":"IDS1","id":"i1","pin_white":1,"pin_yellow":2,"pin_interrupt":5})",
       R"({"type":"IDS1","id":"i2","pin_white":8,"pin_yellow":18,"pin_interrupt":21})",
       R"({"type":"IDS2","id":"i3","pin_white":38,"pin_yellow":39,"pin_interrupt":40})",
@@ -186,7 +194,7 @@ void test_rmt_budget() {
 }
 
 void test_replace_ignores_own_pins() {
-  auto uses = usesOf(kEsp32Dev, {R"({"type":"DigitalOutput","id":"pump","pin":16})"});
+  auto uses = usesOf({R"({"type":"DigitalOutput","id":"pump","pin":16})"});
   TEST_ASSERT_EQUAL(409, check(kEsp32Dev, uses, R"({"type":"DigitalOutput","id":"pump","pin":16})").status);
   TEST_ASSERT_TRUE(check(kEsp32Dev, uses, R"({"type":"DigitalOutput","id":"pump","pin":16})", "pump").ok);
   // Renamed while replaced: still its own pin.
@@ -196,12 +204,12 @@ void test_replace_ignores_own_pins() {
 void test_conflicts_in_stored_config() {
   // The LilyGo config from 2026-09-25: IDS1 and agitator both on GPIO 3,
   // IDS1 white wire on the touch interrupt line after the manual fix.
-  auto uses = usesOf(kLilyGoAmoled, {
+  auto uses = usesOf({
       R"({"type":"IDS1","id":"IDS1","pin_white":3,"pin_yellow":42,"pin_interrupt":18})",
       R"({"type":"DigitalOutput","id":"agitator","pin":3})",
       R"({"type":"DigitalOutput","id":"pump","pin":9})",
-      R"({"type":"DS18B20","id":"t1","pin":1})",
-      R"({"type":"DS18B20","id":"t2","pin":1})"});
+      R"({"type":"DS18B20","id":"t1","bus":"onewire-1"})",
+      R"({"type":"DS18B20","id":"t2","bus":"onewire-1"})"});
   auto c = findPinConflicts(kLilyGoAmoled, uses);
   TEST_ASSERT_EQUAL(2, c.size());
   TEST_ASSERT_EQUAL(3, c[0].gpio);
@@ -211,7 +219,7 @@ void test_conflicts_in_stored_config() {
 }
 
 void test_pins_json() {
-  auto uses = usesOf(kLilyGoAmoled, {R"({"type":"DigitalOutput","id":"pump","pin":2})",
+  auto uses = usesOf({R"({"type":"DigitalOutput","id":"pump","pin":2})",
                                      R"({"type":"IDS1","id":"IDS1","pin_white":9,"pin_yellow":42,"pin_interrupt":18})"});
   JsonDocument doc;
   writePinsJson(kLilyGoAmoled, "lilygo", uses, doc.to<JsonObject>());
@@ -274,7 +282,7 @@ void test_pullup_and_irq_glitch_warn() {
 }
 
 void test_adc_conflicts_in_stored_config() {
-  auto uses = usesOf(kEsp32Dev, {R"({"type":"AnalogInput","id":"a","pin":16})",
+  auto uses = usesOf({R"({"type":"AnalogInput","id":"a","pin":16})",
                                  R"({"type":"AnalogInput","id":"b","pin":27})",
                                  R"({"type":"AnalogInput","id":"c","pin":34})"});
   auto c = findPinConflicts(kEsp32Dev, uses);
@@ -285,7 +293,7 @@ void test_adc_conflicts_in_stored_config() {
   TEST_ASSERT_EQUAL_STRING("ADC2 – bei WLAN nicht nutzbar", c[1].reason.c_str());
   // The same ADC2 pin is fine on the S3.
   TEST_ASSERT_TRUE(findPinConflicts(kLilyGoAmoled,
-                                    usesOf(kLilyGoAmoled, {R"({"type":"AnalogInput","id":"b","pin":18})"})).empty());
+                                    usesOf({R"({"type":"AnalogInput","id":"b","pin":18})"})).empty());
 }
 
 void test_pins_json_capabilities() {
@@ -313,12 +321,11 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_collect_keys_per_type);
   RUN_TEST(test_collect_ignores_pinless_items);
-  RUN_TEST(test_collect_i2c_occupies_board_bus_unless_already_reserved);
+  RUN_TEST(test_bus_occupies_its_lines);
   RUN_TEST(test_free_pin_ok);
   RUN_TEST(test_pin_taken_is_409_naming_the_owner);
-  RUN_TEST(test_onewire_shared_between_ds18b20);
-  RUN_TEST(test_spi_shared_but_cs_exclusive);
-  RUN_TEST(test_i2c_pin_conflict_and_lilygo_is_unaffected);
+  RUN_TEST(test_bus_pins_are_exclusive);
+  RUN_TEST(test_user_bus_cannot_take_fixed_bus_pins);
   RUN_TEST(test_forbidden_and_missing_pins_are_400);
   RUN_TEST(test_reserved_is_409);
   RUN_TEST(test_input_only_rejects_outputs_only);

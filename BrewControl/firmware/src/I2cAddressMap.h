@@ -16,8 +16,8 @@ namespace BrewControl {
 // address space and the GPIO space are orthogonal checks, same reasoning as
 // keeping PeripheralRegistry.h apart from PinMap.h.
 //
-// Unlike GPIOs, there is no "compatible" case: two items must never share an
-// I2C address, so there is no Share-style enum here.
+// Addresses are per bus: two items may use the same address on different
+// buses, never on the same one.
 
 struct AddrDef {
   uint8_t addr;
@@ -26,6 +26,7 @@ struct AddrDef {
 
 struct AddressUse {
   std::string item;
+  std::string bus;
   uint8_t addr;
 };
 
@@ -51,16 +52,18 @@ inline bool addressReserved(const AddrDef* reserved, size_t count, uint8_t addr,
 inline void collectAddresses(JsonObjectConst cfg, std::vector<AddressUse>& out) {
   const char* type = cfg["type"] | "";
   const char* id   = cfg["id"]   | "";
+  const char* bus  = cfg["bus"]  | "";
   if (strcmp(type, "BME280") == 0) {
-    out.push_back({id, static_cast<uint8_t>(cfg["address"] | 0x76)});
+    out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | 0x76)});
   } else if (strcmp(type, "GY521") == 0) {
-    out.push_back({id, static_cast<uint8_t>(cfg["address"] | 0x68)});
+    out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | 0x68)});
   }
 }
 
-// Checks a new or replacing item config against the board's reserved
-// addresses and the addresses already in use. replaceId names the item being
-// replaced, whose own address does not count as taken.
+// Checks a new or replacing item config against the reserved addresses of its
+// bus (onboard devices of a fixed bus) and the addresses already in use on
+// that bus. replaceId names the item being replaced, whose own address does
+// not count as taken.
 inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCount,
                                      const std::vector<AddressUse>& uses,
                                      JsonObjectConst cfg, const char* replaceId = "") {
@@ -83,10 +86,10 @@ inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCou
 
   const char* note = "";
   if (addressReserved(reserved, reservedCount, u.addr, &note))
-    return fail(std::string(hex) + " is reserved by the board (" + note + ")");
+    return fail(std::string(hex) + " is reserved on bus " + u.bus + " (" + note + ")");
 
   for (const AddressUse& e : uses) {
-    if (e.item == replace || e.addr != u.addr) continue;
+    if (e.item == replace || e.bus != u.bus || e.addr != u.addr) continue;
     return fail(std::string(hex) + " already used by " + e.item);
   }
   return r;
