@@ -1019,40 +1019,75 @@ void WebUI::begin() {
 
   // ── Bus scan ──────────────────────────────────────────────────────────────
   server_.on("/api/bus/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {
-    if (!req->hasParam("type") || !req->hasParam("pin")) {
-      req->send(400, "text/plain", "missing type or pin");
+    if (!req->hasParam("type")) {
+      req->send(400, "text/plain", "missing type");
       return;
     }
-    if (req->getParam("type")->value() != "onewire") {
+    const String type = req->getParam("type")->value();
+    if (type != "onewire" && type != "i2c") {
       req->send(400, "text/plain", "unsupported bus type");
       return;
     }
-    int pin = req->getParam("pin")->value().toInt();
-
-    uint8_t addrs[8][8] = {};
-    uint8_t n;
-    {
-      // The bus may be the one loop() ticks DS18B20 on, and a sensor added or
-      // removed meanwhile may create or tear it down (PeripheralRegistry.h).
-      RegistryTryLock lock(kRegistryWaitMs);
-      if (!lock.locked()) {
-        req->send(503, "text/plain", "busy, retry");
-        return;
-      }
-      n = items_.scanOneWireBus(pin, addrs, 8);
-    }
 
     JsonDocument doc;
-    doc["type"] = "onewire";
-    doc["pin"] = pin;
+    doc["type"] = type;
     JsonArray devs = doc["devices"].to<JsonArray>();
-    for (uint8_t i = 0; i < n; ++i) {
-      char hex[17] = {};
-      for (uint8_t b = 0; b < 8; ++b) snprintf(hex + 2 * b, 3, "%02x", addrs[i][b]);
-      JsonObject d = devs.add<JsonObject>();
-      d["index"] = i;
-      d["address"] = hex;
+
+    if (type == "onewire") {
+      if (!req->hasParam("pin")) {
+        req->send(400, "text/plain", "missing pin");
+        return;
+      }
+      int pin = req->getParam("pin")->value().toInt();
+      doc["pin"] = pin;
+
+      uint8_t addrs[8][8] = {};
+      uint8_t n;
+      {
+        // The bus may be the one loop() ticks DS18B20 on, and a sensor added
+        // or removed meanwhile may create or tear it down (PeripheralRegistry.h).
+        RegistryTryLock lock(kRegistryWaitMs);
+        if (!lock.locked()) {
+          req->send(503, "text/plain", "busy, retry");
+          return;
+        }
+        n = items_.scanOneWireBus(pin, addrs, 8);
+      }
+      for (uint8_t i = 0; i < n; ++i) {
+        char hex[17] = {};
+        for (uint8_t b = 0; b < 8; ++b) snprintf(hex + 2 * b, 3, "%02x", addrs[i][b]);
+        JsonObject d = devs.add<JsonObject>();
+        d["index"] = i;
+        d["address"] = hex;
+      }
+    } else {
+      uint8_t addrs[16] = {};
+      uint8_t n;
+      {
+        RegistryTryLock lock(kRegistryWaitMs);
+        if (!lock.locked()) {
+          req->send(503, "text/plain", "busy, retry");
+          return;
+        }
+        // Scanning an unclaimed bus could start Wire on pins another item
+        // already uses, and 127 probes without pull-ups can block a while —
+        // only scan once a BME280/GY521 item (or, on the LilyGo, the display)
+        // has already claimed it.
+        if (!items_.i2cBusExists()) {
+          req->send(409, "text/plain", "no I2C bus claimed yet — add a BME280/GY521 item first");
+          return;
+        }
+        n = items_.scanI2cBus(addrs, 16);
+      }
+      for (uint8_t i = 0; i < n; ++i) {
+        char hex[6] = {};
+        snprintf(hex, sizeof(hex), "0x%02x", addrs[i]);
+        JsonObject d = devs.add<JsonObject>();
+        d["index"] = i;
+        d["address"] = hex;
+      }
     }
+
     String out;
     serializeJson(doc, out);
     req->send(200, "application/json", out);

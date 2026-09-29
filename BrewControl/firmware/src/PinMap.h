@@ -44,9 +44,11 @@ struct Board {
   uint64_t irqGlitch;  // spurious interrupts from a chip erratum
   bool adc2BlockedByWifi;  // true: ADC2 reads fail while Wi-Fi runs (ESP32);
                            // false: shared with Wi-Fi, single reads may fail
+  int i2cSda;  // the board's one I2C bus, so I2C items occupy these too
+  int i2cScl;
 };
 
-enum class Share : uint8_t { None, OneWire, Spi };
+enum class Share : uint8_t { None, OneWire, Spi, I2c };
 
 struct PinUse {
   std::string item;
@@ -117,9 +119,13 @@ inline const char* pinClassName(PinClass c) {
 }
 
 // Appends the GPIOs one item config occupies. Keys mirror
-// DynamicItems::add{Sensor,Actuator}NoBegin; types without pins (I2C, remote,
-// MQTT, controllers) add nothing.
-inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
+// DynamicItems::add{Sensor,Actuator}NoBegin; types without pins (remote,
+// MQTT, controllers) add nothing. I2C items (BME280, GY521) occupy the
+// board's fixed SDA/SCL — unless the board already marks them Reserved
+// (LilyGo: shared with the onboard RTC/Touch/PMU), in which case that
+// classification already protects them and a second PinUse would only
+// produce a false 409/conflict.
+inline void collectPins(const Board& b, JsonObjectConst cfg, std::vector<PinUse>& out) {
   const char* type = cfg["type"] | "";
   const char* id   = cfg["id"]   | "";
   enum : uint8_t { Out = 1, Rmt = 2, Analog = 4, Pullup = 8, Irq = 16 };
@@ -130,9 +136,16 @@ inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
     out.push_back({id, key, gpio, share, (f & Out) != 0, (f & Rmt) != 0,
                    (f & Analog) != 0, (f & Pullup) != 0, (f & Irq) != 0});
   };
+  auto addFixed = [&](const char* key, int gpio, Share share) {
+    if (classifyPin(b, gpio) == PinClass::Reserved) return;
+    out.push_back({id, key, gpio, share, false, false, false, false, false});
+  };
   auto is = [&](const char* t) { return strcmp(type, t) == 0; };
 
-  if (is("DS18B20")) {
+  if (is("BME280") || is("GY521")) {
+    addFixed("sda", b.i2cSda, Share::I2c);
+    addFixed("scl", b.i2cScl, Share::I2c);
+  } else if (is("DS18B20")) {
     add("pin", Share::OneWire);
   } else if (is("MAX31865")) {
     add("cs", Share::None, Out);
@@ -191,7 +204,7 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
   const std::string replace = replaceId ? replaceId : "";
 
   std::vector<PinUse> mine;
-  collectPins(cfg, mine);
+  collectPins(b, cfg, mine);
 
   for (size_t i = 0; i < mine.size(); ++i) {
     const PinUse& u = mine[i];
@@ -301,6 +314,7 @@ inline void writePinsJson(const Board& b, const char* boardName,
     o["key"] = u.key;
     if (u.share == Share::OneWire) o["share"] = "onewire";
     if (u.share == Share::Spi) o["share"] = "spi";
+    if (u.share == Share::I2c) o["share"] = "i2c";
   };
 
   JsonArray pins = out["pins"].to<JsonArray>();

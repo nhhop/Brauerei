@@ -67,6 +67,20 @@ void test_tick_reports_zero_angle_when_flat() {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, s.channel(0).reading.value);
 }
 
+// ── Caller-owned bus (Peripherie-Abstraktion Etappe 2) ──────────────────────
+// Same definition as the native shim in GY521Sensor.cpp, so the test can own
+// a bus the way BrewControl's PeripheralRegistry does.
+class TwoWire { public: TwoWire() {} };
+
+void test_caller_bus_delegates_to_raw_sensor() {
+  TwoWire bus;
+  GY521TiltSensor tilt("hydrometer2", bus, 0x69);
+  tilt.begin();
+  tilt.tick();
+  TEST_ASSERT_EQUAL_STRING("hydrometer2", tilt.id());
+  TEST_ASSERT_TRUE(tilt.channel(0).reading.valid);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -79,5 +93,6 @@ int main(int, char**) {
   RUN_TEST(test_channel_count_and_key);
   RUN_TEST(test_readings_invalid_before_begin);
   RUN_TEST(test_tick_reports_zero_angle_when_flat);
+  RUN_TEST(test_caller_bus_delegates_to_raw_sensor);
   return UNITY_END();
 }

@@ -11,9 +11,11 @@
   static uint32_t millis() { return 0; }
   struct FakeVec3 { float x = 0.0f, y = 0.0f, z = 0.0f; };
   struct sensors_event_t { FakeVec3 acceleration; FakeVec3 gyro; };
+  class TwoWire {};
   class Adafruit_MPU6050 {
    public:
     bool begin(uint8_t = 0x68) { return true; }
+    bool begin(uint8_t, TwoWire*, int32_t = 0) { return true; }
     bool getEvent(sensors_event_t* accel, sensors_event_t* gyro,
                   sensors_event_t*) {
       // Device lying flat: gravity along Z, no rotation.
@@ -35,12 +37,19 @@ constexpr float kRadToDeg = 57.29577951308232f;  // for the gyro channels
 GY521Sensor::GY521Sensor(const char* id, uint8_t i2cAddress)
     : id_(id), address_(i2cAddress) {}
 
+GY521Sensor::GY521Sensor(const char* id, TwoWire& bus, uint8_t i2cAddress)
+    : id_(id), address_(i2cAddress), bus_(&bus) {}
+
 GY521Sensor::~GY521Sensor() { delete dev_; }
 
 void GY521Sensor::begin() {
   if (initialized_) return;
   dev_ = new Adafruit_MPU6050();
-  dev_->begin(address_);
+  if (bus_) {
+    dev_->begin(address_, bus_);
+  } else {
+    dev_->begin(address_);
+  }
   initialized_ = true;
 }
 

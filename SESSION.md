@@ -5552,3 +5552,57 @@ das bestehende Alert-System (`AlertCenter.tsx`) deckt Fehlermeldungen schon ab.
 **Verifikation:** `pio run -e esp32dev` (compile-smoke, LittleFS-Zweig mitkompiliert),
 Redocly-Lint grün, `pnpm typecheck` grün, Node-Mock-Preview: beide Seiten inkl. aktiver und
 leerer Störungsliste geprüft.
+
+## 2026-09-29 — Peripherie-Abstraktion Etappe 2: I²C-Bus, SDA/SCL-Pinbelegung und Adresskonflikt-Prüfung
+
+**Ausgangslage:** BME280/GY521 hingen komplett an der `PeripheralRegistry` vorbei — sie riefen über
+Adafruit-BusIO implizit `Wire.begin()` auf dem globalen `Wire` auf. Nur weil `main.cpp` `Wire` am
+LilyGo vorab auf `BREWCTL_I2C_SDA/SCL` (7/6) zwang, landete das nicht auf den Board-Default-Pins
+(SCL 17 = Display-Reset). Adresskonflikte (zwei Items mit derselben Adresse, oder eine Adresse, die
+RTC/Touch/PMU des LilyGo belegen) prüfte nichts; `PinMap.h::collectPins` sagte für I²C-Items explizit
+„fügt nichts hinzu", und auf esp32dev/lolin_s2_mini war nicht einmal SDA/SCL selbst als belegt geführt.
+
+**Entscheidungen** (Plan von der Etappe-1-Session gegengelesen, zwei Korrekturrunden eingearbeitet):
+- `I2cBus : Peripheral` (`DynamicItems.cpp`) ist der eine, boardfeste Bus (`i2c:<sda>/<scl>`, ohne
+  `BREWCTL_I2C_SDA` `i2c:default`); `end()` bleibt bewusst No-op, weil am LilyGo auch Touch/RTC/PMU
+  daran hängen, die die Registry nicht kennt.
+- Am LilyGo claimt `main.cpp` den Bus jetzt über eine neue `DynamicItems::acquireBoardI2cBus()` (statt
+  direkt `Wire.begin()`), gehalten in `boardI2cBus_` für die Lebensdauer von `DynamicItems` — dieselbe
+  Regel wie im Etappe-1-Plandoc für feste Onboard-Nutzer. Das macht den Bus dort **immer** sichtbar,
+  unabhängig von einem BME280/GY521-Item.
+- `PinMap.h` bekommt `Share::I2c` und `Board.i2cSda/i2cScl` (esp32dev 21/22, lolin_s2_mini 33/35 —
+  Arduino-ESP32-Defaults aus den jeweiligen `variants/*/pins_arduino.h`, LilyGo 7/6). `collectPins`
+  fügt für BME280/GY521 SDA/SCL als `PinUse` hinzu, **außer** der Pin ist auf dem Board schon
+  `PinClass::Reserved` — auf dem LilyGo ist das bereits der Fall (Touch/RTC/PMU), ein zweiter Eintrag
+  hätte dort nur einen falschen 409/Konflikt erzeugt.
+- Die I²C-**Adresse** prüft eine eigene, zu `PinMap.h` analoge Datei `I2cAddressMap.h`
+  (`collectAddresses`, `checkItemAddress`) — bewusst getrennt vom Pin-Raum, dieselbe Trennungs-Logik
+  wie „PeripheralRegistry bleibt getrennt von PinMap.h" aus Etappe 1. Reservierte Adressen
+  (LilyGo: 0x51 RTC, 0x5A Touch, 0x6A PMU) stehen als neue `AddrDef`-Tabellen in `BoardPins.h`. Kein
+  „kompatibler" Fall wie bei Pins — zwei Items dürfen nie dieselbe Adresse haben. Bewusst **nicht** in
+  `GET /api/pins` gespiegelt (nur 409 bei Create/Replace) — Entscheidung, in PLAN.md festgehalten.
+- `BME280Sensor`/`GY521Sensor`/`GY521TiltSensor` (SensActCtrl) bekommen wie `DS18B20Sensor` in Etappe 1
+  eine `TwoWire&`-Konstruktor-Überladung für einen fremden Bus; die nativen Stubs brauchen dafür (anders
+  als bei DS18B20) eine zweite `begin(addr, TwoWire*)`-Überladung und einen `class TwoWire {}`-Shim, weil
+  diese Sensoren auch nativ getestet werden.
+- `GET /api/bus/scan?type=i2c` scannt nur, wenn der Bus schon in der Registry existiert (sonst 409) —
+  ein unclaimter Scan auf esp32dev/lolin_s2_mini könnte sonst die Default-Pins belegen, die ein anderes
+  Item schon nutzt, und 127 Sondierungen ohne Pull-ups blockieren `loop()` unter dem `RegistryLock`
+  spürbar; `Wire.setTimeOut(50)` deckelt das zusätzlich pro Adresse.
+
+**Umsetzung:** neue Datei `I2cAddressMap.h`; `BoardPins.h` bekommt `i2cSda/i2cScl` je Board plus die
+`AddrDef`-Reserved-Tabellen und `currentI2cReserved()`; `DynamicItems` bekommt `acquireBoardI2cBus()`,
+`i2cBusExists()`, `scanI2cBus()`, `checkI2cAddress()`/`addressUses()` (mit eigenem `i2cAddressError_`
+analog `pinError_`) und ruft `checkI2cAddress` in `addSensor`/`replaceSensor` neben `checkPins` auf;
+`WebUI.cpp`s `/api/bus/scan` verzweigt jetzt auf `type`. `main.cpp` ruft `acquireBoardI2cBus()` statt
+direkt `Wire.begin()`, das jetzt unbenutzte `#include <Wire.h>` dort entfernt. Doku: OpenAPI (`type`-Enum,
+`BusScanResult` für beide Bus-Arten, neue 409-Texte), README (Abschnitt „Geteilte Busse"), PLAN.md
+(Bus-Id im Item-Config, `tick()`, Bus-Vorschläge im Formular und die Folge der `/api/pins`-Entscheidung
+bleiben offen), `web/src/types.ts` (`BusScanResult.pin` optional, `PinUser.share` um `'i2c'` erweitert).
+
+**Verifikation:** SensActCtrl `pio test -e native` 279/279 (neue `test_bme280`-Datei, je ein neuer
+Test in `test_gy521` und `test_gy521_tilt` für den fremden Bus).
+BrewControl `pio test -e native` 75/75 (5 neue in `test_i2c_address_map`, 2 neue + Board-Parameter in
+`test_pin_map` — inkl. explizit BME280 auf LilyGo → kein Pin-Konflikt, auf esp32dev → SDA/SCL belegt,
+`DigitalOutput` auf GPIO 21 danach → 409). `pio run` für alle drei Envs, Redocly-Lint, `pnpm typecheck`
+grün. Hardware-Verifikation am LilyGo steht noch aus (siehe PLAN.md, falls offen geblieben).

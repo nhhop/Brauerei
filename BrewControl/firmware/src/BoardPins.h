@@ -1,5 +1,6 @@
 #pragma once
 
+#include "I2cAddressMap.h"
 #include "PinMap.h"
 
 namespace BrewControl {
@@ -39,7 +40,9 @@ inline constexpr Board kEsp32Dev = {
     pinRange(34, 39),
     pinBit(36) | pinBit(39),
     true,  // ADC2 reads fail while Wi-Fi is on
+    21, 22,  // Arduino-ESP32 default Wire pins (variants/esp32/pins_arduino.h)
 };
+inline constexpr AddrDef kEsp32DevI2cReserved[] = {};
 
 // ── lolin_s2_mini (ESP32-S2FN4R2) ────────────────────────────────────────────
 inline constexpr PinDef kLolinS2MiniSpecial[] = {
@@ -70,7 +73,9 @@ inline constexpr Board kLolinS2Mini = {
     pinBit(46),  // fixed pull-down
     0,
     false,  // ADC2 arbitrated with Wi-Fi
+    33, 35,  // Arduino-ESP32 default Wire pins (variants/lolin_s2_mini/pins_arduino.h)
 };
+inline constexpr AddrDef kLolinS2MiniI2cReserved[] = {};
 
 // ── lilygo_t_display_s3_amoled (ESP32-S3R8, T-Display-S3-AMOLED-1.75) ────────
 // No DAC; only RMT channels 0–3 can transmit. SD, I2C and display pins as in
@@ -124,6 +129,13 @@ inline constexpr Board kLilyGoAmoled = {
     0,
     0,
     false,  // ADC2 arbitrated with Wi-Fi
+    7, 6,  // BREWCTL_I2C_SDA/SCL — see static_assert below
+};
+// Onboard devices sharing this board's I2C bus (BrewControl/CLAUDE.md).
+inline constexpr AddrDef kLilyGoAmoledI2cReserved[] = {
+    {0x51, "RTC (PCF8563)"},
+    {0x5A, "Touch (CST9217)"},
+    {0x6A, "PMU (SY6970)"},
 };
 
 #if defined(BREWCTL_I2C_SDA) && defined(BREWCTL_HAS_DISPLAY)
@@ -144,6 +156,21 @@ inline const Board& currentBoard() {
   return kLolinS2Mini;
 #else
   return kEsp32Dev;
+#endif
+}
+
+// Reserved I2C addresses of the current board's bus (RTC/Touch/PMU on the
+// LilyGo; empty elsewhere), analogous to currentBoard().
+inline const AddrDef* currentI2cReserved(size_t& count) {
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  count = sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef);
+  return kLilyGoAmoledI2cReserved;
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+  count = sizeof(kLolinS2MiniI2cReserved) / sizeof(AddrDef);
+  return kLolinS2MiniI2cReserved;
+#else
+  count = sizeof(kEsp32DevI2cReserved) / sizeof(AddrDef);
+  return kEsp32DevI2cReserved;
 #endif
 }
 

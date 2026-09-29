@@ -173,7 +173,7 @@ export type PinClass = 'free' | 'forbidden' | 'reserved' | 'risky';
 export interface PinUser {
   id: string;
   key: string; // config key, e.g. "pin", "pin_white", "cs"
-  share?: 'onewire' | 'spi'; // absent = exclusive
+  share?: 'onewire' | 'spi' | 'i2c'; // absent = exclusive
 }
 
 export interface PinInfo {
@@ -455,13 +455,13 @@ export interface ScanNetwork {
 
 // Wire format of GET /api/bus/scan
 export interface ScannedDevice {
-  address: string; // 16 hex chars, e.g. "28ff64c8815604ef"
+  address: string; // onewire: 16 hex chars ("28ff64c8815604ef"); i2c: "0x5a"
   index: number;
 }
 
 export interface BusScanResult {
-  type: string; // "onewire"
-  pin: number;
+  type: 'onewire' | 'i2c';
+  pin?: number; // onewire only — the board's I2C bus is fixed
   devices: ScannedDevice[];
 }
 

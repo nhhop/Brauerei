@@ -1,6 +1,7 @@
 #include "DynamicItems.h"
 
 #include <OneWire.h>
+#include <Wire.h>
 
 #include <algorithm>
 
@@ -36,6 +37,35 @@ std::string oneWireBusId(int pin) { return "onewire:" + std::to_string(pin); }
 std::string spiBusId(int clk, int miso, int mosi) {
   return "spi:" + std::to_string(clk) + "/" + std::to_string(miso) + "/" +
          std::to_string(mosi);
+}
+
+// The board's one physical I2C bus (the global Wire). BME280/GY521 share it;
+// on the LilyGo, so do the onboard RTC/Touch/PMU (via acquireBoardI2cBus()).
+class I2cBus : public Peripheral {
+ public:
+  I2cBus() {
+#ifdef BREWCTL_I2C_SDA
+    Wire.begin(BREWCTL_I2C_SDA, BREWCTL_I2C_SCL);
+#else
+    Wire.begin();
+#endif
+    // Without pull-ups/a device, a transaction to a missing address would
+    // otherwise block far longer than this per probed address.
+    Wire.setTimeOut(50);
+  }
+  const char* type() const override { return "i2c"; }
+  // No end() override: releasing the last user must not tear down the
+  // board-wide bus (other fixed users like the display's touch may still be
+  // on it) — the default no-op is correct, a later acquire() just rebuilds
+  // the bookkeeping while Wire keeps running.
+};
+
+std::string i2cBusId() {
+#ifdef BREWCTL_I2C_SDA
+  return "i2c:" + std::to_string(BREWCTL_I2C_SDA) + "/" + std::to_string(BREWCTL_I2C_SCL);
+#else
+  return "i2c:default";
+#endif
 }
 
 }  // namespace
@@ -154,10 +184,12 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     }
   } else if (strcmp(type, "BME280") == 0) {
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x76);
-    e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), addr);
+    e->bus = peripherals_.acquire<I2cBus>(i2cBusId());
+    e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), Wire, addr);
   } else if (strcmp(type, "GY521") == 0) {
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x68);
-    e->ptr = std::make_unique<GY521TiltSensor>(e->id.c_str(), addr);
+    e->bus = peripherals_.acquire<I2cBus>(i2cBusId());
+    e->ptr = std::make_unique<GY521TiltSensor>(e->id.c_str(), Wire, addr);
   } else if (strcmp(type, "YF-S201") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
@@ -502,6 +534,8 @@ DynamicItems::Result DynamicItems::addSensor(const JsonObject& cfg,
                                               Registry& reg) {
   Result pins = checkPins(cfg, "");
   if (!pins.ok) return pins;
+  Result addr = checkI2cAddress(cfg, "");
+  if (!addr.ok) return addr;
   return addSensorUnchecked(cfg, reg);
 }
 
@@ -893,6 +927,8 @@ DynamicItems::Result DynamicItems::replaceSensor(const char* oldId,
   if (!old) return {false, "not a dynamic item"};
   Result pins = checkPins(cfg, id.c_str());
   if (!pins.ok) return pins;
+  Result addr = checkI2cAddress(cfg, id.c_str());
+  if (!addr.ok) return addr;
   // Holding the old sensor's bus across the swap keeps it from being torn
   // down and rebuilt when the new config — or the restored old one — sits on
   // the same bus. A bus left without users goes when this Ref does.
@@ -934,7 +970,7 @@ std::vector<PinUse> DynamicItems::pinUses() const {
   auto collect = [&](const std::string& json) {
     JsonDocument doc;
     if (deserializeJson(doc, json) == DeserializationError::Ok)
-      collectPins(doc.as<JsonObjectConst>(), uses);
+      collectPins(currentBoard(), doc.as<JsonObjectConst>(), uses);
   };
   for (const auto& e : sensors_) collect(e->cfgJson);
   for (const auto& e : actuators_) collect(e->cfgJson);
@@ -947,6 +983,38 @@ DynamicItems::Result DynamicItems::checkPins(const JsonObject& cfg,
   if (c.ok) return {true};
   pinError_ = c.error;
   return {false, pinError_.c_str(), c.status == 409};
+}
+
+// ── I2C address ───────────────────────────────────────────────────────────
+
+std::vector<AddressUse> DynamicItems::addressUses() const {
+  std::vector<AddressUse> uses;
+  for (const auto& e : sensors_) {
+    JsonDocument doc;
+    if (deserializeJson(doc, e->cfgJson) == DeserializationError::Ok)
+      collectAddresses(doc.as<JsonObjectConst>(), uses);
+  }
+  return uses;
+}
+
+DynamicItems::Result DynamicItems::checkI2cAddress(const JsonObject& cfg,
+                                                    const char* replaceId) {
+  size_t n = 0;
+  const AddrDef* reserved = currentI2cReserved(n);
+  const AddressCheck c = checkItemAddress(reserved, n, addressUses(), cfg, replaceId);
+  if (c.ok) return {true};
+  i2cAddressError_ = c.error;
+  return {false, i2cAddressError_.c_str(), c.status == 409};
+}
+
+void DynamicItems::acquireBoardI2cBus() {
+#ifdef BREWCTL_I2C_SDA
+  boardI2cBus_ = peripherals_.acquire<I2cBus>(i2cBusId());
+#endif
+}
+
+bool DynamicItems::i2cBusExists() const {
+  return peripherals_.find(i2cBusId()) != nullptr;
 }
 
 // ── Label ─────────────────────────────────────────────────────────────────
@@ -1083,6 +1151,15 @@ uint8_t DynamicItems::scanOneWireBus(int pin, uint8_t out[][8], uint8_t max) {
   if (Peripheral* bus = peripherals_.find(oneWireBusId(pin)))
     return DS18B20Sensor::scanBus(static_cast<OneWireBus*>(bus)->ow, out, max);
   return DS18B20Sensor::scanBus(pin, out, max);
+}
+
+uint8_t DynamicItems::scanI2cBus(uint8_t out[], uint8_t max) {
+  uint8_t n = 0;
+  for (int addr = 1; addr < 128 && n < max; ++addr) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) out[n++] = static_cast<uint8_t>(addr);
+  }
+  return n;
 }
 
 bool DynamicItems::parseHexAddress(const char* hex, uint8_t out[8]) {
