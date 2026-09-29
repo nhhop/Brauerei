@@ -1,14 +1,15 @@
 import { useRef, useState } from 'preact/hooks';
 import { Cpu, Gauge, Search, Zap } from 'lucide-preact';
 import type { ConfigSnapshot, DiscoveredItem, DiscoveredPeer } from '../types';
-import { discoverPeers, discoverRemote, getConfig, pairPeer, scanOneWireBus } from '../api';
+import { discoverPeers, discoverRemote, getConfig, pairPeer, scanBus } from '../api';
 import { btnSecondary, inp } from '../ui';
+import { busTitle } from '../buses';
 import { SettingsCard } from './SettingsCard';
 import { Spinner } from './Spinner';
 import type { ItemPrefill } from '../itemTypes';
 
 // Asks every source at once what is out there — the remote transports, the
-// OneWire buses of the already-configured DS18B20 sensors, and (via mDNS) other
+// defined OneWire buses (Einstellungen → Bus-Schnittstellen), and (via mDNS) other
 // boards on the LAN. Results expand the card in place (same shape as the WLAN
 // scan in NetworkPage); a hit opens the add dialog prefilled.
 //
@@ -54,14 +55,14 @@ function buildKnown(cfg: ConfigSnapshot) {
   }
   // A DS18B20 without an address claims the single device on its bus.
   const dsAddr = new Set<string>();
-  const dsFlatPins = new Set<number>();
+  const dsFlatBuses = new Set<string>();
   for (const c of cfg.sensors) {
     if (c.type !== 'DS18B20') continue;
-    const pin = Number(c.pin);
+    const bus = String(c.bus ?? '');
     const addr = String(c.address ?? '');
-    if (addr) dsAddr.add(`${pin}|${addr}`); else dsFlatPins.add(pin);
+    if (addr) dsAddr.add(`${bus}|${addr}`); else dsFlatBuses.add(bus);
   }
-  return { remote, wsDevices, dsAddr, dsFlatPins };
+  return { remote, wsDevices, dsAddr, dsFlatBuses };
 }
 
 export function DiscoverDevicesCard({ onPick }: {
@@ -161,31 +162,28 @@ export function DiscoverDevicesCard({ onPick }: {
 
     async function scanOneWire() {
       if (!cfg) return;
-      const pins = [...new Set(cfg.sensors
-        .filter((c) => c.type === 'DS18B20')
-        .map((c) => Number(c.pin))
-        .filter(Number.isInteger))];
-      for (const pin of pins) {
+      for (const bus of (cfg.buses ?? []).filter((b) => b.type === 'onewire')) {
         if (!mine()) return;
+        const title = `OneWire ${busTitle(bus)}`;
         let devices;
         try {
-          devices = (await scanOneWireBus(pin)).devices;
+          devices = (await scanBus(bus.id)).devices;
         } catch (e) {
-          note(`OneWire GPIO ${pin}: ${String(e).replace(/^Error: /, '')}`);
+          note(`${title}: ${String(e).replace(/^Error: /, '')}`);
           continue;
         }
         push({
-          key: `onewire|${pin}`,
-          title: `OneWire GPIO ${pin}`,
+          key: `onewire|${bus.id}`,
+          title,
           items: devices.map((d) => ({
-            key: `onewire|${pin}|${d.address}`,
+            key: `onewire|${bus.id}|${d.address}`,
             label: d.address.match(/.{2}/g)!.join(':'),
             meta: 'Temperatur · °C',
             kind: 'sensor' as const,
-            known: (known?.dsAddr.has(`${pin}|${d.address}`) ?? false)
-              || ((known?.dsFlatPins.has(pin) ?? false) && devices!.length === 1),
+            known: (known?.dsAddr.has(`${bus.id}|${d.address}`) ?? false)
+              || ((known?.dsFlatBuses.has(bus.id) ?? false) && devices!.length === 1),
             prefill: {
-              role: 'sensor' as const, type: 'DS18B20' as const, pin,
+              role: 'sensor' as const, type: 'DS18B20' as const, bus: bus.id,
               address: d.address, id: `ds18b20_${d.address.slice(-4)}`,
             },
           })),
@@ -218,7 +216,7 @@ export function DiscoverDevicesCard({ onPick }: {
 
   return (
     <SettingsCard icon={Search} title="Geräte suchen"
-      desc="Sucht Boards im Netz, fragt MQTT, ESP-NOW und WebSocket ab und scannt die bekannten OneWire-Busse."
+      desc="Sucht Boards im Netz, fragt MQTT, ESP-NOW und WebSocket ab und scannt die angelegten OneWire-Busse."
       control={
         <button type="button" onClick={() => void runScan()} disabled={busy} class={btnSecondary}>
           {busy ? <><Spinner size={14} class="mr-1.5 -mt-0.5" />Suche…</> : 'Suchen'}
@@ -299,9 +297,8 @@ export function DiscoverDevicesCard({ onPick }: {
               veröffentlichen (gleicher Broker bzw. Kanal, aktuelle Firmware). Boards im
               Netz erscheinen nur, wenn sie per mDNS erreichbar sind; für WebSocket muss
               hier zusätzlich der Hub aktiv sein (Einstellungen → Konnektivität →
-              WebSocket). OneWire-Busse werden nur an bereits konfigurierten Pins
-              durchsucht — für einen neuen Pin über „+ Hinzufügen“ einen DS18B20 anlegen
-              und dort scannen.
+              WebSocket). Durchsucht werden die angelegten OneWire-Busse — einen neuen
+              unter Einstellungen → Bus-Schnittstellen anlegen.
             </p>
           )}
 
