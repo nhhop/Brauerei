@@ -5661,5 +5661,14 @@ umgestellt). `pio run` für alle drei Envs, Redocly-Lint, `pnpm typecheck`, `pnp
 `pnpm build` grün. UI gegen einen Node-Mock im Browser geprüft: Busseite mit festem LilyGo-Bus und
 Qwiic-Hinweis, Scan (OneWire-ROMs, I²C mit benannten reservierten Adressen), Anlegen mit Konflikt (409 auf
 GPIO 7) und mit freien Pins (→ `Wire1`), I²C danach im Anlegen-Dialog gesperrt, Pins eines genutzten
-Busses gesperrt, BME280/DS18B20 im Item-Formular mit Bus-Auswahl (gesendet wird `bus`). Hardware-
-Verifikation am LilyGo steht noch aus.
+Busses gesperrt, BME280/DS18B20 im Item-Formular mit Bus-Auswahl (gesendet wird `bus`).
+
+**Hardware (LilyGo, OTA, Backup vorher im Scratchpad):** Migration beim ersten Boot: `onewire-1` angelegt,
+HLT misst weiter (23 °C), alle Items/Regler wieder da. Scan `i2c-board` → 0x51/0x5A/0x6A, `onewire-1` →
+HLT-ROM. 409 am Gerät für: Bus auf GPIO 7, dritter I²C-Bus, Ausgang auf Bus-Leitung, 0x5A auf
+`i2c-board`, doppelte Adresse auf einem Bus, Pins/Löschen eines genutzten Busses, festen Bus löschen;
+0x5A auf dem zweiten Bus erlaubt, Label eines genutzten Busses änderbar. Echter GY-521 auf `i2c-48-3`
+(SDA 48 / SCL 3, `Wire1`): Scan 0x68, Winkel flach ≈ −1 °; Modul abgezogen → kein Hänger. Zwei Befunde
+(in PLAN.md): GY521 meldet ohne Gerät gültige Fantasiewerte (Library, älter als dieser Umbau), und ein
+einmaliger `task_wdt`-Neustart beim allerersten GY521 auf dem leeren zweiten Bus, danach nicht mehr
+reproduzierbar.
