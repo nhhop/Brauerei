@@ -162,10 +162,11 @@ BOOT-Taste) oder **verboten** (Flash/PSRAM); dazu Input-only-Pins, DAC- und
 ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `src/PinMap.h` prüft damit jedes Anlegen
 (`POST`) und Ersetzen (`PUT`) von Sensoren und Aktoren:
 
-- Ein Pin hat keine vorab festgelegte Rolle — das erste Item auf einem freien
-  Pin bestimmt sie. Teilen dürfen sich nur Items derselben Bus-Art: mehrere
-  DS18B20 an einem OneWire-Pin, MAX31865 an gemeinsamen SPI-Leitungen (CS
-  bleibt exklusiv). Alles andere → **409** mit dem Namen des Belegers.
+- Ein Pin hat keine vorab festgelegte Rolle — das erste Item oder der erste Bus
+  auf einem freien Pin bestimmt sie, und jeder Pin hat genau einen Nutzer.
+  Leitungen, die sich mehrere Geräte teilen, gehören einem Bus (siehe „Geteilte
+  Busse“); die Items darauf verweisen nur auf den Bus. Alles andere → **409** mit
+  dem Namen des Belegers.
 - Verbotene oder nicht vorhandene Pins, Ausgänge auf Input-only-Pins und
   `mode: dac` ohne DAC → **400**; reservierte Pins → **409**.
 - Jede IDS-Platte braucht einen RMT-Sendekanal (ESP32: 8, S2/S3: 4); sind alle
@@ -180,11 +181,11 @@ ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `sr
   Fehlauslöser). Serielle Schnittstellen nutzt noch kein Item-Typ.
 - Bedenkliche Pins und Fähigkeits-Warnungen lässt die Firmware zu; die Web-UI
   fragt vor dem Speichern nach.
-- Das Item-Formular schlägt je Pin-Feld passende GPIOs vor (`web/src/pins.ts::suggestPins`,
-  ausschließlich aus `GET /api/pins` abgeleitet): freie Pins zuerst, ein Pin mit einem
-  bestehenden Bus-User desselben Feld-Keys (OneWire, SPI) ganz oben, bedenkliche danach und
-  als solche markiert; Pins, die ein anderes Feld desselben Items schon gewählt hat, werden
-  nicht doppelt vorgeschlagen. Reiner Vorschlag per Klick — die freie Eingabe bleibt.
+- Das Item-Formular und die Bus-Seite schlagen je Pin-Feld passende GPIOs vor
+  (`web/src/pins.ts::suggestPins`, ausschließlich aus `GET /api/pins` abgeleitet): freie
+  Pins zuerst, bedenkliche danach und als solche markiert; Pins, die ein anderes Feld
+  desselben Items schon gewählt hat, werden nicht doppelt vorgeschlagen. Reiner Vorschlag
+  per Klick — die freie Eingabe bleibt.
 - Konflikte in einer bereits gespeicherten Config werden trotzdem geladen (ein
   stillschweigend fehlender Heizungs-Aktor wäre schlimmer), seriell geloggt
   (`[pins] GPIO …`), in `GET /api/pins` gemeldet und auf der Geräte-Seite als
@@ -197,45 +198,52 @@ Anzeigename.
 
 ### Geteilte Busse
 
-`src/PeripheralRegistry.h` verwaltet Hardware, die sich mehrere Items teilen.
-Busse entstehen anhand der Pins, eine Bus-Id im Item-Config gibt es (noch) nicht:
+Busse sind eigene, zentral definierte Objekte (`src/BusConfig.h`), gepflegt unter
+**Einstellungen → Bus-Schnittstellen** bzw. `/api/buses` und gespeichert als Array
+`buses` in `/config/registry.json` (damit auch in `GET /api/config` und im Backup).
+Die Id ergibt sich aus Typ und Pins:
 
-- **`onewire:<pin>`**: ein `OneWire`-Treiber pro Pin, den alle DS18B20 an diesem Pin
-  nutzen, mit oder ohne `address`. `GET /api/bus/scan` verwendet ihn mit, sobald
-  ein Sensor den Pin belegt.
-- **`spi:<clk>/<miso>/<mosi>`**: MAX31865 mit `clk`. Vorerst nur Buchführung, denn
-  jeder MAX31865 treibt die Leitungen weiter selbst per Software-SPI. MAX31865 ohne
-  `clk` (Hardware-SPI mit den Board-Default-Pins) hängt an keinem Bus.
-- **`i2c:<sda>/<scl>`** (bzw. `i2c:default` ohne `BREWCTL_I2C_SDA`): der eine, feste
-  I2C-Bus des Boards (`Wire`), den BME280 und GY521 nutzen. Am LilyGo claimt
-  `main.cpp` ihn schon beim Boot über `DynamicItems::acquireBoardI2cBus()` und hält
-  ihn für immer — die Onboard-RTC/Touch/PMU brauchen ihn unabhängig von jedem
-  dynamischen Item. Auf esp32dev/lolin_s2_mini entsteht er erst mit dem ersten
-  BME280/GY521-Item. `GET /api/bus/scan?type=i2c` scannt nur, wenn der Bus schon
-  existiert (sonst 409) — ein unclaimter Scan könnte die Board-Default-Pins
-  belegen, die ein anderes Item schon nutzt, und 127 Sondierungen ohne Pull-ups
-  blockieren sonst spürbar.
+- **`onewire-<pin>`**: ein `OneWire`-Treiber, den alle DS18B20 mit `"bus"` darauf nutzen,
+  mit oder ohne `address`.
+- **`spi-<clk>-<miso>-<mosi>`**: MAX31865 mit `"bus"`. Vorerst nur Buchführung, denn jeder
+  MAX31865 treibt die Leitungen weiter selbst per Software-SPI; sein `cs` bleibt ein
+  eigener Pin des Items. MAX31865 ohne `bus` (Hardware-SPI mit den Board-Default-Pins)
+  hängt an keinem Bus.
+- **`i2c-<sda>-<scl>`**: BME280 und GY521. Der ESP32 hat zwei I2C-Controller, also
+  höchstens zwei I2C-Busse; jeder bekommt beim Anlegen einen fest (`port`: 0 = `Wire`,
+  1 = `Wire1`), damit er nie wechselt, solange Items darauf laufen.
+- **Feste Busse** des Boards (`BoardPins.h`, nie gespeichert, nicht änderbar): am LilyGo
+  `i2c-board` (SDA 7 / SCL 6, `Wire`) mit RTC 0x51, Touch 0x5A und PMU 0x6A, die
+  herausgeführten Leitungen liegen am Qwiic-Stecker. `main.cpp` claimt ihn beim Boot über
+  `DynamicItems::acquireBoardI2cBus()` und hält ihn für immer. Seine Pins schützt die
+  `Reserved`-Klasse der Pin-Tabelle; ein zweiter, frei wählbarer I2C-Bus (`Wire1`) steht
+  daneben für eigene Sensoren zur Verfügung. esp32dev/lolin_s2_mini haben keine festen Busse.
 
-Ein Bus wird beim ersten Item angelegt (`begin()`) und nach dem letzten wieder
-abgebaut (`end()`) — außer dem I2C-Bus: dessen `end()` ist bewusst ein No-op, weil
-am LilyGo auch feste Nutzer (Touch) daran hängen, die die Registry nicht kennt.
-Die Nutzer zählt eine `PeripheralRegistry::Ref` im Sensor-Eintrag von
-`DynamicItems`, deshalb stimmt die Zahl auch dann, wenn ein Anlegen scheitert.
-`PUT` hält den Bus des alten Sensors fest, bis das Ersetzen fertig ist. Bleibt der
-neue Sensor auf demselben Bus, oder wird der alte nach einem Fehlschlag
-wiederhergestellt, läuft der Bus ohne Unterbrechung weiter.
+Bus-Pins gehören exklusiv dem Bus: `GET /api/pins` führt den Bus als Nutzer (`bus: true`),
+ein Item oder zweiter Bus auf derselben Leitung ist ein **409**. Die Pins eines Busses
+lassen sich nur ändern und der Bus nur löschen, solange kein Item daran hängt (**409**,
+die Meldung nennt die Items); das Label geht immer. Die I2C-**Adresse** prüft
+`I2cAddressMap.h` je Bus: zwei Items auf demselben Bus dürfen nie dieselbe Adresse haben,
+auf zwei Bussen schon; reservierte Adressen gelten nur für den festen Bus — beides nur beim
+Anlegen/Ersetzen (409), nicht in `GET /api/pins`.
 
-Die Registry hat keine eigene Sperre. Sie wird nur unter dem `RegistryLock`
-angefasst: bei Item-Änderungen und beim Bus-Scan, der deshalb mit **503** abbrechen
-kann. Die Pin-Prüfung (`Share::OneWire/Spi/I2c` in `PinMap.h`) bleibt davon
-getrennt — BME280/GY521 belegen dort die feste SDA/SCL des Boards, außer sie sind
-schon als `Reserved` geführt (LilyGo: die Pins gehören bereits Touch/RTC/PMU). Die
-I2C-**Adresse** selbst prüft eine eigene, dritte Datei, `I2cAddressMap.h`: zwei
-Items dürfen nie dieselbe Adresse haben, und die Onboard-Geräte des LilyGo
-(0x51 RTC, 0x5A Touch, 0x6A PMU, siehe `BoardPins.h`) sind reserviert — beides nur
-beim Anlegen/Ersetzen geprüft (409), nicht in `GET /api/pins`.
-Sie muss prüfen, bevor es den Bus gibt, und auch gespeicherte Configs, die sich gar
-nicht laden ließen.
+Den laufenden Treiber verwaltet `src/PeripheralRegistry.h` unter der Bus-Id: angelegt
+(`begin()`) mit dem ersten Item und nach dem letzten wieder abgebaut (`end()`, bei I2C
+`Wire.end()` — außer am festen Bus, an dem auch Touch hängt). Die Nutzer zählt eine
+`PeripheralRegistry::Ref` im Sensor-Eintrag von `DynamicItems`. `PUT` hält den Bus des
+alten Sensors fest, bis das Ersetzen fertig ist. `GET /api/bus/scan?bus=<id>` nutzt den
+laufenden Treiber mit oder startet ihn nur für den Scan (I2C mit 50 ms Timeout je
+Adresse; SPI lässt sich nicht scannen). Die Registry hat keine eigene Sperre und wird
+nur unter dem `RegistryLock` angefasst — Bus-Änderungen und Scan können deshalb mit
+**503** abbrechen.
+
+**Migration:** Configs von vor den Bus-Definitionen (DS18B20 `pin`, MAX31865
+`clk`/`miso`/`mosi`, BME280/GY521 ohne `bus`) stellt `normalizeLegacyItem` beim Laden um —
+auch nach dem Einspielen eines alten Backups — und schreibt `registry.json` einmal neu.
+BME280/GY521 landen am LilyGo auf `i2c-board`, sonst auf `i2c-21-22` (esp32dev) bzw.
+`i2c-33-35` (lolin_s2_mini), den bisherigen Arduino-Default-Pins. Eine ältere Firmware
+versteht die umgestellten Items nicht mehr — vor einem Downgrade das Backup von vorher
+einspielen.
 
 ## Web-UI bauen + auf SD deployen (`lilygo_t_display_s3_amoled`)
 
@@ -455,11 +463,13 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/controllers/<id>/params` | POST | Regler-Parameter setzen |
 | `/api/controllers/<id>/label` | POST | Anzeigename setzen/löschen |
 | `/api/estop` | POST, DELETE | Not-Aus auslösen (rastet ein, überlebt Neustart) / Verriegelung aufheben |
-| `/api/bus/scan` | GET | 1-Wire- oder I2C-Bus nach Geräten scannen |
+| `/api/buses` | GET, POST | Busse (OneWire, SPI, I2C) inkl. fester Board-Busse auflisten / anlegen |
+| `/api/buses/<id>` | PUT, DELETE | Bus ändern (Pins nur ohne Nutzer) / löschen |
+| `/api/bus/scan` | GET | Definierten Bus (`?bus=<id>`) nach Geräten scannen |
 | `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |
 | `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |
 | `/api/remote/pair` | GET, POST | Kopplungsergebnis lesen / ein Board an den eigenen Hub koppeln |
-| `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items |
+| `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items und Busse |
 | `/api/pins` | GET | GPIO-Tabelle des Boards: frei / bedenklich / reserviert / verboten, Nutzer je Pin, Konflikte |
 | `/api/dashboards` | GET, POST | Dashboards auflisten / anlegen |
 | `/api/dashboards/<id>` | POST, DELETE | Dashboard ändern / löschen |
