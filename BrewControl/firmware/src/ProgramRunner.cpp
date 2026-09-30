@@ -355,6 +355,20 @@ void ProgramRunner::pauseAllRunning(SensActCtrl::Registry& reg) {
   for (const auto& id : ids) control(id.c_str(), "pause", reg);
 }
 
+time_t ProgramRunner::nextEventEpoch() const {
+  ScopedLock lk(mutex_);
+  time_t next = 0;
+  for (const auto& p : programs_) {
+    if (p.status != Status::Running) continue;
+    if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) continue;
+    const ProgramStep& cur = p.steps[p.currentStep];
+    if (cur.end != StepEnd::Hold) continue;
+    const time_t end = p.stepStartedEpoch + (time_t)cur.holdSec;
+    if (next == 0 || end < next) next = end;
+  }
+  return next;
+}
+
 bool ProgramRunner::activeOwnerOf(const char* id, std::string& name) const {
   ScopedLock lk(mutex_);
   for (const auto& p : programs_) {

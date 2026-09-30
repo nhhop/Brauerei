@@ -39,6 +39,7 @@ inline constexpr Board kEsp32Dev = {
     pinBit(0) | pinBit(2) | pinBit(4) | pinRange(12, 15) | pinRange(25, 27),
     pinRange(34, 39),
     pinBit(36) | pinBit(39),
+    pinBit(0) | pinBit(2) | pinBit(4) | pinRange(12, 15) | pinRange(25, 27) | pinRange(32, 39),
     true,  // ADC2 reads fail while Wi-Fi is on
     21, 22,  // Arduino-ESP32 default Wire pins (variants/esp32/pins_arduino.h)
 };
@@ -71,6 +72,7 @@ inline constexpr Board kLolinS2Mini = {
     pinRange(11, 20),
     pinBit(46),  // fixed pull-down
     0,
+    pinRange(0, 21),
     false,  // ADC2 arbitrated with Wi-Fi
     33, 35,  // Arduino-ESP32 default Wire pins (variants/lolin_s2_mini/pins_arduino.h)
 };
@@ -126,6 +128,7 @@ inline constexpr Board kLilyGoAmoled = {
     pinRange(11, 20),
     0,
     0,
+    pinRange(0, 21),
     false,  // ADC2 arbitrated with Wi-Fi
     7, 6,  // BREWCTL_I2C_SDA/SCL — see static_assert below
     4,      // BATTERY_VOLTAGE_ADC_DATA in LilyGo's pin_config.h

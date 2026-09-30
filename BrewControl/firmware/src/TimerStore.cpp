@@ -275,6 +275,17 @@ void TimerStore::pauseAllRunning() {
 
 // ── Tick ─────────────────────────────────────────────────────────────────────────
 
+time_t TimerStore::nextEventEpoch() const {
+  ScopedLock lk(mutex_);
+  time_t next = 0;
+  for (const auto& t : timers_) {
+    if (t.status != Status::Running) continue;
+    const time_t end = t.startedEpoch + (time_t)t.durationSec;
+    if (next == 0 || end < next) next = end;
+  }
+  return next;
+}
+
 void TimerStore::tick(SensActCtrl::Registry& reg, ProgramRunner& programs,
                       fs::FS& sd, time_t nowEpoch) {
   if (nowEpoch <= 946684800L) return;  // wait for a real clock (post-2000)

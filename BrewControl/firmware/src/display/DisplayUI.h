@@ -39,6 +39,13 @@ class DisplayUI {
 
   bool ready() const { return ready_; }
 
+  // millis() of the last touch (0 if the panel is not up) — a touch keeps a
+  // full wake from going back to sleep.
+  uint32_t lastTouchMs() const;
+
+  // Panel off before deep sleep.
+  void off();
+
  private:
   enum class Power : uint8_t { Awake, Dimmed, Off };
 

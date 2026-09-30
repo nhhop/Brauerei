@@ -13,7 +13,7 @@ const MAX_SUGGESTIONS = 8;
 // nothing until the pin list has loaded or while the field is empty. With
 // suggest, also renders a row of clickable pin suggestions — free pins first,
 // risky ones dimmed; picking one calls onPick.
-export function PinHint({ pins, value, selfId, output, analog, pullup, irq, suggest, exclude, onPick }: {
+export function PinHint({ pins, value, selfId, output, analog, pullup, irq, rtc, suggest, exclude, onPick }: {
   pins: PinsInfo | null;
   value: string;
   selfId?: string;
@@ -22,7 +22,7 @@ export function PinHint({ pins, value, selfId, output, analog, pullup, irq, sugg
   exclude?: number[];
   onPick?: (gpio: number) => void;
 } & PinNeeds) {
-  const needs: PinNeeds = { analog, pullup, irq };
+  const needs: PinNeeds = { analog, pullup, irq, rtc };
   const suggestions = suggest
     ? suggestPins(pins, { selfId, output, exclude, ...needs }).slice(0, MAX_SUGGESTIONS)
     : [];

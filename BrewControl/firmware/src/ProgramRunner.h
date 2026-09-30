@@ -83,6 +83,10 @@ class ProgramRunner {
   // until nowEpoch is a real (post-2000) time.
   void tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch);
 
+  // Earliest end of a running hold step (Unix s), 0 if none — deep sleep
+  // wakes up for it. Sensor steps have no fixed end.
+  time_t nextEventEpoch() const;
+
   // Applies one command the way a program step does, a pulse actuator's v
   // excluded (RuntimeState replays the last state at boot with it).
   static void applyTarget(SensActCtrl::Registry& reg, const TargetCmd& c) {

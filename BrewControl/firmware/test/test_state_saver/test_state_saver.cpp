@@ -50,6 +50,15 @@ void test_millis_wraparound() {
   TEST_ASSERT_TRUE(s.due(0x00000800u, "b"));   // 3.07 s later
 }
 
+void test_state_flush_writes_only_a_change() {
+  StateSaver s;
+  s.reset("a");
+  TEST_ASSERT_FALSE(s.flush("a"));
+  TEST_ASSERT_TRUE(s.flush("b"));   // pending or not: now
+  TEST_ASSERT_FALSE(s.flush("b"));
+  TEST_ASSERT_FALSE(s.due(10000, "b"));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_unchanged_never_saves);
@@ -57,5 +66,6 @@ int main(int, char**) {
   RUN_TEST(test_further_change_restarts_quiet_time);
   RUN_TEST(test_change_back_cancels);
   RUN_TEST(test_millis_wraparound);
+  RUN_TEST(test_state_flush_writes_only_a_change);
   return UNITY_END();
 }

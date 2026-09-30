@@ -43,6 +43,7 @@ struct Board {
   uint64_t adc2;
   uint64_t noPullup;   // no internal pull-up (INPUT_PULLUP does nothing)
   uint64_t irqGlitch;  // spurious interrupts from a chip erratum
+  uint64_t rtc;        // RTC GPIOs: can wake the chip from deep sleep (ext0)
   bool adc2BlockedByWifi;  // true: ADC2 reads fail while Wi-Fi runs (ESP32);
                            // false: shared with Wi-Fi, single reads may fail
   // Arduino's default Wire pins. BME280/GY521 configs from before buses were
@@ -255,6 +256,25 @@ inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
   return r;
 }
 
+// The deep-sleep wake pin (energy settings) as a pin user, so no item can
+// take it. pullup: the pin is active low and relies on the internal pull-up.
+inline PinUse wakePinUse(int gpio, bool pullup) {
+  return {"energy", "wake_pin", gpio, false, false, false, false, pullup, false};
+}
+
+// Checks a wake pin like an item pin (the current wake pin in uses counts as
+// free), plus that it is an RTC GPIO — only those can wake the chip.
+inline PinCheck checkWakePin(const Board& b, const std::vector<PinUse>& uses, int gpio,
+                             bool pullup) {
+  PinCheck r = checkPinUses(b, uses, {wakePinUse(gpio, pullup)}, "energy");
+  if (r.ok && !(b.rtc & pinBit(gpio))) {
+    r.ok = false;
+    r.status = 400;
+    r.error = "GPIO " + std::to_string(gpio) + " cannot wake the chip (no RTC GPIO)";
+  }
+  return r;
+}
+
 // Conflicts already present in a loaded config: two users on one
 // GPIO, an item on a pin the board reserves or forbids, or an analog input
 // without a usable ADC (reason is shown in the UI as is). Risky pins are not
@@ -333,6 +353,7 @@ inline void writePinsJson(const Board& b, const char* boardName,
     if (b.adc2 & pinBit(g)) p["adc"] = 2;
     if (b.noPullup & pinBit(g)) p["noPullup"] = true;
     if (b.irqGlitch & pinBit(g)) p["irqGlitch"] = true;
+    if (b.rtc & pinBit(g)) p["rtc"] = true;
     JsonArray users = p["users"].to<JsonArray>();
     for (const PinUse& u : uses)
       if (u.gpio == g) writeUsers(users, u);

@@ -76,6 +76,20 @@ mit Multimeter vergleichen, Reload behält Auswahl.
 
 ## Stufe 2 — Deep-Sleep, Wach-Pin, Kurz-Wach-Profil
 
+### Umgesetzt 2026-09-30 — Abweichungen vom Text darunter
+- **Kurz-Wach-Profil auf einen Schalter reduziert** (Nutzer): nur `shortWakeWifi`.
+  Weboberfläche und Display sind im Kurz-Wach immer aus, NTP läuft mit WLAN immer mit,
+  der Datalog folgt dem An/Aus der Logs. `lastWake` heißt `wakeCause` (`timer`/`pin`/null).
+- **Ausgänge im Schlaf festgeklemmt** (`gpio_hold_en` + `gpio_deep_sleep_hold_en`), sonst
+  hingen sie in der Luft; Freigabe erst direkt vor `registry.begin()`.
+- Ein Druck auf den Wach-Pin im Kurz-Wach macht `ESP.restart()` (kein zweiter Bootpfad).
+- Logs/Programme ticken im Kurz-Wach erst, wenn jeder Sensor einmal gemessen hat (sonst
+  wäre die einzige Log-Zeile leer); ohne WLAN ticken MQTT/Webhook/WebSocket gar nicht
+  (ihr Connect blockiert sonst ~7 s).
+- Als Zugriff zählt jeder HTTP-Request — auch Body-Handler, die vor der Middleware
+  antworten (sonst schlief das Gerät direkt nach dem Speichern ein) — ein offener
+  Event-Stream und ein Display-Touch.
+
 ### Festlegungen 2026-09-30 (gehen dem Text darunter vor)
 - **Voraussetzung umgesetzt:** Regler (an/aus, Sollwert) und Aktoren (an/aus, Wert, Intervall)
   kommen nach jedem Neustart — also auch nach jedem Aufwachen — in ihren letzten Zustand zurück

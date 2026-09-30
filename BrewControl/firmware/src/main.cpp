@@ -6,6 +6,8 @@
 //   3. No SSID in NVS                     → run WiFiSetupPortal (AP), reboot.
 //   4. STA connect (30 s timeout)         → fall back to portal on failure.
 //   5. mDNS + Registry + WebUI            → loop().
+// A short wake from deep sleep (EnergyManager) takes the same path with one
+// Wi-Fi attempt (or none), without portal, mDNS, web server and display.
 
 #include <Arduino.h>
 #include <ESPmDNS.h>
@@ -17,6 +19,7 @@
 #endif
 #include <SPI.h>
 #include <SensActCtrl.h>
+#include <Update.h>
 #include <WiFi.h>
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
@@ -26,6 +29,7 @@
 #include "AlarmStore.h"
 #include "DashboardStore.h"
 #include "DynamicItems.h"
+#include "EnergyManager.h"
 #include "EspNowPublishService.h"
 #include "FirmwareUpdater.h"
 #include "HeapDiag.h"
@@ -41,6 +45,7 @@
 #include "SettingsStore.h"
 #include "StateSaver.h"
 #include "TimerStore.h"
+#include "WakeMode.h"
 #include "WebSocketService.h"
 #include "WebUI.h"
 #include "WebhookService.h"
@@ -60,6 +65,7 @@ constexpr int kSdCsPin = BREWCTL_SD_CS;  // ⚠ on esp32dev: strapping pin (MTDI
 constexpr int kBootButtonPin = 0;
 constexpr uint32_t kResetHoldMs = 5000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 30000;
+constexpr uint32_t kShortWakeConnectTimeoutMs = 8000;
 constexpr uint32_t kLoopWdtTimeoutS = 30;
 constexpr char kHostname[] = "brewcontrol";
 
@@ -90,6 +96,7 @@ BrewControl::PushService pushService;
 BrewControl::RemoteDiscovery remoteDiscovery;
 BrewControl::MdnsBrowser mdnsBrowser;
 BrewControl::StateSaver stateSaver;
+BrewControl::EnergyManager energy;
 WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
 #ifdef BREWCTL_HAS_DISPLAY
 BrewControl::DisplayUI displayUI;
@@ -101,6 +108,16 @@ BrewControl::DisplayPages displayPages;
 // forcing one, so it must never be built before WiFi is up). No enable
 // toggle — receiving broadcast packets is passive, negligible cost.
 std::unique_ptr<EspNowTransport> espNowTransport;
+
+// Short wake from deep sleep: measure, publish, sleep again (WakeMode.h).
+static bool shortWake = false;
+static BrewControl::ShortWake shortWakeCourse;
+static uint32_t loopStartMs = 0;
+
+// Channel of the last Wi-Fi connection, for ESP-NOW in a short wake without
+// Wi-Fi. RTC memory survives deep sleep (not a power cycle), and a short wake
+// always follows a deep sleep — so no flash write.
+RTC_DATA_ATTR static uint8_t lastWifiChannel = 1;
 
 // Configured mDNS hostname (NVS brewctrl/hostname, default kHostname). Global so
 // the WiFi event handler can re-announce mDNS after a reconnect.
@@ -149,14 +166,15 @@ static bool resetHeldAtBoot() {
 }
 
 static bool connectStation(const String& ssid, const String& password,
-                           const String& hostname) {
+                           const String& hostname,
+                           uint32_t timeoutMs = kWiFiConnectTimeoutMs) {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(hostname.c_str());  // registers with DHCP; must precede begin()
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - start >= kWiFiConnectTimeoutMs) return false;
+    if (millis() - start >= timeoutMs) return false;
     delay(200);
   }
   return true;
@@ -184,12 +202,17 @@ static const char* pendingResetReason = nullptr;
 
 void setup() {
   Serial.begin(115200);
+  const char* wakeCause = BrewControl::EnergyManager::wakeCause();
+  const bool timerWake = wakeCause && strcmp(wakeCause, "timer") == 0;
   // On USB-CDC (ESP32-S2/S3 with ARDUINO_USB_CDC_ON_BOOT=1), enumeration +
   // host-side connect take 1–2 s. Wait briefly so the first prints aren't
-  // lost; cap at 3 s so a headless boot doesn't stall.
-  const uint32_t waitStart = millis();
-  while (!Serial && millis() - waitStart < 3000) delay(10);
-  delay(200);
+  // lost; cap at 3 s so a headless boot doesn't stall. Not on a timer
+  // wakeup: that is back asleep within seconds.
+  if (!timerWake) {
+    const uint32_t waitStart = millis();
+    while (!Serial && millis() - waitStart < 3000) delay(10);
+    delay(200);
+  }
   Serial.println(F("BrewControl boot"));
   tlsAllocToPsram();  // before anything opens a TLS connection
   BrewControl::HeapDiag::mark("start");
@@ -204,7 +227,7 @@ void setup() {
   dynamicItems.acquireBoardI2cBus();
 #endif
 
-  if (resetHeldAtBoot()) {
+  if (!wakeCause && resetHeldAtBoot()) {
     Serial.println(F("Reset trigger — clearing WiFi prefs"));
     Preferences prefs;
     prefs.begin("brewctrl", false);
@@ -256,6 +279,13 @@ void setup() {
 
   BrewControl::HeapDiag::mark("fs");
 
+  // Before Wi-Fi: the energy settings decide how this boot goes on.
+  if (fsOk) settingsStore.loadFromSD(deviceFs);
+  shortWake = BrewControl::isShortWake(timerWake, settingsStore.energyDeepSleep(),
+                                       energy.pinActive(settingsStore));
+  dynamicItems.setWakePin(settingsStore.energyWakePin(), settingsStore.energyWakeActiveLow());
+  if (shortWake) Serial.println(F("[energy] short wake"));
+
   Preferences prefs;
   prefs.begin("brewctrl", true);
   const String ssid = prefs.getString("ssid", "");
@@ -274,18 +304,27 @@ void setup() {
   // the AP setup portal, so a reboot during a router outage can't strand us
   // there with valid credentials.
   bool connected = false;
-  for (int attempt = 1; attempt <= 6 && !connected; ++attempt) {
-    connected = connectStation(ssid, password, hostname_);
-    if (!connected)
-      Serial.printf("STA connect attempt %d/6 failed, retrying...\n", attempt);
-  }
-  if (!connected) {
-    Serial.println(F("STA connect failed repeatedly — falling back to setup portal"));
-    WiFiSetupPortal portal;
-    portal.runUntilConfigured();
+  if (shortWake) {
+    // One attempt, no portal: without Wi-Fi only ESP-NOW publishes.
+    if (settingsStore.energyShortWakeWifi())
+      connected = connectStation(ssid, password, hostname_, kShortWakeConnectTimeoutMs);
+  } else {
+    for (int attempt = 1; attempt <= 6 && !connected; ++attempt) {
+      connected = connectStation(ssid, password, hostname_);
+      if (!connected)
+        Serial.printf("STA connect attempt %d/6 failed, retrying...\n", attempt);
+    }
+    if (!connected) {
+      Serial.println(F("STA connect failed repeatedly — falling back to setup portal"));
+      WiFiSetupPortal portal;
+      portal.runUntilConfigured();
+    }
   }
 
-  Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
+  if (connected) {
+    lastWifiChannel = WiFi.channel();
+    Serial.printf("WiFi connected, IP=%s\n", WiFi.localIP().toString().c_str());
+  }
   BrewControl::HeapDiag::mark("wifi");
 
   // A pending release install runs here, while nothing but WiFi holds heap
@@ -299,21 +338,19 @@ void setup() {
 
   // STA is up — safe to bring up ESP-Now now (initEspNow_() rides the
   // current WiFi channel instead of forcing one, so it must come after this).
-  espNowTransport = std::make_unique<EspNowTransport>();
+  // Without STA (short wake) it takes the channel of the last connection.
+  espNowTransport = std::make_unique<EspNowTransport>(lastWifiChannel);
   BrewControl::HeapDiag::mark("espnow");
 
   // Re-announce mDNS on every STA_GOT_IP (it doesn't survive reconnects). The
   // initial GOT_IP already fired during connectStation, so also start it once
   // below — after the settings are loaded, because the announced TXT records
   // carry the WebSocket hub port and the device id from there.
-  WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t) { startMDNS(); },
-               ARDUINO_EVENT_WIFI_STA_GOT_IP);
-
-  if (fsOk) {
-    settingsStore.loadFromSD(deviceFs);  // ahead of dynamicItems: mqttService.begin()
-                                          // below needs it before actuators load
+  if (!shortWake) {
+    WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t) { startMDNS(); },
+                 ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    startMDNS();
   }
-  startMDNS();
   BrewControl::HeapDiag::mark("settings+mdns");
 
   mqttService.begin(hostname_);  // creates the transport (if enabled) before
@@ -354,6 +391,9 @@ void setup() {
   configTime(settingsStore.utcOffsetSec(), settingsStore.dstOffsetSec(),
              settingsStore.ntpServer().c_str());
 
+  // Outputs held through a deep sleep stay at their off level until the
+  // actuators take them over here.
+  BrewControl::EnergyManager::releaseOutputs(dynamicItems.pinUses());
   registry.begin();
   dynamicItems.markInitialized();  // future add*() calls will call begin()
   mqttService.attachExisting();    // mirrors the registry + registers
@@ -385,18 +425,20 @@ void setup() {
   // clock is unset, and this one should reach the phone.
   pendingResetReason = BrewControl::FirmwareUpdater::unexpectedResetReason();
 
-  pushService.begin(hostname_);  // no-op until a browser subscribed
-  BrewControl::HeapDiag::mark("push");
-  webUI.begin();
-  firmwareUpdater.begin();
-  BrewControl::HeapDiag::mark("webui");
+  webUI.begin(/*serve=*/!shortWake);  // a short wake only applies the latched stop
+  if (!shortWake) {
+    pushService.begin(hostname_);  // no-op until a browser subscribed
+    BrewControl::HeapDiag::mark("push");
+    firmwareUpdater.begin();
+    BrewControl::HeapDiag::mark("webui");
 #ifdef BREWCTL_HAS_DISPLAY
-  displayUI.begin(settingsStore);
-  if (displayUI.ready())
-    displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
-                       webUI);
-  BrewControl::HeapDiag::mark("display");
+    displayUI.begin(settingsStore);
+    if (displayUI.ready())
+      displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
+                         webUI);
+    BrewControl::HeapDiag::mark("display");
 #endif
+  }
   // Watchdog on loopTask. The web API runs on the AsyncTCP task and keeps
   // answering while loopTask hangs, so a stuck loop() (no control, no program
   // steps) would otherwise look healthy. 30 s is far above any legitimate
@@ -406,7 +448,95 @@ void setup() {
   // Programs and timers resume after the reboot from their persisted state.
   esp_task_wdt_init(kLoopWdtTimeoutS, /*panic=*/true);
   enableLoopWDT();
+  loopStartMs = millis();
   Serial.println(F("BrewControl ready"));
+}
+
+// Publishers and transports; caller holds the RegistryLock. A short wake
+// without Wi-Fi skips the Wi-Fi ones: their connect attempt cannot succeed
+// and only blocks (measured ~7 s for an MQTT broker's host name).
+static void tickTransports() {
+  if (!shortWake || WiFi.isConnected()) {
+    mqttService.tick();
+    webhookService.tick();
+    webSocketService.tick();
+  }
+  if (espNowTransport) espNowTransport->tick();
+  espNowPublishService.tick();
+}
+
+// Every sensor has a reading or reports a fault.
+static bool sensorsHaveReadings() {
+  for (Sensor* s : registry.sensors()) {
+    if (s->fault()) continue;
+    for (size_t i = 0; i < s->channelCount(); ++i)
+      if (!s->channel(i).reading.valid) return false;
+  }
+  return true;
+}
+
+// Deep sleep until the interval or the next program or timer event is due.
+// awakeMs: time already spent of the interval. The actuators go off first,
+// without saving that — the wakeup restores them; a pending state change is
+// written now.
+[[noreturn]] static void goToSleep(uint32_t awakeMs) {
+  {
+    BrewControl::RegistryLock lock;
+    const std::string state = BrewControl::captureState(registry, dynamicItems);
+    if (stateSaver.flush(state)) BrewControl::saveState(deviceFs, state);
+    for (Actuator* a : registry.actuators()) a->setEnabled(false);
+  }
+  // Protocol and remote actuators (IDS, MQTT, ESP-NOW) send their off here.
+  const uint32_t start = millis();
+  while (millis() - start < 300) {
+    {
+      BrewControl::RegistryLock lock;
+      registry.tick();
+      tickTransports();
+    }
+    delay(5);
+  }
+#ifdef BREWCTL_HAS_DISPLAY
+  displayUI.off();
+#endif
+  const time_t next = BrewControl::earlierEvent(programRunner.nextEventEpoch(),
+                                                timerStore.nextEventEpoch());
+  energy.sleep(settingsStore,
+               BrewControl::sleepMs(settingsStore.energySleepIntervalSec(), awakeMs,
+                                    time(nullptr), next),
+               dynamicItems.pinUses());
+}
+
+// Short wake: sleep again once the sensors have read and the enabled
+// publishers are connected, after a tail for their 1 s send cycle.
+static void shortWakeTick() {
+  // A press on the wake pin makes it a full wake (a restart is no timer wakeup).
+  if (energy.pinActive(settingsStore)) ESP.restart();
+  const bool connected =
+      WiFi.status() != WL_CONNECTED ||
+      ((!settingsStore.mqttEnabled() || mqttService.connected()) &&
+       (!settingsStore.webhookEnabled() || webhookService.publishConnected()) &&
+       (!settingsStore.websocketPublishEnabled() || webSocketService.publishConnected()));
+  if (shortWakeCourse.done(millis() - loopStartMs, connected)) goToSleep(millis());
+}
+
+// Full wake with deep sleep on: sleep after awakeTimeoutSec without web
+// access, touch or held wake pin — not during a browser firmware upload.
+static void fullWakeTick() {
+  if (!settingsStore.energyDeepSleep()) return;
+  static uint32_t lastCheckMs = 0;
+  static uint32_t pinSeenMs = 0;
+  const uint32_t now = millis();
+  if (now - lastCheckMs < 1000) return;
+  lastCheckMs = now;
+  if (energy.pinActive(settingsStore)) pinSeenMs = now;
+  uint32_t idleMs = now - pinSeenMs;
+  idleMs = std::min(idleMs, now - webUI.lastActivityMs());
+#ifdef BREWCTL_HAS_DISPLAY
+  idleMs = std::min(idleMs, now - displayUI.lastTouchMs());
+#endif
+  if (idleMs < settingsStore.energyAwakeTimeoutSec() * 1000UL || Update.isRunning()) return;
+  goToSleep(0);
 }
 
 // Self-healing WiFi: if the STA link drops (AP reboot, noise, wedged radio),
@@ -432,12 +562,12 @@ void loop() {
     // one mid-walk (RegistryLock.h). Long network waits stay outside.
     BrewControl::RegistryLock lock;
     registry.tick();
-    webUI.tick();
-    mqttService.tick();
-    webhookService.tick();
-    webSocketService.tick();
-    if (espNowTransport) espNowTransport->tick();
-    espNowPublishService.tick();
+    // A short wake holds logs and programs back until the sensors have read
+    // once — otherwise its only log row would be empty.
+    if (!shortWake ||
+        shortWakeCourse.sensorsSettled(millis() - loopStartMs, sensorsHaveReadings()))
+      webUI.tick();
+    tickTransports();
     remoteDiscovery.tick();
     if (millis() - lastStateMs >= 1000) {
       lastStateMs = millis();
@@ -459,6 +589,11 @@ void loop() {
   }
   // Written outside the registry lock: a slow SD write must not hold up REST.
   if (!state.empty() && stateSaver.due(millis(), state)) BrewControl::saveState(deviceFs, state);
+  if (shortWake) {
+    shortWakeTick();
+    delay(5);
+    return;
+  }
   firmwareUpdater.tick();
   mdnsBrowser.tick(millis());
   // Wait for the clock so the alert carries a timestamp and can be pushed; give
@@ -469,5 +604,6 @@ void loop() {
   }
   pushService.tick();
   maintainWiFi();
+  fullWakeTick();
   delay(5);
 }
