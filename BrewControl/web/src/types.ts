@@ -162,6 +162,7 @@ export interface CalibrationInfo {
 export type ItemConfig = Record<string, unknown>;
 
 export interface ConfigSnapshot {
+  buses?: BusStored[]; // user-defined buses; absent from older firmware
   sensors: ItemConfig[];
   actuators: ItemConfig[];
   controllers: ItemConfig[];
@@ -171,9 +172,9 @@ export interface ConfigSnapshot {
 export type PinClass = 'free' | 'forbidden' | 'reserved' | 'risky';
 
 export interface PinUser {
-  id: string;
-  key: string; // config key, e.g. "pin", "pin_white", "cs"
-  share?: 'onewire' | 'spi'; // absent = exclusive
+  id: string; // item id, or bus id when bus is set
+  key: string; // config key, e.g. "pin", "pin_white", "cs", or a bus line ("sda")
+  bus?: boolean; // the user is a bus definition (GET /api/buses)
 }
 
 export interface PinInfo {
@@ -456,15 +457,51 @@ export interface ScanNetwork {
   open: boolean;
 }
 
+// GET /api/buses — mirrors DynamicItems::writeBuses() / BusConfig.h.
+export type BusType = 'onewire' | 'spi' | 'i2c';
+
+// A bus as stored in registry.json. Pin keys depend on type:
+// onewire → pin; spi → clk, miso, mosi; i2c → sda, scl.
+export interface BusStored {
+  id: string; // derived from type + pins: "onewire-4", "spi-18-19-23", "i2c-4-5"
+  type: BusType;
+  label?: string;
+  port?: 0 | 1; // i2c: controller (0 = Wire, 1 = Wire1)
+  pin?: number;
+  clk?: number;
+  miso?: number;
+  mosi?: number;
+  sda?: number;
+  scl?: number;
+}
+
+export interface BusInfo extends BusStored {
+  fixed?: boolean; // wired by the board, read-only
+  note?: string;
+  reserved?: { address: string; note: string }[];
+  users: string[]; // ids of the items on this bus
+}
+
+export interface BusTypeInfo {
+  type: BusType;
+  pins: string[]; // pin keys of a definition
+  max?: number; // buses of this type the chip supports
+}
+
+export interface BusesInfo {
+  buses: BusInfo[];
+  types: BusTypeInfo[];
+}
+
 // Wire format of GET /api/bus/scan
 export interface ScannedDevice {
-  address: string; // 16 hex chars, e.g. "28ff64c8815604ef"
+  address: string; // onewire: 16 hex chars ("28ff64c8815604ef"); i2c: "0x5a"
   index: number;
 }
 
 export interface BusScanResult {
-  type: string; // "onewire"
-  pin: number;
+  bus: string;
+  type: 'onewire' | 'i2c';
   devices: ScannedDevice[];
 }
 

@@ -12,6 +12,8 @@
 #include <transport/ITransport.h>
 #include <vector>
 
+#include "BusConfig.h"
+#include "I2cAddressMap.h"
 #include "PeripheralRegistry.h"
 #include "PinMap.h"
 
@@ -28,6 +30,9 @@ class DynamicItems {
   // conflict: the request clashes with the current state (pin taken, no RMT
   // channel left, still referenced by a controller) — callers send 409.
   struct Result { bool ok; const char* error = ""; bool conflict = false; };
+
+  // Starts with the board's fixed buses (BoardPins.h currentFixedBuses).
+  DynamicItems();
 
   // Create and register a new item. Calls item.begin() immediately (if
   // markInitialized() has already been called; otherwise begin() is deferred
@@ -47,8 +52,25 @@ class DynamicItems {
   Result replaceActuator(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
   Result replaceController(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
 
-  // GPIOs occupied by the current sensors and actuators (GET /api/pins).
+  // GPIOs occupied by the buses, sensors and actuators (GET /api/pins).
   std::vector<PinUse> pinUses() const;
+
+  // Claims the board's fixed I2C bus once at boot (LilyGo: the display/touch
+  // needs it before any dynamic item exists) and holds it forever. No-op on
+  // boards without a fixed I2C bus.
+  void acquireBoardI2cBus();
+
+  // Bus definitions (BusConfig.h), GET/POST/PUT/DELETE /api/buses. A bus is
+  // defined with its pins; items reference it by id. Pins may only change,
+  // and the bus may only go, while no item uses it; fixed buses never change
+  // (conflict). newId receives the id derived from type and pins. Errors
+  // point into busError_ (valid until the next call).
+  Result addBus(const JsonObject& def, std::string& newId);
+  Result updateBus(const char* id, const JsonObject& def, std::string& newId);
+  Result removeBus(const char* id);
+  const BusDef* findBus(const char* id) const;
+  // {buses: [definition + fixed/note/reserved/users], types: [...]}.
+  void writeBuses(JsonObject out) const;
 
   // Unregister and free a dynamic item. Returns {false, reason} if the id is
   // not found in dynamic items (caller should send 405) or if a sensor /
@@ -82,6 +104,8 @@ class DynamicItems {
 
   // Parse /config/registry.json and register items WITHOUT calling begin().
   // Call before registry.begin() so registry.begin() handles all items.
+  // Items from before buses were configurable are moved onto buses
+  // (normalizeLegacyItem) and the file is rewritten once.
   void loadFromSD(fs::FS& sd, SensActCtrl::Registry& reg);
 
   // Must be called after registry.begin(). Future add*() calls will then
@@ -91,13 +115,16 @@ class DynamicItems {
   // Write current dynamic item set to /config/registry.json.
   void saveToSD(fs::FS& sd) const;
 
-  // Serialize original config JSON for all dynamic items — used by GET /api/config.
+  // Serialize original config JSON for all dynamic items and user-defined
+  // buses (same shape as registry.json) — used by GET /api/config and backups.
   String serializeConfig() const;
 
-  // Scan a OneWire bus for DS18B20 ROM addresses. Reuses the bus from
-  // peripherals_ if a sensor already uses the pin, to avoid creating a second
-  // conflicting OneWire driver on the same GPIO. Call under the RegistryLock.
-  uint8_t scanOneWireBus(int pin, uint8_t out[][8], uint8_t maxDevices);
+  // Scans a defined bus and writes {bus, type, devices: [{index, address}]}:
+  // DS18B20 ROM codes (16 hex chars) on OneWire, "0x5a"-style addresses on
+  // I2C. Reuses the running driver if items use the bus, otherwise starts it
+  // just for the scan. {false, "bus not found"} → 404; SPI cannot be
+  // scanned → 400. Call under the RegistryLock.
+  Result scanBus(const char* id, JsonObject out);
 
   // Optional observers, fired around add*()/remove*() (only for items added
   // after markInitialized() — loadFromSD() uses the NoBegin path and does not
@@ -145,8 +172,8 @@ class DynamicItems {
   struct SensorEntry {
     std::string id;
     std::string cfgJson;
-    // The shared bus the sensor sits on (DS18B20: OneWire, MAX31865 with
-    // clk: SPI), empty otherwise. Declared before the sensor so it outlives
+    // The bus the sensor sits on (DS18B20, BME280/GY521, MAX31865 with a
+    // bus), empty otherwise. Declared before the sensor so it outlives
     // it; dropping the entry releases the bus.
     PeripheralRegistry::Ref bus;
     // innerPtr holds the concrete sensor; ptr is the CalibratedSensor wrapped
@@ -189,6 +216,22 @@ class DynamicItems {
   // last (PeripheralRegistry.h). Declared before sensors_ so that C++ destroys
   // sensors first (reverse declaration order), then buses.
   PeripheralRegistry peripherals_;
+  // The board's fixed I2C bus, held for as long as acquireBoardI2cBus() has
+  // been called (LilyGo: forever, from main.cpp) — see acquireBoardI2cBus().
+  PeripheralRegistry::Ref boardI2cBus_;
+
+  // Fixed buses first (never stored), then the user-defined ones in the
+  // order they were added.
+  std::vector<BusDef> buses_;
+  std::string busError_;
+
+  // The running driver of a defined bus, created on its first user.
+  PeripheralRegistry::Ref acquireBus(const BusDef& d);
+  // Ids of the items referencing bus id.
+  std::vector<std::string> busUsers(const std::string& id) const;
+  // The user-defined buses as the JSON array stored in registry.json.
+  std::string storedBusesJson() const;
+  Result busFail(const std::string& msg, bool conflict);
 
   // Entries are heap-allocated so that vector reallocation doesn't
   // invalidate id.c_str() pointers held by the library objects.
@@ -225,6 +268,17 @@ class DynamicItems {
   // points to (valid until the next check).
   Result checkPins(const JsonObject& cfg, const char* replaceId);
   std::string pinError_;
+
+  // I2C address occupied by the current sensors (GET /api/pins does not
+  // expose this — only create/replace check against it).
+  std::vector<AddressUse> addressUses() const;
+
+  // I2C address check against the reserved addresses of the item's bus and
+  // the addresses already in use on it; replaceId's own address counts as free. The
+  // message of a failed check lives in i2cAddressError_, which Result.error
+  // then points to (valid until the next check).
+  Result checkI2cAddress(const JsonObject& cfg, const char* replaceId);
+  std::string i2cAddressError_;
 
   static bool parseHexAddress(const char* hex, uint8_t out[8]);
 

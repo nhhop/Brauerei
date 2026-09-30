@@ -32,6 +32,10 @@ class GY521TiltSensor : public Sensor {
  public:
   explicit GY521TiltSensor(const char* id, uint8_t i2cAddress = 0x68);
 
+  // Constructor for a bus the caller owns (e.g. BrewControl's shared board
+  // I2C bus). The TwoWire instance must outlive this sensor.
+  GY521TiltSensor(const char* id, TwoWire& bus, uint8_t i2cAddress = 0x68);
+
   const char* id()                const override { return id_; }
   size_t      channelCount()      const override { return 1; }
   Channel     channel(size_t idx) const override {

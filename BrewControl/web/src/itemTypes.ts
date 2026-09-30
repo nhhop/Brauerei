@@ -136,7 +136,7 @@ export const CATEGORY_ICON: Record<string, LucideIcon> = {
 // scan can produce. Set it in the same handler that opens the dialog and clear
 // it in onClose; see the `prefill` prop in AddItemModal.
 export type ItemPrefill =
-  | { role: 'sensor'; type: 'DS18B20'; id: string; pin: number; address: string }
+  | { role: 'sensor'; type: 'DS18B20'; id: string; bus: string; address: string }
   | {
       role: 'sensor' | 'actuator'; type: 'Remote'; id: string;
       transport: 'mqtt' | 'espnow' | 'websocket'; device: string; remoteId: string;

@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -565,10 +565,30 @@ export async function deleteProfileCategory(id: string): Promise<void> {
   if (!r.ok) await failed(r);
 }
 
-// ── Bus discovery ────────────────────────────────────────────────────────────
+// ── Buses ────────────────────────────────────────────────────────────────────
 
-export async function scanOneWireBus(pin: number): Promise<BusScanResult> {
-  const r = await fetch(`/api/bus/scan?type=onewire&pin=${pin}`);
+export async function getBuses(): Promise<BusesInfo> {
+  const r = await fetch('/api/buses');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as BusesInfo;
+}
+
+// def: type, pin keys of that type, optional label. The firmware derives the
+// id from type and pins.
+export function createBus(def: object): Promise<void> {
+  return postJson('/api/buses', def);
+}
+
+export function updateBus(id: string, def: object): Promise<void> {
+  return putJson(`/api/buses/${encodeURIComponent(id)}`, def);
+}
+
+export function deleteBus(id: string): Promise<void> {
+  return deleteItem(`/api/buses/${encodeURIComponent(id)}`);
+}
+
+export async function scanBus(id: string): Promise<BusScanResult> {
+  const r = await fetch(`/api/bus/scan?bus=${encodeURIComponent(id)}`);
   if (!r.ok) await failed(r);
   return r.json() as Promise<BusScanResult>;
 }

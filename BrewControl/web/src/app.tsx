@@ -18,6 +18,7 @@ import { AppearancePage } from './pages/AppearancePage';
 import { DisplayPage } from './pages/DisplayPage';
 import { EnergyPage } from './pages/EnergyPage';
 import { DevicesPage } from './pages/DevicesPage';
+import { BusesPage } from './pages/BusesPage';
 import { FirmwarePage } from './pages/FirmwarePage';
 import { SystemStatusPage } from './pages/SystemStatusPage';
 import { BackupPage } from './pages/BackupPage';
@@ -188,6 +189,7 @@ export function App() {
         <DisplayPage path="/settings/display" />
         <EnergyPage path="/settings/energy" snap={snap} />
         <DevicesPage path="/settings/devices" snap={snap} />
+        <BusesPage path="/settings/buses" />
         <FirmwarePage path="/settings/firmware" />
         <SystemStatusPage path="/settings/system" />
         <BackupPage path="/settings/backup" />

@@ -13,8 +13,9 @@ namespace BrewControl {
 // so the lifecycle runs in the native tests; the concrete buses live in
 // DynamicItems.cpp.
 //
-// id() names the instance and starts with its type ("onewire:4",
-// "spi:18/19/23"), so two types can never collide on one id.
+// id() names the instance: the id of its bus definition (BusConfig.h), which
+// starts with its type ("onewire-4", "spi-18-19-23"), so two types can never
+// collide on one id.
 class Peripheral {
  public:
   virtual ~Peripheral() = default;

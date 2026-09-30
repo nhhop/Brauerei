@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BusConfig.h"
 #include "PinMap.h"
 
 namespace BrewControl {
@@ -39,6 +40,7 @@ inline constexpr Board kEsp32Dev = {
     pinRange(34, 39),
     pinBit(36) | pinBit(39),
     true,  // ADC2 reads fail while Wi-Fi is on
+    21, 22,  // Arduino-ESP32 default Wire pins (variants/esp32/pins_arduino.h)
 };
 
 // ── lolin_s2_mini (ESP32-S2FN4R2) ────────────────────────────────────────────
@@ -70,6 +72,7 @@ inline constexpr Board kLolinS2Mini = {
     pinBit(46),  // fixed pull-down
     0,
     false,  // ADC2 arbitrated with Wi-Fi
+    33, 35,  // Arduino-ESP32 default Wire pins (variants/lolin_s2_mini/pins_arduino.h)
 };
 
 // ── lilygo_t_display_s3_amoled (ESP32-S3R8, T-Display-S3-AMOLED-1.75) ────────
@@ -124,14 +127,26 @@ inline constexpr Board kLilyGoAmoled = {
     0,
     0,
     false,  // ADC2 arbitrated with Wi-Fi
+    7, 6,  // BREWCTL_I2C_SDA/SCL — see static_assert below
     4,      // BATTERY_VOLTAGE_ADC_DATA in LilyGo's pin_config.h
     100.0f, // 1:2 divider: GPIO 4 read 2.11 V on a charged cell (SESSION.md).
     100.0f, // Actual resistor values unknown, only the ratio matters.
 };
+// Onboard devices sharing this board's I2C bus (BrewControl/CLAUDE.md).
+inline constexpr AddrDef kLilyGoAmoledI2cReserved[] = {
+    {0x51, "RTC (PCF8563)"},
+    {0x5A, "Touch (CST9217)"},
+    {0x6A, "PMU (SY6970)"},
+};
+inline constexpr FixedBus kLilyGoAmoledBuses[] = {
+    {"i2c-board", "i2c", {7, 6, -1},
+     "Fest verdrahtet mit RTC, Touch und PMU; SDA/SCL liegen am Header und am Qwiic-Stecker",
+     kLilyGoAmoledI2cReserved, sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef)},
+};
 
 #if defined(BREWCTL_I2C_SDA) && defined(BREWCTL_HAS_DISPLAY)
 static_assert(BREWCTL_I2C_SDA == 7 && BREWCTL_I2C_SCL == 6,
-              "update kLilyGoAmoledSpecial to the new I2C pins");
+              "update kLilyGoAmoledSpecial and kLilyGoAmoledBuses to the new I2C pins");
 #endif
 #if defined(BREWCTL_SD_CS) && defined(BREWCTL_HAS_DISPLAY)
 static_assert(BREWCTL_SD_CS == 38 && BREWCTL_SD_MOSI == 39 &&
@@ -148,6 +163,16 @@ inline const Board& currentBoard() {
 #else
   return kEsp32Dev;
 #endif
+}
+
+// The buses the current board wires itself (none on esp32dev/lolin_s2_mini:
+// there every bus is user-defined), analogous to currentBoard().
+inline std::vector<BusDef> currentFixedBuses() {
+  std::vector<BusDef> out;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  for (const FixedBus& f : kLilyGoAmoledBuses) out.push_back(busFromFixed(f));
+#endif
+  return out;
 }
 
 }  // namespace BrewControl

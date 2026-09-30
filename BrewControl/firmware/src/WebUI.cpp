@@ -1017,41 +1017,80 @@ void WebUI::begin() {
         rebootAtMs_ = millis() + kRebootDelayMs;
       }));
 
+  // ── Buses (BusConfig.h) ───────────────────────────────────────────────────
+  // GET before the POST handler: PostJsonHandler answers every method on its
+  // exact path.
+  server_.on("/api/buses", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    items_.writeBuses(doc.to<JsonObject>());
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
+  });
+
+  // Bus mutations run under the registry lock: item creation reads the bus
+  // table. They change no item, so no snapshot push.
+  auto busDone = [this](AsyncWebServerRequest* req, const DynamicItems::Result& r,
+                        const std::string& id, int okStatus) {
+    if (!r.ok) {
+      const int status = strcmp(r.error, "bus not found") == 0 ? 404
+                         : r.conflict                         ? 409
+                                                              : 400;
+      req->send(status, "text/plain", r.error);
+      return;
+    }
+    items_.saveToSD(fs_);
+    if (okStatus == 204) { req->send(204); return; }
+    JsonDocument doc;
+    doc["id"] = id;
+    String out;
+    serializeJson(doc, out);
+    req->send(okStatus, "application/json", out);
+  };
+
+  server_.addHandler(new PostJsonHandler("/api/buses",
+      [this, busDone](AsyncWebServerRequest* req, JsonVariant& json) {
+        std::string id;
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.addBus(json.as<JsonObject>(), id); })) return;
+        busDone(req, r, id, 201);
+      }));
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/buses/",
+      [this, busDone](AsyncWebServerRequest* req, JsonVariant& json) {
+        const String oldId = req->url().substring(strlen("/api/buses/"));
+        std::string id;
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] {
+              return items_.updateBus(oldId.c_str(), json.as<JsonObject>(), id);
+            })) return;
+        busDone(req, r, id, 200);
+      }));
+
+  server_.addHandler(new DeletePrefixHandler("/api/buses/",
+      [this, busDone](AsyncWebServerRequest* req) {
+        const String id = req->url().substring(strlen("/api/buses/"));
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.removeBus(id.c_str()); })) return;
+        busDone(req, r, "", 204);
+      }));
+
   // ── Bus scan ──────────────────────────────────────────────────────────────
   server_.on("/api/bus/scan", HTTP_GET, [this](AsyncWebServerRequest* req) {
-    if (!req->hasParam("type") || !req->hasParam("pin")) {
-      req->send(400, "text/plain", "missing type or pin");
+    if (!req->hasParam("bus")) {
+      req->send(400, "text/plain", "missing bus");
       return;
     }
-    if (req->getParam("type")->value() != "onewire") {
-      req->send(400, "text/plain", "unsupported bus type");
-      return;
-    }
-    int pin = req->getParam("pin")->value().toInt();
-
-    uint8_t addrs[8][8] = {};
-    uint8_t n;
-    {
-      // The bus may be the one loop() ticks DS18B20 on, and a sensor added or
-      // removed meanwhile may create or tear it down (PeripheralRegistry.h).
-      RegistryTryLock lock(kRegistryWaitMs);
-      if (!lock.locked()) {
-        req->send(503, "text/plain", "busy, retry");
-        return;
-      }
-      n = items_.scanOneWireBus(pin, addrs, 8);
-    }
-
+    const String id = req->getParam("bus")->value();
     JsonDocument doc;
-    doc["type"] = "onewire";
-    doc["pin"] = pin;
-    JsonArray devs = doc["devices"].to<JsonArray>();
-    for (uint8_t i = 0; i < n; ++i) {
-      char hex[17] = {};
-      for (uint8_t b = 0; b < 8; ++b) snprintf(hex + 2 * b, 3, "%02x", addrs[i][b]);
-      JsonObject d = devs.add<JsonObject>();
-      d["index"] = i;
-      d["address"] = hex;
+    // The bus may be the one loop() ticks sensors on, and an item added or
+    // removed meanwhile may create or tear it down (PeripheralRegistry.h).
+    DynamicItems::Result r{false};
+    if (!underRegistryLock(req, r, [&] { return items_.scanBus(id.c_str(), doc.to<JsonObject>()); }))
+      return;
+    if (!r.ok) {
+      req->send(strcmp(r.error, "bus not found") == 0 ? 404 : 400, "text/plain", r.error);
+      return;
     }
     String out;
     serializeJson(doc, out);

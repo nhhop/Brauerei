@@ -7,6 +7,9 @@ namespace SensActCtrl {
 GY521TiltSensor::GY521TiltSensor(const char* id, uint8_t i2cAddress)
     : id_(id), raw_(id, i2cAddress) {}
 
+GY521TiltSensor::GY521TiltSensor(const char* id, TwoWire& bus, uint8_t i2cAddress)
+    : id_(id), raw_(id, bus, i2cAddress) {}
+
 void GY521TiltSensor::tick() {
   raw_.tick();
 

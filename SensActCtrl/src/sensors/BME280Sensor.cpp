@@ -8,9 +8,11 @@
   // Native build stub: BME280 is hardware-only.
   #include <stdint.h>
   static uint32_t millis() { return 0; }
+  class TwoWire {};
   class Adafruit_BME280 {
    public:
     bool begin(uint8_t = 0x76) { return false; }
+    bool begin(uint8_t, TwoWire*) { return false; }
     float readTemperature() { return 25.0f; }
     float readHumidity() { return 50.0f; }
     float readPressure() { return 101325.0f; }
@@ -22,12 +24,19 @@ namespace SensActCtrl {
 BME280Sensor::BME280Sensor(const char* id, uint8_t i2cAddress)
     : id_(id), address_(i2cAddress) {}
 
+BME280Sensor::BME280Sensor(const char* id, TwoWire& bus, uint8_t i2cAddress)
+    : id_(id), address_(i2cAddress), bus_(&bus) {}
+
 BME280Sensor::~BME280Sensor() { delete dev_; }
 
 void BME280Sensor::begin() {
   if (initialized_) return;
   dev_ = new Adafruit_BME280();
-  dev_->begin(address_);
+  if (bus_) {
+    dev_->begin(address_, bus_);
+  } else {
+    dev_->begin(address_);
+  }
   initialized_ = true;
 }
 

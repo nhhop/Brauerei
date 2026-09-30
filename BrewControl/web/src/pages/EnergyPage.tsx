@@ -137,7 +137,7 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
                 </div>
                 {/* The board's own battery input is marked risky for other items; here it is the point. */}
                 {pin !== String(pins?.battery?.gpio) && (
-                  <PinHint pins={pins} value={pin} analog configKey="pin" onPick={(g) => setPin(String(g))} />
+                  <PinHint pins={pins} value={pin} analog onPick={(g) => setPin(String(g))} />
                 )}
                 <p class="text-xs text-muted">
                   Legt einen Sensor vom Typ „Spannung“ an. Die Firmware nutzt die ab Werk

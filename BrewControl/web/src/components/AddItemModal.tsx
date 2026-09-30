@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Check } from 'lucide-preact';
-import type { Snapshot, ScannedDevice, ItemConfig, PinsInfo } from '../types';
+import type { Snapshot, ScannedDevice, ItemConfig, PinsInfo, BusesInfo, BusType } from '../types';
 import {
   createSensor, createActuator, createController,
   replaceSensor, replaceActuator, replaceController,
   setSensorLabel, setActuatorLabel, setControllerLabel,
-  scanOneWireBus, startAutotune, stopAutotune, getPins,
+  scanBus, startAutotune, stopAutotune, getPins, getBuses,
 } from '../api';
 import { riskyPins } from '../pins';
+import { BUS_TYPE_LABEL, busTitle } from '../buses';
 import { PinHint } from './PinHint';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
@@ -113,6 +114,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // sensor sub-type
   const [sensorType, setSensorType] = useState<SensorType>('DS18B20');
 
+  // Bus of a DS18B20 / MAX31865 / BME280 / GY521 ('' = none picked yet, or
+  // hardware SPI for a MAX31865) — see effectiveBus().
+  const [busId, setBusId] = useState('');
+
   // DS18B20
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
@@ -180,10 +185,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const [rtdType, setRtdType] = useState<RtdType>('PT100');
   const [rref, setRref] = useState(DEFAULT_RREF.PT100);
   const [rrefTouched, setRrefTouched] = useState(false);
-  const [showCustomSpi, setShowCustomSpi] = useState(false);
-  const [clkPin, setClkPin] = useState('');
-  const [misoPin, setMisoPin] = useState('');
-  const [mosiPin, setMosiPin] = useState('');
 
   // actuator
   const [actuatorType, setActuatorType] = useState<ActuatorType>('DigitalOutput');
@@ -261,6 +262,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // Board pin table + occupancy (GET /api/pins). null until loaded, or for a
   // firmware without the route — the form then works without pin hints.
   const [pins, setPins] = useState<PinsInfo | null>(null);
+  // Defined buses (GET /api/buses); null until loaded or for older firmware.
+  const [buses, setBuses] = useState<BusesInfo | null>(null);
   // Risky pins of the last submit attempt, and the set the user confirmed.
   const [riskyWarn, setRiskyWarn] = useState<string[]>([]);
   const [riskyAck, setRiskyAck] = useState('');
@@ -270,6 +273,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
     setErr(null);
     setRiskyWarn([]); setRiskyAck('');
     getPins().then(setPins).catch(() => setPins(null));
+    getBuses().then(setBuses).catch(() => setBuses(null));
     setAtErr(null); setAtBusy(false); setAtMethod('ZieglerNichols');
     setScanning(false); setScanned(false); setScannedDevices([]); setSelectedAddress('');
 
@@ -281,8 +285,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       if (editRole === 'sensor') {
         const t = String(editConfig.type ?? 'DS18B20') as SensorType;
         setSensorType(t);
+        setBusId(String(editConfig.bus ?? ''));
         if (t === 'DS18B20') {
-          setPin(String(editConfig.pin ?? ''));
           setSelectedAddress(String(editConfig.address ?? ''));
         } else if (t === 'MAX31865') {
           setCsPin(String(editConfig.cs ?? ''));
@@ -291,11 +295,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setRtdType(rt);
           setRref(String(editConfig.rref ?? DEFAULT_RREF[rt]));
           setRrefTouched(true);
-          const hasCustomSpi = editConfig.clk != null;
-          setShowCustomSpi(hasCustomSpi);
-          setClkPin(hasCustomSpi ? String(editConfig.clk) : '');
-          setMisoPin(hasCustomSpi ? String(editConfig.miso) : '');
-          setMosiPin(hasCustomSpi ? String(editConfig.mosi) : '');
         } else if (t === 'YF-S201') {
           setPin(String(editConfig.pin ?? ''));
           const chs = editConfig.channels as string[] | undefined;
@@ -459,10 +458,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       // new item — reset to defaults
       setRole(initialRole ?? 'sensor'); setId(''); setLabel(''); setPin('');
       setSensorType('DS18B20');
+      setBusId('');
       setI2cAddr(0x76);
       setCsPin(''); setWiresCount(2); setRtdType('PT100');
       setRref(DEFAULT_RREF.PT100); setRrefTouched(false);
-      setShowCustomSpi(false); setClkPin(''); setMisoPin(''); setMosiPin('');
       setTrigPin(''); setEchoPin('');
       setChDistance(true); setChRate(true); setChVolume(true);
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
@@ -502,7 +501,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         setId(prefill.id);
         if (prefill.type === 'DS18B20') {
           setSensorType('DS18B20');
-          setPin(String(prefill.pin));
+          setBusId(prefill.bus);
           setSelectedAddress(prefill.address);
           // Seed the bus list too — it only renders after a scan, and without
           // it the picked address would be invisible.
@@ -591,6 +590,44 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
     if (!rrefTouched) setRref(DEFAULT_RREF[rt]);
   }
 
+  const busesOf = (t: BusType) => buses?.buses.filter((b) => b.type === t) ?? [];
+
+  // The bus the form submits: the picked one if it has the right type,
+  // otherwise the first bus of that type — or none, where allowNone (MAX31865:
+  // hardware SPI). Without the bus list (older firmware) whatever was loaded.
+  function effectiveBus(t: BusType, allowNone = false): string {
+    if (!buses) return busId;
+    const list = busesOf(t);
+    if (list.some((b) => b.id === busId)) return busId;
+    return allowNone ? '' : (list[0]?.id ?? '');
+  }
+
+  function resetScan() {
+    setScanned(false); setScannedDevices([]); setSelectedAddress('');
+  }
+
+  // Bus picker; with noneLabel, '' is a valid choice shown under that name.
+  function busField(t: BusType, noneLabel?: string) {
+    const list = busesOf(t);
+    return (
+      <div>
+        <label class={lbl}>{BUS_TYPE_LABEL[t]}-Bus</label>
+        {list.length === 0 && !noneLabel ? (
+          <p class="text-xs text-caution">
+            Noch kein {BUS_TYPE_LABEL[t]}-Bus angelegt — unter{' '}
+            <a href="/settings/buses" class="underline">Einstellungen → Bus-Schnittstellen</a> anlegen.
+          </p>
+        ) : (
+          <select value={effectiveBus(t, !!noneLabel)} class={inp}
+            onChange={(e) => { setBusId((e.target as HTMLSelectElement).value); resetScan(); }}>
+            {noneLabel && <option value="">{noneLabel}</option>}
+            {list.map((b) => <option key={b.id} value={b.id}>{busTitle(b)}</option>)}
+          </select>
+        )}
+      </div>
+    );
+  }
+
   // False (and shows the confirmation box) while cfg uses risky pins the user
   // has not confirmed yet. The firmware accepts them either way.
   function risksConfirmed(cfg: Record<string, unknown>): boolean {
@@ -612,31 +649,29 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
       if (role === 'sensor') {
         if (sensorType === 'DS18B20') {
-          const p = parseInt(pin, 10);
-          if (isNaN(p)) throw new Error('invalid pin');
-          cfg = { type: 'DS18B20', id: trimId, pin: p,
+          const bus = effectiveBus('onewire');
+          if (!bus) throw new Error('Kein OneWire-Bus gewählt');
+          cfg = { type: 'DS18B20', id: trimId, bus,
             ...(selectedAddress ? { address: selectedAddress } : {}) };
         } else if (sensorType === 'MAX31865') {
           const cs = parseInt(csPin, 10);
           if (isNaN(cs)) throw new Error('CS pin required');
           const rrefVal = parseFloat(rref);
           if (isNaN(rrefVal) || rrefVal <= 0) throw new Error('invalid Rref');
-          const customSpi = clkPin
-            ? { clk: parseInt(clkPin, 10), miso: parseInt(misoPin, 10), mosi: parseInt(mosiPin, 10) }
-            : {};
-          if (clkPin && (isNaN((customSpi as Record<string,number>).miso) || isNaN((customSpi as Record<string,number>).mosi)))
-            throw new Error('CLK set but MISO/MOSI missing');
-          cfg = { type: 'MAX31865', id: trimId, cs, wires: wiresCount, rtd: rtdType, rref: rrefVal, ...customSpi };
+          const bus = effectiveBus('spi', true);
+          cfg = { type: 'MAX31865', id: trimId, cs, wires: wiresCount, rtd: rtdType, rref: rrefVal,
+            ...(bus ? { bus } : {}) };
         } else if (sensorType === 'YF-S201') {
           const p = parseInt(pin, 10);
           if (isNaN(p) || p < 0) throw new Error('Ungültiger Pin');
           const channels = [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
           if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
           cfg = { type: 'YF-S201', id: trimId, pin: p, channels };
-        } else if (sensorType === 'BME280') {
-          cfg = { type: 'BME280', id: trimId, address: i2cAddr };
-        } else if (sensorType === 'GY521') {
-          cfg = { type: 'GY521', id: trimId, address: gy521Addr };
+        } else if (sensorType === 'BME280' || sensorType === 'GY521') {
+          const bus = effectiveBus('i2c');
+          if (!bus) throw new Error('Kein I²C-Bus gewählt');
+          cfg = { type: sensorType, id: trimId, bus,
+            address: sensorType === 'BME280' ? i2cAddr : gy521Addr };
         } else if (sensorType === 'HX711') {
           const dout = parseInt(hx711Dout, 10);
           const sck  = parseInt(hx711Sck,  10);
@@ -990,29 +1025,24 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* DS18B20 fields */}
           {role === 'sensor' && sensorType === 'DS18B20' && (
             <>
-              <div>
-                <label class={lbl}>OneWire Pin (GPIO)</label>
-                <div class="flex gap-2">
-                  <input type="number" value={pin}
-                    onInput={(e) => { setPin((e.target as HTMLInputElement).value); setScanned(false); setScannedDevices([]); setSelectedAddress(''); }}
-                    placeholder="z.B. 4" class={`${inp} flex-1`} required />
-                  <button type="button" disabled={scanning || !pin}
+              <div class="flex items-end gap-2">
+                <div class="flex-1">{busField('onewire')}</div>
+                {busesOf('onewire').length > 0 && (
+                  <button type="button" disabled={scanning}
                     onClick={async () => {
-                      setScanning(true); setScanned(false); setScannedDevices([]); setSelectedAddress(''); setErr(null);
+                      setScanning(true); resetScan(); setErr(null);
                       try {
-                        const r = await scanOneWireBus(parseInt(pin, 10));
+                        const r = await scanBus(effectiveBus('onewire'));
                         setScannedDevices(r.devices);
                         setScanned(true);
                         if (r.devices.length === 1) setSelectedAddress(r.devices[0].address);
                       } catch (e) { setErr(String(e)); }
                       setScanning(false);
                     }}
-                    class="rounded-md bg-fg/5 px-3 py-1.5 text-xs font-medium text-muted hover:bg-fg/10 disabled:opacity-50">
+                    class="rounded-md bg-fg/5 px-3 py-2 text-xs font-medium text-muted hover:bg-fg/10 disabled:opacity-50">
                     {scanning ? '…' : 'Scan'}
                   </button>
-                </div>
-                <PinHint pins={pins} value={pin} selfId={selfId} share="onewire" configKey="pin"
-                  onPick={(g) => { setPin(String(g)); setScanned(false); setScannedDevices([]); setSelectedAddress(''); }} />
+                )}
               </div>
               {scannedDevices.length > 0 && (
                 <div>
@@ -1031,10 +1061,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   </div>
                 </div>
               )}
-              {scannedDevices.length === 0 && pin && !scanning && !scanned && (
+              {scannedDevices.length === 0 && effectiveBus('onewire') && !scanning && !scanned && (
                 <p class="text-xs text-faint">Scan ausführen um Geräte auf diesem Bus zu finden.</p>
               )}
-              {scannedDevices.length === 0 && pin && !scanning && scanned && (
+              {scannedDevices.length === 0 && effectiveBus('onewire') && !scanning && scanned && (
                 <p class="text-xs text-caution">Kein Gerät auf diesem Bus gefunden — Verkabelung und Pull-up prüfen, dann erneut scannen.</p>
               )}
             </>
@@ -1048,9 +1078,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={csPin}
                   onInput={(e) => setCsPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 5" class={inp} required />
-                <PinHint pins={pins} value={csPin} selfId={selfId} output configKey="cs"
-                  exclude={parsedPins(clkPin, misoPin, mosiPin)} onPick={(g) => setCsPin(String(g))} />
+                <PinHint pins={pins} value={csPin} selfId={selfId} output suggest
+                  onPick={(g) => setCsPin(String(g))} />
               </div>
+              {busField('spi', 'Hardware-SPI (Standard-Pins)')}
               <div>
                 <label class={lbl}>Wires</label>
                 <div class="flex gap-2">
@@ -1075,33 +1106,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   onInput={(e) => { setRref((e.target as HTMLInputElement).value); setRrefTouched(true); }}
                   class={inp} required />
               </div>
-              <div>
-                <button type="button" onClick={() => setShowCustomSpi(!showCustomSpi)}
-                  class="text-xs text-muted hover:text-fg">
-                  {showCustomSpi ? '▼' : '▶'} Custom SPI Pins (CLK / MISO / MOSI)
-                </button>
-                {showCustomSpi && (
-                  <div class="mt-2 grid grid-cols-3 gap-2">
-                    {([
-                      ['CLK', 'clk', clkPin, setClkPin, [misoPin, mosiPin]],
-                      ['MISO', 'miso', misoPin, setMisoPin, [clkPin, mosiPin]],
-                      ['MOSI', 'mosi', mosiPin, setMosiPin, [clkPin, misoPin]],
-                    ] as const).map(
-                      ([label, key, val, setter, siblings]) => (
-                        <div key={label}>
-                          <label class={lbl}>{label}</label>
-                          <input type="number" value={val}
-                            onInput={(e) => (setter as (v: string) => void)((e.target as HTMLInputElement).value)}
-                            placeholder="GPIO" class={inp} />
-                          <PinHint pins={pins} value={val} selfId={selfId} share="spi" output={label !== 'MISO'}
-                            configKey={key} exclude={parsedPins(csPin, ...siblings)}
-                            onPick={(g) => (setter as (v: string) => void)(String(g))} />
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
             </>
           )}
 
@@ -1112,7 +1116,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <label class={lbl}>GPIO-Pin</label>
                 <input type="number" placeholder="z.B. 4" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)} class={inp} />
-                <PinHint pins={pins} value={pin} selfId={selfId} pullup irq configKey="pin"
+                <PinHint pins={pins} value={pin} selfId={selfId} pullup irq suggest
                   onPick={(g) => setPin(String(g))} />
               </div>
               <div class="flex gap-4">
@@ -1139,7 +1143,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={hx711Dout}
                     onInput={(e) => setHx711Dout((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 4" class={inp} required />
-                  <PinHint pins={pins} value={hx711Dout} selfId={selfId} configKey="dout"
+                  <PinHint pins={pins} value={hx711Dout} selfId={selfId} suggest
                     exclude={parsedPins(hx711Sck)} onPick={(g) => setHx711Dout(String(g))} />
                 </div>
                 <div>
@@ -1147,7 +1151,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={hx711Sck}
                     onInput={(e) => setHx711Sck((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 5" class={inp} required />
-                  <PinHint pins={pins} value={hx711Sck} selfId={selfId} output configKey="sck"
+                  <PinHint pins={pins} value={hx711Sck} selfId={selfId} output suggest
                     exclude={parsedPins(hx711Dout)} onPick={(g) => setHx711Sck(String(g))} />
                 </div>
               </div>
@@ -1165,7 +1169,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={diPin}
                   onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 15" class={inp} required />
-                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} configKey="pin"
+                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} suggest
                   onPick={(g) => setDiPin(String(g))} />
               </div>
               <div class="flex gap-4">
@@ -1197,7 +1201,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={aiPin}
                   onInput={(e) => setAiPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 34" class={inp} required />
-                <PinHint pins={pins} value={aiPin} selfId={selfId} analog configKey="pin"
+                <PinHint pins={pins} value={aiPin} selfId={selfId} analog suggest
                   onPick={(g) => setAiPin(String(g))} />
               </div>
               <div class="grid grid-cols-3 gap-2">
@@ -1235,7 +1239,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={vPin}
                   onInput={(e) => setVPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 35" class={inp} required />
-                <PinHint pins={pins} value={vPin} selfId={selfId} analog configKey="pin"
+                <PinHint pins={pins} value={vPin} selfId={selfId} analog
                   onPick={(g) => setVPin(String(g))} />
               </div>
               <div class="grid grid-cols-2 gap-2">
@@ -1368,7 +1372,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={trigPin}
                     onInput={(e) => setTrigPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 5" class={inp} required />
-                  <PinHint pins={pins} value={trigPin} selfId={selfId} output configKey="trig"
+                  <PinHint pins={pins} value={trigPin} selfId={selfId} output suggest
                     exclude={parsedPins(echoPin)} onPick={(g) => setTrigPin(String(g))} />
                 </div>
                 <div>
@@ -1376,7 +1380,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   <input type="number" value={echoPin}
                     onInput={(e) => setEchoPin((e.target as HTMLInputElement).value)}
                     placeholder="z.B. 18" class={inp} required />
-                  <PinHint pins={pins} value={echoPin} selfId={selfId} irq configKey="echo"
+                  <PinHint pins={pins} value={echoPin} selfId={selfId} irq suggest
                     exclude={parsedPins(trigPin)} onPick={(g) => setEchoPin(String(g))} />
                 </div>
               </div>
@@ -1427,6 +1431,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* BME280 fields */}
           {role === 'sensor' && sensorType === 'BME280' && (
             <div class="space-y-3">
+              {busField('i2c')}
               <div>
                 <label class={lbl}>I²C Address</label>
                 <div class="flex gap-2">
@@ -1445,6 +1450,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* GY521 fields */}
           {role === 'sensor' && sensorType === 'GY521' && (
             <div class="space-y-3">
+              {busField('i2c')}
               <div>
                 <label class={lbl}>I²C Address</label>
                 <div class="flex gap-2">
@@ -1469,7 +1475,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={pin}
                   onInput={(e) => setPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 16" class={inp} required />
-                <PinHint pins={pins} value={pin} selfId={selfId} output configKey="pin"
+                <PinHint pins={pins} value={pin} selfId={selfId} output suggest
                   onPick={(g) => setPin(String(g))} />
               </div>
               <div>
@@ -1498,7 +1504,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={analogPin}
                   onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 25" class={inp} required />
-                <PinHint pins={pins} value={analogPin} selfId={selfId} output configKey="pin"
+                <PinHint pins={pins} value={analogPin} selfId={selfId} output suggest
                   onPick={(g) => setAnalogPin(String(g))} />
               </div>
               {/* DAC only where the board has one (the ESP32-S3 has none); an
@@ -1555,7 +1561,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <input type="number" value={pulsePin}
                   onInput={(e) => setPulsePin((e.target as HTMLInputElement).value)}
                   placeholder="z.B. 17" class={inp} required />
-                <PinHint pins={pins} value={pulsePin} selfId={selfId} output configKey="pin"
+                <PinHint pins={pins} value={pulsePin} selfId={selfId} output suggest
                   onPick={(g) => setPulsePin(String(g))} />
               </div>
               <div class="grid grid-cols-2 gap-2">
@@ -1587,10 +1593,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {role === 'actuator' && (actuatorType === 'IDS1' || actuatorType === 'IDS2') && (
             <div class="grid grid-cols-3 gap-2">
               {([
-                ['White (Relais)', 'pin_white', pinWhite, setPinWhite, [pinYellow, pinInterrupt]],
-                ['Yellow (Cmd)',   'pin_yellow', pinYellow, setPinYellow, [pinWhite, pinInterrupt]],
-                ['Interrupt',      'pin_interrupt', pinInterrupt, setPinInterrupt, [pinWhite, pinYellow]],
-              ] as const).map(([label, key, val, setter, siblings]) => (
+                ['White (Relais)', pinWhite, setPinWhite, [pinYellow, pinInterrupt]],
+                ['Yellow (Cmd)',   pinYellow, setPinYellow, [pinWhite, pinInterrupt]],
+                ['Interrupt',      pinInterrupt, setPinInterrupt, [pinWhite, pinYellow]],
+              ] as const).map(([label, val, setter, siblings]) => (
                 <div key={label}>
                   <label class={lbl}>{label}</label>
                   <input type="number" value={val}
@@ -1598,7 +1604,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     placeholder="GPIO" class={inp} required />
                   <PinHint pins={pins} value={val} selfId={selfId} output={label !== 'Interrupt'}
                     pullup={label === 'Interrupt'} irq={label === 'Interrupt'}
-                    configKey={key} exclude={parsedPins(...siblings)}
+                    suggest exclude={parsedPins(...siblings)}
                     onPick={(g) => (setter as (v: string) => void)(String(g))} />
                 </div>
               ))}

@@ -25,10 +25,26 @@ std::vector<PinUse> usesOf(std::initializer_list<const char*> configs) {
   return uses;
 }
 
+// The pin uses of a bus definition (BusConfig.h).
+std::vector<PinUse> busUses(const char* def) {
+  JsonDocument doc = parse(def);
+  BusDef d;
+  std::string err;
+  TEST_ASSERT_TRUE_MESSAGE(parseBusDef(doc.as<JsonObjectConst>(), d, err), err.c_str());
+  std::vector<PinUse> uses;
+  busPinUses(d, uses);
+  return uses;
+}
+
 PinCheck check(const Board& b, const std::vector<PinUse>& uses, const char* cfg,
                const char* replaceId = "") {
   JsonDocument doc = parse(cfg);
   return checkItemPins(b, uses, doc.as<JsonObjectConst>(), replaceId);
+}
+
+PinCheck checkBus(const Board& b, const std::vector<PinUse>& uses, const char* def,
+                  const char* replaceId = "") {
+  return checkPinUses(b, uses, busUses(def), replaceId);
 }
 
 }  // namespace
@@ -44,16 +60,17 @@ void test_collect_keys_per_type() {
   TEST_ASSERT_TRUE(u[1].rmt);
   TEST_ASSERT_FALSE(u[2].output);
 
-  u = usesOf({R"({"type":"MAX31865","id":"m","cs":5,"clk":18,"miso":19,"mosi":23})"});
-  TEST_ASSERT_EQUAL(4, u.size());
-  TEST_ASSERT_TRUE(u[0].share == Share::None);
-  TEST_ASSERT_TRUE(u[1].share == Share::Spi);
+  // A MAX31865 holds only its CS; the SPI lines belong to the bus.
+  u = usesOf({R"({"type":"MAX31865","id":"m","cs":5,"bus":"spi-18-19-23"})"});
+  TEST_ASSERT_EQUAL(1, u.size());
+  TEST_ASSERT_EQUAL_STRING("cs", u[0].key);
+  TEST_ASSERT_FALSE(u[0].bus);
 
-  u = usesOf({R"({"type":"MAX31865","id":"m","cs":5})"});  // default SPI bus
+  u = usesOf({R"({"type":"MAX31865","id":"m","cs":5})"});  // hardware SPI
   TEST_ASSERT_EQUAL(1, u.size());
 
   u = usesOf({R"({"type":"HCSR04","id":"h","trig":4,"echo":5})",
-              R"({"type":"HX711","id":"x","dout":16,"sck":17})"});
+                        R"({"type":"HX711","id":"x","dout":16,"sck":17})"});
   TEST_ASSERT_EQUAL(4, u.size());
   TEST_ASSERT_TRUE(u[0].output);   // trig
   TEST_ASSERT_FALSE(u[1].output);  // echo
@@ -62,10 +79,23 @@ void test_collect_keys_per_type() {
 }
 
 void test_collect_ignores_pinless_items() {
-  auto u = usesOf({R"({"type":"BME280","id":"b","address":118})",
-                   R"({"type":"Remote","id":"r","device":"d","remote_id":"x"})",
-                   R"({"type":"PID","id":"p","sensor":"s","actuator":"a"})"});
+  auto u = usesOf({R"({"type":"Remote","id":"r","device":"d","remote_id":"x"})",
+                   R"({"type":"PID","id":"p","sensor":"s","actuator":"a"})",
+                   R"({"type":"DS18B20","id":"t","bus":"onewire-4"})",
+                   R"({"type":"BME280","id":"b","bus":"i2c-21-22","address":118})"});
   TEST_ASSERT_EQUAL(0, u.size());
+}
+
+void test_bus_occupies_its_lines() {
+  auto u = busUses(R"({"type":"spi","clk":18,"miso":19,"mosi":23})");
+  TEST_ASSERT_EQUAL(3, u.size());
+  TEST_ASSERT_EQUAL_STRING("spi-18-19-23", u[0].item.c_str());
+  TEST_ASSERT_TRUE(u[0].bus);
+  TEST_ASSERT_TRUE(u[0].output);   // clk
+  TEST_ASSERT_FALSE(u[1].output);  // miso
+  TEST_ASSERT_TRUE(u[2].output);   // mosi
+  // SDA/SCL are driven (open drain), so an input-only pin cannot carry them.
+  TEST_ASSERT_EQUAL(400, checkBus(kEsp32Dev, {}, R"({"type":"i2c","sda":34,"scl":22})").status);
 }
 
 void test_free_pin_ok() {
@@ -76,29 +106,34 @@ void test_free_pin_ok() {
 
 void test_pin_taken_is_409_naming_the_owner() {
   auto uses = usesOf({R"({"type":"DigitalOutput","id":"pump","pin":16})"});
-  auto r = check(kEsp32Dev, uses, R"({"type":"DS18B20","id":"t","pin":16})");
+  auto r = checkBus(kEsp32Dev, uses, R"({"type":"onewire","pin":16})");
   TEST_ASSERT_FALSE(r.ok);
   TEST_ASSERT_EQUAL(409, r.status);
   TEST_ASSERT_TRUE(r.error.find("pump") != std::string::npos);
 }
 
-void test_onewire_shared_between_ds18b20() {
-  auto uses = usesOf({R"({"type":"DS18B20","id":"t1","pin":4,"address":"28FF000000000001"})"});
-  auto r = check(kEsp32Dev, uses, R"({"type":"DS18B20","id":"t2","pin":4})");
-  TEST_ASSERT_TRUE(r.ok);
+void test_bus_pins_are_exclusive() {
+  auto uses = busUses(R"({"type":"spi","clk":18,"miso":19,"mosi":23})");
+  // SPI clock is no place for a relay, and the error names the bus.
+  auto r = check(kEsp32Dev, uses, R"({"type":"DigitalOutput","id":"a","pin":18})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_TRUE(r.error.find("bus spi-18-19-23") != std::string::npos);
+  // A second bus may not share a line either, not even one of the same type.
+  TEST_ASSERT_EQUAL(409, checkBus(kEsp32Dev, uses, R"({"type":"spi","clk":18,"miso":16,"mosi":17})").status);
+  // Items on the bus only bring their own CS.
+  TEST_ASSERT_TRUE(check(kEsp32Dev, uses, R"({"type":"MAX31865","id":"m2","cs":4,"bus":"spi-18-19-23"})").ok);
   TEST_ASSERT_TRUE(findPinConflicts(kEsp32Dev, uses).empty());
+  // Replacing the bus itself frees its own lines.
+  TEST_ASSERT_TRUE(checkBus(kEsp32Dev, uses, R"({"type":"spi","clk":18,"miso":16,"mosi":17})",
+                            "spi-18-19-23").ok);
 }
 
-void test_spi_shared_but_cs_exclusive() {
-  auto uses = usesOf({R"({"type":"MAX31865","id":"m1","cs":5,"clk":18,"miso":19,"mosi":23})"});
-  TEST_ASSERT_TRUE(check(kEsp32Dev, uses,
-      R"({"type":"MAX31865","id":"m2","cs":4,"clk":18,"miso":19,"mosi":23})").ok);
-  auto r = check(kEsp32Dev, uses,
-      R"({"type":"MAX31865","id":"m2","cs":5,"clk":18,"miso":19,"mosi":23})");
+void test_user_bus_cannot_take_fixed_bus_pins() {
+  // LilyGo GPIO 6/7 are Reserved for the board's own I2C bus.
+  auto r = checkBus(kLilyGoAmoled, {}, R"({"type":"i2c","sda":7,"scl":6})");
   TEST_ASSERT_EQUAL(409, r.status);
-  // SPI clock of a MAX31865 is no place for a relay.
-  TEST_ASSERT_EQUAL(409, check(kEsp32Dev, uses,
-      R"({"type":"DigitalOutput","id":"a","pin":18})").status);
+  TEST_ASSERT_TRUE(r.error.find("I2C") != std::string::npos);
+  TEST_ASSERT_TRUE(checkBus(kLilyGoAmoled, {}, R"({"type":"i2c","sda":1,"scl":2})").ok);
 }
 
 void test_forbidden_and_missing_pins_are_400() {
@@ -173,8 +208,8 @@ void test_conflicts_in_stored_config() {
       R"({"type":"IDS1","id":"IDS1","pin_white":3,"pin_yellow":42,"pin_interrupt":18})",
       R"({"type":"DigitalOutput","id":"agitator","pin":3})",
       R"({"type":"DigitalOutput","id":"pump","pin":9})",
-      R"({"type":"DS18B20","id":"t1","pin":1})",
-      R"({"type":"DS18B20","id":"t2","pin":1})"});
+      R"({"type":"DS18B20","id":"t1","bus":"onewire-1"})",
+      R"({"type":"DS18B20","id":"t2","bus":"onewire-1"})"});
   auto c = findPinConflicts(kLilyGoAmoled, uses);
   TEST_ASSERT_EQUAL(2, c.size());
   TEST_ASSERT_EQUAL(3, c[0].gpio);
@@ -185,7 +220,7 @@ void test_conflicts_in_stored_config() {
 
 void test_pins_json() {
   auto uses = usesOf({R"({"type":"DigitalOutput","id":"pump","pin":2})",
-                      R"({"type":"IDS1","id":"IDS1","pin_white":9,"pin_yellow":42,"pin_interrupt":18})"});
+                                     R"({"type":"IDS1","id":"IDS1","pin_white":9,"pin_yellow":42,"pin_interrupt":18})"});
   JsonDocument doc;
   writePinsJson(kLilyGoAmoled, "lilygo", uses, doc.to<JsonObject>());
   TEST_ASSERT_EQUAL_STRING("lilygo", doc["board"]);
@@ -251,8 +286,8 @@ void test_pullup_and_irq_glitch_warn() {
 
 void test_adc_conflicts_in_stored_config() {
   auto uses = usesOf({R"({"type":"AnalogInput","id":"a","pin":16})",
-                      R"({"type":"AnalogInput","id":"b","pin":27})",
-                      R"({"type":"AnalogInput","id":"c","pin":34})"});
+                                 R"({"type":"AnalogInput","id":"b","pin":27})",
+                                 R"({"type":"AnalogInput","id":"c","pin":34})"});
   auto c = findPinConflicts(kEsp32Dev, uses);
   TEST_ASSERT_EQUAL(2, c.size());
   TEST_ASSERT_EQUAL(16, c[0].gpio);
@@ -293,10 +328,11 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_collect_keys_per_type);
   RUN_TEST(test_collect_ignores_pinless_items);
+  RUN_TEST(test_bus_occupies_its_lines);
   RUN_TEST(test_free_pin_ok);
   RUN_TEST(test_pin_taken_is_409_naming_the_owner);
-  RUN_TEST(test_onewire_shared_between_ds18b20);
-  RUN_TEST(test_spi_shared_but_cs_exclusive);
+  RUN_TEST(test_bus_pins_are_exclusive);
+  RUN_TEST(test_user_bus_cannot_take_fixed_bus_pins);
   RUN_TEST(test_forbidden_and_missing_pins_are_400);
   RUN_TEST(test_reserved_is_409);
   RUN_TEST(test_input_only_rejects_outputs_only);
