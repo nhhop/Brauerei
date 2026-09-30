@@ -611,6 +611,11 @@ paths:
       description: |
         At least one of `v`, `enabled` or `interval` must be present.
         They are applied in the order `enabled` → `interval` → `v`.
+
+        The result survives a reboot (`/config/state.json`, saved ~2 s after
+        the last change): after a restart the actuator comes back on/off with
+        its value and interval. Not kept: the value of an actuator a controller
+        drives, and a pulse actuator's value. A latched emergency stop wins.
       requestBody:
         required: true
         content:
@@ -827,6 +832,9 @@ paths:
       tags: [Dynamic Items]
       operationId: setControllerSetpoint
       summary: Set a controller's setpoint
+      description: |
+        The setpoint survives a reboot (`/config/state.json`, saved ~2 s after
+        the last change).
       requestBody:
         required: true
         content:
@@ -858,6 +866,12 @@ paths:
         Accepted keys are controller-type specific and use **camelCase** — the
         same names the snapshot reports under `controllers[].params`. Note this
         differs from the **snake_case** keys of `POST /api/controllers`.
+
+        What survives a reboot: `enabled` and `setpoint` (`/config/state.json`),
+        and a PID/SplitRangePID's `Kp`/`Ki`/`Kd` — set here or found by
+        AutoTune, they are written back into the controller's config within
+        about a second. Other keys (e.g. `deadband`, `hystLow`) fall back to the
+        config on a reboot.
       requestBody:
         required: true
         content:

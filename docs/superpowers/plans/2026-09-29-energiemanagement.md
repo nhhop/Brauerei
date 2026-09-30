@@ -76,6 +76,31 @@ mit Multimeter vergleichen, Reload behält Auswahl.
 
 ## Stufe 2 — Deep-Sleep, Wach-Pin, Kurz-Wach-Profil
 
+### Festlegungen 2026-09-30 (gehen dem Text darunter vor)
+- **Voraussetzung umgesetzt:** Regler (an/aus, Sollwert) und Aktoren (an/aus, Wert, Intervall)
+  kommen nach jedem Neustart — also auch nach jedem Aufwachen — in ihren letzten Zustand zurück
+  (`src/RuntimeState.h`, `/config/state.json`, eigener PR vor Stufe 2).
+- **Regler blockieren den Schlaf nicht**, sie regeln nur in den Wachphasen. Aus `sleepBlocked()`
+  fallen Regler, Programme und Timer heraus; es bleibt das laufende Firmware-Update.
+- **Programme und Timer kürzen das Schlafintervall** auf ihr nächstes festes Ereignis: Ende
+  eines `Hold`-Schritts (`stepStartedEpoch + holdSec`), Timer-Ablauf (`startedEpoch +
+  durationSec`). Sensor-Schritte und `Awaiting` haben kein festes Ende → normales Intervall.
+  Im Kurz-Wach ticken deshalb Registry, Programme und Timer (Alarme/Push nicht).
+- **Aktoren im Schlaf aus:** vor `esp_deep_sleep_start()` alle Ausgänge auf den inaktiven Pegel,
+  ohne das in `state.json` zu speichern (das Aufwachen stellt den Zustand wieder her). Pegel
+  halten kostet selbst kaum Strom, wohl aber die Last dahinter (Relaisspule ~70 mA, Modul-LED).
+  Vor dem Schlaf einen noch nicht gespeicherten Zustand sofort schreiben.
+- **Wach-Pin:** freier RTC-fähiger Pin; GPIO 0 bleibt gesperrt (Jumper = Download-Modus beim
+  Einschalten, Werksreset). Andere Strapping-Pins → Warnung. Dauerhaft aktiv = bleibt wach;
+  ein Druck während eines Kurz-Wach macht daraus Voll-Wach. `resetHeldAtBoot()` nur nach
+  Power-on, nicht nach einem Aufwachen.
+- **Entfällt:** `shortWake.updateCheck` (Ergebnis geht mit dem Schlaf verloren),
+  `publishNow()` (Publisher senden ohnehin im 1-s-Takt → nach „alles gültig und verbunden“
+  ~1,5 s nachlaufen), `LogStore::appendNow()` (der erste Log-Tick nach dem Boot schreibt
+  sofort eine Zeile; Kompression greift über Schlafzyklen nicht).
+- **ESP-NOW-Kanal** im RTC-Speicher (`RTC_DATA_ATTR`) statt NVS — Kurz-Wach folgt immer auf
+  einen Deep-Sleep, kein Flash-Verschleiß.
+
 ### Einstellungen (`energy`-Abschnitt erweitert)
 ```json
 "energy": {

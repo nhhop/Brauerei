@@ -37,7 +37,9 @@
 #include "PushService.h"
 #include "RegistryLock.h"
 #include "RemoteDiscovery.h"
+#include "RuntimeState.h"
 #include "SettingsStore.h"
+#include "StateSaver.h"
 #include "TimerStore.h"
 #include "WebSocketService.h"
 #include "WebUI.h"
@@ -87,6 +89,7 @@ BrewControl::EspNowPublishService espNowPublishService;
 BrewControl::PushService pushService;
 BrewControl::RemoteDiscovery remoteDiscovery;
 BrewControl::MdnsBrowser mdnsBrowser;
+BrewControl::StateSaver stateSaver;
 WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
 #ifdef BREWCTL_HAS_DISPLAY
 BrewControl::DisplayUI displayUI;
@@ -359,6 +362,10 @@ void setup() {
   webhookService.attachExistingPublish(registry, dynamicItems);
   webSocketService.attachExistingPublish(registry, dynamicItems);
   espNowPublishService.attachExisting(registry, dynamicItems);
+  // Back to the last on/off, setpoints and values (RuntimeState.h) — before
+  // webUI.begin(), whose latched emergency stop overrides them.
+  if (fsOk) BrewControl::restoreState(deviceFs, registry);
+  stateSaver.reset(BrewControl::captureState(registry, dynamicItems));
   BrewControl::HeapDiag::mark("registry");
 
   // Program run-state transitions feed the alert centre. Fires with the
@@ -418,6 +425,8 @@ static void maintainWiFi() {
 }
 
 void loop() {
+  static uint32_t lastStateMs = 0;
+  std::string state;
   {
     // Everything that walks the live items, so a REST handler cannot free
     // one mid-walk (RegistryLock.h). Long network waits stay outside.
@@ -430,6 +439,13 @@ void loop() {
     if (espNowTransport) espNowTransport->tick();
     espNowPublishService.tick();
     remoteDiscovery.tick();
+    if (millis() - lastStateMs >= 1000) {
+      lastStateMs = millis();
+      state = BrewControl::captureState(registry, dynamicItems);
+      // Rare (a finished AutoTune), so written right here, under the lock
+      // that keeps REST from changing the item list mid-save.
+      if (dynamicItems.syncTunedGains()) dynamicItems.saveToSD(deviceFs);
+    }
 #ifdef BREWCTL_HAS_DISPLAY
     // A new alert wakes a dimmed or dark display, as the latched stop does.
     static uint32_t seenAlert = 0;
@@ -441,6 +457,8 @@ void loop() {
     displayUI.tick(webUI.estopLatched());
 #endif
   }
+  // Written outside the registry lock: a slow SD write must not hold up REST.
+  if (!state.empty() && stateSaver.due(millis(), state)) BrewControl::saveState(deviceFs, state);
   firmwareUpdater.tick();
   mdnsBrowser.tick(millis());
   // Wait for the clock so the alert carries a timestamp and can be pushed; give

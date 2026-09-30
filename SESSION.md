@@ -5716,3 +5716,54 @@ Redocly-Lint grün, `pnpm typecheck`/`test` (60/60)/`build`. Node-Mock: Energie-
 „Gerät hinzufügen“ → Digital / Analog → Spannung schickt `{"type":"Voltage","id":"vtest","pin":5,
 "r1":47,"r2":10,"smoothing":16}`. Am `brewcontrol-esp32dev` (OTA) vom Nutzer getestet: funktioniert.
 Offen bleibt der Multimeter-Vergleich am LilyGo-Batterieeingang.
+
+## 2026-09-30 — Zustand nach Neustart: Regler und Aktoren kommen zurück (Branch `feature/zustand-neustart`)
+
+Vorab-PR zu Energiemanagement Stufe 2: Mit Deep-Sleep ist jedes Aufwachen ein Neustart, und bisher
+ging dabei der Laufzeitzustand verloren — Regler starteten immer eingeschaltet mit dem Sollwert aus
+der Anlege-Konfiguration, Aktoren im Konstruktor-Zustand (Relais aus, Analog auf `valueMin`);
+`POST /api/actuators/{id}` und `…/setpoint` änderten nur das Live-Objekt. Nutzerwunsch: nach jedem
+Neustart der zuletzt gültige Zustand — was aus war, bleibt aus, was an war, geht wieder an.
+
+**Umsetzung:** `src/RuntimeState.h/.cpp` hält Regler (an/aus, Sollwert) und Aktoren (an/aus, Wert,
+Intervall) in `/config/state.json`, im `targets`-Format der Programmschritte (`ProgramTargets.h`
+`writeTargets`/`readTargets`); angewendet wird über dieselbe Logik wie ein Programmschritt
+(`ProgramRunner::applyTarget` → `applyCmd_` ohne Impulse). Nicht gespeichert: der Wert eines Aktors,
+den ein Regler ansteuert (`DynamicItems::drivenByController`, dieselbe Prüfung wie beim Löschen —
+sonst schriebe ein PID sekündlich), und der Wert eines Impuls-Aktors. `loop()` erfasst den Zustand
+jede Sekunde unter dem `RegistryLock`; `StateSaver.h` (nativ getestet) schreibt ihn erst, wenn er
+sich 2 s nicht mehr geändert hat, und nur bei Abweichung vom gespeicherten Stand — das deckt alle
+Schreibwege auf einmal ab (REST, Display, Timer, Programme, Not-Aus). Beim Boot wird nach
+`registry.begin()` und vor `webUI.begin()` wiederhergestellt, ein eingerasteter Not-Aus gewinnt
+also weiterhin; laufende Programme spielen ihren Zustand ohnehin neu ab. Die Library startet
+Ausgänge unverändert sicher aus, das Wiederherstellen ist eine BrewControl-Entscheidung (README →
+„Zustand nach Neustart“, mit Hinweis: ein Relais, das an war, geht nach Stromausfall wieder an).
+
+**AutoTune-Ergebnisse** gingen bisher ebenfalls verloren: das AutoTune setzt Kp/Ki/Kd nur im
+laufenden Regler, nach einem Neustart galten wieder die gespeicherten Gains — und wer danach den
+Bearbeiten-Dialog speicherte, überschrieb die getunten Werte mit den alten (der Dialog ist aus der
+Config vorbelegt). Jetzt vergleicht `DynamicItems::syncTunedGains()` im selben 1-s-Takt die
+Live-Gains von PID/SplitRangePID (`kp()/ki()/kd()` am inneren Regler) mit `cfgJson` (relative
+Toleranz wegen des Float-JSON-Round-Trips) und schreibt Abweichungen zurück (`saveToSD` unter dem
+`RegistryLock`, kommt praktisch nur nach einem fertigen AutoTune oder einem `POST …/params` vor).
+
+Beim Planen von Stufe 2 festgelegt (Plan-Doc, Abschnitt „Festlegungen 2026-09-30“): Regler
+blockieren den Schlaf nicht, Programme/Timer kürzen das Intervall auf ihr nächstes festes Ereignis,
+Aktoren vor dem Schlaf aus, GPIO 0 nicht als Wach-Pin, kein Update-Check im Kurz-Wach. Neu in
+PLAN.md: übrige `/params`-Schlüssel (nicht Kp/Ki/Kd) überleben keinen Neustart (nur direkte API);
+Wiederherstellen abhängig vom Neustart-Grund (zurückgestellt).
+
+**Verifikation:** Firmware `pio test -e native` 90/90 (neu `test_state_saver`: unverändert → nie,
+Änderung → nach 2 s Ruhe, weitere Änderung verschiebt, Zurückändern bricht ab, millis-Überlauf),
+`pio run` esp32dev / lolin_s2_mini / lilygo_t_display_s3_amoled grün (esp32dev Flash 94,1 %),
+Redocly-Lint grün (nur die bekannte `info-license`-Warnung). Am `brewcontrol-esp32dev` (OTA,
+Config vorher gesichert): Test-Items `st_pwm` (AnalogOutput PWM, GPIO 27) und `st_pid` (PID auf
+der DAC→ADC-Schleife `adc_test`→`dac_test`) angelegt, `st_pwm` v 0,4, `ids_spike` aus, `st_pid`
+Sollwert 1,7 + `POST …/params {"Kp":5.5,"enabled":false}` → `state.json` enthielt genau das (ohne
+`v` für den PID-geführten `dac_test`), `GET /api/config` Kp 5,5; nach Neustart
+(`POST /api/network`, Hostname unverändert) derselbe Zustand. Not-Aus ausgelöst (PID vorher an),
+Neustart → `estop: true`, alles aus. Danach Not-Aus gelöst, Test-Items gelöscht, Ausgangszustand
+wiederhergestellt; die Config gleicht dem Backup bis auf die Bus-Migration aus dem Bus-PR (erster
+Boot dieser Firmware auf dem Board). Nebenbefund: einzelne 503 „busy, retry“ auf gesperrten
+Routen — per A/B mit dem unveränderten `main`-Build genauso (4/60 gegenüber 2/30), also nicht
+von hier; neuer PLAN-Punkt.
