@@ -5592,4 +5592,5 @@ mit Feldern Pin/R1/R2. Kalibrierung, Persistenz und Bearbeiten laufen ohne weite
 Redocly-Lint grün, `pnpm typecheck`/`test` (60/60)/`build`. Node-Mock: Energie-Seite vorbelegt
 4/100/100 und schickt `{"type":"Voltage","id":"battery","pin":4,"r1":100,"r2":100,"smoothing":16}`;
 „Gerät hinzufügen“ → Digital / Analog → Spannung schickt `{"type":"Voltage","id":"vtest","pin":5,
-"r1":47,"r2":10,"smoothing":16}`. Am Board noch nicht gemessen.
+"r1":47,"r2":10,"smoothing":16}`. Am `brewcontrol-esp32dev` (OTA) vom Nutzer getestet: funktioniert.
+Offen bleibt der Multimeter-Vergleich am LilyGo-Batterieeingang.
