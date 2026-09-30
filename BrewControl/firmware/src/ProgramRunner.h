@@ -83,6 +83,12 @@ class ProgramRunner {
   // until nowEpoch is a real (post-2000) time.
   void tick(SensActCtrl::Registry& reg, fs::FS& sd, time_t nowEpoch);
 
+  // Applies one command the way a program step does, a pulse actuator's v
+  // excluded (RuntimeState replays the last state at boot with it).
+  static void applyTarget(SensActCtrl::Registry& reg, const TargetCmd& c) {
+    applyCmd_(reg, c, /*withImpulse=*/false);
+  }
+
   // Fired on every run-state transition after boot, with `status` as it
   // appears in serialize(). Runs on whichever task caused the transition —
   // loopTask from tick(), the AsyncTCP task from control() — and always with

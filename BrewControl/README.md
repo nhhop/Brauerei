@@ -439,6 +439,33 @@ hinter `BREWCTL_HAS_DISPLAY`, die anderen Envs bauen unverändert.
   (`BREWCTL_I2C_SDA/SCL`), weil der Variant-Default SCL 17 der Panel-Reset
   ist.
 
+## Zustand nach Neustart
+
+Regler und Aktoren kommen nach jedem Neustart in ihren letzten Zustand
+zurück (`src/RuntimeState.h`, Datei `/config/state.json`):
+
+- Regler: an/aus und Sollwert.
+- Aktoren: an/aus, Wert und Intervall. Nicht gespeichert wird der Wert eines
+  Aktors, den ein Regler ansteuert (der Regler setzt ihn selbst), und der
+  Wert eines Impuls-Aktors (ein Ereignis, kein Zustand).
+- `loop()` vergleicht den Zustand jede Sekunde mit dem gespeicherten und
+  schreibt ihn, sobald er sich 2 s lang nicht mehr geändert hat. Das deckt
+  alle Wege ab: REST, Display, Timer, Programme, Not-Aus.
+- Ein eingerasteter **Not-Aus gewinnt**: `WebUI::begin()` wendet ihn nach der
+  Wiederherstellung an. Laufende Programme spielen ihren Zustand ohnehin neu
+  ab.
+- ⚠ Ein Relais, das vor einem Stromausfall an war, schaltet danach wieder
+  ein. Die Library selbst startet jeden Ausgang aus; das Wiederherstellen
+  ist eine bewusste Entscheidung von BrewControl.
+- **AutoTune-Ergebnisse** bleiben ebenfalls: Weichen Kp/Ki/Kd eines PID-
+  oder SplitRangePID-Reglers von seiner gespeicherten Konfiguration ab
+  (fertiges AutoTune oder `POST …/params`), schreibt `loop()` sie in die
+  Konfiguration zurück (`DynamicItems::syncTunedGains`). Damit überstehen sie
+  den Neustart, landen im Backup, und der Bearbeiten-Dialog zeigt sie an.
+  Andere Parameter über `/params` (z. B. `deadband`, `hystLow`) fallen beim
+  Neustart auf die Konfiguration zurück; die UI ändert sie nur über den
+  Bearbeiten-Dialog.
+
 ## Energiemanagement
 
 Einstellungen → Energiemanagement (`/settings/energy`, Abschnitt `energy` in

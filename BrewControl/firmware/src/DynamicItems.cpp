@@ -1022,12 +1022,51 @@ DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
   return {false, "not a dynamic item"};
 }
 
+bool DynamicItems::drivenByController(const char* actuatorId) const {
+  for (const auto& e : controllers_)
+    if (e->actuatorId == actuatorId || e->coolActuatorId == actuatorId) return true;
+  return false;
+}
+
+bool DynamicItems::syncTunedGains() {
+  // Relative: the stored value went through a float→JSON→float round trip.
+  auto same = [](float a, float b) {
+    return fabsf(a - b) <= 1e-5f * std::max(fabsf(a), fabsf(b)) + 1e-9f;
+  };
+  bool changed = false;
+  for (auto& e : controllers_) {
+    JsonDocument cfg;
+    if (deserializeJson(cfg, e->cfgJson) != DeserializationError::Ok) continue;
+    const char* type = cfg["type"] | "";
+    Controller* c = e->innerPtr ? e->innerPtr.get() : e->ptr.get();
+    float kp, ki, kd;
+    if (strcmp(type, "PID") == 0) {
+      auto* p = static_cast<PIDController*>(c);
+      kp = p->kp(); ki = p->ki(); kd = p->kd();
+    } else if (strcmp(type, "SplitRangePID") == 0) {
+      auto* p = static_cast<SplitRangePIDController*>(c);
+      kp = p->kp(); ki = p->ki(); kd = p->kd();
+    } else {
+      continue;
+    }
+    // Same defaults as addControllerNoBegin.
+    if (same(kp, cfg["Kp"] | 2.0f) && same(ki, cfg["Ki"] | 0.1f) && same(kd, cfg["Kd"] | 0.0f))
+      continue;
+    cfg["Kp"] = kp;
+    cfg["Ki"] = ki;
+    cfg["Kd"] = kd;
+    e->cfgJson.clear();
+    serializeJson(cfg, e->cfgJson);
+    Serial.printf("[controllers] %s: tuned gains saved (Kp %.4f Ki %.4f Kd %.4f)\n",
+                  e->id.c_str(), kp, ki, kd);
+    changed = true;
+  }
+  return changed;
+}
+
 DynamicItems::Result DynamicItems::removeActuator(const char* id,
                                                    Registry& reg) {
-  for (auto& e : controllers_) {
-    if (e->actuatorId == id || e->coolActuatorId == id)
-      return {false, "actuator is referenced by a controller"};
-  }
+  if (drivenByController(id)) return {false, "actuator is referenced by a controller"};
   for (auto it = actuators_.begin(); it != actuators_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
