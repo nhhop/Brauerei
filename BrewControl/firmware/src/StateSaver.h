@@ -37,6 +37,15 @@ class StateSaver {
     return true;
   }
 
+  // Before deep sleep: true = write the current state right away, without
+  // the quiet time, if it differs from the saved one.
+  bool flush(const std::string& current) {
+    pending_ = false;
+    if (current == saved_) return false;
+    saved_ = current;
+    return true;
+  }
+
  private:
   uint32_t quietMs_;
   std::string saved_;

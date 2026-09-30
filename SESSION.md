@@ -5767,3 +5767,49 @@ wiederhergestellt; die Config gleicht dem Backup bis auf die Bus-Migration aus d
 Boot dieser Firmware auf dem Board). Nebenbefund: einzelne 503 „busy, retry“ auf gesperrten
 Routen — per A/B mit dem unveränderten `main`-Build genauso (4/60 gegenüber 2/30), also nicht
 von hier; neuer PLAN-Punkt.
+
+## 2026-09-30 — Energiemanagement Stufe 2: Deep-Sleep (Branch `feature/deep-sleep`)
+
+Deep-Sleep zwischen zwei Messungen nach dem Plan `docs/superpowers/plans/2026-09-29-energiemanagement.md`
+(Festlegungen und Abweichungen dort, Doku `BrewControl/README.md` → „Deep-Sleep“). Neue Einstellungen
+im Abschnitt `energy`: `deepSleep`, `sleepIntervalSec` (60–86400), `wakePin` (RTC-GPIO, Pflicht),
+`wakeActiveLow`, `awakeTimeoutSec` (60–3600), `shortWakeWifi`; `GET` liefert zusätzlich `wakeCause`.
+Das Kurz-Wach-Profil hat der Nutzer auf den WLAN-Schalter reduziert (Weboberfläche/Display im
+Kurz-Wach immer aus, NTP mit WLAN immer, Datalog nach den Logs selbst).
+
+- `WakeMode.h` (nativ getestet, `test_wake_mode`): Kurz- oder Voll-Wach, Schlafdauer (Intervall ab
+  Aufwachen, gekürzt auf 1 s nach dem nächsten Programm-/Timer-Ereignis, min. 1 s), Ablauf des
+  Kurz-Wach (Sensoren gemessen max. 3 s → Publisher verbunden max. 5 s → 1,5 s Nachlauf, hart 30 s).
+- `EnergyManager.h/.cpp`: Weckgrund, Wach-Pin lesen, Ausgänge festklemmen (`gpio_hold_en`), Timer +
+  ext0 scharf schalten, schlafen. `ProgramRunner`/`TimerStore::nextEventEpoch()`.
+- `main.cpp`: Settings vor dem WLAN laden; Kurz-Wach mit einem WLAN-Versuch (8 s) oder keinem, kein
+  Portal/mDNS/Webserver/Display/Update/Push; `webUI.begin(false)` wendet nur den Not-Aus an.
+  `goToSleep()`: offenen Zustand sofort schreiben (`StateSaver::flush`), Aktoren aus (nicht
+  gespeichert), 300 ms Nachlauf, Display aus, schlafen. ESP-NOW-Kanal in `RTC_DATA_ATTR`.
+- Pin-Manager: Board-Maske `rtc`, `/api/pins` → `rtc`, `checkWakePin()` (GPIO 0 = BOOT-Taste
+  reserviert → 409, kein RTC → 400), der Wach-Pin ist als `energy`/`wake_pin` für Items belegt.
+- Web: Energie-Seite mit Gruppe „Deep-Sleep“ (explizites Speichern, Bestätigung beim
+  Einschalten), `PinHint` mit `rtc`.
+
+**Am Gerät gefunden und behoben:** (1) `PostJsonHandler` antwortet in `handleBody`, also vor der
+Middleware — der Settings-POST zählte nicht als Zugriff, ein Board, das länger als der Timeout
+unberührt lief, schlief direkt nach dem Einschalten von Deep-Sleep ein. Jetzt setzt auch
+`handleBody` den Zugriffszeitpunkt. (2) Ohne WLAN blockierte der MQTT-Connect zum Hostnamen
+~7 s je Versuch; das Kurz-Wach ohne WLAN überspringt jetzt MQTT/Webhook/WebSocket (~7,5 s statt
+~20 s wach). Mit WLAN und unerreichbarem Broker bleiben ~18 s — Ursache des bekannten PLAN-Punkts
+„`loop()` hält den `RegistryLock` > 3 s“, dort nachgetragen.
+
+**Verifikation:** Firmware `pio test -e native` 99/99 (neu `test_wake_mode`, erweitert
+`test_pin_map`/`test_state_saver`), `pio run` für alle drei Envs grün (esp32dev Flash 94,8 %),
+Web `pnpm typecheck`/`test` (62)/`build` grün, Redocly-Lint grün (bekannte Warnung). Energie-Seite
+gegen den Node-Mock durchgeklickt (Vorschläge nur RTC-Pins ohne GPIO 0, „kein RTC-Pin“ bei 42,
+Bestätigung, Patch). Am `brewcontrol-esp32dev` per OTA: API-Validierung (400/409 wie oben,
+Wach-Pin in `/api/pins` belegt, Item darauf → 409), dann vier Schlafläufe mit Wach-Pin 32,
+Intervall und Timeout 60 s, beobachtet über COM6 (der CP2102 bleibt im Schlaf an; die Ausgabe
+bricht je Boot nach ~3,6 s ab, weil der OneWire-Bus auf GPIO 1 = UART-TX liegt) und ein Log im
+1-s-Takt: Voll-Wach schläft 60 s nach dem letzten Zugriff, Kurz-Wach-Zyklen im 60-s-Takt
+(`DEEPSLEEP_RESET`), je Aufwachen Log-Zeilen mit Werten, `dac_test` bleibt auf 1,5, ein 150-s-Timer
+kürzte den Schlaf auf sein Ende (Aufwachen 1 s danach); ohne WLAN ebenso, kein Absturz. Zurück in
+Voll-Wach jeweils per COM6-Reset. Danach Test-Log/-Timer gelöscht, `dac_test` 0, Energie-
+Einstellungen auf die Ausgangswerte. Nicht geprüft (PLAN „Deep-Sleep: Rest am Gerät“): Taster/
+Jumper am Wach-Pin, Pegel der Ausgänge und Strom im Schlaf, S2/LilyGo, ESP-NOW-Empfang, Drift.

@@ -178,6 +178,14 @@ void DisplayUI::begin(const SettingsStore& settings) {
                 g_touchUp ? g_touch.getModelName() : "MISSING");
 }
 
+uint32_t DisplayUI::lastTouchMs() const {
+  return ready_ ? millis() - lv_disp_get_inactive_time(nullptr) : 0;
+}
+
+void DisplayUI::off() {
+  if (ready_) g_gfx->displayOff();
+}
+
 void DisplayUI::tick(bool holdAwake) {
   if (!ready_) return;
   if (power_ != Power::Off) {

@@ -186,6 +186,7 @@ export interface PinInfo {
   adc?: 1 | 2; // ADC unit, absent = no ADC
   noPullup?: boolean; // no internal pull-up
   irqGlitch?: boolean; // spurious interrupts (ESP32 erratum)
+  rtc?: boolean; // RTC GPIO: can wake the chip from deep sleep
   users: PinUser[];
 }
 
@@ -618,6 +619,13 @@ export interface DisplaySettings {
 // Energy management. The battery is a normal sensor item picked here.
 export interface EnergySettings {
   batterySensor: string;  // sensor id, "" = none
+  deepSleep: boolean;
+  sleepIntervalSec: number;  // 60..86400
+  wakePin: number;  // RTC GPIO, -1 = none (required while deepSleep is on)
+  wakeActiveLow: boolean;  // true = to GND, internal pull-up
+  awakeTimeoutSec: number;  // 60..3600
+  shortWakeWifi: boolean;  // a short wake connects to Wi-Fi (else ESP-NOW only)
+  wakeCause?: 'timer' | 'pin' | null;  // read-only: this boot woke from deep sleep by
 }
 
 // GET /api/settings always returns all nine sections; SettingsStore::serialize()

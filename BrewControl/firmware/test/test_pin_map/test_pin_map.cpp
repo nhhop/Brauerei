@@ -314,6 +314,8 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_TRUE(pin(36)["irqGlitch"].as<bool>());
   TEST_ASSERT_TRUE(pin(16)["adc"].isNull());
   TEST_ASSERT_TRUE(pin(16)["noPullup"].isNull());
+  TEST_ASSERT_TRUE(pin(27)["rtc"].as<bool>());
+  TEST_ASSERT_TRUE(pin(16)["rtc"].isNull());
   TEST_ASSERT_TRUE(doc["battery"].isNull());  // no onboard divider
 
   JsonDocument s3;
@@ -322,6 +324,35 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_EQUAL(4, s3["battery"]["gpio"].as<int>());
   TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r1"].as<float>());
   TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r2"].as<float>());
+}
+
+void test_wake_pin() {
+  // RTC GPIO, free: ok; a strapping pin works but warns.
+  TEST_ASSERT_TRUE(checkWakePin(kEsp32Dev, {}, 27, true).ok);
+  auto r = checkWakePin(kEsp32Dev, {}, 15, true);
+  TEST_ASSERT_TRUE(r.ok);
+  TEST_ASSERT_EQUAL(1, r.warnings.size());
+  // GPIO 0 is the BOOT button (factory reset), 16 is no RTC GPIO.
+  TEST_ASSERT_EQUAL(409, checkWakePin(kEsp32Dev, {}, 0, true).status);
+  r = checkWakePin(kEsp32Dev, {}, 16, true);
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("GPIO 16 cannot wake the chip (no RTC GPIO)", r.error.c_str());
+  // GPIO 34-39 have no pull-up: active low needs an external resistor.
+  TEST_ASSERT_EQUAL(1, checkWakePin(kEsp32Dev, {}, 34, true).warnings.size());
+  TEST_ASSERT_EQUAL(0, checkWakePin(kEsp32Dev, {}, 34, false).warnings.size());
+  // S2/S3: GPIO 1-21.
+  TEST_ASSERT_TRUE(checkWakePin(kLolinS2Mini, {}, 5, true).ok);
+  TEST_ASSERT_EQUAL(400, checkWakePin(kLilyGoAmoled, {}, 42, true).status);
+
+  // An item on the pin blocks it; the current wake pin does not.
+  auto uses = usesOf({R"({"type":"DigitalOutput","id":"relay","pin":27})"});
+  TEST_ASSERT_EQUAL(409, checkWakePin(kEsp32Dev, uses, 27, true).status);
+  uses = {wakePinUse(27, true)};
+  TEST_ASSERT_TRUE(checkWakePin(kEsp32Dev, uses, 27, true).ok);
+  // ... but items cannot take it.
+  auto item = check(kEsp32Dev, uses, R"({"type":"DigitalInput","id":"a","pin":27})");
+  TEST_ASSERT_EQUAL(409, item.status);
+  TEST_ASSERT_EQUAL_STRING("GPIO 27 already used by energy (wake_pin)", item.error.c_str());
 }
 
 int main(int, char**) {
@@ -348,5 +379,6 @@ int main(int, char**) {
   RUN_TEST(test_pullup_and_irq_glitch_warn);
   RUN_TEST(test_adc_conflicts_in_stored_config);
   RUN_TEST(test_pins_json_capabilities);
+  RUN_TEST(test_wake_pin);
   return UNITY_END();
 }

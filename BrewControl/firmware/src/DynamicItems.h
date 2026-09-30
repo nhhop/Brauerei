@@ -52,8 +52,15 @@ class DynamicItems {
   Result replaceActuator(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
   Result replaceController(const char* oldId, const JsonObject& cfg, SensActCtrl::Registry& reg);
 
-  // GPIOs occupied by the buses, sensors and actuators (GET /api/pins).
+  // GPIOs occupied by the buses, sensors and actuators (GET /api/pins), plus
+  // the deep-sleep wake pin.
   std::vector<PinUse> pinUses() const;
+
+  // The wake pin from the energy settings (-1 = none), kept free of items.
+  void setWakePin(int gpio, bool pullup) {
+    wakePin_ = gpio;
+    wakePullup_ = pullup;
+  }
 
   // True if a dynamic controller drives this actuator (the check removeActuator
   // refuses on).
@@ -278,6 +285,8 @@ class DynamicItems {
   // points to (valid until the next check).
   Result checkPins(const JsonObject& cfg, const char* replaceId);
   std::string pinError_;
+  int wakePin_ = -1;
+  bool wakePullup_ = false;
 
   // I2C address occupied by the current sensors (GET /api/pins does not
   // expose this — only create/replace check against it).

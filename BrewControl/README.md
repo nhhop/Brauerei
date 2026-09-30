@@ -469,8 +469,10 @@ zurück (`src/RuntimeState.h`, Datei `/config/state.json`):
 ## Energiemanagement
 
 Einstellungen → Energiemanagement (`/settings/energy`, Abschnitt `energy` in
-`/config/settings.json`). Stand heute nur die Batteriespannung; Deep-Sleep
-folgt (Plan: `docs/superpowers/plans/2026-09-29-energiemanagement.md`).
+`/config/settings.json`): Batteriespannung und Deep-Sleep (Plan:
+`docs/superpowers/plans/2026-09-29-energiemanagement.md`).
+
+### Batterie
 
 - Die Batterie ist ein **normales Sensor-Item**, meist vom Typ `Voltage`
   („Spannung“). Die Seite wählt es nur aus (`energy.batterySensor`); zur Wahl
@@ -489,6 +491,57 @@ folgt (Plan: `docs/superpowers/plans/2026-09-29-energiemanagement.md`).
   nur LilyGo: GPIO 4, 100/100 kΩ für das Verhältnis 1:2).
 - Die Prozentangabe ist eine grobe LiPo-Kennlinie in der UI (`web/src/energy.ts`),
   gilt nur für eine Zelle ohne Last und nicht beim Laden.
+
+### Deep-Sleep
+
+Mit `energy.deepSleep` schläft das Gerät zwischen zwei Messungen
+(`src/EnergyManager.h`, Entscheidungen in `src/WakeMode.h`). Jedes Aufwachen
+ist ein Neustart; Regler und Aktoren kommen über den gespeicherten Zustand
+zurück (siehe „Zustand nach Neustart“).
+
+- **Kurz-Wach** (Timer-Wakeup, Wach-Pin nicht aktiv): `setup()` läuft wie
+  sonst, aber mit einem WLAN-Versuch (8 s, kein Portal) — oder ganz ohne WLAN,
+  wenn `shortWakeWifi` aus ist; dann sendet nur ESP-NOW, auf dem Kanal der
+  letzten WLAN-Verbindung (`RTC_DATA_ATTR`). Kein Webserver, kein mDNS, kein
+  Display, keine Update-Suche, keine Alarme/Push. `loop()` tickt Registry,
+  Publisher, Logs, Programme und Timer; Logs und Programme erst, wenn jeder
+  Sensor einmal gemessen hat (max. 3 s), sonst wäre die einzige Log-Zeile
+  leer. Danach wartet es, bis MQTT/Webhook/WebSocket verbunden sind (max. 5 s),
+  läuft 1,5 s nach (die Publisher senden im 1-s-Takt) und schläft wieder;
+  spätestens 30 s nach dem Start von `loop()`. Ein Druck auf den Wach-Pin
+  während eines Kurz-Wach startet voll wach neu.
+- **Voll-Wach** (Einschalten, Reset, Wach-Pin): normaler Betrieb. Das Gerät
+  schläft wieder ein, wenn `awakeTimeoutSec` lang kein HTTP-Zugriff, kein
+  Display-Touch und kein aktiver Wach-Pin kam. Eine offene Seite (Event-
+  Stream) zählt als Zugriff, ein Browser-Firmware-Upload verhindert den Schlaf.
+- **Schlafdauer:** das Intervall ab Beginn des Kurz-Wach (nach Voll-Wach das
+  volle Intervall), gekürzt auf 1 s nach dem nächsten festen Ereignis eines
+  laufenden Programms (Ende eines Halte-Schritts) oder Timers (Ablauf).
+  Sensor-Schritte und wartende Programme haben kein festes Ende.
+- **Regler** blockieren den Schlaf nicht; sie regeln nur, solange das Gerät
+  wach ist.
+- **Aktoren sind im Schlaf aus:** vor dem Einschlafen wird ein noch nicht
+  gespeicherter Zustand sofort geschrieben, dann gehen alle Aktoren aus (nicht
+  gespeichert), Protokoll-Aktoren (IDS, Remote) bekommen 300 ms, um ihr Aus zu
+  senden, und die Ausgangs-Pins werden im inaktiven Pegel festgeklemmt
+  (`gpio_hold_en`, kostet wenige µA). Ohne das hingen sie im Schlaf in der
+  Luft. Beim Aufwachen bleiben sie geklemmt, bis die Aktoren sie in
+  `registry.begin()` übernehmen — kein Zucken beim Aufwachen.
+- **Wach-Pin** (`wakePin`, Pflicht bei Deep-Sleep): ein RTC-GPIO (`rtc` in
+  `GET /api/pins`; esp32dev 2, 4, 12–15, 25–27, 32–39, S2/S3 1–21), gegen GND
+  mit internem Pull-up oder gegen 3,3 V mit Pull-down. GPIO 0 ist gesperrt
+  (Jumper beim Einschalten = Download-Modus, 5 s Halten = Werksreset), andere
+  Strapping-Pins werden als bedenklich angezeigt, GPIO 34–39 haben keinen
+  internen Pull-up. Er ist für Items belegt wie ein Item-Pin. Ein Jumper hält
+  das Gerät dauerhaft wach. Der Werksreset über GPIO 0 greift nach einem
+  Aufwachen nicht, nur nach Einschalten/Reset.
+- Die Uhr läuft im Schlaf auf dem RTC-Timer weiter (Drift des internen
+  Oszillators, einige Prozent); mit WLAN stellt NTP sie bei jedem Aufwachen
+  nach.
+- `GET /api/settings` → `energy.wakeCause` (`timer`, `pin`, `null`);
+  `GET /api/update/status` → `resetReason: deep_sleep`.
+- Aus dem Schlaf zurückholen: Wach-Pin, Einschalten oder Reset — danach ist
+  das Gerät `awakeTimeoutSec` lang erreichbar, um Deep-Sleep abzuschalten.
 
 ## API-Vertrag
 

@@ -15,6 +15,7 @@
 
 #include "AssetInstall.h"
 #include "BoardPins.h"
+#include "EnergyManager.h"
 #include "HeapDiag.h"
 #include "Hostname.h"
 #include "RegistryLock.h"
@@ -142,6 +143,12 @@ const uint8_t* collectBody(AsyncWebServerRequest* req, uint8_t* data, size_t len
 // below can consult it without threading it through every one of their ~30
 // construction sites.
 AuthService* g_auth = nullptr;
+
+// millis() of the last HTTP request (WebUI::lastActivityMs). Set by the
+// server middleware and, because the middleware runs only after the body,
+// also by the body handlers below — POST /api/settings switching deep sleep
+// on must count before the loop's next sleep check, not after.
+volatile uint32_t g_lastRequestMs = 0;
 
 // Session token out of the Cookie header, empty when absent.
 String sessionCookie(AsyncWebServerRequest* req) {
@@ -429,6 +436,7 @@ class PostJsonHandler : public AsyncWebHandler {
   void handleBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
                   size_t index, size_t total) override {
     if (req->method() != HTTP_POST) return;  // handleRequest sends the 405
+    g_lastRequestMs = millis();
     const uint8_t* body = collectBody(req, data, len, index, total);
     if (body == nullptr) return;
     if (!requireAuth(req)) return;
@@ -491,10 +499,12 @@ WebUI::WebUI(SensActCtrl::Registry& reg, fs::FS& fs, DynamicItems& items,
       server_(port),
       events_("/api/events") {}
 
-void WebUI::begin() {
+void WebUI::begin(bool serve) {
   // Before the first snapshot can be served: a latched stop must already be
   // back in force when the UI (or a controller's first tick) sees the device.
   loadEstop_();
+  serving_ = serve;
+  if (!serve) return;
 
   // ── Snapshot ─────────────────────────────────────────────────────────────
   server_.on("/api/snapshot", HTTP_GET, [this](AsyncWebServerRequest* req) {
@@ -1762,6 +1772,7 @@ void WebUI::begin() {
     doc["websocket"]["hubClients"] = websocket_.hubClientCount();
     doc["espnow"]["connected"] = espnow_.connected();
     doc["espnow"]["error"] = espnow_.lastErrorMessage();
+    doc["energy"]["wakeCause"] = EnergyManager::wakeCause();
     // mqtt.password is write-only: never echo the stored secret. Report only
     // whether one is set; POST /api/settings treats "" as "keep unchanged".
     doc["mqtt"]["passwordSet"] = settings_.mqttPassword().length() > 0;
@@ -1930,9 +1941,32 @@ void WebUI::begin() {
           if (!energy["batterySensor"].isNull() && !energy["batterySensor"].is<const char*>()) {
             req->send(400, "text/plain", "invalid energy batterySensor"); return;
           }
+          struct Range { const char* key; int32_t min, max; };
+          for (const Range& r : {Range{"sleepIntervalSec", 60, 86400},
+                                 Range{"awakeTimeoutSec", 60, 3600},
+                                 Range{"wakePin", -1, 63}}) {
+            if (energy[r.key].isNull()) continue;
+            const int32_t v = energy[r.key].is<int>() ? energy[r.key].as<int32_t>() : r.min - 1;
+            if (v < r.min || v > r.max) {
+              req->send(400, "text/plain", String("invalid energy ") + r.key); return;
+            }
+          }
+          // Checked against the values as they will be after this patch.
+          const bool sleep = energy["deepSleep"] | settings_.energyDeepSleep();
+          const int pin = energy["wakePin"] | settings_.energyWakePin();
+          const bool low = energy["wakeActiveLow"] | settings_.energyWakeActiveLow();
+          // Without a wake pin only a factory reset would reach the device again.
+          if (sleep && pin < 0) {
+            req->send(400, "text/plain", "deep sleep needs a wake pin"); return;
+          }
+          if (pin >= 0) {
+            const PinCheck c = checkWakePin(currentBoard(), items_.pinUses(), pin, low);
+            if (!c.ok) { req->send(c.status, "text/plain", c.error.c_str()); return; }
+          }
         }
         settings_.update(obj);
         settings_.saveToSD(fs_);
+        items_.setWakePin(settings_.energyWakePin(), settings_.energyWakeActiveLow());
         if (!t.isNull()) {
           configTime(settings_.utcOffsetSec(), settings_.dstOffsetSec(),
                      settings_.ntpServer().c_str());
@@ -2321,6 +2355,7 @@ void WebUI::begin() {
   // covers reads too, not just the mutating routes requireAuth() already
   // gates. /api/auth/* stays exempt so logging in remains possible.
   server_.addMiddleware([this](AsyncWebServerRequest* req, ArMiddlewareNext next) {
+    g_lastRequestMs = millis();  // any access keeps a full wake awake
     if (!auth_.isUiProtected() || req->url().startsWith("/api/auth/") || isAuthenticated(req)) {
       next();
       return;
@@ -2450,6 +2485,7 @@ void WebUI::tick() {
   logs_.tick(reg_, fs_, time(nullptr), now);
   programs_.tick(reg_, fs_, time(nullptr));
   timers_.tick(reg_, programs_, fs_, time(nullptr));
+  if (!serving_) return;
 
   // Alarm evaluation is deliberately gated to 1 Hz: it resolves every rule and
   // calls paramsJson() on every controller, which at loop rate (~5 ms) would
@@ -2474,6 +2510,10 @@ void WebUI::tick() {
     lastPushMs_ = now;
     pushSnapshot_();
   }
+}
+
+uint32_t WebUI::lastActivityMs() const {
+  return events_.count() > 0 ? millis() : g_lastRequestMs;
 }
 
 void WebUI::swapAssets_() {

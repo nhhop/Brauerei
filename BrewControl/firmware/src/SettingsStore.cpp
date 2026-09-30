@@ -76,10 +76,21 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
   }
   JsonObject energy = doc["energy"].as<JsonObject>();
-  if (!energy.isNull()) {
-    if (const char* b = energy["batterySensor"]) energyBatterySensor_ = b;
-  }
+  if (!energy.isNull()) readEnergy_(energy);
   ++revision_;
+}
+
+void SettingsStore::readEnergy_(const JsonObject& energy) {
+  if (const char* b = energy["batterySensor"]) energyBatterySensor_ = b;
+  if (energy["deepSleep"].is<bool>()) energyDeepSleep_ = energy["deepSleep"].as<bool>();
+  if (energy["sleepIntervalSec"].is<int>())
+    energySleepIntervalSec_ = energy["sleepIntervalSec"].as<uint32_t>();
+  if (energy["wakePin"].is<int>()) energyWakePin_ = energy["wakePin"].as<int>();
+  if (energy["wakeActiveLow"].is<bool>()) energyWakeActiveLow_ = energy["wakeActiveLow"].as<bool>();
+  if (energy["awakeTimeoutSec"].is<int>())
+    energyAwakeTimeoutSec_ = energy["awakeTimeoutSec"].as<uint32_t>();
+  if (energy["shortWakeWifi"].is<bool>()) energyShortWakeWifi_ = energy["shortWakeWifi"].as<bool>();
+  // "wakeCause" is read-only (GET /api/settings) — never read from a patch.
 }
 
 void SettingsStore::saveToSD(fs::FS& sd) const {
@@ -152,6 +163,12 @@ String SettingsStore::serialize() const {
 #endif
   JsonObject energy = doc["energy"].to<JsonObject>();
   energy["batterySensor"] = energyBatterySensor_.c_str();
+  energy["deepSleep"] = energyDeepSleep_;
+  energy["sleepIntervalSec"] = energySleepIntervalSec_;
+  energy["wakePin"] = energyWakePin_;
+  energy["wakeActiveLow"] = energyWakeActiveLow_;
+  energy["awakeTimeoutSec"] = energyAwakeTimeoutSec_;
+  energy["shortWakeWifi"] = energyShortWakeWifi_;
   String out;
   serializeJson(doc, out);
   return out;
@@ -231,9 +248,7 @@ void SettingsStore::update(const JsonObject& patch) {
     // "supported" is read-only (server-computed) — never read from a patch.
   }
   JsonObject energy = patch["energy"].as<JsonObject>();
-  if (!energy.isNull()) {
-    if (const char* b = energy["batterySensor"]) energyBatterySensor_ = b;
-  }
+  if (!energy.isNull()) readEnergy_(energy);
   ++revision_;
 }
 

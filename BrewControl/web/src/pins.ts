@@ -16,6 +16,7 @@ export interface PinNeeds {
   analog?: boolean; // analogRead()
   pullup?: boolean; // relies on the internal pull-up
   irq?: boolean; // attachInterrupt()
+  rtc?: boolean; // wakes the chip from deep sleep
 }
 
 // Needs per config key of an item config (mirrors the flags collectPins() in
@@ -74,6 +75,7 @@ export function pinStatus(
   if (p.class === 'forbidden') return { level: 'error', text: `nicht nutzbar (${p.note})` };
   if (p.class === 'reserved') return { level: 'error', text: `vom Board belegt (${p.note})` };
   if (opts.output && p.inputOnly) return { level: 'error', text: 'nur als Eingang nutzbar' };
+  if (opts.rtc && !p.rtc) return { level: 'error', text: 'kein RTC-Pin – kann nicht wecken' };
   const others = p.users.filter((u) => u.id !== opts.selfId);
   if (others.length) return { level: 'error', text: `belegt von ${others.map(pinUserText).join(', ')}` };
   const adc = opts.analog ? adcError(info, p) : null;

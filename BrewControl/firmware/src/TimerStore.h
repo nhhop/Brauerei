@@ -80,6 +80,10 @@ class TimerStore {
   void tick(SensActCtrl::Registry& reg, ProgramRunner& programs, fs::FS& sd,
             time_t nowEpoch);
 
+  // Earliest expiry of a running timer (Unix s), 0 if none — deep sleep
+  // wakes up for it.
+  time_t nextEventEpoch() const;
+
   // Fired once per timer when it expires (Running -> Done, or a repeat
   // re-arm, via tick()). Runs on the loopTask, with this store's lock held,
   // so the callback must not call back into it. Restoring persisted state in

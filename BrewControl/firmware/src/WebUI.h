@@ -138,10 +138,17 @@ class WebUI {
         MdnsBrowser& peers, PushService& push, uint16_t port = 80);
 
   // Must be called after registry.begin() and dynamicItems.markInitialized().
-  void begin();
+  // serve=false (short wake from deep sleep): only the latched emergency stop
+  // is applied — no web server, and tick() runs just logs, programs and
+  // timers (no alerts, no push, no snapshots).
+  void begin(bool serve = true);
 
   // Call once per loop() iteration. Broadcasts a fresh snapshot every 1 s.
   void tick();
+
+  // millis() of the last HTTP request, or now while a browser holds the
+  // event stream open — keeps a full wake from going back to sleep.
+  uint32_t lastActivityMs() const;
 
   // Emergency stop latched (POST /api/estop, until DELETE /api/estop).
   bool estopLatched() const { return estop_; }
@@ -193,6 +200,7 @@ class WebUI {
   AsyncWebServer server_;
   AsyncEventSource events_;
   bool estop_ = false;  // latched emergency stop, mirrored in the snapshot
+  bool serving_ = true;
   uint32_t lastPushMs_ = 0;
   uint32_t lastAlarmMs_ = 0;
   uint32_t rebootAtMs_ = 0;

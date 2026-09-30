@@ -1188,6 +1188,7 @@ std::vector<PinUse> DynamicItems::pinUses() const {
   };
   for (const auto& e : sensors_) collect(e->cfgJson);
   for (const auto& e : actuators_) collect(e->cfgJson);
+  if (wakePin_ >= 0) uses.push_back(wakePinUse(wakePin_, wakePullup_));
   return uses;
 }
 

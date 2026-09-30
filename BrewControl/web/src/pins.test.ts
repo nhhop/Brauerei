@@ -8,13 +8,13 @@ const info: PinsInfo = {
   pins: [
     { gpio: 1, class: 'free', users: [{ id: 'onewire-1', key: 'pin', bus: true }] },
     { gpio: 2, class: 'free', users: [{ id: 'pump', key: 'pin' }] },
-    { gpio: 3, class: 'risky', note: 'Strapping-Pin', users: [] },
+    { gpio: 3, class: 'risky', note: 'Strapping-Pin', rtc: true, users: [] },
     { gpio: 7, class: 'reserved', note: 'I2C SDA', users: [] },
     { gpio: 5, class: 'free', adc: 1, users: [] },
     { gpio: 8, class: 'free', users: [] },
     { gpio: 18, class: 'free', adc: 2, users: [] },
     { gpio: 30, class: 'forbidden', note: 'Flash', users: [] },
-    { gpio: 34, class: 'free', inputOnly: true, noPullup: true, users: [] },
+    { gpio: 34, class: 'free', inputOnly: true, noPullup: true, rtc: true, users: [] },
     { gpio: 36, class: 'free', inputOnly: true, noPullup: true, irqGlitch: true, adc: 1, users: [] },
   ],
   conflicts: [],
@@ -71,6 +71,16 @@ describe('pin capabilities', () => {
     const s = pinStatus(info, 36, { pullup: true, irq: true });
     expect(s.level).toBe('warn');
     expect(s.text).toContain('Fehlauslöser');
+  });
+});
+
+describe('wake pin', () => {
+  it('needs an RTC GPIO and warns about a missing pull-up', () => {
+    expect(pinStatus(info, 8, { rtc: true }))
+      .toEqual({ level: 'error', text: 'kein RTC-Pin – kann nicht wecken' });
+    expect(pinStatus(info, 34, { rtc: true }).level).toBe('ok');
+    expect(pinStatus(info, 34, { rtc: true, pullup: true }).level).toBe('warn');
+    expect(suggestPins(info, { rtc: true }).map((x) => x.gpio)).toEqual([34, 3]);
   });
 });
 

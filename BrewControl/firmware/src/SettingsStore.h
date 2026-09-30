@@ -83,6 +83,18 @@ class SettingsStore {
   // type Voltage.
   const String& energyBatterySensor() const { return energyBatterySensor_; }
 
+  // Deep sleep between measurements (EnergyManager). The wake pin is an RTC
+  // GPIO (-1 = none; required while deepSleep is on). Held active it keeps
+  // the device awake; a press wakes it fully for awakeTimeoutSec after the
+  // last UI access. shortWakeWifi: a short wake (timer) connects to Wi-Fi —
+  // without it only ESP-NOW publishes, on the last known channel.
+  bool energyDeepSleep() const { return energyDeepSleep_; }
+  uint32_t energySleepIntervalSec() const { return energySleepIntervalSec_; }
+  int energyWakePin() const { return energyWakePin_; }
+  bool energyWakeActiveLow() const { return energyWakeActiveLow_; }
+  uint32_t energyAwakeTimeoutSec() const { return energyAwakeTimeoutSec_; }
+  bool energyShortWakeWifi() const { return energyShortWakeWifi_; }
+
  private:
   uint32_t revision_ = 0;
   String mode_       = "system";   // "light" | "dark" | "system"
@@ -132,6 +144,14 @@ class SettingsStore {
   bool     displayPixelShift_  = false;
 
   String   energyBatterySensor_ = "";
+  bool     energyDeepSleep_ = false;
+  uint32_t energySleepIntervalSec_ = 300;
+  int      energyWakePin_ = -1;
+  bool     energyWakeActiveLow_ = true;
+  uint32_t energyAwakeTimeoutSec_ = 300;
+  bool     energyShortWakeWifi_ = true;
+
+  void readEnergy_(const JsonObject& energy);
 };
 
 }  // namespace BrewControl
