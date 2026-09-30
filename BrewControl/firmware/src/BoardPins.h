@@ -128,6 +128,9 @@ inline constexpr Board kLilyGoAmoled = {
     0,
     false,  // ADC2 arbitrated with Wi-Fi
     7, 6,  // BREWCTL_I2C_SDA/SCL — see static_assert below
+    4,      // BATTERY_VOLTAGE_ADC_DATA in LilyGo's pin_config.h
+    100.0f, // 1:2 divider: GPIO 4 read 2.11 V on a charged cell (SESSION.md).
+    100.0f, // Actual resistor values unknown, only the ratio matters.
 };
 // Onboard devices sharing this board's I2C bus (BrewControl/CLAUDE.md).
 inline constexpr AddrDef kLilyGoAmoledI2cReserved[] = {

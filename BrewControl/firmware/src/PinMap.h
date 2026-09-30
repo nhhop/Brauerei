@@ -50,6 +50,12 @@ struct Board {
   // bus with these pins (unless the board has a fixed I2C bus).
   int i2cSda;
   int i2cScl;
+  // Onboard battery voltage divider, -1 = none. Only a preset for the
+  // battery sensor the energy settings page offers to create.
+  // Divider resistors in kΩ: R1 from the battery to the pin, R2 to GND.
+  int batteryPin = -1;
+  float batteryR1 = 0;
+  float batteryR2 = 0;
 };
 
 struct PinUse {
@@ -143,7 +149,7 @@ inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
     add("pin", Pullup | Irq);
   } else if (is("DigitalInput")) {
     add("pin", (cfg["pullup"] | false) ? Pullup : 0);
-  } else if (is("AnalogInput")) {
+  } else if (is("AnalogInput") || is("Voltage")) {
     add("pin", Analog);
   } else if (is("HCSR04")) {
     add("trig", Out);
@@ -298,6 +304,12 @@ inline void writePinsJson(const Board& b, const char* boardName,
   caps["rmtTx"] = b.rmtTx;
   caps["rmtUsed"] = rmtItems(uses);
   caps["adc2Wifi"] = b.adc2BlockedByWifi ? "blocked" : "shared";
+  if (b.batteryPin >= 0) {
+    JsonObject bat = out["battery"].to<JsonObject>();
+    bat["gpio"] = b.batteryPin;
+    bat["r1"] = b.batteryR1;
+    bat["r2"] = b.batteryR2;
+  }
 
   auto writeUsers = [](JsonArray arr, const PinUse& u) {
     JsonObject o = arr.add<JsonObject>();

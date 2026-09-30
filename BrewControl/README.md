@@ -172,7 +172,7 @@ ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `sr
 - Jede IDS-Platte braucht einen RMT-Sendekanal (ESP32: 8, S2/S3: 4); sind alle
   vergeben → **409** statt des stillen, blockierenden Software-Fallbacks.
 - Fähigkeiten je Pin (ADC1/ADC2, fehlender interner Pull-up, Interrupt-Errata)
-  werden gegen den Bedarf des Feldes geprüft: `AnalogInput` braucht einen
+  werden gegen den Bedarf des Feldes geprüft: `AnalogInput` und `Voltage` brauchen einen
   ADC-Pin, sonst **400**. ADC2 ist mit aktivem WLAN am ESP32 nicht lesbar
   (**400**), am S2/S3 teilt er sich den ADC mit dem WLAN und einzelne Messungen
   können ausfallen (Warnung). YF-S201, IDS-Interrupt und `DigitalInput` mit
@@ -438,6 +438,30 @@ hinter `BREWCTL_HAS_DISPLAY`, die anderen Envs bauen unverändert.
 - `Wire` muss vor allem anderen auf SDA 7 / SCL 6 laufen
   (`BREWCTL_I2C_SDA/SCL`), weil der Variant-Default SCL 17 der Panel-Reset
   ist.
+
+## Energiemanagement
+
+Einstellungen → Energiemanagement (`/settings/energy`, Abschnitt `energy` in
+`/config/settings.json`). Stand heute nur die Batteriespannung; Deep-Sleep
+folgt (Plan: `docs/superpowers/plans/2026-09-29-energiemanagement.md`).
+
+- Die Batterie ist ein **normales Sensor-Item**, meist vom Typ `Voltage`
+  („Spannung“). Die Seite wählt es nur aus (`energy.batterySensor`); zur Wahl
+  stehen alle Sensoren mit Einheit `V` bzw. Größe `Voltage`. Publish, Datalog,
+  Dashboard und Kalibrierung laufen dadurch wie bei jedem Sensor.
+- Der Typ `Voltage` (`SensActCtrl::VoltageSensor`) misst hinter einem
+  Spannungsteiler `Messpunkt – R1 – ADC-Pin – R2 – GND`: Konfiguration `pin`,
+  `r1`/`r2` in kΩ (nur das Verhältnis zählt, `r1 = 0` = ohne Teiler), Glättung
+  (Default 16). Er liest mit `analogReadMilliVolts()`, also mit der ab Werk im
+  eFuse hinterlegten ADC-Kalibrierung, und rechnet `mV × (R1+R2)/R2`. Am Pin
+  sind bei der Standard-Dämpfung höchstens ca. 3,1 V messbar. Feinabgleich
+  gegen ein Multimeter über die normale Kalibrierung.
+- „Batteriesensor anlegen“ legt so ein Item an (Glättung 16, Beschriftung
+  „Batterie“). Boards mit eigenem Batterie-Messeingang liefern Pin und
+  Widerstände in `GET /api/pins` → `battery` (Tabelle in `BoardPins.h`, bisher
+  nur LilyGo: GPIO 4, 100/100 kΩ für das Verhältnis 1:2).
+- Die Prozentangabe ist eine grobe LiPo-Kennlinie in der UI (`web/src/energy.ts`),
+  gilt nur für eine Zelle ohne Last und nicht beim Laden.
 
 ## API-Vertrag
 

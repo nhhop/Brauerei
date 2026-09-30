@@ -22,7 +22,8 @@ export interface PinNeeds {
 // PinMap.h sets).
 function needsOf(cfg: Record<string, unknown>): Record<string, PinNeeds> {
   switch (cfg.type) {
-    case 'AnalogInput': return { pin: { analog: true } };
+    case 'AnalogInput':
+    case 'Voltage': return { pin: { analog: true } };
     case 'YF-S201': return { pin: { pullup: true, irq: true } };
     case 'DigitalInput': return { pin: { pullup: cfg.pullup === true } };
     case 'HCSR04': return { echo: { irq: true } };

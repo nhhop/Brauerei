@@ -75,6 +75,10 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (display["offAfterSec"].is<int>()) displayOffAfterSec_ = display["offAfterSec"].as<uint32_t>();
     if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
   }
+  JsonObject energy = doc["energy"].as<JsonObject>();
+  if (!energy.isNull()) {
+    if (const char* b = energy["batterySensor"]) energyBatterySensor_ = b;
+  }
   ++revision_;
 }
 
@@ -146,6 +150,8 @@ String SettingsStore::serialize() const {
 #else
   display["supported"] = false;
 #endif
+  JsonObject energy = doc["energy"].to<JsonObject>();
+  energy["batterySensor"] = energyBatterySensor_.c_str();
   String out;
   serializeJson(doc, out);
   return out;
@@ -223,6 +229,10 @@ void SettingsStore::update(const JsonObject& patch) {
     if (display["offAfterSec"].is<int>()) displayOffAfterSec_ = display["offAfterSec"].as<uint32_t>();
     if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
     // "supported" is read-only (server-computed) — never read from a patch.
+  }
+  JsonObject energy = patch["energy"].as<JsonObject>();
+  if (!energy.isNull()) {
+    if (const char* b = energy["batterySensor"]) energyBatterySensor_ = b;
   }
   ++revision_;
 }

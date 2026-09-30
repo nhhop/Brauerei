@@ -201,6 +201,9 @@ export interface PinsInfo {
   caps: { dac: boolean; rmtTx: number; rmtUsed: number; adc2Wifi: 'blocked' | 'shared' };
   pins: PinInfo[];
   conflicts: PinConflict[];
+  // Onboard battery voltage divider (LilyGo), absent on boards without one.
+  // r1 (battery → pin) and r2 (pin → GND) in kΩ.
+  battery?: { gpio: number; r1: number; r2: number };
 }
 
 // Per-widget dashboard display variant. 'normal' entries are never stored —
@@ -612,7 +615,12 @@ export interface DisplaySettings {
   supported: boolean;    // read-only, server-computed: this build drives a display
 }
 
-// GET /api/settings always returns all eight sections; SettingsStore::serialize()
+// Energy management. The battery is a normal sensor item picked here.
+export interface EnergySettings {
+  batterySensor: string;  // sensor id, "" = none
+}
+
+// GET /api/settings always returns all nine sections; SettingsStore::serialize()
 // emits every one unconditionally.
 export interface AppSettings {
   theme: ThemeSettings;
@@ -623,6 +631,7 @@ export interface AppSettings {
   websocket: WebSocketSettings;
   espnow: EspNowSettings;
   display: DisplaySettings;
+  energy: EnergySettings;
 }
 
 export type UpdateState =

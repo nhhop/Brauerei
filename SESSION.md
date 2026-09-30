@@ -5674,3 +5674,45 @@ HLT-ROM. 409 am Gerät für: Bus auf GPIO 7, dritter I²C-Bus, Ausgang auf Bus-L
 (in PLAN.md): GY521 meldet ohne Gerät gültige Fantasiewerte (Library, älter als dieser Umbau), und ein
 einmaliger `task_wdt`-Neustart beim allerersten GY521 auf dem leeren zweiten Bus, danach nicht mehr
 reproduzierbar.
+
+## 2026-09-29 — Energiemanagement Stufe 1: Einstellungsseite + Batteriequelle
+
+Plan für den ganzen Energiemanagement-Punkt (Deep-Sleep, Wach-Pin, Kurz-Wach-Profil) mit den
+Nutzer-Entscheidungen liegt in `docs/superpowers/plans/2026-09-29-energiemanagement.md`; umgesetzt
+ist Stufe 1. Neue Seite `/settings/energy` („Energiemanagement“ im Einstellungen-Index, alle
+Boards). Die Batterie ist bewusst **kein eigener Firmware-Pfad**, sondern ein normales
+Sensor-Item, das die Seite auswählt (`energy.batterySensor` in `SettingsStore`, neuer neunter
+Abschnitt in `/api/settings`, Validierung nur des Typs). Die Auswahl listet Sensoren mit Einheit
+`V`/Größe `Voltage`, die Statuszeile zeigt Spannung und einen groben LiPo-Prozentwert
+(`web/src/energy.ts`). „Batteriesensor anlegen“ erzeugt ein `AnalogInput` (0 … 3,3 V × Teiler,
+Glättung 16, Label „Batterie“) und wählt es aus; die Voreinstellung kommt aus dem neuen
+`battery`-Feld von `GET /api/pins` (`Board::batteryPin/batteryDivider`, bisher nur LilyGo:
+GPIO 4, 1:2 — abgeleitet aus den 2,11 V am ADC vom 2026-09-26, am Gerät noch gegen ein Multimeter
+zu prüfen). Auf dem Board-eigenen Batterie-Pin blendet die Seite den „bedenklich“-Hinweis des
+PinHint aus.
+
+**Verifikation:** `pio test -e native` (68/68, `test_pin_map` prüft das `battery`-Feld),
+`pio run` für `lilygo_t_display_s3_amoled`, `esp32dev`, `lolin_s2_mini`, Redocly-Lint grün (nur
+die bekannte `info-license`-Warnung), `pnpm typecheck`, `pnpm test` (60/60, neu
+`energy.test.ts`), `pnpm build`. UI gegen Node-Mock im Scratchpad: Auswahl filtert auf
+Spannungssensoren, Anlegen schickt `{"type":"AnalogInput","id":"battery","pin":4,"unit":"V",
+"value_min":0,"value_max":6.6,"smoothing":16}` + Label + Settings-Patch, Auswahl übersteht
+Reload. Nicht am echten Board geprüft.
+
+**Nachtrag 2026-09-30 — eigener Sensortyp „Spannung“:** Auf Nutzerwunsch legt die Seite statt
+eines `AnalogInput` mit Teilerverhältnis einen neuen Typ `Voltage` an, bei dem man neben dem Pin
+die beiden Widerstände des Spannungsteilers angibt (`r1` Messpunkt→Pin, `r2` Pin→GND, kΩ,
+`r1 = 0` = ohne Teiler). Library: `SensActCtrl::VoltageSensor` liest `analogReadMilliVolts()`
+(eFuse-kalibriert, genauer als die lineare 3,3-V-Annahme des `AnalogInput`) und rechnet
+`mV × (R1+R2)/R2`, `Quantity::Voltage`/`V`, Glättung bis 32. Firmware: Zweig in
+`DynamicItems::addSensorNoBegin` (400 `invalid r1/r2`), ADC-Bedarf in `collectPins`,
+`Board::batteryDivider` → `batteryR1/batteryR2` (LilyGo 100/100), `/api/pins` → `battery:
+{gpio, r1, r2}`. Web: Typ „Spannung (Spannungsteiler)“ im Dialog „Gerät hinzufügen“, Energie-Seite
+mit Feldern Pin/R1/R2. Kalibrierung, Persistenz und Bearbeiten laufen ohne weiteren Code mit.
+**Verifikation:** SensActCtrl `pio test -e native` 279/279 (neu `test_voltage_sensor`), Firmware
+68/68 (`test_pin_map`: Voltage ohne ADC → 400, `battery.r1/r2`), `pio run` alle drei Envs,
+Redocly-Lint grün, `pnpm typecheck`/`test` (60/60)/`build`. Node-Mock: Energie-Seite vorbelegt
+4/100/100 und schickt `{"type":"Voltage","id":"battery","pin":4,"r1":100,"r2":100,"smoothing":16}`;
+„Gerät hinzufügen“ → Digital / Analog → Spannung schickt `{"type":"Voltage","id":"vtest","pin":5,
+"r1":47,"r2":10,"smoothing":16}`. Am `brewcontrol-esp32dev` (OTA) vom Nutzer getestet: funktioniert.
+Offen bleibt der Multimeter-Vergleich am LilyGo-Batterieeingang.
