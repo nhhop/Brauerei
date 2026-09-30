@@ -23,7 +23,7 @@ const AUTOTUNE_METHODS = [
 ] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'GY521' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'MqttGeneric' | 'Remote';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'GY521' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'Voltage' | 'MqttGeneric' | 'Remote';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
@@ -154,6 +154,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const [aiMax, setAiMax] = useState('14');
   const [aiUnit, setAiUnit] = useState('');
   const [aiSmoothing, setAiSmoothing] = useState('1');
+  // Voltage — divider resistors in kΩ.
+  const [vPin, setVPin] = useState('');
+  const [vR1, setVR1] = useState('100');
+  const [vR2, setVR2] = useState('100');
+  const [vSmoothing, setVSmoothing] = useState('16');
 
   // MqttGeneric (sensor) — shares mqttTopic/mqttUnit/mqttMin/mqttMax/mqttResolution
   // with the actuator's Continuous fields below (same meaning); only the
@@ -324,6 +329,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setAiMax(String(editConfig.value_max ?? '14'));
           setAiUnit(String(editConfig.unit ?? ''));
           setAiSmoothing(String(editConfig.smoothing ?? '1'));
+        } else if (t === 'Voltage') {
+          setVPin(String(editConfig.pin ?? ''));
+          setVR1(String(editConfig.r1 ?? '100'));
+          setVR2(String(editConfig.r2 ?? '100'));
+          setVSmoothing(String(editConfig.smoothing ?? '16'));
         } else if (t === 'MqttGeneric') {
           setMqttTopic(String(editConfig.topic ?? ''));
           setMqttJsonField(String(editConfig.json_field ?? ''));
@@ -651,6 +661,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           if (isNaN(sm) || sm < 1 || sm > 32) throw new Error('Glättung muss zwischen 1 und 32 liegen');
           cfg = { type: 'AnalogInput', id: trimId, pin: p, value_min: vmin, value_max: vmax, smoothing: sm };
           if (aiUnit.trim()) cfg.unit = aiUnit.trim();
+        } else if (sensorType === 'Voltage') {
+          const p = parseInt(vPin, 10);
+          if (isNaN(p) || p < 0) throw new Error('Pin ungültig');
+          const r1 = parseFloat(vR1);
+          const r2 = parseFloat(vR2);
+          if (isNaN(r1) || r1 < 0 || isNaN(r2) || r2 <= 0)
+            throw new Error('Widerstände ungültig (R1 ≥ 0, R2 > 0)');
+          const sm = parseInt(vSmoothing, 10);
+          if (isNaN(sm) || sm < 1 || sm > 32) throw new Error('Glättung muss zwischen 1 und 32 liegen');
+          cfg = { type: 'Voltage', id: trimId, pin: p, r1, r2, smoothing: sm };
         } else if (sensorType === 'MqttGeneric') {
           const topic = mqttTopic.trim();
           if (!topic) throw new Error('Topic erforderlich');
@@ -1202,6 +1222,40 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 <label class={lbl}>Glättung (Mittelwert über N Messungen, 1 = aus)</label>
                 <input type="number" min="1" max="32" value={aiSmoothing}
                   onInput={(e) => setAiSmoothing((e.target as HTMLInputElement).value)}
+                  class={inp} />
+              </div>
+            </div>
+          )}
+
+          {/* Voltage fields */}
+          {role === 'sensor' && sensorType === 'Voltage' && (
+            <div class="space-y-3">
+              <div>
+                <label class={lbl}>ADC Pin</label>
+                <input type="number" value={vPin}
+                  onInput={(e) => setVPin((e.target as HTMLInputElement).value)}
+                  placeholder="z.B. 35" class={inp} required />
+                <PinHint pins={pins} value={vPin} selfId={selfId} analog configKey="pin"
+                  onPick={(g) => setVPin(String(g))} />
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class={lbl}>R1 (kΩ)</label>
+                  <input type="number" step="any" min="0" value={vR1}
+                    onInput={(e) => setVR1((e.target as HTMLInputElement).value)}
+                    class={inp} /></div>
+                <div><label class={lbl}>R2 (kΩ)</label>
+                  <input type="number" step="any" min="0" value={vR2}
+                    onInput={(e) => setVR2((e.target as HTMLInputElement).value)}
+                    class={inp} /></div>
+              </div>
+              <p class="text-xs text-faint">
+                Messpunkt – R1 – ADC-Pin – R2 – GND. Ohne Teiler R1 = 0. Am Pin höchstens
+                ca. 3,1 V; Feinabgleich über „Kalibrieren“ nach dem Anlegen.
+              </p>
+              <div>
+                <label class={lbl}>Glättung (Mittelwert über N Messungen, 1 = aus)</label>
+                <input type="number" min="1" max="32" value={vSmoothing}
+                  onInput={(e) => setVSmoothing((e.target as HTMLInputElement).value)}
                   class={inp} />
               </div>
             </div>

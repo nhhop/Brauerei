@@ -222,10 +222,10 @@ paths:
           description: |
             Validation failed. Body is the bare reason, e.g. `missing id`,
             `id already in use`, `missing pin`, `invalid address`,
-            `unknown sensor type`, or a pin the board cannot use:
+            `unknown sensor type`, `invalid r1/r2`, or a pin the board cannot use:
             `GPIO 6 is not usable (Flash)`, `GPIO 22 does not exist on this board`,
             `GPIO 34 is input-only (trig)`, `GPIO 4 used twice (trig, echo)`,
-            or an `AnalogInput` on a pin without a usable ADC: `GPIO 16 has no ADC`,
+            or an `AnalogInput`/`Voltage` on a pin without a usable ADC: `GPIO 16 has no ADC`,
             `GPIO 27 is on ADC2, which Wi-Fi blocks` (ESP32 only; on S2/S3 ADC2
             is accepted and only the UI warns).
           content:
@@ -1086,7 +1086,7 @@ paths:
         stored config — they load anyway and are reported here. Creating and
         replacing items enforce the same rules (400/409).
         Capabilities (`adc`, `noPullup`, `irqGlitch`, `caps.adc2Wifi`) let the
-        UI check what a field needs: an `AnalogInput` needs an ADC pin (ADC2 is
+        UI check what a field needs: an `AnalogInput` or `Voltage` needs an ADC pin (ADC2 is
         rejected on the ESP32 and only warned about on S2/S3); a missing pull-up
         or the GPIO 36/39 interrupt glitch are warnings to confirm.
         `battery` is present on boards with an onboard battery divider — the
@@ -3138,7 +3138,7 @@ components:
       properties:
         type:
           type: string
-          enum: [DS18B20, MAX31865, BME280, GY521, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, MqttGeneric, Remote]
+          enum: [DS18B20, MAX31865, BME280, GY521, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin: { type: integer }
@@ -3176,7 +3176,9 @@ components:
         value_min: { type: number, description: "Display range lower bound (AnalogInput: required, must be < value_max)." }
         value_max: { type: number }
         resolution: { type: number }
-        smoothing: { type: integer, minimum: 1, maximum: 32, default: 1, description: "AnalogInput moving-average window (samples)." }
+        smoothing: { type: integer, minimum: 1, maximum: 32, default: 1, description: "AnalogInput/Voltage moving-average window (samples); default 16 for Voltage." }
+        r1: { type: number, minimum: 0, description: "Voltage: divider resistor from the measured point to the pin, in kΩ (only the ratio to r2 matters); 0 = no divider. Required." }
+        r2: { type: number, exclusiveMinimum: 0, description: "Voltage: divider resistor from the pin to GND, in kΩ. Required. The sensor reports mV × (r1 + r2) / r2 in V, read with the chip's factory ADC calibration." }
         calibrations:
           type: array
           description: |
@@ -3384,15 +3386,16 @@ components:
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         battery:
           type: object
-          required: [gpio, divider]
+          required: [gpio, r1, r2]
           description: Onboard battery voltage divider; absent on boards without one.
           properties:
             gpio: { type: integer, description: ADC pin behind the divider. }
-            divider: { type: number, description: 'Battery voltage / ADC voltage, e.g. 2 for 1:2.' }
+            r1: { type: number, description: 'Resistor battery → pin in kΩ (only the ratio to r2 matters).' }
+            r2: { type: number, description: 'Resistor pin → GND in kΩ.' }
       example:
         board: lilygo_t_display_s3_amoled
         caps: { dac: false, rmtTx: 4, rmtUsed: 1, adc2Wifi: shared }
-        battery: { gpio: 4, divider: 2 }
+        battery: { gpio: 4, r1: 100, r2: 100 }
         pins:
           - { gpio: 2, class: free, adc: 1, users: [{ id: pump, key: pin }] }
           - { gpio: 3, class: risky, note: Strapping-Pin, adc: 1, users: [] }
@@ -4222,8 +4225,8 @@ components:
     EnergySettings:
       type: object
       description: |
-        Energy management. The battery is a normal sensor item (typically an
-        `AnalogInput` with unit `V`) picked here; the id is not checked against
+        Energy management. The battery is a normal sensor item (typically a
+        `Voltage` sensor) picked here; the id is not checked against
         the registry, so it may point to a deleted item.
       required: [batterySensor]
       properties:

@@ -46,8 +46,10 @@ struct Board {
                            // false: shared with Wi-Fi, single reads may fail
   // Onboard battery voltage divider, -1 = none. Only a preset for the
   // battery sensor the energy settings page offers to create.
+  // Divider resistors in kΩ: R1 from the battery to the pin, R2 to GND.
   int batteryPin = -1;
-  float batteryDivider = 0;
+  float batteryR1 = 0;
+  float batteryR2 = 0;
 };
 
 enum class Share : uint8_t { None, OneWire, Spi };
@@ -147,7 +149,7 @@ inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
     add("pin", Share::None, Pullup | Irq);
   } else if (is("DigitalInput")) {
     add("pin", Share::None, (cfg["pullup"] | false) ? Pullup : 0);
-  } else if (is("AnalogInput")) {
+  } else if (is("AnalogInput") || is("Voltage")) {
     add("pin", Share::None, Analog);
   } else if (is("HCSR04")) {
     add("trig", Share::None, Out);
@@ -301,7 +303,8 @@ inline void writePinsJson(const Board& b, const char* boardName,
   if (b.batteryPin >= 0) {
     JsonObject bat = out["battery"].to<JsonObject>();
     bat["gpio"] = b.batteryPin;
-    bat["divider"] = b.batteryDivider;
+    bat["r1"] = b.batteryR1;
+    bat["r2"] = b.batteryR2;
   }
 
   auto writeUsers = [](JsonArray arr, const PinUse& u) {

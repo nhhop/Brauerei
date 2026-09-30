@@ -90,7 +90,9 @@ void loop() {
 ## Was die Library enthält
 
 **Sensoren** (`src/sensors/`): `DigitalInputSensor`, `AnalogInputSensor`
-(lineare Kalibrierung), `PulseCounterSensor` (Total-/Rate-Modus),
+(lineare Kalibrierung), `VoltageSensor` (Spannung hinter einem Spannungsteiler
+R1/R2, z. B. Batterie, liest kalibrierte Millivolt per `analogReadMilliVolts`),
+`PulseCounterSensor` (Total-/Rate-Modus),
 `DS18B20Sensor` (OneWire, async; eigener Bus per Pin oder ein fremder
 `OneWire&`, den sich mehrere Sensoren teilen — mit ROM-Adresse oder ohne, dann
 erstes Gerät), `BME280Sensor` (I2C, Temp/Feuchte/Druck),

@@ -13,18 +13,14 @@ import { BatteryMedium, Plus } from 'lucide-preact';
 
 const DEFAULT: EnergySettings = { batterySensor: '' };
 
-// ADC full scale the new sensor maps 0..4095 onto, before the divider. Only a
-// starting point: the ESP32 ADC is neither linear nor exactly 3.3 V wide, a
-// two-point calibration against a multimeter fixes both.
-const ADC_FULL_SCALE_V = 3.3;
-
 export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
   const [settings, setSettings] = useState<EnergySettings>(DEFAULT);
   const [loading, setLoading] = useState(true);
   const [pins, setPins] = useState<PinsInfo | null>(null);
   const [creating, setCreating] = useState(false);
   const [pin, setPin] = useState('');
-  const [divider, setDivider] = useState('2');
+  const [r1, setR1] = useState('100');
+  const [r2, setR2] = useState('100');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -35,7 +31,11 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
     getPins()
       .then((p) => {
         setPins(p);
-        if (p.battery) { setPin(String(p.battery.gpio)); setDivider(String(p.battery.divider)); }
+        if (p.battery) {
+          setPin(String(p.battery.gpio));
+          setR1(String(p.battery.r1));
+          setR2(String(p.battery.r2));
+        }
       })
       .catch(() => {});
   }, []);
@@ -50,17 +50,15 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
 
   async function createBatterySensor() {
     const p = parseInt(pin, 10);
-    const d = parseFloat(divider);
+    const k1 = parseFloat(r1);
+    const k2 = parseFloat(r2);
     if (isNaN(p) || p < 0) { setErr('Pin ungültig'); return; }
-    if (isNaN(d) || d < 1) { setErr('Teiler muss mindestens 1 sein'); return; }
+    if (isNaN(k1) || k1 < 0 || isNaN(k2) || k2 <= 0) { setErr('Widerstände ungültig (R1 ≥ 0, R2 > 0)'); return; }
     const id = freeBatteryId((snap?.sensors ?? []).map((s) => s.id));
     setBusy(true);
     setErr('');
     try {
-      await createSensor({
-        type: 'AnalogInput', id, pin: p, unit: 'V',
-        value_min: 0, value_max: Math.round(ADC_FULL_SCALE_V * d * 100) / 100, smoothing: 16,
-      });
+      await createSensor({ type: 'Voltage', id, pin: p, r1: k1, r2: k2, smoothing: 16 });
       await setSensorLabel(id, 'Batterie').catch(() => {});
       update({ batterySensor: id });
       setCreating(false);
@@ -112,24 +110,29 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
 
           {!creating ? (
             <SettingsCard title="Batteriesensor anlegen" icon={Plus}
-              desc="Legt einen Analogeingang für die Batteriespannung an und wählt ihn aus"
+              desc="Legt einen Spannungssensor für die Batterie an und wählt ihn aus"
               onClick={() => { setCreating(true); setErr(''); }} />
           ) : (
             <SettingsCard title="Batteriesensor anlegen" icon={Plus}
               desc={pins?.battery
                 ? 'Vorbelegt mit dem Batterie-Messeingang dieses Boards'
-                : 'Pin des Spannungsteilers am ADC und sein Teilerverhältnis'}>
+                : 'Batterie – R1 – ADC-Pin – R2 – GND'}>
               <div class="space-y-3">
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-3 gap-2">
                   <div>
                     <label class="mb-1 block text-xs text-muted">ADC-Pin</label>
                     <input type="number" value={pin} class={inp}
                       onInput={(e) => setPin((e.target as HTMLInputElement).value)} />
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs text-muted">Teiler (Batterie : ADC)</label>
-                    <input type="number" step="any" min="1" value={divider} class={inp}
-                      onInput={(e) => setDivider((e.target as HTMLInputElement).value)} />
+                    <label class="mb-1 block text-xs text-muted">R1 (kΩ)</label>
+                    <input type="number" step="any" min="0" value={r1} class={inp}
+                      onInput={(e) => setR1((e.target as HTMLInputElement).value)} />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-muted">R2 (kΩ)</label>
+                    <input type="number" step="any" min="0" value={r2} class={inp}
+                      onInput={(e) => setR2((e.target as HTMLInputElement).value)} />
                   </div>
                 </div>
                 {/* The board's own battery input is marked risky for other items; here it is the point. */}
@@ -137,8 +140,9 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
                   <PinHint pins={pins} value={pin} analog configKey="pin" onPick={(g) => setPin(String(g))} />
                 )}
                 <p class="text-xs text-muted">
-                  Der ADC misst nicht genau linear. Für eine genaue Anzeige den Sensor danach unter
-                  Geräte mit einem Multimeter per Zwei-Punkt-Kalibrierung abgleichen.
+                  Legt einen Sensor vom Typ „Spannung“ an. Die Firmware nutzt die ab Werk
+                  hinterlegte ADC-Kalibrierung; einen Feinabgleich mit dem Multimeter gibt es
+                  danach unter Geräte über „Kalibrieren“.
                 </p>
                 <div class="flex items-center gap-2">
                   <button type="button" class={btnSecondary} disabled={busy} onClick={createBatterySensor}>

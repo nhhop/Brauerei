@@ -208,6 +208,9 @@ void test_analog_input_needs_adc() {
   TEST_ASSERT_EQUAL_STRING("GPIO 16 has no ADC", r.error.c_str());
   r = check(kLilyGoAmoled, {}, R"({"type":"AnalogInput","id":"a","pin":21})");
   TEST_ASSERT_EQUAL(400, r.status);
+  r = check(kEsp32Dev, {}, R"({"type":"Voltage","id":"v","pin":16,"r1":100,"r2":100})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_TRUE(check(kEsp32Dev, {}, R"({"type":"Voltage","id":"v","pin":35,"r1":100,"r2":100})").ok);
   // Only analog inputs care: a digital input on the same pin is fine.
   TEST_ASSERT_TRUE(check(kEsp32Dev, {}, R"({"type":"DigitalInput","id":"a","pin":16})").ok);
 }
@@ -282,7 +285,8 @@ void test_pins_json_capabilities() {
   writePinsJson(kLilyGoAmoled, "lilygo", {}, s3.to<JsonObject>());
   TEST_ASSERT_EQUAL_STRING("shared", s3["caps"]["adc2Wifi"]);
   TEST_ASSERT_EQUAL(4, s3["battery"]["gpio"].as<int>());
-  TEST_ASSERT_EQUAL_FLOAT(2.0f, s3["battery"]["divider"].as<float>());
+  TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r1"].as<float>());
+  TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r2"].as<float>());
 }
 
 int main(int, char**) {

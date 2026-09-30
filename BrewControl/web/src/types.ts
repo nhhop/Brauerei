@@ -201,7 +201,8 @@ export interface PinsInfo {
   pins: PinInfo[];
   conflicts: PinConflict[];
   // Onboard battery voltage divider (LilyGo), absent on boards without one.
-  battery?: { gpio: number; divider: number };
+  // r1 (battery → pin) and r2 (pin → GND) in kΩ.
+  battery?: { gpio: number; r1: number; r2: number };
 }
 
 // Per-widget dashboard display variant. 'normal' entries are never stored —

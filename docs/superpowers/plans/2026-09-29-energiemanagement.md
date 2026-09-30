@@ -16,8 +16,10 @@ Messintervall; `setup()` blockiert bis zu 6×30 s auf WLAN und fällt sonst ins 
   Voll-Wach mit Timeout, den UI-Zugriffe verlängern.
 - Welche Funktionen im Kurz-Wach laufen, ist **konfigurierbar** (Display, Weboberfläche, WLAN,
   Update-Suche, …) — nicht board-spezifisch.
-- Batterie = **normales AnalogInput-Item**, das auf der Seite als Batteriequelle ausgewählt wird
-  (plus Knopf „anlegen“ mit Voreinstellung).
+- Batterie = **normales Sensor-Item**, das auf der Seite als Batteriequelle ausgewählt wird
+  (plus Knopf „anlegen“ mit Voreinstellung). Nachtrag 2026-09-30: dafür eigener Sensortyp
+  `Voltage` („Spannung“) mit Pin und den Widerständen R1/R2 des Spannungsteilers, statt eines
+  `AnalogInput` mit Teilerverhältnis.
 - Messintervall = **nur Schlafdauer**. Im Dauer-Wach-Betrieb ändert sich an Messen/Publishen nichts.
 - **Gestaffelt**: Stufe 1 und Stufe 2 getrennt mergebar.
 
@@ -42,8 +44,11 @@ Messintervall; `setup()` blockiert bis zu 6×30 s auf WLAN und fällt sonst ins 
   SettingsStore.cpp ~L70/~L138/~L218). Stufe 1 nur `batterySensor` (Item-Id, `""` = keine).
 - `WebUI.cpp` POST `/api/settings` (L1736ff): `energy.batterySensor` validieren (nur String-Typ, sonst 400;
   bewusst ohne Registry-Abgleich, verwaiste Id zeigt die UI). Kein Reboot.
-- `PinMap.h` `struct Board` (L34): optional `batteryPin`/`batteryDivider` (nur LilyGo: GPIO 4, 2.0
-  laut LilyGo-Beispiel — beim Umsetzen gegen `pin_config.h` prüfen); `writePinsJson` gibt sie als
+- Neuer Sensortyp `Voltage`: `SensActCtrl::VoltageSensor` (`analogReadMilliVolts` ×
+  (R1+R2)/R2, Glättung, `Quantity::Voltage`), Zweig in `DynamicItems::addSensorNoBegin`
+  (`pin`, `r1` ≥ 0, `r2` > 0 in kΩ, `smoothing`), ADC-Bedarf in `PinMap.h` `collectPins`.
+- `PinMap.h` `struct Board` (L34): optional `batteryPin`/`batteryR1`/`batteryR2` (nur LilyGo:
+  GPIO 4, 100/100 kΩ für 1:2 laut LilyGo-Beispiel); `writePinsJson` gibt sie als
   `battery` aus, damit die UI die Voreinstellung kennt. `BoardPins.h` LilyGo-Tabelle ergänzen.
 - `openapi.yaml`: `EnergySettings`-Schema, `AppSettings` (Abschnittszahl im Text), Patch-Schema,
   neue 400-Texte; `/api/pins` Board-Feld. Redocly-Lint.
@@ -53,11 +58,13 @@ Messintervall; `setup()` blockiert bis zu 6×30 s auf WLAN und fällt sonst ins 
 - Neue Seite `pages/EnergyPage.tsx` (Muster `DisplayPage.tsx`: `SettingsGroup`/`SettingsCard`,
   Sofort-Speichern via `updateSettings({energy})`), Route `/settings/energy` in `app.tsx` mit
   `snap={snap}`, Eintrag in `SettingsIndex.tsx` `ENTRIES` (lucide `BatteryMedium`), Breadcrumb.
-- Karte „Batterie“: Auswahl aus den AnalogInput-Sensoren im Snapshot; Live-Spannung aus `snap`
-  plus grober LiPo-Prozentwert (feste Kurve 3,3–4,2 V, reine UI-Funktion in `energy.ts` mit
-  Vitest). Knopf „Batteriesensor anlegen“: erzeugt über die bestehende Item-Add-API ein
-  AnalogInput (`unit: "V"`, `value_max = 3.3 × divider`, Smoothing 16, Pin aus `battery`
-  bzw. leer mit `PinHint analog`) und wählt es aus; Hinweis auf Zwei-Punkt-Kalibrierung.
+- Karte „Batterie“: Auswahl aus den Spannungssensoren (Einheit `V`/Größe `Voltage`) im
+  Snapshot; Live-Spannung aus `snap` plus grober LiPo-Prozentwert (feste Kurve 3,3–4,2 V, reine
+  UI-Funktion in `energy.ts` mit Vitest). Knopf „Batteriesensor anlegen“: erzeugt über die
+  bestehende Item-Add-API einen `Voltage`-Sensor (Pin, R1, R2 aus `battery` bzw. leer mit
+  `PinHint analog`, Smoothing 16) und wählt ihn aus; Hinweis auf Feinabgleich per Kalibrierung.
+- Typ „Spannung“ auch im normalen Dialog „Gerät hinzufügen“ (`itemTypes.ts`, `AddItemModal.tsx`,
+  `pins.ts` `needsOf`).
   Referenziertes Item gelöscht → „Sensor nicht gefunden“.
 
 ### Verifikation Stufe 1

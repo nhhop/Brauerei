@@ -5576,3 +5576,20 @@ die bekannte `info-license`-Warnung), `pnpm typecheck`, `pnpm test` (60/60, neu
 Spannungssensoren, Anlegen schickt `{"type":"AnalogInput","id":"battery","pin":4,"unit":"V",
 "value_min":0,"value_max":6.6,"smoothing":16}` + Label + Settings-Patch, Auswahl übersteht
 Reload. Nicht am echten Board geprüft.
+
+**Nachtrag 2026-09-30 — eigener Sensortyp „Spannung“:** Auf Nutzerwunsch legt die Seite statt
+eines `AnalogInput` mit Teilerverhältnis einen neuen Typ `Voltage` an, bei dem man neben dem Pin
+die beiden Widerstände des Spannungsteilers angibt (`r1` Messpunkt→Pin, `r2` Pin→GND, kΩ,
+`r1 = 0` = ohne Teiler). Library: `SensActCtrl::VoltageSensor` liest `analogReadMilliVolts()`
+(eFuse-kalibriert, genauer als die lineare 3,3-V-Annahme des `AnalogInput`) und rechnet
+`mV × (R1+R2)/R2`, `Quantity::Voltage`/`V`, Glättung bis 32. Firmware: Zweig in
+`DynamicItems::addSensorNoBegin` (400 `invalid r1/r2`), ADC-Bedarf in `collectPins`,
+`Board::batteryDivider` → `batteryR1/batteryR2` (LilyGo 100/100), `/api/pins` → `battery:
+{gpio, r1, r2}`. Web: Typ „Spannung (Spannungsteiler)“ im Dialog „Gerät hinzufügen“, Energie-Seite
+mit Feldern Pin/R1/R2. Kalibrierung, Persistenz und Bearbeiten laufen ohne weiteren Code mit.
+**Verifikation:** SensActCtrl `pio test -e native` 279/279 (neu `test_voltage_sensor`), Firmware
+68/68 (`test_pin_map`: Voltage ohne ADC → 400, `battery.r1/r2`), `pio run` alle drei Envs,
+Redocly-Lint grün, `pnpm typecheck`/`test` (60/60)/`build`. Node-Mock: Energie-Seite vorbelegt
+4/100/100 und schickt `{"type":"Voltage","id":"battery","pin":4,"r1":100,"r2":100,"smoothing":16}`;
+„Gerät hinzufügen“ → Digital / Analog → Spannung schickt `{"type":"Voltage","id":"vtest","pin":5,
+"r1":47,"r2":10,"smoothing":16}`. Am Board noch nicht gemessen.

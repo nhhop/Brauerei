@@ -84,6 +84,8 @@ describe('riskyPins', () => {
     expect(riskyPins(info, { type: 'DigitalInput', pin: 34, pullup: true })).toHaveLength(1);
     expect(riskyPins(info, { type: 'AnalogInput', pin: 18 }))
       .toEqual(['GPIO 18: ADC2 – Messung kann bei WLAN-Verkehr ausfallen']);
+    expect(riskyPins(info, { type: 'Voltage', pin: 18, r1: 100, r2: 100 }))
+      .toEqual(['GPIO 18: ADC2 – Messung kann bei WLAN-Verkehr ausfallen']);
     expect(riskyPins(info, { type: 'DigitalInput', pin: 18 })).toEqual([]);
   });
 

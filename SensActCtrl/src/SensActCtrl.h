@@ -30,6 +30,7 @@
 
 #include "sensors/DigitalInputSensor.h"
 #include "sensors/AnalogInputSensor.h"
+#include "sensors/VoltageSensor.h"
 #include "sensors/PulseCounterSensor.h"
 #include "sensors/DS18B20Sensor.h"
 #include "sensors/BME280Sensor.h"

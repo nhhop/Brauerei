@@ -79,7 +79,8 @@ class SettingsStore {
   bool displayPixelShift() const { return displayPixelShift_; }
 
   // Energy management: id of the sensor item that measures the battery
-  // voltage ("" = none). The item itself is a normal AnalogInput.
+  // voltage ("" = none). The item itself is a normal sensor, usually of
+  // type Voltage.
   const String& energyBatterySensor() const { return energyBatterySensor_; }
 
  private:

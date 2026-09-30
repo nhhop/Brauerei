@@ -239,6 +239,18 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     sensor->setCalibration(0, 4095, vmin, vmax);
     sensor->setSmoothing(static_cast<uint8_t>(smoothing));
     e->ptr = std::move(sensor);
+  } else if (strcmp(type, "Voltage") == 0) {
+    int pin = cfg["pin"] | -1;
+    if (pin < 0) return {false, "missing pin"};
+    float r1 = cfg["r1"] | -1.0f;
+    float r2 = cfg["r2"] | 0.0f;
+    if (r1 < 0 || r2 <= 0) return {false, "invalid r1/r2"};
+    int smoothing = cfg["smoothing"] | 16;
+    if (smoothing < 1 || smoothing > 32) return {false, "invalid smoothing"};
+    auto sensor = std::make_unique<VoltageSensor>(e->id.c_str(), pin, r1, r2);
+    sensor->setSmoothing(static_cast<uint8_t>(smoothing));
+    sensor->setResolution(cfg["resolution"] | 0.01f);
+    e->ptr = std::move(sensor);
   } else if (strcmp(type, "MqttGeneric") == 0) {
     if (!mqttTransport_) return {false, "mqtt not available"};
     const char* topic = cfg["topic"] | "";
