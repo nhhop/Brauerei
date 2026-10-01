@@ -4,6 +4,8 @@
 
 #include <Arduino.h>
 #include <PubSubClient.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 namespace SensActCtrl {
 
@@ -30,17 +32,24 @@ MqttTransport::MqttTransport(Client& netClient, const char* host, uint16_t port,
 
 MqttTransport::~MqttTransport() {
   if (g_active == this) g_active = nullptr;
+  // A running connect task owns client_ until it reports back.
+  while (phase_.load() == kConnecting) delay(10);
   delete client_;
 }
 
+// client_ is ours (no connect task running) and the link is up. Caller task only.
+bool MqttTransport::usable_() const {
+  return client_ && phase_.load() == kIdle && client_->connected();
+}
+
 bool MqttTransport::publish(const char* topic, const char* payload, bool retained) {
-  if (!client_ || !client_->connected()) return false;
+  if (!usable_()) return false;
   return client_->publish(topic, payload, retained);
 }
 
 bool MqttTransport::subscribe(const char* topic, MessageCallback callback) {
   subs_.emplace_back(std::string(topic), std::move(callback));
-  if (client_ && client_->connected()) {
+  if (usable_()) {
     client_->subscribe(topic);
   }
   return true;
@@ -56,20 +65,20 @@ bool MqttTransport::unsubscribe(const char* topic) {
       ++it;
     }
   }
-  if (client_ && client_->connected()) {
+  if (usable_()) {
     client_->unsubscribe(topic);
   }
   return found;
 }
 
 bool MqttTransport::connected() const {
-  return client_ && client_->connected();
+  return linkUp_.load();
 }
 
 const char* MqttTransport::lastErrorMessage() const {
-  if (connected() || !client_) return "";
+  if (linkUp_.load() || !client_) return "";
   // PubSubClient::state() codes, see PubSubClient.h.
-  switch (client_->state()) {
+  switch (state_.load()) {
     case -4: return "Zeitüberschreitung beim Verbindungsaufbau";
     case -3: return "Verbindung verloren";
     case -2: return "Verbindung fehlgeschlagen (Host/Port prüfen)";
@@ -83,34 +92,51 @@ const char* MqttTransport::lastErrorMessage() const {
   }
 }
 
-bool MqttTransport::attemptConnect_() {
-  const std::string id = clientId_.empty() ? std::string(String(millis()).c_str())
-                                            : clientId_;
-  bool ok = username_.empty()
-              ? client_->connect(id.c_str())
-              : client_->connect(id.c_str(), username_.c_str(), password_.c_str());
-  if (!ok) return false;
-  for (auto& sub : subs_) {
-    client_->subscribe(sub.first.c_str());
-  }
-  return true;
+void MqttTransport::connectTask_(void* arg) {
+  auto* self = static_cast<MqttTransport*>(arg);
+  self->connectOk_ =
+      self->username_.empty()
+          ? self->client_->connect(self->connectId_.c_str())
+          : self->client_->connect(self->connectId_.c_str(), self->username_.c_str(),
+                                   self->password_.c_str());
+  self->phase_.store(kDone);
+  vTaskDelete(nullptr);
 }
 
-void MqttTransport::tick() {
-  if (!client_) return;
-  if (client_->connected()) {
-    client_->loop();
-    return;
+void MqttTransport::startConnect_() {
+  connectId_ = clientId_.empty() ? std::string(String(millis()).c_str()) : clientId_;
+  phase_.store(kConnecting);
+  // 8 KB covers a TLS handshake (WiFiClientSecure); freed when the task ends.
+  if (xTaskCreate(connectTask_, "mqttConnect", 8192, this, 1, nullptr) != pdPASS) {
+    connectOk_ = false;
+    phase_.store(kDone);
   }
-  const uint32_t now = millis();
-  if (now - lastConnectAttemptMs_ < reconnectBackoffMs_) return;
-  lastConnectAttemptMs_ = now;
-  if (attemptConnect_()) {
+}
+
+void MqttTransport::finishConnect_() {
+  if (connectOk_) {
+    for (auto& sub : subs_) {
+      client_->subscribe(sub.first.c_str());
+    }
     reconnectBackoffMs_ = 1000;
   } else {
     reconnectBackoffMs_ = (reconnectBackoffMs_ * 2 > 30000)
                             ? 30000
                             : reconnectBackoffMs_ * 2;
+  }
+  // Backoff counts from the end of the attempt, which can take seconds.
+  lastConnectAttemptMs_ = millis();
+  phase_.store(kIdle);
+}
+
+void MqttTransport::tick() {
+  if (!client_ || phase_.load() == kConnecting) return;
+  if (phase_.load() == kDone) finishConnect_();
+  if (client_->connected()) client_->loop();
+  linkUp_.store(client_->connected());
+  state_.store(client_->state());
+  if (!linkUp_.load() && millis() - lastConnectAttemptMs_ >= reconnectBackoffMs_) {
+    startConnect_();
   }
 }
 
@@ -142,7 +168,6 @@ void MqttTransport::tick() {}
 bool MqttTransport::connected() const { return false; }
 const char* MqttTransport::lastErrorMessage() const { return ""; }
 void MqttTransport::dispatchIncoming(const char*, const uint8_t*, uint32_t) {}
-bool MqttTransport::attemptConnect_() { return false; }
 
 }  // namespace SensActCtrl
 

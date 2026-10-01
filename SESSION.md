@@ -5813,3 +5813,38 @@ kürzte den Schlaf auf sein Ende (Aufwachen 1 s danach); ohne WLAN ebenso, kein 
 Voll-Wach jeweils per COM6-Reset. Danach Test-Log/-Timer gelöscht, `dac_test` 0, Energie-
 Einstellungen auf die Ausgangswerte. Nicht geprüft (PLAN „Deep-Sleep: Rest am Gerät“): Taster/
 Jumper am Wach-Pin, Pegel der Ausgänge und Strom im Schlaf, S2/LilyGo, ESP-NOW-Empfang, Drift.
+
+## 2026-10-01 — MQTT-Verbindungsaufbau blockiert `loop()` nicht mehr (Branch `fix/mqtt-connect-nonblocking`)
+
+**Root Cause:** `SensActCtrl::MqttTransport::tick()` rief bei getrennter Verbindung
+`PubSubClient::connect()` synchron auf. Dazu gehören Namensauflösung (`hostByName`, im Core 2.x bis
+15 s, bei `.local` ~7 s), TCP-Connect, ggf. TLS und das Warten auf CONNACK. BrewControl ruft das aus
+`loop()` → `tickTransports()` unter dem `RegistryLock`. Bei unerreichbarem Broker stand der loopTask
+deshalb alle ~30 s (Backoff-Maximum) für mehrere Sekunden: gesperrte REST-Routen antworteten 503,
+Regler und TPO-Ausgänge wurden so lange nicht getickt, und ein Kurz-Wach mit WLAN dauerte ~18 s.
+
+**Umsetzung (nur Library):** Der Connect läuft in einem kurzlebigen FreeRTOS-Task (`mqttConnect`,
+8 KB Stack für TLS, löscht sich am Ende selbst). Ein atomares `phase_` (Idle/Connecting/Done) regelt
+die Übergabe: Während des Connects fasst nur der Task den `PubSubClient` an, `tick()` kehrt sofort
+zurück, `publish()` liefert `false`, `subscribe()` merkt nur vor. Im `Done`-Zustand holt `tick()` die
+Abos nach und setzt den Backoff. Der zählt jetzt ab dem **Ende** des Versuchs. `connected()` und
+`lastErrorMessage()` lesen gecachte Atomics, damit ist der Lesezugriff aus `GET /api/settings`
+(AsyncTCP-Task) nebenbei threadsicher. In BrewControl hat sich nur ein Kommentar in `main.cpp`
+geändert; dazu kommt `SensActCtrl/README.md`.
+
+**Verifikation:** SensActCtrl `pio test -e native` 283/283, Firmware `pio test -e native` 99/99,
+`pio run` für esp32dev, lolin_s2_mini und LilyGo grün. Am `brewcontrol-esp32dev` (Items: DS18B20 ohne
+Fühler, GY521, WebSocket-Remote `lolin_wstest`) mit dem Broker-Host `brewcontrol-gibtsnicht.local`
+jeweils 90 s Label-Schreiben im 0,5-s-Takt, dazu `sensors[adc_test].state.t` aus dem Snapshot:
+- **alte Firmware:** 6 von 70 Antworten 503, Sensorwert stand bis 6,5 s;
+- **neue Firmware (OTA):** 89 von 89 Antworten 204, Sensorwert stand höchstens 1,5 s (Messtakt).
+- Heap: Der Connect-Task belegt kurz ~8,7 KB und gibt sie wieder frei, kein Drift über eine Minute.
+- Positivfall gegen den eingebetteten Broker des LilyGo: Verbindung steht, ein `/set` auf `dac_test`
+  über MQTT wirkt. Nach einem Neustart des LilyGo (Broker ohne Abos) verbindet sich das esp32dev
+  wieder, und ein neues `/set` wirkt ebenfalls. Damit ist belegt, dass die Abos nachgeholt werden.
+- Danach Broker-Host wieder `brewcontrol.local`, `dac_test` 0.
+
+**Nicht gemessen:** die Dauer eines Kurz-Wachs mit WLAN bei unerreichbarem Broker. Der loopTask
+blockiert dort nicht mehr; das Kurz-Wach wartet aber weiterhin bis zum Limit von `shortWakeCourse` auf
+die Verbindung. WebSocket-Client und Webhook-POST laufen weiterhin synchron unter dem Lock, in der
+Messung trugen sie aber nichts bei.

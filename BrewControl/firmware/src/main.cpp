@@ -454,7 +454,7 @@ void setup() {
 
 // Publishers and transports; caller holds the RegistryLock. A short wake
 // without Wi-Fi skips the Wi-Fi ones: their connect attempt cannot succeed
-// and only blocks (measured ~7 s for an MQTT broker's host name).
+// (MQTT connects in a background task, the others may still block).
 static void tickTransports() {
   if (!shortWake || WiFi.isConnected()) {
     mqttService.tick();

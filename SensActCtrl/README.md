@@ -131,7 +131,10 @@ Sollwert-Änderungsrate °/min für einen beliebigen Regler).
 
 **Transport** (`src/transport/`): `ITransport`-Interface
 (`publish`/`subscribe`/`tick`/`connected`/`lastErrorMessage`), Implementierungen
-`MqttTransport` (PubSubClient-Wrapper, Reconnect-Backoff), `EspNowTransport`
+`MqttTransport` (PubSubClient-Wrapper, Reconnect-Backoff; der Verbindungsaufbau
+läuft in einem kurzlebigen FreeRTOS-Task, `tick()` blockiert also auch bei
+unerreichbarem Broker nicht; `connected()`/`lastErrorMessage()` sind aus jedem
+Task lesbar, alle übrigen Methoden gehören in den Task, der `tick()` ruft), `EspNowTransport`
 (Broadcast für Meta/State, Retain-Emulation via Retained-Request,
 250-Byte-Paketlimit; nicht-retained Befehle wie `/set` gehen unicast mit
 ESP-NOW-ACK an den Knoten, der das Eltern-Topic zuletzt gesendet hat — die
