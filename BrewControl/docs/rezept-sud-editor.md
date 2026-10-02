@@ -90,11 +90,38 @@ Die Übersicht ist Steckbrief und Zusammenfassung. Prozessparameter stehen in de
   Die offizielle Stiltabelle wird gebraucht.
 
 ### Zutaten
-Zwei umschaltbare Ansichten derselben Daten.
+Zwei Ansichten derselben Daten. Umgeschaltet wird über „Gruppieren: Art | Prozess“, klein und rechtsbündig
+über der ersten Karte. Es gibt keinen Kopfbereich mit Kennwerten: Stammwürze, IBU und EBC zeigen die
+Stil-Badges neben den Tabs, Summen stehen in den Kartenköpfen.
+
+**Mengen und Anteile beim Vergärbaren**, ohne Modus-Schalter:
+- Gespeichert werden **Anteile und Stammwürze**, die kg werden daraus berechnet.
+- Alle drei Felder sind direkt editierbar:
+  - **kg einer Zeile** ändern: Anteile und Stammwürze werden neu berechnet, die übrigen kg bleiben.
+  - **% einer Zeile** ändern: Die kg dieser Zeile folgen bei gleicher Stammwürze.
+  - **Stammwürze** ändern (Fußzeile der Karte): Alle kg skalieren.
+- Ändern sich Effizienz, Ausschlagmenge oder Sudhaus, bleiben Stammwürze und Anteile stehen, nur die kg
+  passen sich an.
+- Ergeben die Anteile nicht 100 %, wird „Summe“ in der Fußzeile gelb und bietet „auf 100 % verteilen“ an.
+  Es wird **nicht** automatisch am Basismalz ausgeglichen.
+
+**Ergebnisspalten** je Zeile, ganz rechts:
+- **Vergärbares:** Beitrag zur Farbe (EBC) und zur Stammwürze (°P). Die Farbe wird im Entwurf anteilig
+  nach kg × EBC verteilt. Die echte Formel (Morey) ist nicht additiv, das ist bei der Umsetzung zu klären.
+  Rundungsdifferenzen in der °P-Spalte gleicht die größte Zeile aus.
+- **Hopfen:** Öl der Gabe in ml und IBU. Der Ölgehalt der Sorte wird in ml/100 g angegeben.
+
+**Spaltenordnung** in allen Karten gleich:
+- Name, dann die Stammdaten der Art, dann eine Leerspalte, die den restlichen Platz aufnimmt.
+- Dann Zeitpunkt · Menge · eine schmale Spalte (Anteil, Hopfen-Details bzw. leer) · zwei Ergebnisspalten.
+- Die Namensspalte hat eine feste Breite. Dadurch stehen Typ, Form und Zweck bündig untereinander, ebenso
+  Zeitpunkt und Menge.
+- Bei den Hilfsstoffen reichen die Details über die schmale Spalte und beide Ergebnisspalten, mit Umbruch.
+- **Hopfen-Details:** nur noch Kochzeit, Whirlpool-Dauer, Dip-Kontaktzeit, Stopfen-Tag und -Dauer.
+  Die Whirlpool-Temperatur steht auf der Brautag-Seite; die Würzemenge fürs Dip Hopping entfällt.
 
 **Nach Art**, fünf Arten:
-1. **Vergärbares** (Malz, Rohfrucht, Zucker, Extrakt) — nach Menge sortiert, ohne Ziehgriffe. Mengen lassen
-   sich aus Prozentanteilen berechnen („Mengen aus Anteilen“, abhängig von Zielstammwürze und Effizienz).
+1. **Vergärbares** (Malz, Rohfrucht, Zucker, Extrakt) — nach Menge sortiert, ohne Ziehgriffe.
 2. **Hopfen** — in Prozessreihenfolge. α-Säure und Öl stammen aus der Sortenliste und lassen sich **je Gabe**
    anpassen. Formen: Dolde, Pellets T90, Pellets T45, Lupulin-Konzentrat, Extrakt.
 3. **Hefen & Kulturen** — Saccharomyces (ober-/untergärig, Kveik), Brettanomyces, Milchsäurebakterien,
@@ -112,6 +139,16 @@ zugeordnet ist:
 | Gärung | Anstellen (Hefe, Dip Hopping) · Hauptgärung |
 | Reifung | Stopfen, Schönung, zweite Kultur |
 | Abfüllung | Karbonisierung (Speise erscheint hier schreibgeschützt) |
+
+Darstellung in der Prozess-Ansicht:
+- Dieselben Eingabe- und Ergebnisfelder wie nach Art, ohne Spalte Zeitpunkt.
+- Die Art steht als Markierung in der zweiten Spalte. Es gibt keine zusätzliche Gruppierungsebene je Art.
+- Die Kopfzeile des Prozessschritts trägt die Spaltenköpfe. Sie richten sich nach der ersten Zutatenart
+  im Schritt; leere Schritte haben keine.
+- Ganz rechts steht „+ Zutat“ in der verbreiterten Spalte des Löschen-Knopfs.
+- Reihenfolge rechts: Menge · schmale Spalte (Anteil, Dauer bzw. Details) · zwei Ergebnisspalten. Die
+  Details der Hilfsstoffe bleiben in der schmalen Spalte, weil in gemischten Schritten Öl/IBU darüber
+  stehen können.
 
 Fachliche Festlegungen:
 - **Flameout:** keine eigene Gruppe, sondern Kochen mit 0 min.
