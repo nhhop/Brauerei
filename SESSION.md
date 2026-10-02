@@ -5848,3 +5848,37 @@ jeweils 90 s Label-Schreiben im 0,5-s-Takt, dazu `sensors[adc_test].state.t` aus
 blockiert dort nicht mehr; das Kurz-Wach wartet aber weiterhin bis zum Limit von `shortWakeCourse` auf
 die Verbindung. WebSocket-Client und Webhook-POST laufen weiterhin synchron unter dem Lock, in der
 Messung trugen sie aber nichts bei.
+
+## 2026-10-02 — SD-Lesezugriffe von Downloads und UI-Auslieferung unter `SdLock` (Branch `fix/sd-download-lock`)
+
+**Root Cause:** Vier Stellen lasen Dateien über die Bordmittel von ESPAsyncWebServer, alle ohne die globale
+SD-Sperre: `GET /api/files/download`, `GET /api/logs/{id}/download|data`, der SPA-Fallback
+(`req->send(fs_, …)` → `AsyncFileResponse`) und `serveStatic()`. `serveStatic()` öffnet die Datei schon beim
+Routing (`canHandle`), liest dann für den ETag und überträgt die Datei stückweise in `_fillBuffer`. Alles davon
+lief im AsyncTCP-Task, während der loopTask Logs und Configs schreibt. `SdLock.h` beschreibt genau diesen Fall:
+Der SD-Treiber korrumpiert dabei still. Beim Spike vom 2026-09-26 endete das zweimal im Watchdog, danach ließ
+sich die Karte erst nach einem Stromlos-Zyklus wieder einhängen.
+
+**Umsetzung (`WebUI.cpp/.h`):** Neuer Helfer `WebUI::sendFile_()`. Er öffnet die Datei unter `SdLock` (`.gz`
+zuerst, dann mit `Content-Encoding: gzip`) und antwortet über `req->beginResponse(type, len, filler)`. Der
+Filler nimmt für jedes gelesene Stück `SdLock`. Die Datei hängt an einem `shared_ptr<LockedFile>`, dessen
+Destruktor gesperrt schließt, sobald die Response freigegeben wird. Optional setzt er `Cache-Control` sowie
+einen ETag aus `lastWrite` bzw. Größe und antwortet bei passendem `If-None-Match` mit 304. Alle vier Stellen
+nutzen ihn. `serveStatic()` ist entfernt, die statische Auslieferung aus `/www` übernimmt `onNotFound` vor dem
+bestehenden SPA-Fallback. Pfade mit `..` werden dort nicht ausgeliefert, `serveStatic()` hatte dafür keine
+Prüfung. Der Content-Type kommt aus einer kleinen Endungstabelle (JS wie bisher `text/javascript`). Die API
+bleibt unverändert, also keine Änderung an `openapi.yaml`. Einzige sichtbare Folge: Die ETags der `.gz`-Assets
+werden einmalig neu berechnet (vorher CRC aus dem gzip-Trailer, jetzt `lastWrite`).
+
+**Verifikation:** `pio run` für esp32dev, lolin_s2_mini und LilyGo grün.
+- **LilyGo (SD), per OTA:** Mit der alten Firmware vorher Referenzantworten gezogen. JS-Bundle (statisch und
+  per Datei-Download), `/`, die SPA-Route `/rechner` und der Log-Download sind byte-identisch (das Log nur bis
+  zur alten Länge, es wächst weiter). Header geprüft: gzip-Encoding, `Cache-Control`, ETag, Content-Type,
+  `attachment`. 304 bei passendem ETag; 404 für fehlendes Asset, fehlende Datei, Verzeichnis und
+  `/../config/settings.json` (`--path-as-is`).
+- **Lasttest:** Ein temporäres Log mit 1-s-Intervall ohne Kompression ließ den loopTask jede Sekunde auf die SD
+  schreiben. Parallel liefen zwei Download-Schleifen (statisch und Datei-Download) plus ein SSE-Client über
+  3 min. Ergebnis: 350 von 350 Downloads mit korrekter Prüfsumme, 204 Logzeilen ohne Lücke über 2 s, kein
+  Neustart (`resetReason` blieb `sw`), Snapshot höchstens 2,2 s ohne neuen Messwert. Test-Log samt Verzeichnis
+  danach gelöscht.
+- **esp32dev (LittleFS), per OTA:** JS-Bundle, `/` und SPA-Route byte-identisch, 404 für fehlendes Asset.
