@@ -195,7 +195,7 @@ bool requireAuth(AsyncWebServerRequest* req) {
 
 // Self-contained login page, served instead of the SPA for GET requests when
 // auth_.isUiProtected() is on and the caller has no session (see the
-// addMiddleware() gate near serveStatic() in begin()). Embedded rather than
+// addMiddleware() gate near onNotFound() in begin()). Embedded rather than
 // a file under /www: it must stay reachable independent of the SPA bundle
 // (e.g. mid asset-upload), and the LittleFS boards only have a 256 KB data
 // partition to spend on the app itself.
@@ -525,7 +525,7 @@ void WebUI::begin(bool serve) {
   // mutating routes are gated, plus GET /api/backup (it carries the MQTT
   // password). See requireAuth above. auth_.isUiProtected() is a further,
   // separately-toggled step that also gates reads and the UI itself — see
-  // the addMiddleware() gate near serveStatic() below.
+  // the addMiddleware() gate near onNotFound() below.
   auth_.begin();
   g_auth = &auth_;
 
@@ -1323,13 +1323,8 @@ void WebUI::begin(bool serve) {
         if (req->hasParam("session"))
           start = (time_t)atol(req->getParam("session")->value().c_str());
         String path = logs_.sessionPath(id.c_str(), start);
-        bool exists = false;
-        { SdLock lock; exists = !path.isEmpty() && fs_.exists(path); }
-        if (!exists) {
+        if (path.isEmpty() || !sendFile_(req, path, "text/csv", download))
           req->send(404, "text/plain", "no data");
-          return;
-        }
-        req->send(fs_, path, "text/csv", download);
       }));
 
   server_.on("/api/logs", HTTP_GET, [this](AsyncWebServerRequest* req) {
@@ -1782,7 +1777,7 @@ void WebUI::begin(bool serve) {
     req->send(200, "application/json", out);
   });
 
-  // POST /api/settings — must be BEFORE serveStatic (pattern from rest of file)
+  // POST /api/settings — must be BEFORE onNotFound (pattern from rest of file)
   server_.addHandler(new PostJsonHandler("/api/settings",
       [this](AsyncWebServerRequest* req, JsonVariant& json) {
         if (!json.is<JsonObject>()) { req->send(400, "text/plain", "invalid JSON"); return; }
@@ -2183,16 +2178,8 @@ void WebUI::begin(bool serve) {
         if (!validFilePath_(path, /*forMutation=*/false, req)) return;
 
         if (download) {
-          bool exists = false, isDir = false;
-          {
-            SdLock lock;
-            File f = fs_.open(path);
-            exists = (bool)f;
-            isDir = exists && f.isDirectory();
-            if (f) f.close();
-          }
-          if (!exists || isDir) { req->send(404, "text/plain", "not found"); return; }
-          req->send(fs_, path, "application/octet-stream", /*download=*/true);
+          if (!sendFile_(req, path, "application/octet-stream", /*download=*/true))
+            req->send(404, "text/plain", "not found");
           return;
         }
 
@@ -2324,25 +2311,23 @@ void WebUI::begin(bool serve) {
         }
       });
 
-  server_.serveStatic("/", fs_, "/www")
-      .setDefaultFile("index.html")
-      .setCacheControl("max-age=600");
-
-  // SPA fallback: serve index.html for unknown GET paths so client-side routes work
+  // Static UI from /www, then the SPA fallback: index.html for unknown GET
+  // paths so client-side routes work. Served here rather than via
+  // serveStatic(), whose handler reads the file without SdLock (sendFile_).
   // Only navigation-style paths get the SPA/recovery page; anything with a file
   // extension (/assets/x.js, /favicon.ico) is an asset request and answers 404 —
   // otherwise an SD hiccup would hand HTML to a <script> tag.
   server_.onNotFound([this](AsyncWebServerRequest* req) {
     const String url = req->url();
     const bool isAsset = url.indexOf('.', url.lastIndexOf('/')) >= 0;
+    if (req->method() == HTTP_GET && !url.startsWith("/api/") && url.indexOf("..") < 0) {
+      String path = "/www" + url;
+      if (path.endsWith("/")) path += "index.html";
+      if (sendFile_(req, path, "", /*download=*/false, "max-age=600")) return;
+    }
     if (req->method() == HTTP_GET && !url.startsWith("/api/") && !isAsset) {
-      bool haveUi;
-      {
-        SdLock lock;
-        haveUi = fs_.exists("/www/index.html") || fs_.exists("/www/index.html.gz");
-      }
-      if (haveUi) req->send(fs_, "/www/index.html", "text/html");
-      else req->send(200, "text/html", kRecoveryPageHtml);
+      if (!sendFile_(req, "/www/index.html", "text/html", /*download=*/false))
+        req->send(200, "text/html", kRecoveryPageHtml);
     } else {
       req->send(404, "text/plain", "Not Found");
     }
@@ -2542,6 +2527,79 @@ void WebUI::removeRecursive_(const char* path) {
     fs_.rmdir(p);
   };
   rm(path);
+}
+
+namespace {
+
+// Closes under SdLock when the last response holding it goes away.
+struct LockedFile {
+  File f;
+  ~LockedFile() { SdLock lock; f.close(); }
+};
+
+const char* contentTypeFor(const String& path) {
+  static const struct { const char* ext; const char* type; } kTypes[] = {
+      {".html", "text/html"},       {".js", "text/javascript"},
+      {".css", "text/css"},         {".json", "application/json"},
+      {".svg", "image/svg+xml"},    {".png", "image/png"},
+      {".ico", "image/x-icon"},     {".webmanifest", "application/manifest+json"},
+      {".woff2", "font/woff2"},     {".txt", "text/plain"},
+      {".csv", "text/csv"},
+  };
+  for (const auto& t : kTypes)
+    if (path.endsWith(t.ext)) return t.type;
+  return "application/octet-stream";
+}
+
+}  // namespace
+
+bool WebUI::sendFile_(AsyncWebServerRequest* req, const String& path, const char* contentType,
+                      bool download, const char* cacheControl) {
+  auto file = std::make_shared<LockedFile>();
+  bool gz = false;
+  size_t size = 0;
+  uint32_t etagValue = 0;
+  {
+    SdLock lock;
+    // gzip first: the UI bundles ship as .gz only.
+    const String gzPath = path + ".gz";
+    if (fs_.exists(gzPath)) {
+      file->f = fs_.open(gzPath, "r");
+      gz = file->f && !file->f.isDirectory();
+    }
+    if (!gz && fs_.exists(path)) file->f = fs_.open(path, "r");
+    if (!file->f || file->f.isDirectory()) return false;
+    size = file->f.size();
+    const time_t lastWrite = file->f.getLastWrite();
+    etagValue = lastWrite > 0 ? (uint32_t)lastWrite : (uint32_t)size;
+  }
+
+  char etag[11] = "";
+  if (cacheControl) {
+    snprintf(etag, sizeof(etag), "\"%08" PRIx32 "\"", etagValue);
+    if (req->header("If-None-Match") == etag) {
+      req->send(304);
+      return true;
+    }
+  }
+
+  AsyncWebServerResponse* res = req->beginResponse(
+      *contentType ? contentType : contentTypeFor(path), size,
+      [file](uint8_t* buf, size_t maxLen, size_t) -> size_t {
+        SdLock lock;
+        return file->f.read(buf, maxLen);
+      });
+  if (gz) res->addHeader("Content-Encoding", "gzip");
+  if (download) {
+    res->addHeader("Content-Disposition",
+                   "attachment; filename=\"" + path.substring(path.lastIndexOf('/') + 1) + "\"");
+  }
+  if (cacheControl) {
+    res->addHeader("Cache-Control", cacheControl);
+    res->addHeader("ETag", etag);
+  }
+  req->send(res);
+  return true;
 }
 
 bool WebUI::writeSection_(const char* path, JsonVariantConst v) {

@@ -166,6 +166,13 @@ class WebUI {
   bool validFilePath_(String& path, bool forMutation, AsyncWebServerRequest* req);
   // Recursively deletes a file or directory. Also used by swapAssets_.
   void removeRecursive_(const char* path);
+  // Sends `path` (or `path`.gz, gzip-encoded) with every SD access — open,
+  // each chunk read, close — under SdLock. req->send(fs, path) cannot be used:
+  // its AsyncFileResponse reads in the AsyncTCP task without the lock.
+  // Empty contentType: derived from the extension. A cacheControl also enables
+  // an ETag and 304 answers. Returns false (nothing sent) if there is no file.
+  bool sendFile_(AsyncWebServerRequest* req, const String& path, const char* contentType,
+                 bool download, const char* cacheControl = nullptr);
   // Runs a pending POST /api/remote/pair from tick(), i.e. from loopTask:
   // HTTPClient is synchronous, and the async_tcp task must not be blocked for
   // the length of a network round trip (it serves every request and the SSE

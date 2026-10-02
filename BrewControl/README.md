@@ -21,7 +21,7 @@ Tuning zur Laufzeit über eine HTTP+SSE-API.
 │ ├─ fetch GET  /api/snapshot   │ ─HTTP──►│ ├─ /api/snapshot              │
 │ ├─ fetch POST /api/actuators  │ ─HTTP──►│ ├─ /api/actuators/<id>        │
 │ ├─ fetch POST /api/controllers│ ─HTTP──►│ ├─ /api/controllers/<id>/...  │
-│ └─ Static asset requests      │ ─HTTP──►│ └─ serveStatic(SD, "/")       │
+│ └─ Static asset requests      │ ─HTTP──►│ └─ onNotFound → /www (SD)     │
 └───────────────────────────────┘         │   SensActCtrl::Registry        │
                                           │   ├─ Sensors (tick → read)     │
                                           │   ├─ Controllers (tick → ctl) │
@@ -76,8 +76,9 @@ Browser einen vollständigen Snapshot.
   LittleFS-Zugriffe selbst sind über einen globalen rekursiven Mutex
   (`SdLock.h`) synchronisiert — Grund war ein realer Concurrency-Bug
   zwischen `loopTask` und `async_tcp` (siehe `SESSION.md` 2026-08-19/20).
-  Ausnahme: Datei-Downloads und die statische UI-Auslieferung lesen über
-  `AsyncFileResponse` ohne `SdLock` (offener Punkt in `PLAN.md`).
+  Das gilt auch für Datei-Downloads und die statische UI-Auslieferung:
+  `WebUI::sendFile_()` liest jedes Stück unter `SdLock`, statt
+  `AsyncFileResponse`/`serveStatic()` ungesperrt im AsyncTCP-Task lesen zu lassen.
 
 ## Voraussetzungen
 
@@ -266,7 +267,7 @@ liefert ab sofort `index.html` + Assets unter `/`.
 
 Diese beiden Boards haben keinen SD-Slot — die UI landet stattdessen per USB auf einer
 internen LittleFS-Partition (`pio run -t uploadfs`, s. „Partition-Layout" unten). Nur die
-**gzippten** Assets werden geshippt (`ESPAsyncWebServer` serviert `.gz` transparent, auch
+**gzippten** Assets werden geshippt (die Firmware serviert `.gz` transparent, auch
 ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ihre `.gz`
 (~150 KB), roh + gzip passte nicht in die 256-KB-Partition:
 
