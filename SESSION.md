@@ -5882,3 +5882,12 @@ werden einmalig neu berechnet (vorher CRC aus dem gzip-Trailer, jetzt `lastWrite
   Neustart (`resetReason` blieb `sw`), Snapshot höchstens 2,2 s ohne neuen Messwert. Test-Log samt Verzeichnis
   danach gelöscht.
 - **esp32dev (LittleFS), per OTA:** JS-Bundle, `/` und SPA-Route byte-identisch, 404 für fehlendes Asset.
+
+## 2026-10-01 – 2026-10-02 — Rezept- und Sud-Editor: UI-Entwurf (nur Design, kein Code)
+
+Rezept- und Sud-Editor als Design-Canvas entworfen und Bildschirm für Bildschirm mit dem Nutzer verfeinert. Teil des
+Entwurfs: Rezeptliste, Rezept-Tabs (Übersicht, Zutaten mit zwei Ansichten, Wasser, Brautag, Gärung, Sude),
+Status und Versionen samt Vergleichsdialog, Stil- und Zutaten-Auswahl, Sud-Phasen mit Soll/Ist-Messwerten, Pumpen
+und Gärplatz-Wahl sowie die Brauanlage, getrennt in Sudhaus und Gärkeller. Entscheidungen, Fachregeln und offene
+Fragen: [BrewControl/docs/rezept-sud-editor.md](BrewControl/docs/rezept-sud-editor.md). Backlog-Eintrag in
+PLAN.md → „Größere Brocken“. Keine Änderung an Firmware, Web-Code oder API.

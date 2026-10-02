@@ -86,6 +86,8 @@ Grob nach Bereitschaft / Aufwand; Abhängigkeiten stehen inline. Jeder Punkt bek
 
 ## Größere Brocken (eigene Spec vor Umsetzung)
 
+- **Rezept- und Sud-Editor** (Web-UI, Design seit 2026-10-01) — Rezeptverwaltung mit Status und Versionen, Zutaten nach Art oder Prozessschritt, Wasser, Brautag, Gärung; Sud-Editor mit Soll/Ist-Messwerten je Phase, Pumpensteuerung und Gärplatz-Wahl; Brauanlage getrennt in Sudhaus und Gärkeller. Entscheidungen und offene Fragen: [BrewControl/docs/rezept-sud-editor.md](BrewControl/docs/rezept-sud-editor.md), das UI liegt im Design-Canvas (Link dort). Vor der Umsetzung offen: Datenmodell und Ablage (LittleFS-Platz), Zutaten- und Stil-Datenquellen, Wasser-Tab mit Volumenbilanz, Mobile-Ansichten, Stil-Auswahl. *(Opus · groß · mit Plan)*
+
 - **Peripherie-Abstraktion** — Etappe 1 (OneWire/SPI, 2026-09-27), Etappe 2 (I²C) und die zentral definierten Busse (Settings-Seite „Bus-Schnittstellen“, 2026-09-30, siehe SESSION.md) sind da: Busse werden mit ihren Pins angelegt, Items verweisen per `bus` darauf, der Treiber läuft in der `PeripheralRegistry` vom ersten bis zum letzten Item. Offen:
   - **Gemeinsamer Hardware-SPI-Treiber pro SPI-Bus** — der `SpiBus` ist weiter reine Buchführung, jeder MAX31865 bit-bangt die Leitungen selbst. Ein gemeinsamer Treiber (`SPIClass` pro Bus) wäre ein Verhaltenswechsel (SPI-Host-Belegung, am LilyGo hat die SD-Karte schon einen), braucht eine Library-Änderung am `MAX31865Sensor` (heute nur Pin-Konstruktoren) und MAX31865-Hardware zum Prüfen.
   - **Hardware-SPI-MAX31865 ohne Bus-/Pin-Tracking** — ein MAX31865 ohne `bus` nutzt die Default-SPI-Pins des Boards, die weder als Bus erscheinen noch in der Pin-Prüfung belegt sind. Sauber wäre ein fester Bus-Eintrag „Hardware-SPI“ je Board.
