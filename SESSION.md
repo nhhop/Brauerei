@@ -5912,4 +5912,14 @@ Einheiten fest im Schema (`FIELD_UNITS`), Werte als `Range` mit `null` für „m
 Malz, Rohfrucht, Zucker und Extrakt geteilt; Kulturen als Union aus Hefe, Bakterien und Mischkultur; Hopfenform nur an
 der Gabe im Rezept; Aromen mit Intensität 0 bis 5 aus einem Vokabular; Quellenfeld je Eintrag; Lagerposten (`StockLot`)
 mit eigenen Datenblattwerten nur als Typ. Gegen Datenblätter von Weyermann, Yakima Chief/NZ Hops, Hopsteiner (Thiole)
-und Lallemand geprüft; 13 echte Einträge daraus stehen in `BrewControl/docs/zutaten-datenblaetter.json`. Zurückgestellte und offene Punkte stehen in PLAN.md beim Rezept- und Sud-Editor.
+und Lallemand geprüft; 13 echte Einträge daraus stehen in `BrewControl/web/public/catalog/zutaten-datenblaetter.json`. Zurückgestellte und offene Punkte stehen in PLAN.md beim Rezept- und Sud-Editor.
+
+## 2026-10-04 — Zutatenkatalog im Rezept-UI (Branch `feature/rezept-sud-editor`)
+
+Der Katalog wird jetzt im Frontend genutzt: `web/src/ingredientSource.ts` lädt `/catalog/zutaten-datenblaetter.json`
+(statische Datei aus `web/public/catalog/`, vorher unter `docs/`) einmal pro Sitzung, hängt Nutzerzutaten aus
+`localStorage` (`bc.userIngredients`, bisher ohne Oberfläche zum Anlegen) an und bietet `findIngredients` für die
+Suche. Die Zutatenzeilen haben statt des freien Namensfelds `IngredientPicker`: Vorschläge nach Art, Auswahl setzt
+`ingredientId` am Rezept, Weitertippen macht die Zeile wieder zu Freitext. Fehlt der Katalog, bleibt alles Freitext.
+`ingredientSource.test.ts` deckt die Suche ab. Typecheck, 69 Tests und Build grün, Browser-Durchlauf über den Mock
+(Vorschlag, Auswahl, Speichern, Entlinken). Nächster Schritt: Kennwerte aus den Zutaten berechnen.

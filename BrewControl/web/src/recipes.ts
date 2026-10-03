@@ -66,6 +66,7 @@ export interface Ingredient {
   id: string;
   kind: IngredientKind;
   name: string;
+  ingredientId?: string; // catalog/user ingredient this row points to; unset = free text
   amount: number;
   timing: Timing;
 }

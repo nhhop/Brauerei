@@ -5,6 +5,7 @@ import {
 } from '../../recipes';
 import { inp } from '../../ui';
 import { Card, NumInput } from './fields';
+import { IngredientPicker } from './IngredientPicker';
 
 // One card over the recipe's shared ingredient list. `kind` pins the card to a
 // single kind (Zutaten tab); `scope` pins it to a process phase (process tabs),
@@ -26,7 +27,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match }: {
 
   function changeKind(i: Ingredient, k: IngredientKind) {
     const timings = allowedTimings(k, scope);
-    patch(i.id, { kind: k, timing: timings.includes(i.timing) ? i.timing : timings[0] });
+    patch(i.id, { kind: k, ingredientId: undefined, timing: timings.includes(i.timing) ? i.timing : timings[0] });
   }
 
   function add() {
@@ -54,8 +55,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match }: {
                   {kinds.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
                 </select>
               )}
-              <input class={`${inp} min-w-0 flex-1 basis-40`} placeholder="Name" value={i.name}
-                onInput={(e) => patch(i.id, { name: e.currentTarget.value })} />
+              <IngredientPicker ingredient={i} onChange={(p) => patch(i.id, p)} />
               <select class={inp} value={i.timing}
                 onChange={(e) => patch(i.id, { timing: e.currentTarget.value as Ingredient['timing'] })}>
                 {allowedTimings(i.kind, scope).map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
