@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route, useRouter } from 'preact-router';
-import { LayoutDashboard, ListChecks, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -30,6 +30,7 @@ interface NavItem {
 const mainItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p) => p === '/' },
   { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
+  { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte') },
   { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner') },
 ];
 const footerItems: NavItem[] = [

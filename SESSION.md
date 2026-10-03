@@ -5891,3 +5891,15 @@ Status und Versionen samt Vergleichsdialog, Stil- und Zutaten-Auswahl, Sud-Phase
 und Gärplatz-Wahl sowie die Brauanlage, getrennt in Sudhaus und Gärkeller. Entscheidungen, Fachregeln und offene
 Fragen: [BrewControl/docs/rezept-sud-editor.md](BrewControl/docs/rezept-sud-editor.md). Backlog-Eintrag in
 PLAN.md → „Größere Brocken“. Keine Änderung an Firmware, Web-Code oder API.
+
+## 2026-10-03 — Rezept-UI Grundstruktur (Branch `feature/rezept-sud-editor`)
+
+Erste Umsetzung im Web-UI, bewusst schlicht und nur Frontend: Rezeptliste (`/rezepte`) und Bearbeiten-Seite
+(`/rezepte/:id`) mit fünf Tabs (Übersicht, Zutaten, Maischen, Würzekochen, Gärung), Nav-Eintrag „Rezepte“.
+Rezepte liegen vorläufig in `localStorage` (`web/src/recipes.ts`), das ist die einzige Persistenz-Schnittstelle
+und später durch `/api/recipes` ersetzbar. Es gibt **eine gemeinsame Zutatenliste** mit Art und Zeitpunkt; die
+Prozess-Tabs zeigen sie gefiltert, nichts wird doppelt gepflegt. Maischen ist nur ein einfacher Plan aus Rasten
+(Name, °C, min, umsortierbar). Gärung hat eine einfache Phasenliste (Tage). Speichern ist explizit.
+Nicht enthalten: Wasser- und Sude-Tab, Berechnungen, Versionen, Stil-Dialog, Zutaten-Backend, Firmware/API,
+Opt-in-Flag und nachladbares Paket. Verifikation: `pnpm typecheck`, `pnpm build`, `pnpm test` (62 grün) und
+Browser-Durchlauf über einen Node-Mock (anlegen, Zutat/Rasten, umsortieren, speichern, Reload, Konsole ohne Fehler).
