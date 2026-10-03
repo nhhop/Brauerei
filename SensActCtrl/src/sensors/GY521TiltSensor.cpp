@@ -17,7 +17,13 @@ void GY521TiltSensor::tick() {
   const Channel ay = raw_.channel(1);
   const Channel az = raw_.channel(2);
   const Channel gx = raw_.channel(3);
-  if (!ax.reading.valid) return;
+  if (!ax.reading.valid) {
+    // Raw sensor lost (module pulled): drop the angle and restart the filter
+    // from the accelerometer when it comes back.
+    angle_       = Reading{};
+    hasLastTick_ = false;
+    return;
+  }
 
   const uint32_t now = ax.reading.timestampMs;
   const float angleAccel =

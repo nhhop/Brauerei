@@ -5882,3 +5882,32 @@ werden einmalig neu berechnet (vorher CRC aus dem gzip-Trailer, jetzt `lastWrite
   Neustart (`resetReason` blieb `sw`), Snapshot höchstens 2,2 s ohne neuen Messwert. Test-Log samt Verzeichnis
   danach gelöscht.
 - **esp32dev (LittleFS), per OTA:** JS-Bundle, `/` und SPA-Route byte-identisch, 404 für fehlendes Asset.
+
+## 2026-10-03 — GY521/BME280 ohne Gerät: ungültig statt Fantasiewerte (Branch `fix/gy521-no-device`)
+
+**Root Cause:** `GY521Sensor::begin()` und `BME280Sensor::begin()` ignorierten den Rückgabewert des Treibers und
+setzten `initialized_` immer. `tick()` las danach blind weiter und markierte das Ergebnis als gültig. Ein
+Modul auf einer Adresse ohne Gerät lieferte so Werte aus einem uninitialisierten Stack-Puffer (am LilyGo
+26–29 bzw. −48…−140 °) mit `ok: true`. Ein Abziehen im Betrieb blieb ebenfalls unbemerkt. Die Treiber helfen dabei
+nicht: `Adafruit_MPU6050::getEvent()` gibt immer `true` zurück, `Adafruit_BME280::read24()` wertet I²C-Fehler nicht aus.
+`GY521TiltSensor` hatte das Muster nicht selbst, ließ aber bei ungültigem Rohsensor den alten Winkel stehen.
+
+**Umsetzung (SensActCtrl):** `GY521Sensor` und `BME280Sensor` merken das `begin()`-Ergebnis. Schlägt es fehl, versucht
+`tick()` es alle 5 s erneut (`kRetryIntervalMs`, Vergleich über `int32_t`-Differenz, überlauffest). Bis dahin
+bleiben alle Kanäle ungültig. Läuft das Modul, prüft jeder `tick()` vorab per Adress-Probe
+(`beginTransmission`/`endTransmission` auf dem Bus des Sensors), ob es noch antwortet. Wenn nicht, werden die Kanäle
+ungültig und der Retry beginnt. Der BME280 verwirft zusätzlich NaN-Messwerte. `GY521TiltSensor` setzt den Winkel
+auf ungültig und den Filter zurück (nächster Winkel startet wieder aus der Beschleunigung). Die Probe dauert bei
+vorhandenem Gerät Mikrosekunden, bei fehlendem ein NACK. Nur ein hängender Bus (keine Pull-ups) könnte bis zum
+Wire-Timeout (50 ms) stehen, dann aber höchstens alle 5 s. Der native Stub bekommt Hooks
+(`SensActCtrlTest::gy521Present/gy521NowMs`, `bme280Present/bme280NowMs`) für „Modul da/weg" und die Uhr. Die
+API bleibt unverändert (keine Änderung an `openapi.yaml`), sichtbar ist nur `ok:false` statt falscher Werte.
+
+**Verifikation:** Neue native Tests (vorher rot: kein Gerät, später angesteckt, abgezogen, wieder angesteckt, Retry
+nicht bei jedem Tick; je für GY521, Tilt und BME280). `SensActCtrl` `pio test -e native` 294/294, `BrewControl/firmware`
+`pio test -e native` 99/99, `pio run` für esp32dev, lolin_s2_mini und LilyGo grün.
+- **LilyGo, per OTA, echter GY-521 (0x68 am Board-Bus):** Modul dran → Winkel gültig (≈ −1 °). GY521 auf 0x69 (ohne
+  Gerät) → `ok:false`, bleibt es; danach gelöscht. Modul beim Start fehlend → `ok:false`, nach dem Anstecken läuft es
+  ohne Neustart von selbst an. SDA im Betrieb abgezogen → sofort `ok:false`, Board läuft weiter.
+- Beim Abziehen des ganzen Moduls startete das Board neu (`resetReason: power_on`, also Stromunterbrechung, nicht die
+  Firmware).

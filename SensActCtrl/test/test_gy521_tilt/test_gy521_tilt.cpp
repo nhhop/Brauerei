@@ -7,6 +7,12 @@ using SensActCtrl::GY521TiltSensor;
 using SensActCtrl::Quantity;
 using SensActCtrl::ValueKind;
 
+// Hooks defined by the native stub in GY521Sensor.cpp.
+namespace SensActCtrlTest {
+extern bool     gy521Present;
+extern uint32_t gy521NowMs;
+}  // namespace SensActCtrlTest
+
 // ── complementaryStep() numerics (no hardware needed) ───────────────────────
 
 void test_complementary_step_pure_accel_when_alpha_zero() {
@@ -81,7 +87,39 @@ void test_caller_bus_delegates_to_raw_sensor() {
   TEST_ASSERT_TRUE(tilt.channel(0).reading.valid);
 }
 
-void setUp() {}
+
+// ── Device absent / hot-plug ────────────────────────────────────────────────
+
+void test_no_device_angle_invalid() {
+  SensActCtrlTest::gy521Present = false;
+  GY521TiltSensor s("hydrometer", 0x68);
+  s.begin();
+  s.tick();
+  TEST_ASSERT_FALSE(s.channel(0).reading.valid);
+}
+
+void test_device_pulled_angle_invalid_then_recovers() {
+  GY521TiltSensor s("hydrometer", 0x68);
+  s.begin();
+  s.tick();
+  TEST_ASSERT_TRUE(s.channel(0).reading.valid);
+
+  SensActCtrlTest::gy521Present = false;
+  SensActCtrlTest::gy521NowMs += 100;
+  s.tick();
+  TEST_ASSERT_FALSE(s.channel(0).reading.valid);
+
+  SensActCtrlTest::gy521Present = true;
+  SensActCtrlTest::gy521NowMs += 10000;
+  s.tick();
+  TEST_ASSERT_TRUE(s.channel(0).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, s.channel(0).reading.value);
+}
+
+void setUp() {
+  SensActCtrlTest::gy521Present = true;
+  SensActCtrlTest::gy521NowMs   = 0;
+}
 void tearDown() {}
 
 int main(int, char**) {
@@ -94,5 +132,7 @@ int main(int, char**) {
   RUN_TEST(test_readings_invalid_before_begin);
   RUN_TEST(test_tick_reports_zero_angle_when_flat);
   RUN_TEST(test_caller_bus_delegates_to_raw_sensor);
+  RUN_TEST(test_no_device_angle_invalid);
+  RUN_TEST(test_device_pulled_angle_invalid_then_recovers);
   return UNITY_END();
 }
