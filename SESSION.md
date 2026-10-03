@@ -5912,4 +5912,4 @@ Einheiten fest im Schema (`FIELD_UNITS`), Werte als `Range` mit `null` für „m
 Malz, Rohfrucht, Zucker und Extrakt geteilt; Kulturen als Union aus Hefe, Bakterien und Mischkultur; Hopfenform nur an
 der Gabe im Rezept; Aromen mit Intensität 0 bis 5 aus einem Vokabular; Quellenfeld je Eintrag; Lagerposten (`StockLot`)
 mit eigenen Datenblattwerten nur als Typ. Gegen Datenblätter von Weyermann, Yakima Chief/NZ Hops, Hopsteiner (Thiole)
-und Lallemand geprüft. Zurückgestellte und offene Punkte stehen in PLAN.md beim Rezept- und Sud-Editor.
+und Lallemand geprüft; 13 echte Einträge daraus stehen in `BrewControl/docs/zutaten-datenblaetter.json`. Zurückgestellte und offene Punkte stehen in PLAN.md beim Rezept- und Sud-Editor.

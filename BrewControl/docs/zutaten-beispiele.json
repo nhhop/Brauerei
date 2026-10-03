@@ -34,7 +34,6 @@
       { "id": "alcoholic", "label": "alkoholisch", "group": "yeast" },
       { "id": "acid", "label": "säuerlich", "group": "yeast" },
       { "id": "neutral", "label": "neutral", "group": "yeast" },
-      { "id": "citrus-fruit", "label": "Zitrusfrucht", "group": "yeast" },
       { "id": "fruity", "label": "fruchtig", "group": "fruit" },
       { "id": "citrus", "label": "Zitrus", "group": "fruit" },
       { "id": "spicy", "label": "würzig", "group": "spice" },
@@ -154,22 +153,6 @@
       "pof": false,
       "enzymes": { "betaLyase": "medium", "betaGlucosidase": "none" },
       "flavors": [{ "id": "fruity" }]
-    },
-    {
-      "id": "culture:beispiel-lachancea",
-      "kind": "culture",
-      "owner": "catalog",
-      "catalogVersion": "2026.10-beispiel",
-      "organism": "other-yeast",
-      "species": "Lachancea thermotolerans",
-      "form": "dry",
-      "name": "Beispiel Säurehefe",
-      "manufacturer": "Beispiel-Hefelabor",
-      "tempRangeC": [20, 25],
-      "attenuationPct": [30, 50],
-      "ferments": { "maltose": "no", "maltotriose": "no", "dextrins": "no" },
-      "acidProduction": "medium",
-      "notes": "Wird meist zusammen mit einer Saccharomyces-Hefe angestellt."
     },
     {
       "id": "culture:beispiel-lacto",
