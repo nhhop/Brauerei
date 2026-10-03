@@ -5923,3 +5923,26 @@ Suche. Die Zutatenzeilen haben statt des freien Namensfelds `IngredientPicker`: 
 `ingredientId` am Rezept, Weitertippen macht die Zeile wieder zu Freitext. Fehlt der Katalog, bleibt alles Freitext.
 `ingredientSource.test.ts` deckt die Suche ab. Typecheck, 69 Tests und Build grün, Browser-Durchlauf über den Mock
 (Vorschlag, Auswahl, Speichern, Entlinken). Nächster Schritt: Kennwerte aus den Zutaten berechnen.
+
+## 2026-10-04 — Rezept-Kennwerte (Branch `feature/rezept-sud-editor`)
+
+Die Karte „Kennwerte“ im Rezept rechnet jetzt Stammwürze, Restextrakt, Alkohol, Bittere und Farbe aus den
+Katalog-verknüpften Zutaten (`web/src/recipeStats.ts`, Formeln in `brewMath.ts`). Zeilen ohne Katalogverknüpfung
+zählen nicht mit und werden unter der Karte vermerkt.
+
+- **Stammwürze:** Extrakt je Zeile aus `extractDryPct` und Feuchte, maischendes Vergärbares (Malz, Rohfrucht) mit der
+  neuen Sudhausausbeute (`Recipe.efficiencyPct`, Standard 75 %), Zucker und Extrakt mit 100 %. Zucker zur Abfüllung
+  oder Hauptgärung zählt nicht. `platoFromExtract` ist die Umkehrung der Bilanz aus `extractEfficiencyPercent`.
+- **Farbe:** Morey (SRM = 1,4922 · MCU^0,6859, EBC = 1,97 · SRM). Der Schritt EBC → °L (Umkehrung von Daniels,
+  SRM = 1,3546 · °L − 0,76) hat keine Primärquelle, er trägt ein `TODO(verify)`.
+- **Alkohol:** Endvergärungsgrad der ersten verknüpften Hefe, dann `ballingBeerAnalysis`.
+- **Bittere:** Tinseth, dazu mIBU (alchemyoverlord, nach Malowicki & Shellhammer 2005) für die Zeit nach Kochende
+  bei der konstanten Whirlpool-Temperatur des Rezepts. Ohne Abkühlkurve und ohne die „ersten 5 Minuten“-Regel der
+  Quelle. Kochgaben haben ein neues Feld `Ingredient.timeMin` („min vor Kochende“, fehlt = ganze Kochdauer),
+  Vorderwürze zählt mit der ganzen Kochdauer. Hop Back, Dip, Maische und Gärung zählen nicht. Kochwürze und -menge
+  sind durch Stammwürze und Ausschlagmenge genähert.
+- **Nebenbei behoben** (aus dem Katalog-Eintrag): Das Vorschlagsfeld war durchsichtig (`bg-card`), jetzt `bg-surface`.
+  Und `useCatalog` startete bei jedem Mount mit `null`, was beim Tabwechsel kurz „Katalog nicht geladen“ zeigte.
+- **Prüfung:** Typecheck, 91 Tests, Build (JS gzip 142,4 kB, +1,3 kB). Browser über den Mock mit einem Rezept ohne
+  `efficiencyPct`: 13,6 °P, IBU 21 mit 60 min und 14 mit 15 min (von Hand nachgerechnet), Alkohol 5,8 % vol nach
+  Hefeauswahl, Vermerke für Freitext-Zeile und Trockenhopfen, keine Konsolenfehler.

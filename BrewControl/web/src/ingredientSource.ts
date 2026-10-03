@@ -40,6 +40,7 @@ export function findIngredients(
 }
 
 let cached: Promise<Catalog> | null = null;
+let loaded: Catalog | null = null; // lets a remounting component start with the catalog instead of null
 
 export function loadCatalog(): Promise<Catalog> {
   cached ??= fetch(CATALOG_URL)
@@ -52,6 +53,7 @@ export function loadCatalog(): Promise<Catalog> {
       vocab: d.vocab as Vocabulary,
       ingredients: [...(d.catalog as CatalogIngredient[]), ...readUserIngredients()],
     }))
+    .then((c) => (loaded = c))
     .catch((e) => { cached = null; throw e; });
   return cached;
 }
@@ -59,7 +61,7 @@ export function loadCatalog(): Promise<Catalog> {
 // `catalog` stays null while loading or if the file is missing; the pickers then
 // fall back to free text, so a recipe never depends on the catalog being there.
 export function useCatalog(): Catalog | null {
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(loaded);
   useEffect(() => {
     let live = true;
     loadCatalog().then((c) => { if (live) setCatalog(c); }).catch(() => {});

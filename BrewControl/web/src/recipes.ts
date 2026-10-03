@@ -69,6 +69,7 @@ export interface Ingredient {
   ingredientId?: string; // catalog/user ingredient this row points to; unset = free text
   amount: number;
   timing: Timing;
+  timeMin?: number; // hops at "Kochen": minutes before the end of the boil; unset = whole boil
 }
 
 // Mash rest (duration in minutes) and fermentation phase (duration in days).
@@ -85,6 +86,7 @@ export interface Recipe {
   description: string;
   style: string;
   volumeL: number;
+  efficiencyPct?: number; // Sudhausausbeute; unset in old recipes, read via DEFAULT_EFFICIENCY
   status: 'draft' | 'final';
   updatedAt: number;
   ingredients: Ingredient[];
@@ -93,6 +95,8 @@ export interface Recipe {
   fermentation: Phase[];
 }
 
+export const DEFAULT_EFFICIENCY = 75;
+
 // Plain HTTP means no crypto.randomUUID (secure contexts only).
 export function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -100,7 +104,7 @@ export function uid(): string {
 
 export function newRecipe(): Recipe {
   return {
-    id: uid(), name: 'Neues Rezept', description: '', style: '', volumeL: 20,
+    id: uid(), name: 'Neues Rezept', description: '', style: '', volumeL: 20, efficiencyPct: DEFAULT_EFFICIENCY,
     status: 'draft', updatedAt: Date.now(),
     ingredients: [], mash: [],
     boil: { durationMin: 60, whirlpoolTempC: 80, whirlpoolMin: 15 },

@@ -222,3 +222,63 @@ export function ballingBeerAnalysis(originalExtractPlato: number, apparentExtrac
     realExtractPercent,
   };
 }
+
+// ── Rezept-Kennwerte ─────────────────────────────────────────────────────
+
+// Inverse of extractEfficiencyPercent's mass balance: the wort strength (°P)
+// at which `extractKg` of extract in `volumeL` of wort is consistent with
+// extract = V × SG(p) × p/100. Bisection, since SG depends on p.
+export function platoFromExtract(extractKg: number, volumeL: number): number {
+  if (extractKg <= 0 || volumeL <= 0) return 0;
+  const massKg = (p: number) => volumeL * platoToSg(p) * (p / 100);
+  let lo = 0;
+  let hi = 40;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (massKg(mid) < extractKg) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// Beer colour (EBC) after Morey. Sources: Morey's equation SRM = 1.4922 × MCU^0.6859
+// and EBC = 1.97 × SRM (beerandbrewing.com, Brewfather docs); the EBC→°L step
+// inverts Daniels' SRM = 1.3546 × °L − 0.76. TODO(verify): that last conversion
+// has no primary source here yet.
+export function moreyEbc(rows: { kg: number; ebc: number }[], volumeL: number): number {
+  if (volumeL <= 0) return 0;
+  const LB_PER_KG = 2.20462;
+  const L_PER_GAL = 3.78541;
+  const mcu = rows.reduce((sum, r) => {
+    const lovibond = (r.ebc / 1.97 + 0.76) / 1.3546;
+    return sum + (lovibond * r.kg * LB_PER_KG) / (volumeL / L_PER_GAL);
+  }, 0);
+  return 1.97 * 1.4922 * Math.pow(mcu, 0.6859);
+}
+
+// Tinseth: utilisation = bigness(gravity) × boil-time factor.
+export function tinsethUtilization(sg: number, boilMin: number): number {
+  return 1.65 * Math.pow(0.000125, sg - 1) * ((1 - Math.exp(-0.04 * boilMin)) / 4.15);
+}
+
+// Isomerisation rate at a sub-boiling temperature relative to boiling (≈1 at
+// 100 °C, ≈0.49 at 90 °C). Arrhenius fit of Malowicki & Shellhammer (2005) by
+// alchemyoverlord (mIBU), https://alchemyoverlord.wordpress.com/2016/03/06/an-analysis-of-sub-boiling-hop-utilization/
+export function relativeUtilization(tempC: number): number {
+  return 2.39e11 * Math.exp(-9773 / (tempC + 273.15));
+}
+
+// IBU of one hop addition (mIBU): Tinseth for the boil, plus the extra
+// utilisation while the wort rests at a constant `whirlpoolTempC` for
+// `whirlpoolMin` after flameout. A whirlpool hop has boilMin = 0. Simplified
+// against the source: no cooling curve, and its "first five minutes count
+// fully" rule is left out, because the recipe only knows one whirlpool temperature.
+export function hopIbu(p: {
+  alphaPct: number; grams: number; volumeL: number; sg: number; boilMin: number;
+  whirlpoolTempC: number; whirlpoolMin: number;
+}): number {
+  const alphaMgPerL = (p.alphaPct / 100) * p.grams * 1000 / p.volumeL;
+  const boil = tinsethUtilization(p.sg, p.boilMin);
+  const afterFlameout = relativeUtilization(p.whirlpoolTempC)
+    * (tinsethUtilization(p.sg, p.boilMin + p.whirlpoolMin) - boil);
+  return alphaMgPerL * (boil + afterFlameout);
+}

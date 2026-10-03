@@ -26,7 +26,7 @@ export function IngredientPicker({ ingredient, onChange }: {
           aria-label="Mit Katalog verknüpft" />
       )}
       {hits.length > 0 && (
-        <ul class="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-md border border-card-border bg-card shadow-elev-2">
+        <ul class="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-md border border-card-border bg-surface shadow-elev-2">
           {hits.map((h) => (
             // mousedown fires before the input's blur closes the list
             <li key={h.id}>

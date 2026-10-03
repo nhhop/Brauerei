@@ -10,13 +10,14 @@ import { IngredientPicker } from './IngredientPicker';
 // One card over the recipe's shared ingredient list. `kind` pins the card to a
 // single kind (Zutaten tab); `scope` pins it to a process phase (process tabs),
 // where the kind becomes a column and the moment is limited to that phase.
-export function IngredientCard({ title, all, onChange, kind, scope, match }: {
+export function IngredientCard({ title, all, onChange, kind, scope, match, boilMin }: {
   title: string;
   all: Ingredient[];
   onChange: (next: Ingredient[]) => void;
   kind?: IngredientKind;
   scope?: Scope;
   match: (i: Ingredient) => boolean;
+  boilMin: number; // the recipe's boil duration, shown as the default for hop minutes
 }) {
   const rows = all.filter(match);
   const kinds = KINDS.filter((k) => allowedTimings(k.id, scope).length > 0);
@@ -27,7 +28,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match }: {
 
   function changeKind(i: Ingredient, k: IngredientKind) {
     const timings = allowedTimings(k, scope);
-    patch(i.id, { kind: k, ingredientId: undefined, timing: timings.includes(i.timing) ? i.timing : timings[0] });
+    patch(i.id, { kind: k, ingredientId: undefined, timeMin: undefined, timing: timings.includes(i.timing) ? i.timing : timings[0] });
   }
 
   function add() {
@@ -57,9 +58,15 @@ export function IngredientCard({ title, all, onChange, kind, scope, match }: {
               )}
               <IngredientPicker ingredient={i} onChange={(p) => patch(i.id, p)} />
               <select class={inp} value={i.timing}
-                onChange={(e) => patch(i.id, { timing: e.currentTarget.value as Ingredient['timing'] })}>
+                onChange={(e) => patch(i.id, { timing: e.currentTarget.value as Ingredient['timing'], timeMin: undefined })}>
                 {allowedTimings(i.kind, scope).map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
               </select>
+              {i.kind === 'hop' && i.timing === 'boil' && (
+                <div class="flex items-center gap-1 text-xs text-muted">
+                  <NumInput value={i.timeMin ?? boilMin} onChange={(n) => patch(i.id, { timeMin: n })} class="w-16" />
+                  min vor Kochende
+                </div>
+              )}
               <div class="flex items-center gap-1 text-xs text-muted">
                 <NumInput value={i.amount} onChange={(n) => patch(i.id, { amount: n })} class="w-20" />
                 {unitOf(i.kind)}
