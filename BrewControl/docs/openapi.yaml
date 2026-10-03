@@ -3840,9 +3840,15 @@ components:
         sensors:
           type: array
           description: >
-            Sensor base ids ("tank" — every channel of that sensor on one card)
-            and/or channel ids ("tank.distance" — that channel alone). Both may
-            appear for the same sensor.
+            One entry per card. A sensor base id ("gyro") puts every channel of
+            that sensor on one card, including channels it gains later. A
+            channel id ("gyro.pitch") shows that channel alone. A key list
+            ("gyro.pitch,roll,tilt") shows those channels on one card; the UI
+            writes the keys in the sensor's channel order and stores the bare
+            base id once every channel is picked. A sensor may appear in several
+            entries, i.e. on several cards of the same dashboard. An entry stays
+            visible while at least one of its channels exists; the device
+            display shows the same selection per page.
           items: { type: string }
         actuators: { type: array, items: { type: string } }
         controllers: { type: array, items: { type: string } }
@@ -3853,9 +3859,11 @@ components:
           type: object
           description: >
             Sensor id -> display mode. The key is either a channel id
-            ("tank.distance", the mode of that channel's card or of its row in
-            the group card) or a sensor base id ("tank"), which a single-channel
-            sensor uses and which a group card's rows fall back to.
+            ("tank.distance", the mode of that channel's card or of its row on
+            any group card showing it — cards of the same sensor share it) or a
+            sensor base id ("tank"), which a single-channel sensor uses and
+            which a group card's rows fall back to. Key-list entries have no
+            mode key of their own.
           additionalProperties: { $ref: "#/components/schemas/WidgetMode" }
         controllerModes:
           type: object
@@ -3876,9 +3884,15 @@ components:
         sensors:
           type: array
           description: >
-            Sensor base ids ("tank" — every channel of that sensor on one card)
-            and/or channel ids ("tank.distance" — that channel alone). Both may
-            appear for the same sensor.
+            One entry per card. A sensor base id ("gyro") puts every channel of
+            that sensor on one card, including channels it gains later. A
+            channel id ("gyro.pitch") shows that channel alone. A key list
+            ("gyro.pitch,roll,tilt") shows those channels on one card; the UI
+            writes the keys in the sensor's channel order and stores the bare
+            base id once every channel is picked. A sensor may appear in several
+            entries, i.e. on several cards of the same dashboard. An entry stays
+            visible while at least one of its channels exists; the device
+            display shows the same selection per page.
           items: { type: string }
         actuators: { type: array, items: { type: string } }
         controllers: { type: array, items: { type: string } }

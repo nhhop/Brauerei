@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "../SensorChannels.h"
+
 namespace BrewControl {
 namespace {
 
@@ -68,9 +70,9 @@ void setText(lv_obj_t* label, const char* text) {
     lv_label_set_text(label, text);
 }
 
-// Dashboard sensor ids are either a sensor id or "sensorId.channelKey".
-// Returns the sensor and sets *channel (-1: all channels of a multi-channel
-// sensor listed by its bare id).
+// Dashboard sensor ids are a sensor id, "sensorId.channelKey" or a key list
+// "sensorId.key1,key2". Returns the sensor and sets *channel (-1: several
+// channels on one page - all of them for a bare id, see keyList() for a list).
 Sensor* resolveSensor(const Registry& reg, const std::string& id, int* channel) {
   if (Sensor* s = reg.findSensor(id.c_str())) {
     *channel = s->channelCount() == 1 ? 0 : -1;
@@ -81,6 +83,16 @@ Sensor* resolveSensor(const Registry& reg, const std::string& id, int* channel) 
   Sensor* s = reg.findSensor(id.substr(0, dot).c_str());
   if (!s) return nullptr;
   const char* key = id.c_str() + dot + 1;
+  if (strchr(key, ',')) {
+    // A key list stays on the dashboard while any of its channels exists.
+    for (size_t i = 0; i < s->channelCount(); ++i) {
+      if (keyInList(key, s->channel(i).key)) {
+        *channel = -1;
+        return s;
+      }
+    }
+    return nullptr;
+  }
   for (size_t i = 0; i < s->channelCount(); ++i) {
     if (strcmp(s->channel(i).key, key) == 0) {
       *channel = static_cast<int>(i);
@@ -88,6 +100,14 @@ Sensor* resolveSensor(const Registry& reg, const std::string& id, int* channel) 
     }
   }
   return nullptr;
+}
+
+// The key list of a dashboard sensor id ("gyro.pitch,roll" -> "pitch,roll"),
+// or nullptr when the id shows a single channel or all of them.
+const char* keyList(const std::string& id) {
+  const size_t dot = id.rfind('.');
+  if (dot == std::string::npos || id.find(',', dot) == std::string::npos) return nullptr;
+  return id.c_str() + dot + 1;
 }
 
 size_t itemCount(const Registry& reg) {
@@ -530,15 +550,18 @@ void DisplayPages::refreshPage_(Page& p) {
       setText(p.value, buf);
       setText(p.unit, c.meta.unit);
     } else {
-      // A multi-channel sensor listed by its bare id: all channels as lines.
+      // A multi-channel sensor listed by its bare id: all channels as lines;
+      // by a key list: the listed ones.
       setText(p.title, displayName(*reg_, s->id()));
+      const char* list = keyList(p.id);
       std::string lines;
       for (size_t i = 0; i < s->channelCount(); ++i) {
         const Channel c = s->channel(i);
+        if (list && !keyInList(list, c.key)) continue;
         char v[24];
         formatValue(v, sizeof(v), c.reading.valid ? c.reading.value : NAN,
                     c.meta.resolution);
-        snprintf(buf, sizeof(buf), "%s%s: %s %s", i ? "\n" : "", c.key, v,
+        snprintf(buf, sizeof(buf), "%s%s: %s %s", lines.empty() ? "" : "\n", c.key, v,
                  c.meta.unit);
         lines += buf;
       }

@@ -18,6 +18,7 @@ import {
 } from '../itemTypes';
 import { AutotuneProgress } from './AutotuneProgress';
 import { AddItemWizard, ChoiceCard, type WizardStep } from './AddItemWizard';
+import { parseSensorEntry, sensorEntry } from '../dashboardLayout';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -83,7 +84,7 @@ const STEP_TEXT: Record<Step, { label: string; title: string; sub: string }> = {
        sub: 'Name und Anschluss festlegen — danach ist das Gerät sofort aktiv.' },
 };
 
-export function AddItemModal({ open, snap, onClose, editConfig, editRole, initialRole, prefill, onCreated, onRenamed }: {
+export function AddItemModal({ open, snap, onClose, editConfig, editRole, initialRole, prefill, onCreated, onRenamed, cardEntry, onCardChange }: {
   open: boolean;
   snap: Snapshot | null;
   onClose: () => void;
@@ -97,9 +98,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // (the hydration effect keys on `open` alone), so the caller must set it in
   // the same handler that opens the dialog and clear it in onClose.
   prefill?: ItemPrefill;
-  // dashboardIds: what to add to a dashboard (channel ids for multi-channel sensors).
-  onCreated?: (role: Role, id: string, dashboardIds: string[]) => void;
-  onRenamed?: (role: Role, oldId: string, newId: string) => void;
+  onCreated?: (role: Role, id: string) => void;
+  // `card`: set when the dashboard card's channel selection changed in the
+  // same save; `card.to` already carries the new id.
+  onRenamed?: (role: Role, oldId: string, newId: string, card?: { from: string; to: string }) => void;
+  // The dashboard sensor entry whose card opened this dialog ("gyro",
+  // "gyro.pitch,roll"). Shows the "Auf dieser Karte anzeigen" section, which
+  // picks the card's channels -- separate from the channels the sensor measures.
+  cardEntry?: string;
+  onCardChange?: (from: string, to: string) => void;
 }) {
   const isEdit = !!(editConfig && editRole);
 
@@ -117,6 +124,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // shared
   const [id, setId] = useState('');
   const [label, setLabel] = useState('');
+  // Channels the dashboard card shows; null = all of them.
+  const [cardKeys, setCardKeys] = useState<string[] | null>(null);
   const [pin, setPin] = useState('');
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -292,6 +301,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       setRole(editRole);
       setId(String(editConfig.id ?? ''));
       setLabel(String(editConfig.label ?? ''));
+      setCardKeys(cardEntry ? parseSensorEntry(cardEntry).keys : null);
 
       if (editRole === 'sensor') {
         const t = String(editConfig.type ?? 'DS18B20') as SensorType;
@@ -659,8 +669,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
     try {
       let cfg: Record<string, unknown>;
-      // Dashboard entries a new sensor brings along: one per selected channel.
-      let createdIds = [trimId];
+      // The card's new entry, when its channel selection changed.
+      let cardTo: string | undefined;
 
       if (role === 'sensor') {
         if (sensorType === 'DS18B20') {
@@ -775,6 +785,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         if (isEdit && editConfig?.calibrations) cfg.calibrations = editConfig.calibrations;
         const trimmedLabel = label.trim();
         if (trimmedLabel) cfg.label = trimmedLabel;
+        if (cardEntry) {
+          const offered = cardOptions();
+          if (offered.length > 1) {
+            const picked = cardKeys == null ? offered : offered.filter((k) => cardKeys.includes(k));
+            if (!picked.length) throw new Error('Mindestens einen Kanal für die Karte wählen');
+            const to = sensorEntry(trimId, picked, offered);
+            const oldId = String(editConfig!.id);
+            if (to !== trimId + cardEntry.slice(oldId.length)) cardTo = to;
+          }
+        }
         if (!risksConfirmed(cfg)) { setPending(false); return; }
         if (isEdit && trimId === String(editConfig!.id) &&
             onlyLabelDiffers(cfg, editConfig!)) {
@@ -784,7 +804,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         } else {
           await createSensor(cfg);
         }
-        if (Array.isArray(cfg.channels)) createdIds = (cfg.channels as string[]).map((c) => `${trimId}.${c}`);
 
       } else if (role === 'actuator') {
         if (actuatorType === 'IDS1' || actuatorType === 'IDS2') {
@@ -950,12 +969,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       if (wizard) {
         // Fire onCreated as soon as the item exists, so the parent stays
         // consistent even if the success screen is dismissed via the backdrop.
-        onCreated?.(role, trimId, createdIds);
+        onCreated?.(role, trimId);
         setCreated({ role: role, id: trimId });
       } else {
         onClose();
-        if (!isEdit) onCreated?.(role, trimId, createdIds);
-        else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId);
+        const card = cardTo && cardEntry ? { from: cardEntry, to: cardTo } : undefined;
+        if (!isEdit) onCreated?.(role, trimId);
+        else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId, card);
+        else if (card) onCardChange?.(card.from, card.to);
       }
     } catch (e) {
       const msg = String(e);
@@ -1018,6 +1039,55 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // Channels a dashboard card of this sensor can show: what the form is about to
+  // save for types with a channel selection, otherwise what the sensor reports.
+  function cardOptions(): string[] {
+    if (sensorType === 'GY521') return GY521_ORDER.filter((k) => gy521Channels.includes(k));
+    if (sensorType === 'YF-S201') return [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
+    if (sensorType === 'HCSR04') return [chDistance && 'distance', showScale && 'derived'].filter(Boolean) as string[];
+    const prefix = String(editConfig?.id ?? '') + '.';
+    return (snap?.sensors ?? []).filter((s) => s.id.startsWith(prefix)).map((s) => s.id.slice(prefix.length));
+  }
+
+  // "Auf dieser Karte anzeigen": only when the dialog was opened from a
+  // dashboard card of a sensor with more than one channel.
+  function cardFields() {
+    if (!isEdit || role !== 'sensor' || !cardEntry) return null;
+    const offered = cardOptions();
+    if (offered.length < 2) return null;
+    const on = (k: string) => cardKeys == null || cardKeys.includes(k);
+    const toggleKey = (k: string) => {
+      const cur = cardKeys ?? offered;
+      setCardKeys(cur.includes(k) ? cur.filter((c) => c !== k) : [...cur, k]);
+    };
+    const groups = sensorType === 'GY521'
+      ? GY521_GROUPS
+          .map((g) => ({ title: g.title, keys: g.items.map(([k]) => k).filter((k) => offered.includes(k)) }))
+          .filter((g) => g.keys.length > 0)
+      : [{ title: '', keys: offered }];
+    return (
+      <div class="border-t border-border pt-4">
+        <label class={lbl}>Auf dieser Karte anzeigen</label>
+        <div class="space-y-1">
+          {groups.map((g) => (
+            <div key={g.title} class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {g.title && <span class="w-32 shrink-0 text-xs text-muted">{g.title}</span>}
+              {g.keys.map((k) => (
+                <label key={k} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
+                  <input type="checkbox" checked={on(k)} class="accent-accent" onChange={() => toggleKey(k)} />
+                  {k}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p class="mt-1.5 text-xs text-faint">
+          Gilt nur für diese Karte. Welche Kanäle der Sensor misst, steht oben.
+        </p>
       </div>
     );
   }
@@ -2177,6 +2247,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           </div>
 
           {fieldBlocks()}
+          {cardFields()}
           </div>
 
           <div class={dialogFooter}>

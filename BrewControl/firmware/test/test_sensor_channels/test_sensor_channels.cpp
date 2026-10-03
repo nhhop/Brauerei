@@ -118,6 +118,17 @@ void test_rename_log_refs_starts_new_session_only_where_changed() {
   TEST_ASSERT_EQUAL(1700000001L, doc[1]["session"].as<long>());
 }
 
+void test_key_in_list_exact_match() {
+  TEST_ASSERT_TRUE(keyInList("pitch,roll,tilt", "pitch"));
+  TEST_ASSERT_TRUE(keyInList("pitch,roll,tilt", "roll"));
+  TEST_ASSERT_TRUE(keyInList("pitch,roll,tilt", "tilt"));
+  TEST_ASSERT_TRUE(keyInList("az", "az"));
+  TEST_ASSERT_FALSE(keyInList("pitch,roll,tilt", "pit"));
+  TEST_ASSERT_FALSE(keyInList("pitch,roll,tilt", "tilt2"));
+  TEST_ASSERT_FALSE(keyInList("ax,ay", "a"));
+  TEST_ASSERT_FALSE(keyInList("ax,ay", ""));
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -132,5 +143,6 @@ int main(int, char**) {
   RUN_TEST(test_migrated_gy521_and_other_types_untouched);
   RUN_TEST(test_rename_refs_exact_match_at_any_depth);
   RUN_TEST(test_rename_log_refs_starts_new_session_only_where_changed);
+  RUN_TEST(test_key_in_list_exact_match);
   return UNITY_END();
 }

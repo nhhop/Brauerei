@@ -54,6 +54,40 @@ function leaf(items: string[]): LayoutLeaf {
   return { items };
 }
 
+// == Sensor entries ==========================================================
+
+// A dashboard sensor entry is one card: "tank" shows every channel of that
+// sensor, "tank.distance" one channel, "gyro.pitch,roll,tilt" those channels.
+// keys === null means "all channels", including ones the sensor gains later.
+export interface SensorEntry { base: string; keys: string[] | null }
+
+export function parseSensorEntry(entry: string): SensorEntry {
+  const dot = entry.indexOf('.');
+  if (dot < 0) return { base: entry, keys: null };
+  return { base: entry.slice(0, dot), keys: entry.slice(dot + 1).split(',').filter(Boolean) };
+}
+
+// The entry for a card showing `keys` of a sensor whose channels are `allKeys`
+// (snapshot order). Keys follow that order, so the same selection always yields
+// the same entry; selecting everything stores the bare base id.
+export function sensorEntry(base: string, keys: string[], allKeys: string[]): string {
+  const picked = allKeys.filter((k) => keys.includes(k));
+  if (picked.length === allKeys.length && allKeys.length > 1) return base;
+  return `${base}.${picked.join(',')}`;
+}
+
+// The snapshot ids an entry shows, in snapshot order: every channel of the base
+// for "all", otherwise the listed ones that still exist.
+export function entryChannelIds(entry: string, snapIds: string[]): string[] {
+  const { base, keys } = parseSensorEntry(entry);
+  return snapIds.filter((id) => {
+    const dot = id.indexOf('.');
+    const b = dot < 0 ? id : id.slice(0, dot);
+    if (b !== base) return false;
+    return keys == null || (dot >= 0 && keys.includes(id.slice(dot + 1)));
+  });
+}
+
 // == Refs a dashboard actually shows =========================================
 
 // Membership alone isn't enough: a deleted log or program leaves a dangling id
@@ -70,14 +104,10 @@ export function memberRefs(
   for (const id of dash.charts ?? []) {
     if (logs.some((l) => l.id === id)) refs.push('chart/' + id);
   }
-  const baseIds = new Set(
-    (snap?.sensors ?? []).map((s) => (s.id.includes('.') ? s.id.split('.')[0] : s.id)),
-  );
-  // A sensor entry is either a base id (all its channels together) or a single
-  // channel id such as "tank.distance".
-  const sensorIds = new Set((snap?.sensors ?? []).map((s) => s.id));
+  // A sensor entry stays as long as at least one of its channels exists.
+  const sensorIds = (snap?.sensors ?? []).map((s) => s.id);
   for (const id of dash.sensors ?? []) {
-    if (baseIds.has(id) || sensorIds.has(id)) refs.push('sensor/' + id);
+    if (entryChannelIds(id, sensorIds).length > 0) refs.push('sensor/' + id);
   }
   for (const id of dash.controllers ?? []) {
     if ((snap?.controllers ?? []).some((c) => c.id === id)) refs.push('controller/' + id);
