@@ -20,6 +20,11 @@ namespace SensActCtrl {
 //   channel(4): GyroY   "°/s"  (key="gy")
 //   channel(5): GyroZ   "°/s"  (key="gz")
 //
+// Without a device (wrong address, module unplugged) all channels stay
+// invalid. A failed begin() is retried from tick() every kRetryIntervalMs, so a
+// module plugged in later starts by itself; a module pulled while running is
+// noticed by an address probe on every tick and goes invalid again.
+//
 // Building block for GY521TiltSensor, which derives a tilt angle from these
 // raw axes; typically not registered on its own.
 //
@@ -49,6 +54,13 @@ class GY521Sensor : public Sensor {
   TwoWire*          bus_         = nullptr;
   Adafruit_MPU6050* dev_         = nullptr;
   bool              initialized_ = false;
+  uint32_t          nextRetryMs_ = 0;
+
+  static constexpr uint32_t kRetryIntervalMs = 5000;
+
+  bool connect();
+  bool devicePresent() const;
+  void invalidate();
 
   Reading accelX_{};
   Reading accelY_{};

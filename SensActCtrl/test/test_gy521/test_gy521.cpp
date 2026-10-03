@@ -8,6 +8,12 @@ using SensActCtrl::GY521Sensor;
 using SensActCtrl::Quantity;
 using SensActCtrl::ValueKind;
 
+// Hooks defined by the native stub in GY521Sensor.cpp.
+namespace SensActCtrlTest {
+extern bool     gy521Present;
+extern uint32_t gy521NowMs;
+}  // namespace SensActCtrlTest
+
 void test_channel_count_and_keys() {
   GY521Sensor s("imu", 0x68);
   TEST_ASSERT_EQUAL(6u, s.channelCount());
@@ -68,7 +74,86 @@ void test_caller_bus_leaves_it_alone() {
   delete bus;
 }
 
-void setUp() {}
+
+// ── Device absent / hot-plug ────────────────────────────────────────────────
+
+static bool anyValid(const GY521Sensor& s) {
+  for (size_t i = 0; i < s.channelCount(); ++i)
+    if (s.channel(i).reading.valid) return true;
+  return false;
+}
+
+void test_no_device_readings_stay_invalid() {
+  SensActCtrlTest::gy521Present = false;
+  GY521Sensor s("imu", 0x68);
+  s.begin();
+  s.tick();
+  TEST_ASSERT_FALSE(anyValid(s));
+}
+
+void test_device_plugged_in_later_starts_after_retry_interval() {
+  SensActCtrlTest::gy521Present = false;
+  GY521Sensor s("imu", 0x68);
+  s.begin();
+  s.tick();
+  TEST_ASSERT_FALSE(anyValid(s));
+
+  SensActCtrlTest::gy521Present = true;   // module plugged in
+  SensActCtrlTest::gy521NowMs += 1000;    // before the retry interval
+  s.tick();
+  TEST_ASSERT_FALSE(anyValid(s));
+
+  SensActCtrlTest::gy521NowMs += 5000;    // past the retry interval
+  s.tick();
+  TEST_ASSERT_TRUE(anyValid(s));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, s.channel(2).reading.value);
+}
+
+void test_device_pulled_makes_readings_invalid() {
+  GY521Sensor s("imu", 0x68);
+  s.begin();
+  s.tick();
+  TEST_ASSERT_TRUE(anyValid(s));
+
+  SensActCtrlTest::gy521Present = false;  // module pulled
+  SensActCtrlTest::gy521NowMs += 100;
+  s.tick();
+  TEST_ASSERT_FALSE(anyValid(s));
+}
+
+void test_device_replugged_recovers() {
+  GY521Sensor s("imu", 0x68);
+  s.begin();
+  s.tick();
+  SensActCtrlTest::gy521Present = false;
+  SensActCtrlTest::gy521NowMs += 100;
+  s.tick();
+  TEST_ASSERT_FALSE(anyValid(s));
+
+  SensActCtrlTest::gy521Present = true;
+  SensActCtrlTest::gy521NowMs += 10000;
+  s.tick();
+  TEST_ASSERT_TRUE(anyValid(s));
+}
+
+void test_retry_does_not_run_every_tick() {
+  SensActCtrlTest::gy521Present = false;
+  GY521Sensor s("imu", 0x68);
+  s.begin();
+  SensActCtrlTest::gy521Present = true;
+  // Plugged in right after the failed begin(), but every tick is within the
+  // retry interval: stays invalid until it elapses.
+  for (int i = 0; i < 10; ++i) {
+    SensActCtrlTest::gy521NowMs += 100;
+    s.tick();
+  }
+  TEST_ASSERT_FALSE(anyValid(s));
+}
+
+void setUp() {
+  SensActCtrlTest::gy521Present = true;
+  SensActCtrlTest::gy521NowMs   = 0;
+}
 void tearDown() {}
 
 int main(int, char**) {
@@ -78,5 +163,10 @@ int main(int, char**) {
   RUN_TEST(test_readings_invalid_before_begin);
   RUN_TEST(test_tick_reports_stub_values_after_begin);
   RUN_TEST(test_caller_bus_leaves_it_alone);
+  RUN_TEST(test_no_device_readings_stay_invalid);
+  RUN_TEST(test_device_plugged_in_later_starts_after_retry_interval);
+  RUN_TEST(test_device_pulled_makes_readings_invalid);
+  RUN_TEST(test_device_replugged_recovers);
+  RUN_TEST(test_retry_does_not_run_every_tick);
   return UNITY_END();
 }
