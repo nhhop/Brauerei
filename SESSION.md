@@ -5903,3 +5903,13 @@ Prozess-Tabs zeigen sie gefiltert, nichts wird doppelt gepflegt. Maischen ist nu
 Nicht enthalten: Wasser- und Sude-Tab, Berechnungen, Versionen, Stil-Dialog, Zutaten-Backend, Firmware/API,
 Opt-in-Flag und nachladbares Paket. Verifikation: `pnpm typecheck`, `pnpm build`, `pnpm test` (62 grün) und
 Browser-Durchlauf über einen Node-Mock (anlegen, Zutat/Rasten, umsortieren, speichern, Reload, Konsole ohne Fehler).
+
+## 2026-10-03 — Zutaten-Schema für die Rezeptverwaltung (Entwurf, Branch `feature/rezept-sud-editor`)
+
+Schema für Katalog- und Nutzerzutaten als reine Typen entworfen: `BrewControl/web/src/ingredientCatalog.ts`, dazu
+erfundene Beispieleinträge in `BrewControl/docs/zutaten-beispiele.json`. Nichts im Code nutzt es bisher. Eckpunkte:
+Einheiten fest im Schema (`FIELD_UNITS`), Werte als `Range` mit `null` für „min.“ und „max.“; Fermentables in
+Malz, Rohfrucht, Zucker und Extrakt geteilt; Kulturen als Union aus Hefe, Bakterien und Mischkultur; Hopfenform nur an
+der Gabe im Rezept; Aromen mit Intensität 0 bis 5 aus einem Vokabular; Quellenfeld je Eintrag; Lagerposten (`StockLot`)
+mit eigenen Datenblattwerten nur als Typ. Gegen Datenblätter von Weyermann, Yakima Chief/NZ Hops, Hopsteiner (Thiole)
+und Lallemand geprüft. Zurückgestellte und offene Punkte stehen in PLAN.md beim Rezept- und Sud-Editor.
