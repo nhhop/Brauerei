@@ -67,6 +67,19 @@ inline bool renameRefs(JsonVariant v, const char* from, const char* to) {
   return changed;
 }
 
+// Whether `key` is one of the comma-separated keys in `list` (exact match), as
+// in a dashboard sensor entry "gyro.pitch,roll,tilt".
+inline bool keyInList(const char* list, const char* key) {
+  const size_t n = strlen(key);
+  for (const char* p = list;;) {
+    const char* end = strchr(p, ',');
+    const size_t len = end ? static_cast<size_t>(end - p) : strlen(p);
+    if (len == n && strncmp(p, key, n) == 0) return true;
+    if (!end) return false;
+    p = end + 1;
+  }
+}
+
 // renameRefs over /config/logs.json. A log whose series changed loses its
 // "session", so the next sample starts a new CSV: the header of the open one
 // still names the old ref, and the chart resolves live values by that header.

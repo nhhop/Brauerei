@@ -6021,3 +6021,69 @@ Rest (in `openapi.yaml` vermerkt).
 
 **Einschränkung:** Wie bei der Bus-Migration versteht ältere Firmware die migrierten Configs nicht mehr. Vor einem
 Downgrade das Backup von vorher einspielen.
+
+## 2026-10-03 — Dashboard-Sensorkarten mit Kanalauswahl (Branch `feat/dashboard-sensor-channels`)
+
+Nutzerwunsch nach dem GY-521-Umbau: Im Dialog „Widgets zum Dashboard hinzufügen“ stand jeder Kanal eines
+Mehrkanal-Sensors als eigene Zeile, beim GY-521 also elf Zeilen mit Gruppenkarte. Außerdem gab es pro Sensor höchstens
+eine Gruppenkarte, und die zeigte immer alle Kanäle.
+
+**Entscheidungen** (mit dem Nutzer):
+- Pro Sensor gibt es im Dialog einen Eintrag. Beim Hinzufügen wählt man die Kanäle der Karte.
+- Der Dialog dient nur noch zum Hinzufügen und bildet den Zustand des Dashboards nicht ab: Jeder Eintrag (alle
+  Kategorien) hat einen Button „Hinzufügen“, Checkboxen und „x von y“-Zähler sind weg. Entfernt wird per × an der
+  Karte. Was es pro Dashboard nur einmal gibt und schon drauf ist, steht ausgegraut als „Auf dem Dashboard“ da.
+  Ein erster Entwurf mit aufklappbarer Kartenliste je Sensor wurde vom Nutzer verworfen.
+- Ein Sensor darf mehrmals auf einem Dashboard stehen, jede Karte mit eigener Auswahl (z. B. Winkel und Beschleunigung).
+- Nachträglich geändert wird die Auswahl über den Stift der Karte. „Sensor bearbeiten“ bekommt dafür einen eigenen
+  Abschnitt „Auf dieser Karte anzeigen“, getrennt von den Kanälen, die der Sensor misst; die gelten für alle Dashboards,
+  Logs und Alarme.
+
+**Datenmodell, ohne neues Feld und ohne Migration:**
+- `dashboard.sensors` bleibt ein String-Array, ein Eintrag ist eine Karte.
+  - `gyro`: alle Kanäle, auch künftige.
+  - `gyro.pitch`: ein Kanal.
+  - `gyro.pitch,roll,tilt` (neu): diese Kanäle.
+- Die Keys stehen in Kanalreihenfolge. Sind alle gewählt, wird die nackte ID gespeichert.
+- Layout-Refs sind `sensor/<eintrag>`, mehrere Karten pro Sensor gehen deshalb ohne Modelländerung. Eine geänderte
+  Auswahl behält über `renameRef` ihren Platz.
+- `sensorModes` bleibt pro Kanal-ID; zeigen zwei Karten denselben Kanal, teilen sie sich dessen Modus.
+- `DashboardStore` speichert die Strings unverändert und brauchte keine Änderung. Alte Einträge bleiben gültig.
+
+**Umsetzung:**
+- **Web:**
+  - `dashboardLayout.ts`: `parseSensorEntry`, `sensorEntry`, `entryChannelIds`; `memberRefs` behält einen Eintrag,
+    solange einer seiner Kanäle existiert. Neue Testdatei `dashboardLayout.test.ts` (13 Tests).
+  - `Dashboard.tsx`: Filter und Rendern über den Parser. Der Stift reicht den Karteneintrag an den Dialog weiter.
+    Umbenennen und Kartenänderung im selben Speichern ergeben ein Dashboard-Update. Beim Umbenennen wandern jetzt auch
+    die Zeilenmodi der Kanäle mit (vorher nur die der eigenen Einträge).
+  - `AddItemModal.tsx`: Abschnitt „Auf dieser Karte anzeigen“. Angeboten werden die im Formular gewählten Kanäle
+    (GY521, YF-S201, HC-SR04), sonst die aus dem Snapshot. Ändert sich nur die Karte, wird der Sensor nicht neu
+    angelegt. Ein neu angelegter Mehrkanal-Sensor kommt als eine Karte statt einer pro Kanal aufs Dashboard.
+  - `DashboardContentModal.tsx` umgebaut: `onAdd(kind, id)` statt `onSave(members)`. Ein Klick fügt hinzu und
+    schließt. Beim Mehrkanal-Sensor öffnet er zuerst eine eigene Ansicht „`<id>` hinzufügen“ mit Kanal-Checkboxen
+    (alle vorbelegt, mit Live-Werten), danach „Übernehmen“ oder „Zurück“. Ein dort neu angelegtes Item landet sofort
+    auf dem Dashboard.
+- **Firmware-Display:** `keyInList` in `SensorChannels.h` (nativ getestet). `resolveSensor` erkennt die Kanalliste,
+  und die Gruppenseite zeigt dann nur die gelisteten Kanäle.
+- **`openapi.yaml`:** `sensors` und `sensorModes` beschreiben Listenform und mehrere Karten pro Sensor.
+
+**Verifikation:**
+- Web `pnpm typecheck`, `pnpm test` 75/75, `pnpm build`.
+- Firmware `pio test -e native` 109/109; `pio run` für esp32dev, lolin_s2_mini und LilyGo grün. Redocly-Lint ohne neue
+  Warnung.
+- **Browser gegen einen Mock**, der GETs ans LilyGo durchreicht und Dashboards nur im RAM hält:
+  - zwei `gyro`-Karten angelegt, „alle Kanäle“ abgewählt;
+  - per Stift `temp` ergänzt: Die Karte blieb an ihrem Platz, und am Sensor kam nur das Label-POST an, kein Neuanlegen;
+  - eine Karte auf `az` reduziert: Sie wird zur Einzelkarte.
+- **LilyGo (OTA + UI-Paket):**
+  - Dasselbe per echter UI, also `gyro.pitch,roll,tilt,temp` und `gyro.ax,ay,az`.
+  - `temp`-Zeile auf kompakt.
+  - Nach einem Neustart stehen beide Einträge und `gyro.temp: compact` in `/config/dashboards.json`, und das
+    Dashboard sieht gleich aus. Damit ist der alte PLAN-Punkt „Gruppenkarte für Multi-Channel-Sensoren am Gerät“
+    erledigt: Gruppenkarte, Zeilenmodus und Reboot sind am echten Board geprüft, `Durchfluss.rate` als Alt-Eintrag
+    neben Chart und Programm unverändert.
+  - Das runde Display zeigt pro Karte eine Seite mit genau den gewählten Kanälen (vom Nutzer bestätigt).
+  - Umgebauter Dialog: `gyro` → Kanalauswahl `gx`/`gy`/`gz` → Übernehmen ergibt `gyro.gx,gy,gz`, der Dialog schließt.
+    Der Aktor `kettle` wird per Klick hinzugefügt und steht danach ausgegraut da. `HLT` ist ausgegraut, `gyro` und
+    `Durchfluss` bleiben hinzufügbar.
