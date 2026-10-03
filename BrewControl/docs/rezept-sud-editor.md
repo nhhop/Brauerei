@@ -45,7 +45,9 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
 - **Offen:** Was passiert beim Öffnen einer älteren Version? Vorschlag: nur ansehen, nicht bearbeiten.
 
 ### Tabs
-Übersicht · Zutaten · Wasser · Brautag · Gärung · Sude (Anzahl).
+Übersicht · Zutaten · Wasser · Maischen · Würzekochen · Gärung · Sude (Anzahl).
+Maischen und Würzekochen waren zwischenzeitlich ein Tab „Brautag“; sie sind wieder getrennt, weil jeder
+Prozess-Tab jetzt seine Zutaten vollständig zeigt.
 Neben den Tabs stehen kompakte Stil-Abzeichen; auf der Übersicht und im Tab Sude fehlen sie.
 
 ### Übersicht
@@ -90,8 +92,9 @@ Die Übersicht ist Steckbrief und Zusammenfassung. Prozessparameter stehen in de
   Die offizielle Stiltabelle wird gebraucht.
 
 ### Zutaten
-Zwei Ansichten derselben Daten. Umgeschaltet wird über „Gruppieren: Art | Prozess“, klein und rechtsbündig
-über der ersten Karte. Es gibt keinen Kopfbereich mit Kennwerten: Stammwürze, IBU und EBC zeigen die
+Der Tab Zutaten zeigt **nur die Ansicht nach Art**. Die frühere Prozess-Ansicht mit Umschalter ist aufgelöst:
+ihre Gruppen stehen jetzt vollständig und editierbar in den Prozess-Tabs (siehe unten). Es gibt keinen
+Kopfbereich mit Kennwerten: Stammwürze, IBU und EBC zeigen die
 Stil-Badges neben den Tabs, Summen stehen in den Kartenköpfen.
 
 **Mengen und Anteile beim Vergärbaren**, ohne Modus-Schalter:
@@ -118,7 +121,12 @@ Stil-Badges neben den Tabs, Summen stehen in den Kartenköpfen.
   Zeitpunkt und Menge.
 - Bei den Hilfsstoffen reichen die Details über die schmale Spalte und beide Ergebnisspalten, mit Umbruch.
 - **Hopfen-Details:** nur noch Kochzeit, Whirlpool-Dauer, Dip-Kontaktzeit, Stopfen-Tag und -Dauer.
-  Die Whirlpool-Temperatur steht auf der Brautag-Seite; die Würzemenge fürs Dip Hopping entfällt.
+  Die Whirlpool-Temperatur steht im Tab Würzekochen; die Würzemenge fürs Dip Hopping entfällt.
+- **Kontinuierliche Hopfengabe** (Konzept, vorgemerkt; eigene Konzeptseite im Canvas): Zeitpunkt „Kochen ·
+  kontinuierlich“ mit Details von/bis (min vor Kochende) und Intervall. Die Menge ist die Gesamtmenge, die
+  Teilgaben ergeben sich daraus. IBU = Summe der einzeln gerechneten Teilgaben. Würzekochen zeigt ein Band mit
+  Punkten je Teilgabe; im Sud gibt es Countdown, Fortschritt und Bestätigen/Überspringen je Teilgabe, später
+  optional ein Dosierer als Aktor.
 
 **Nach Art**, fünf Arten:
 1. **Vergärbares** (Malz, Rohfrucht, Zucker, Extrakt) — nach Menge sortiert, ohne Ziehgriffe.
@@ -129,18 +137,16 @@ Stil-Badges neben den Tabs, Summen stehen in den Kartenköpfen.
 4. **Aromazutaten** — Früchte, Gewürze, Kräuter, Holz, Kakao, Kaffee.
 5. **Hilfsstoffe** — Wasseraufbereitung (Salze, Säuren), Klärung, Hefenahrung, Enzyme.
 
-**Nach Prozessschritt.** Die Karten entsprechen den Sud-Phasen, damit jede Gruppe genau einem Sud-Tab
-zugeordnet ist:
+**Zutaten in den Prozess-Tabs.** Jeder Prozess-Tab hat eine Karte „Zutaten“ mit den Gruppen seiner
+Sud-Phasen, damit jede Gruppe genau einem Sud-Tab zugeordnet ist:
 
-| Karte | Gruppen |
+| Tab | Gruppen |
 |---|---|
-| Maischen | Hauptguss · Maische (Säure nach pH-Messung) · Nachguss |
+| Maischen | Maische (Malze; Säure nach pH-Messung). Hauptguss und Nachguss mit ihrer Aufbereitung stehen nur im Tab Wasser. |
 | Würzekochen | Vorderwürze · Kochen · Whirlpool / Hop Stand · (Hop Back, nur wenn das Sudhaus einen hat) |
-| Gärung | Anstellen (Hefe, Dip Hopping) · Hauptgärung |
-| Reifung | Stopfen, Schönung, zweite Kultur |
-| Abfüllung | Karbonisierung (Speise erscheint hier schreibgeschützt) |
+| Gärung | Anstellen (Hefe, Dip Hopping) · Hauptgärung · Reifung (Stopfen, Schönung, zweite Kultur) · Abfüllung (Karbonisierung; Speise schreibgeschützt) |
 
-Darstellung in der Prozess-Ansicht:
+Darstellung der Zutaten-Karte in den Prozess-Tabs:
 - Dieselben Eingabe- und Ergebnisfelder wie nach Art, ohne Spalte Zeitpunkt.
 - Die Art steht als Markierung in der zweiten Spalte. Es gibt keine zusätzliche Gruppierungsebene je Art.
 - Die Kopfzeile des Prozessschritts trägt die Spaltenköpfe. Sie richten sich nach der ersten Zutatenart
@@ -149,10 +155,12 @@ Darstellung in der Prozess-Ansicht:
 - Reihenfolge rechts: Menge · schmale Spalte (Anteil, Dauer bzw. Details) · zwei Ergebnisspalten. Die
   Details der Hilfsstoffe bleiben in der schmalen Spalte, weil in gemischten Schritten Öl/IBU darüber
   stehen können.
+- **Ausnahme Maischen:** keine Art-Markierung (nur Malze und Wasser-Hilfsstoffe, die Art ist eindeutig).
+  „+ Zutat“ steht als Knopf über der Karte neben dem Split-Button „+ Schüttung“, nicht in der Kopfzeile.
 
 Fachliche Festlegungen:
 - **Flameout:** keine eigene Gruppe, sondern Kochen mit 0 min.
-- **Whirlpool und Hop Stand** sind eine Gruppe. Temperatur und Dauer kommen aus dem Tab Brautag.
+- **Whirlpool und Hop Stand** sind eine Gruppe. Temperatur und Dauer kommen aus dem Tab Würzekochen.
 - **Dip Hopping** gehört zur Gärung (Anstellen). Der Sud-Tab Würzekochen zeigt nur die abzuzweigende Würze.
 - **Hochkräusen** ist ein Zeitpunkt innerhalb der Hauptgärung, keine eigene Phase.
 - **Keine Begriffe Secondary/Tertiary Fermentation.** Stattdessen Reifung und Abfüllung/Karbonisierung.
@@ -180,7 +188,7 @@ Liste und Detailansicht.
 - **Salze und Säuren** sind dieselben Einträge wie unter Zutaten › Hilfsstoffe und lassen sich **an beiden
   Stellen bearbeiten**.
 - **Wassermenge** wird **vom Ausschlag zurückgerechnet**, nicht vom Wasser vorwärts:
-  - Ausschlagmenge (Vorgabe aus der Übersicht) + Verdampfung (l/h × Kochdauer aus dem Brautag) = Pfannevoll.
+  - Ausschlagmenge (Vorgabe aus der Übersicht) + Verdampfung (l/h × Kochdauer aus dem Würzekochen) = Pfannevoll.
   - Pfannevoll + Totraum Läuterbottich + Treberverlust (l/kg × Schüttung) = Gesamtwasser.
   - Hauptguss = Hauptguss-Verhältnis × Schüttung, Nachguss = Rest. Die Nachguss-Temperatur steht in der
     Nachguss-Zeile.
@@ -191,16 +199,73 @@ Liste und Detailansicht.
   einem Aufklappbereich „Berechnung“, standardmäßig zu.
 - Die Verlustwerte kommen als Vorgabe aus dem Sudhaus und lassen sich pro Rezept überschreiben.
 
-### Brautag (vorher „Maischen“)
-- **Maischen:**
-  - Verfahren (Infusion/Dekoktion) und Maische-Effizienz (Vorgabe aus dem Sudhaus)
-  - Einmaischen (Temperatur, Malztemperatur, berechnete Hauptgusstemperatur)
-  - Maischeplan mit Rasten, aus Vorlagen oder frei; die Reihenfolge lässt sich per Ziehgriff ändern
-- **Würzekochen:** Kochdauer, Nachisomerisierung, Whirlpool-Temperatur und -Dauer.
-- **Offen:** Läutern (noch keine Felder), Darstellung der Dekoktion (Teilmaischen).
+### Maischen und Würzekochen
+- **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
+  - Maische-Effizienz (Vorgabe aus dem Sudhaus)
+  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge lässt sich per Ziehgriff ändern.
+    Die erste Spalte legt die **Art des Schritts** fest:
+    - **Wasser vorlegen:** Hauptguss auf Temperatur bringen. Menge und Temperatur sind nur lesbar: Die
+      Menge ist der Hauptguss minus alle Zubrühmengen, die Temperatur ergibt sich aus der Vorgabe des
+      folgenden Einmaischens und der Malztemperatur. Keine Dauer, nur die Heizzeit als Übergang.
+    - **Einmaischen:** eine Schüttung zugeben (nur Malz, kein Wasser). Folgt es auf Wasser vorlegen, ist die
+      Temperatur die Vorgabe; bei jeder weiteren Schüttung ist sie das Ergebnis (Mischtemperatur aus
+      Maische und Malztemperatur) und nur lesbar.
+    - **Rast:** Temperatur durch Heizen oder Kühlen erreichen. Liegt das Ziel unter der aktuellen
+      Temperatur und hat das Sudhaus keine aktive Kühlung, wird passiv abgekühlt (Dauer nur geschätzt,
+      am Brautag bestätigt).
+    - **Zubrühen (Infusion):** Wasser zugeben, heiß oder kalt. Menge und Zieltemperatur hängen
+      voneinander ab; was zuletzt geändert wurde, führt (wie Menge/Anteil bei den Zutaten).
+    - **Dekoktion:** vorgemerkt, siehe unten.
+    - Strike entspricht dem Einmaischen, Sparge (Fly/Batch) gehört zum Läutern, nicht in den Maischeplan.
+      Steeping (Malz einhängen und wieder herausnehmen) ist vor allem beim Extraktbrauen üblich und vorerst
+      nicht vorgesehen.
+  - Spalten des Plans: Schritt · Bezeichnung · Zugabe (Hauptguss, Schüttung bzw. Wassermenge und
+    -temperatur) · Temperatur · Dauer · Übergang (Heizen, Abkühlen, Mischen) · Beginn. Beginn ist der
+    Zeitpunkt, an dem die Temperatur des Schritts erreicht ist; die Zeit zählt ab dem Aufheizen des
+    Hauptgusses. Unter der Bezeichnung stehen keine Erläuterungen.
+  - **Wasser im Maischeplan = Hauptguss** aus dem Tab Wasser (Wasser vorlegen plus alle Zubrühmengen).
+  - **Teilschüttungen:** Die Malze der Gruppe Maische lassen sich auf mehrere Schüttungen verteilen,
+    z. B. beim Weizen die zweite Hälfte nach dem Abkühlen. Keine eigene Spalte: Bei mehr als einer
+    Schüttung stehen die Schüttungen in der Zutaten-Karte untereinander, jede mit Zwischenzeile (Name,
+    Zeitpunkt im Plan, Summen für Menge, Anteil, EBC, °P). Bei nur einer Schüttung entfällt die
+    Zwischenzeile.
+  - Split-Button „+ Schüttung“ über der Zutaten-Karte: links eine leere Schüttung anlegen, der Pfeil
+    öffnet „Schüttung aufteilen“ (Schüttung wählen, Anteil in %, Vorschau je Malz, Stelle im Plan). Jede
+    neue Schüttung legt im Plan einen Schritt Einmaischen an.
+  - **Maischprofile** (ganze Rastfolgen) lassen sich über „Profil ▾“ laden und ersetzen dann den Plan; der
+    aktuelle Plan lässt sich als Profil speichern. Profile werden **global** gespeichert, nicht je Rezept
+    oder Sudhaus.
+  - Split-Buttons: „+ Rast hinzufügen“ fügt eine freie Rast an, der Pfeil daneben bietet die übrigen
+    Schritt-Arten (Zubrühen, Einmaischen) und vordefinierte Rasten.
+    „Profile“ öffnet den Dialog Maischprofile, der Pfeil daneben lädt ein Profil direkt.
+  - **Dialog Maischprofile:** Liste (eigene und mitgelieferte) und Editor mit Name, Verfahren, Beschreibung
+    und Rasten (Temperatur, Dauer). Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
+    Heizrate des Sudhauses.
+  - **Mitgelieferte Profile** sind schreibgeschützte Vorlagen; geändert wird eine Kopie (Duplizieren).
+- **Verfahren (Infusion/Dekoktion)** hat keinen eigenen Schalter mehr. Es ergibt sich aus den Schritten im
+  Maischeplan: Enthält er einen Schritt Dekoktion, ist es ein Dekoktionsverfahren. Das Sudhaus bestimmt,
+  was möglich ist und wie geheizt wird:
+  - **Maischeheizung** am Gefäß Maischen & Läutern: HERMS, direkt beheizt, RIMS oder Heißwasser-Aufguss.
+    Bei Aufguss rechnet das Rezept Zubrühmengen statt Heizzeiten.
+  - **Dekoktion möglich**, wenn ein zweites beheizbares Gefäß die Teilmaische kochen kann (Schalter an der
+    Würzepfanne). Sonst ist die Schritt-Art Dekoktion im Rezept ausgegraut, mit Hinweis aufs Sudhaus.
+  - Wechselt das Rezept auf ein Sudhaus ohne Dekoktion, warnt es und bietet ein Infusionsprofil an.
+- **Kopfkarte Maischen:** Maische-Effizienz, Malztemperatur, Heizrate (nur lesbar, aus dem Sudhaus).
+  Die Einmaischtemperatur steht im Plan beim Schritt Einmaischen, die berechnete Hauptguss-Temperatur
+  beim Schritt Wasser vorlegen.
+- **Würzekochen** (Tab): Karte „Kochen & Whirlpool“ mit Kochdauer, Nachisomerisierung, Whirlpool-Temperatur
+  und -Dauer, darunter eine Zeitleiste der Gaben (Läutern/Vorderwürze · Kochen · Nachisomerisierung ·
+  Whirlpool). Danach die Zutaten (Vorderwürze, Kochen, Whirlpool) und der Hinweis, wenn das Sudhaus keinen
+  Hop Back hat.
+- **Offen:** Läutern (noch keine Felder, inkl. Fly/Batch Sparge), Dekoktion als Schritt-Art: Teilmaische
+  ziehen (Anteil, dick/dünn), eigene Rasten in der Würzepfanne, kochen, zurückführen mit berechneter
+  Mischtemperatur; im Temperaturverlauf als zweite Linie. Teilschüttungen in Maischprofilen.
+  Maischeplan zurückgestellt: Herkunft der Ausgangstemperatur des Hauptgusses (Annahme 14 °C für die
+  Heizzeit; Wasser-Tab, Sudhaus oder am Brautag gemessen).
 
 ### Gärung
-- Hefe nur zur Ansicht; bearbeitet wird sie in den Zutaten.
+- Zutaten-Karte mit Anstellen, Hauptgärung, Reifung · Stopfen und Abfüllung · Karbonisierung; sie ersetzt die
+  frühere reine Hefe-Anzeige.
 - Gärführung als Phasen mit Temperatur, Dauer, Rampe und optional Druck (Schalter „Unter Druck vergären“).
 - Karbonisierung: Grünschlauchen, Zucker, Speise oder Zwangskarbonisierung. Bei Speise wird die Restmenge
   CO₂ aus der Höchsttemperatur nach Gärende berechnet.
@@ -287,7 +352,7 @@ mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
 - **Mobile-Ansichten:** Die vorhandenen Screens sind veraltet (altes Stilfeld, keine Pumpen, keine
   Gärplatz-Wahl).
 - **Stil-Auswahl:** bespricht der Nutzer noch, dazu die Datenquelle der Stiltabelle.
-- **Läutern und Dekoktion** im Tab Brautag.
+- **Läutern und Dekoktion** im Tab Maischen.
 - **Rollen frei auf Gefäße verteilen** (siehe Sudhaus).
 - **Datenmodell und Ablage** auf SD bzw. LittleFS. Die 256-KB-Partition der LittleFS-Boards begrenzt Rezepte,
   Sude, Messreihen und Zutatenlisten.
