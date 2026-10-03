@@ -6,16 +6,19 @@
   #include <Adafruit_Sensor.h>
   #include <Adafruit_MPU6050.h>
 #else
-  // Native build stub: MPU-6050 is hardware-only. The two globals let tests
-  // play "module plugged in / pulled" and advance the clock.
+  // Native build stub: MPU-6050 is hardware-only. The globals let tests play
+  // "module plugged in / pulled", advance the clock and set what the chip
+  // reports (accel in g, gyro in °/s; default: lying flat, at rest).
   #include <stdint.h>
   namespace SensActCtrlTest {
   bool     gy521Present = true;
   uint32_t gy521NowMs   = 0;
+  float    gy521AccelG[3]   = {0.0f, 0.0f, 1.0f};
+  float    gy521GyroDps[3]  = {0.0f, 0.0f, 0.0f};
   }
   static uint32_t millis() { return SensActCtrlTest::gy521NowMs; }
   struct FakeVec3 { float x = 0.0f, y = 0.0f, z = 0.0f; };
-  struct sensors_event_t { FakeVec3 acceleration; FakeVec3 gyro; };
+  struct sensors_event_t { FakeVec3 acceleration; FakeVec3 gyro; float temperature = 0.0f; };
   class TwoWire {};
   class Adafruit_MPU6050 {
    public:
@@ -24,11 +27,19 @@
       return SensActCtrlTest::gy521Present;
     }
     bool getEvent(sensors_event_t* accel, sensors_event_t* gyro,
-                  sensors_event_t*) {
-      // Device lying flat: gravity along Z, no rotation.
+                  sensors_event_t* temp) {
+      // Whatever the test set (in the driver's m/s^2 and rad/s), chip at 25 °C.
+      using namespace SensActCtrlTest;
       *accel = sensors_event_t{};
-      accel->acceleration.z = 9.80665f;
+      accel->acceleration.x = gy521AccelG[0] * 9.80665f;
+      accel->acceleration.y = gy521AccelG[1] * 9.80665f;
+      accel->acceleration.z = gy521AccelG[2] * 9.80665f;
       *gyro = sensors_event_t{};
+      gyro->gyro.x = gy521GyroDps[0] / 57.29577951308232f;
+      gyro->gyro.y = gy521GyroDps[1] / 57.29577951308232f;
+      gyro->gyro.z = gy521GyroDps[2] / 57.29577951308232f;
+      *temp = sensors_event_t{};
+      temp->temperature = 25.0f;
       return true;
     }
   };
@@ -71,6 +82,7 @@ bool GY521Sensor::connect() {
 void GY521Sensor::invalidate() {
   accelX_ = accelY_ = accelZ_ = Reading{};
   gyroX_  = gyroY_  = gyroZ_  = Reading{};
+  temp_   = Reading{};
 }
 
 void GY521Sensor::begin() {
@@ -96,9 +108,12 @@ Channel GY521Sensor::channel(size_t idx) const {
     case 4: return {"gy",
         SensorMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0/s",
                    -2000.0f, 2000.0f, 0.01f}, gyroY_};
-    default: return {"gz",
+    case 5: return {"gz",
         SensorMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0/s",
                    -2000.0f, 2000.0f, 0.01f}, gyroZ_};
+    default: return {"temp",
+        SensorMeta{ValueKind::Continuous, Quantity::Temperature, "\xc2\xb0" "C",
+                   -40.0f, 85.0f, 0.01f}, temp_};
   }
 }
 
@@ -128,6 +143,7 @@ void GY521Sensor::tick() {
   gyroX_  = Reading{gyro.gyro.x * kRadToDeg, now, true};
   gyroY_  = Reading{gyro.gyro.y * kRadToDeg, now, true};
   gyroZ_  = Reading{gyro.gyro.z * kRadToDeg, now, true};
+  temp_   = Reading{temp.temperature, now, true};
 }
 
 }  // namespace SensActCtrl

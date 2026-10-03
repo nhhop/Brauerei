@@ -33,6 +33,16 @@ type MqttKind = 'Binary' | 'Continuous';
 type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 type Step = 1 | 2 | 3 | 4;
 
+// GY521 channel keys in the firmware's order (the first four are calibratable).
+const GY521_ORDER = ['pitch', 'roll', 'tilt', 'temp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz'];
+// The same channels as checkbox rows of the form.
+const GY521_GROUPS: { title: string; items: [string, string][] }[] = [
+  { title: 'Winkel (°)', items: [['pitch', 'um Y'], ['roll', 'um X'], ['tilt', 'gesamt']] },
+  { title: 'Beschleunigung (g)', items: [['ax', 'X'], ['ay', 'Y'], ['az', 'Z']] },
+  { title: 'Drehrate (°/s)', items: [['gx', 'X'], ['gy', 'Y'], ['gz', 'Z']] },
+  { title: 'Temperatur (°C)', items: [['temp', 'Chip']] },
+];
+
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
 // Deep-equal via a key-sorted JSON dump, so object key order (cfg is built
@@ -129,6 +139,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
   // GY521
   const [gy521Addr, setGy521Addr] = useState<number>(0x68);
+  const [gy521Channels, setGy521Channels] = useState<string[]>(['pitch']);
 
   // HCSR04
   const [trigPin, setTrigPin] = useState('');
@@ -304,6 +315,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setI2cAddr((editConfig.address ?? 0x76) as number);
         } else if (t === 'GY521') {
           setGy521Addr((editConfig.address ?? 0x68) as number);
+          // No "channels": a GY521 from before it had them, i.e. pitch only.
+          const chs = editConfig.channels as string[] | undefined;
+          setGy521Channels(chs ?? ['pitch']);
         } else if (t === 'HX711') {
           setHx711Dout(String(editConfig.dout ?? ''));
           setHx711Sck(String(editConfig.sck ?? ''));
@@ -464,6 +478,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       setRref(DEFAULT_RREF.PT100); setRrefTouched(false);
       setTrigPin(''); setEchoPin('');
       setChDistance(true); setChRate(true); setChVolume(true);
+      setGy521Channels(['pitch']);
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
       setHx711Dout(''); setHx711Sck('');
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
@@ -667,11 +682,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           const channels = [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
           if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
           cfg = { type: 'YF-S201', id: trimId, pin: p, channels };
-        } else if (sensorType === 'BME280' || sensorType === 'GY521') {
+        } else if (sensorType === 'BME280') {
           const bus = effectiveBus('i2c');
           if (!bus) throw new Error('Kein I²C-Bus gewählt');
-          cfg = { type: sensorType, id: trimId, bus,
-            address: sensorType === 'BME280' ? i2cAddr : gy521Addr };
+          cfg = { type: sensorType, id: trimId, bus, address: i2cAddr };
+        } else if (sensorType === 'GY521') {
+          const bus = effectiveBus('i2c');
+          if (!bus) throw new Error('Kein I²C-Bus gewählt');
+          // In the firmware's channel order, whatever order they were ticked in.
+          const channels = GY521_ORDER.filter((k) => gy521Channels.includes(k));
+          if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
+          cfg = { type: sensorType, id: trimId, bus, address: gy521Addr, channels };
         } else if (sensorType === 'HX711') {
           const dout = parseInt(hx711Dout, 10);
           const sck  = parseInt(hx711Sck,  10);
@@ -1460,9 +1481,32 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   ))}
                 </div>
               </div>
+              <div>
+                <label class={lbl}>Kanäle</label>
+                <div class="space-y-1">
+                  {GY521_GROUPS.map((g) => (
+                    <div key={g.title} class="flex items-center gap-3">
+                      <span class="w-32 shrink-0 text-xs text-muted">{g.title}</span>
+                      {g.items.map(([k, text]) => (
+                        <label key={k} class="flex items-center gap-1.5 text-sm text-fg cursor-pointer">
+                          <input type="checkbox" checked={gy521Channels.includes(k)} class="accent-accent"
+                            onChange={(e) => {
+                              const on = (e.target as HTMLInputElement).checked;
+                              setGy521Channels((cs) => on ? [...cs, k] : cs.filter((c) => c !== k));
+                            }} />
+                          {text}
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
               <p class="text-xs text-faint">
-                1 Kanal: <strong>id</strong> — Neigungswinkel in °, per Kalibrierung
-                (Modus „poly") auf Stammwürze/SG umrechenbar.
+                Je Kanal <strong>id.kanal</strong>: <strong>pitch</strong> (um Y), <strong>roll</strong> (um X),
+                <strong> tilt</strong> (Neigung der Z-Achse gegen die Senkrechte), <strong>temp</strong>,
+                <strong> ax</strong>…<strong>gz</strong>. Winkel und Temperatur sind kalibrierbar,
+                z. B. ein Winkel per „poly" auf Stammwürze/SG; die Temperatur ist die des Chips,
+                nicht der Umgebung.
               </p>
             </div>
           )}

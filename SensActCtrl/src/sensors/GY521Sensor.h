@@ -10,15 +10,18 @@ class TwoWire;
 
 namespace SensActCtrl {
 
-// GY-521 breakout (MPU-6050 accelerometer + gyroscope), raw 6-axis readout.
+// GY-521 breakout (MPU-6050 accelerometer + gyroscope), raw 6-axis readout
+// plus the chip temperature.
 //
-// One instance exposes six channels:
+// One instance exposes seven channels:
 //   channel(0): AccelX  "g"    (key="ax")
 //   channel(1): AccelY  "g"    (key="ay")
 //   channel(2): AccelZ  "g"    (key="az")
 //   channel(3): GyroX   "°/s"  (key="gx")
 //   channel(4): GyroY   "°/s"  (key="gy")
 //   channel(5): GyroZ   "°/s"  (key="gz")
+//   channel(6): chip temperature "°C" (key="temp") -- the die, not the
+//               surroundings; it reads a few degrees above room temperature.
 //
 // Without a device (wrong address, module unplugged) all channels stay
 // invalid. A failed begin() is retried from tick() every kRetryIntervalMs, so a
@@ -26,7 +29,7 @@ namespace SensActCtrl {
 // noticed by an address probe on every tick and goes invalid again.
 //
 // Building block for GY521TiltSensor, which derives a tilt angle from these
-// raw axes; typically not registered on its own.
+// raw axes and can pass them through; typically not registered on its own.
 //
 // Typical use:
 //   GY521Sensor mpu("imu", 0x68);
@@ -42,7 +45,7 @@ class GY521Sensor : public Sensor {
   ~GY521Sensor();
 
   const char* id()                const override { return id_; }
-  size_t      channelCount()      const override { return 6; }
+  size_t      channelCount()      const override { return 7; }
   Channel     channel(size_t idx) const override;
 
   void begin() override;
@@ -68,6 +71,7 @@ class GY521Sensor : public Sensor {
   Reading gyroX_{};
   Reading gyroY_{};
   Reading gyroZ_{};
+  Reading temp_{};
 };
 
 }  // namespace SensActCtrl

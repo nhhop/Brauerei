@@ -16,13 +16,14 @@ extern uint32_t gy521NowMs;
 
 void test_channel_count_and_keys() {
   GY521Sensor s("imu", 0x68);
-  TEST_ASSERT_EQUAL(6u, s.channelCount());
+  TEST_ASSERT_EQUAL(7u, s.channelCount());
   TEST_ASSERT_EQUAL_STRING("ax", s.channel(0).key);
   TEST_ASSERT_EQUAL_STRING("ay", s.channel(1).key);
   TEST_ASSERT_EQUAL_STRING("az", s.channel(2).key);
   TEST_ASSERT_EQUAL_STRING("gx", s.channel(3).key);
   TEST_ASSERT_EQUAL_STRING("gy", s.channel(4).key);
   TEST_ASSERT_EQUAL_STRING("gz", s.channel(5).key);
+  TEST_ASSERT_EQUAL_STRING("temp", s.channel(6).key);
 }
 
 void test_channel_meta() {
@@ -35,6 +36,11 @@ void test_channel_meta() {
   Channel gyro = s.channel(3);
   TEST_ASSERT_EQUAL(ValueKind::Continuous, gyro.meta.kind);
   TEST_ASSERT_EQUAL(Quantity::Custom,      gyro.meta.quantity);
+
+  Channel temp = s.channel(6);
+  TEST_ASSERT_EQUAL(ValueKind::Continuous, temp.meta.kind);
+  TEST_ASSERT_EQUAL(Quantity::Temperature, temp.meta.quantity);
+  TEST_ASSERT_EQUAL_STRING("\xc2\xb0" "C",  temp.meta.unit);
 }
 
 void test_readings_invalid_before_begin() {
@@ -55,6 +61,9 @@ void test_tick_reports_stub_values_after_begin() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, s.channel(3).reading.value);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, s.channel(4).reading.value);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, s.channel(5).reading.value);
+  // Stub chip temperature.
+  TEST_ASSERT_TRUE(s.channel(6).reading.valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 25.0f, s.channel(6).reading.value);
 }
 
 // ── Caller-owned bus (Peripherie-Abstraktion Etappe 2) ──────────────────────
@@ -69,7 +78,7 @@ void test_caller_bus_leaves_it_alone() {
     sensor.begin();
     sensor.tick();
     TEST_ASSERT_EQUAL_STRING("imu2", sensor.id());
-    TEST_ASSERT_EQUAL(6, sensor.channelCount());
+    TEST_ASSERT_EQUAL(7, sensor.channelCount());
   }
   delete bus;
 }

@@ -7,23 +7,35 @@
 
 namespace SensActCtrl {
 
-// Derives a single tilt-angle channel from a GY-521 (MPU-6050) using a
-// complementary filter over the raw accelerometer + gyroscope axes. Owns its
-// GY521Sensor -- a tilt sensor *uses* a raw 6-axis sensor, it isn't one, so
-// composition rather than inheritance or a CalibratedSensor-style reference
-// decorator.
+// Derives tilt angles from a GY-521 (MPU-6050). Owns its GY521Sensor -- a
+// tilt sensor *uses* a raw 6-axis sensor, it isn't one, so composition rather
+// than inheritance or a CalibratedSensor-style reference decorator.
 //
-// One instance exposes a single channel:
-//   channel(0): tilt angle  "°"  (key="")
+// Channels, in this order (setChannelMask() picks which are exposed; default
+// "pitch" only):
+//   "pitch"  °   rotation about Y = how far the X axis points out of the
+//                horizontal, atan2(-ax, sqrt(ay²+az²)), -90..90
+//   "roll"   °   rotation about X = the same for the Y axis,
+//                atan2(ay, sqrt(ax²+az²)), -90..90
+//   "tilt"   °   angle of the Z axis against the vertical, whichever way it
+//                leans: 0 flat, 90 on an edge, 180 upside down
+//   "temp", "ax", "ay", "az", "gx", "gy", "gz"  passed through from the raw
+//                GY521Sensor
+// A rotation about Z (yaw) is not among them: gravity does not change with
+// it, so without a magnetometer only the drifting gyro integral could tell.
 //
-// The angle channel is meant to be wrapped in a CalibratedSensor with a
-// `poly` calibration (raw angle -> specific gravity), exactly like an
-// iSpindel tilt hydrometer -- BrewControl's DynamicItems.cpp already wraps
-// every sensor it creates that way, so no extra plumbing is needed here.
+// pitch and roll run through a complementary filter (time constant kTauS)
+// that blends the gyro rate of their own axis (gy resp. gx) with the
+// accelerometer angle, plus a slow integral term that learns the gyro's
+// zero-rate offset -- without it the offset would hold the angle off by
+// offset x kTauS. tilt comes from the accelerometer alone. All angles and the
+// raw readout run regardless of the mask; it only decides which channels
+// channelCount()/channel() expose.
 //
-// The accel axes (X/Z) and gyro axis (X) feeding the filter are a fixed,
-// iSpindel-typical mounting assumption; verifying/tuning them against a real
-// device is tracked separately (see PLAN.md/SESSION.md).
+// An angle channel is meant to be wrapped in a CalibratedSensor with a `poly`
+// calibration (raw angle -> specific gravity), exactly like an iSpindel tilt
+// hydrometer -- BrewControl's DynamicItems.cpp already wraps every sensor it
+// creates that way, so no extra plumbing is needed here.
 //
 // Typical use:
 //   GY521TiltSensor tilt("hydrometer", 0x68);
@@ -36,12 +48,26 @@ class GY521TiltSensor : public Sensor {
   // I2C bus). The TwoWire instance must outlive this sensor.
   GY521TiltSensor(const char* id, TwoWire& bus, uint8_t i2cAddress = 0x68);
 
-  const char* id()                const override { return id_; }
-  size_t      channelCount()      const override { return 1; }
-  Channel     channel(size_t idx) const override {
-    (void)idx;
-    return {"", meta_, angle_};
+  // Channel mask bits, in exposed order.
+  static constexpr uint16_t kChannelPitch = 0x001;
+  static constexpr uint16_t kChannelRoll  = 0x002;
+  static constexpr uint16_t kChannelTilt  = 0x004;
+  static constexpr uint16_t kChannelTemp  = 0x008;
+  static constexpr uint16_t kChannelAx    = 0x010;
+  static constexpr uint16_t kChannelAy    = 0x020;
+  static constexpr uint16_t kChannelAz    = 0x040;
+  static constexpr uint16_t kChannelGx    = 0x080;
+  static constexpr uint16_t kChannelGy    = 0x100;
+  static constexpr uint16_t kChannelGz    = 0x200;
+  static constexpr uint16_t kChannelAll   = 0x3FF;
+  // Default: pitch only. A mask without any valid bit is ignored.
+  void setChannelMask(uint16_t mask) {
+    if (mask & kChannelAll) channelMask_ = mask & kChannelAll;
   }
+
+  const char* id()                const override { return id_; }
+  size_t      channelCount()      const override;
+  Channel     channel(size_t idx) const override;
 
   void begin() override { raw_.begin(); }
   void end()   override { raw_.end(); }
@@ -58,13 +84,23 @@ class GY521TiltSensor : public Sensor {
                                   float alpha);
 
  private:
-  static constexpr float kAlpha = 0.98f;
+  // Filter time constant: the gyro carries changes faster than this, the
+  // accelerometer sets the angle over longer spans.
+  static constexpr float kTauS = 0.5f;
+  // Integral gain for the gyro offset (1/s²); learns it within ~20 s.
+  static constexpr float kBiasGain = 0.1f;
+
+  void filter(Reading& angle, float& bias, float angleAccelDeg,
+              float gyroRateDegPerS, float dt, uint32_t now);
 
   const char* id_;
   GY521Sensor raw_;
-  SensorMeta  meta_{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
-                    -180.0f, 180.0f, 0.1f};
-  Reading     angle_{};
+  Reading     pitch_{};
+  Reading     roll_{};
+  Reading     tilt_{};
+  float       pitchBias_   = 0.0f;   // learned gyro offsets, °/s
+  float       rollBias_    = 0.0f;
+  uint16_t    channelMask_ = kChannelPitch;
   uint32_t    lastTickMs_  = 0;
   bool        hasLastTick_ = false;
 };
