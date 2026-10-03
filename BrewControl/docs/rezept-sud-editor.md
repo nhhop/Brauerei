@@ -179,10 +179,17 @@ Liste und Detailansicht.
   Der Sud schlägt die Menge aus dem gemessenen pH neu vor.
 - **Salze und Säuren** sind dieselben Einträge wie unter Zutaten › Hilfsstoffe und lassen sich **an beiden
   Stellen bearbeiten**.
-- **Später hierher:** alle Werte für die Wassermenge, also Treberverlust, Verdampfungsrate, Würzeverlust,
-  angenommener Trubverlust im Gärbehälter und die Volumenbilanz Gesamtwasser → Pfannevoll → Ausschlag →
-  Anstellwürze. Die Werte kommen aus dem Sudhaus und lassen sich pro Rezept überschreiben. Sie wurden aus der
-  Übersicht entfernt, im Wasser-Tab aber noch nicht neu angeordnet.
+- **Wassermenge** wird **vom Ausschlag zurückgerechnet**, nicht vom Wasser vorwärts:
+  - Ausschlagmenge (Vorgabe aus der Übersicht) + Verdampfung (l/h × Kochdauer aus dem Brautag) = Pfannevoll.
+  - Pfannevoll + Totraum Läuterbottich + Treberverlust (l/kg × Schüttung) = Gesamtwasser.
+  - Hauptguss = Hauptguss-Verhältnis × Schüttung, Nachguss = Rest. Die Nachguss-Temperatur steht in der
+    Nachguss-Zeile.
+  - Schalter **„Mit Nachguss“**: Ohne Nachguss (Vollguss) ist der Hauptguss das gesamte Wasser, das
+    Verhältnis wird dann zum Ergebnis.
+- **Darstellung:** Karte „Wassermenge“ mit Kennzahlen (Hauptguss, Nachguss, Gesamtwasser), Schalter und
+  farbigem Balken (Gesamtwasser aufgeteilt in Ausschlag, Verdampfung, Treber, Totraum). Die Rechnung steht in
+  einem Aufklappbereich „Berechnung“, standardmäßig zu.
+- Die Verlustwerte kommen als Vorgabe aus dem Sudhaus und lassen sich pro Rezept überschreiben.
 
 ### Brautag (vorher „Maischen“)
 - **Maischen:**
@@ -197,6 +204,14 @@ Liste und Detailansicht.
 - Gärführung als Phasen mit Temperatur, Dauer, Rampe und optional Druck (Schalter „Unter Druck vergären“).
 - Karbonisierung: Grünschlauchen, Zucker, Speise oder Zwangskarbonisierung. Bei Speise wird die Restmenge
   CO₂ aus der Höchsttemperatur nach Gärende berechnet.
+- **Abfüllmenge** (vom Wasser-Tab hierher verschoben): vorwärts vom Ausschlag bis zur Abfüllung.
+  - Ausschlag − Volumenschwund beim Abkühlen (%) − Würzeverlust (Trub, Hopfen, Kühler) − Speise = Anstellwürze.
+  - Anstellwürze − Trub im Gärbehälter − Stopfhopfen (l/100 g × Stopfhopfenmenge) = Jungbier.
+  - Jungbier + Speise − Abfüllverlust (aus dem Gebinde im Gärkeller) = Abgefüllt, mit Flaschenzahl.
+  - Der Trubverlust im Rezept ist eine Annahme. Im Sud gilt der Wert des gewählten Gärplatzes.
+  - Darstellung wie beim Wasser: Kennzahlen (Anstellwürze, Jungbier, Abgefüllt), Balken (Verbleib der
+    Ausschlagwürze) und Aufklappbereich „Berechnung“.
+  - Die Absorption von Stopfhopfen (0,6 l/100 g im Entwurf) ist ein ungeprüfter Platzhalter.
 
 ### Sude (Tab im Rezept)
 - Knopf „Neuer Sud aus diesem Rezept“, bei Entwürfen gesperrt.
@@ -272,7 +287,6 @@ mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
 - **Mobile-Ansichten:** Die vorhandenen Screens sind veraltet (altes Stilfeld, keine Pumpen, keine
   Gärplatz-Wahl).
 - **Stil-Auswahl:** bespricht der Nutzer noch, dazu die Datenquelle der Stiltabelle.
-- **Wasser-Tab:** Volumenwerte und Volumenbilanz unterbringen (siehe oben).
 - **Läutern und Dekoktion** im Tab Brautag.
 - **Rollen frei auf Gefäße verteilen** (siehe Sudhaus).
 - **Datenmodell und Ablage** auf SD bzw. LittleFS. Die 256-KB-Partition der LittleFS-Boards begrenzt Rezepte,
