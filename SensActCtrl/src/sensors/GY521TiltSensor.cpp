@@ -11,6 +11,8 @@ const SensorMeta kLevelMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
                             -90.0f, 90.0f, 0.1f};
 const SensorMeta kTiltMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
                            0.0f, 180.0f, 0.1f};
+const SensorMeta kDirMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
+                          0.0f, 360.0f, 0.1f};
 }  // namespace
 
 GY521TiltSensor::GY521TiltSensor(const char* id, uint8_t i2cAddress)
@@ -27,9 +29,10 @@ size_t GY521TiltSensor::channelCount() const {
 
 Channel GY521TiltSensor::channel(size_t idx) const {
   // The idx-th set bit of the mask: bits 0..2 are the angles, bit 3 the raw
-  // sensor's temperature (its channel 6), bits 4..9 its axes (channels 0..5).
+  // sensor's temperature (its channel 6), bits 4..9 its axes (channels 0..5),
+  // bit 10 the direction.
   size_t bit = 0;
-  for (; bit < 9; ++bit) {
+  for (; bit < 10; ++bit) {
     if (!(channelMask_ & (1u << bit))) continue;
     if (idx == 0) break;
     --idx;
@@ -39,6 +42,7 @@ Channel GY521TiltSensor::channel(size_t idx) const {
     case 1:  return {"roll",  kLevelMeta, roll_};
     case 2:  return {"tilt",  kTiltMeta,  tilt_};
     case 3:  return raw_.channel(6);
+    case 10: return {"dir",   kDirMeta,   dir_};
     default: return raw_.channel(bit - 4);
   }
 }
@@ -66,7 +70,7 @@ void GY521TiltSensor::tick() {
     // Raw sensor lost (module pulled): drop the angles and restart the
     // filters from the accelerometer when it comes back -- maybe a different
     // module, so its offsets are learned anew.
-    pitch_ = roll_ = tilt_ = Reading{};
+    pitch_ = roll_ = tilt_ = dir_ = Reading{};
     pitchBias_ = rollBias_ = 0.0f;
     hasLastTick_ = false;
     return;
@@ -86,6 +90,14 @@ void GY521TiltSensor::tick() {
   filter(roll_,  rollBias_,  rollAccel,  gx.value, dt, now);
   tilt_ = Reading{atan2f(sqrtf(ax.value * ax.value + ay.value * ay.value), az.value) * kRadToDeg,
                   now, true};
+  // Which way the chip leans: the bearing of the high side, 0 = -X side up.
+  if (hypotf(pitch_.value, roll_.value) < kDirMinTiltDeg) {
+    dir_ = Reading{};
+  } else {
+    float dir = atan2f(roll_.value, pitch_.value) * kRadToDeg;
+    if (dir < 0.0f) dir += 360.0f;
+    dir_ = Reading{dir, now, true};
+  }
 
   lastTickMs_  = now;
   hasLastTick_ = true;

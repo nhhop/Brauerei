@@ -181,6 +181,56 @@ void test_tilt_covers_the_full_range() {
   TEST_ASSERT_FLOAT_WITHIN(0.05f, 180.0f, s.channel(2).reading.value);
 }
 
+// "dir" is the bearing of the high side: 0 = the -X side is up (pitch > 0),
+// 90 = Y up (roll > 0). The accelerometer reads +g on the axis that points up.
+float dirFor(float ax, float ay, float az, bool* valid) {
+  setAccel(ax, ay, az);
+  GY521TiltSensor s("imu", 0x68);
+  s.setChannelMask(GY521TiltSensor::kChannelDir);
+  s.begin();
+  s.tick();
+  *valid = s.channel(0).reading.valid;
+  return s.channel(0).reading.value;
+}
+
+void test_dir_is_the_bearing_of_the_high_side() {
+  const float sn = sinf(20 * kDegToRad), cs = cosf(20 * kDegToRad);
+  bool valid = false;
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 0.0f,   dirFor(-sn, 0, cs, &valid));  // -X up
+  TEST_ASSERT_TRUE(valid);
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 90.0f,  dirFor(0,  sn, cs, &valid));  // Y up
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 180.0f, dirFor( sn, 0, cs, &valid));  // X up
+  TEST_ASSERT_FLOAT_WITHIN(0.1f, 270.0f, dirFor(0, -sn, cs, &valid));  // -Y up
+  // Between -X and Y up: 45° (equal lean on both axes).
+  TEST_ASSERT_FLOAT_WITHIN(0.5f, 45.0f,  dirFor(-sn, sn, cs, &valid));
+}
+
+void test_dir_meta() {
+  GY521TiltSensor s("imu", 0x68);
+  s.setChannelMask(GY521TiltSensor::kChannelDir);
+  TEST_ASSERT_EQUAL_STRING("dir", s.channel(0).key);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f,   s.channel(0).meta.min);
+  TEST_ASSERT_EQUAL_FLOAT(360.0f, s.channel(0).meta.max);
+}
+
+// Flat (or within noise of it) has no direction.
+void test_dir_is_invalid_when_level() {
+  bool valid = true;
+  dirFor(0.0f, 0.0f, 1.0f, &valid);
+  TEST_ASSERT_FALSE(valid);
+  const float tiny = sinf(0.3f * kDegToRad);  // 0.3° < kDirMinTiltDeg
+  dirFor(tiny, 0.0f, 1.0f, &valid);
+  TEST_ASSERT_FALSE(valid);
+}
+
+void test_dir_is_last_in_a_full_mask() {
+  GY521TiltSensor s("imu", 0x68);
+  s.setChannelMask(GY521TiltSensor::kChannelAll);
+  TEST_ASSERT_EQUAL(11u, s.channelCount());
+  TEST_ASSERT_EQUAL_STRING("gz",  s.channel(9).key);
+  TEST_ASSERT_EQUAL_STRING("dir", s.channel(10).key);
+}
+
 // Pitch follows the gyro's Y axis, roll its X axis: a short positive rate on
 // one axis moves only its own angle ahead of the (unchanged) accelerometer.
 void test_gyro_axes_feed_the_matching_angle() {
@@ -238,7 +288,7 @@ void test_caller_bus_delegates_to_raw_sensor() {
 void test_no_device_all_channels_invalid() {
   gy521Present = false;
   GY521TiltSensor s("imu", 0x68);
-  s.setChannelMask(0x3FF);
+  s.setChannelMask(GY521TiltSensor::kChannelAll);
   s.begin();
   s.tick();
   for (size_t i = 0; i < s.channelCount(); ++i)
@@ -290,6 +340,10 @@ int main(int, char**) {
   RUN_TEST(test_rotation_about_y_is_pitch);
   RUN_TEST(test_rotation_about_x_is_roll);
   RUN_TEST(test_tilt_covers_the_full_range);
+  RUN_TEST(test_dir_is_the_bearing_of_the_high_side);
+  RUN_TEST(test_dir_meta);
+  RUN_TEST(test_dir_is_invalid_when_level);
+  RUN_TEST(test_dir_is_last_in_a_full_mask);
   RUN_TEST(test_gyro_axes_feed_the_matching_angle);
   RUN_TEST(test_gyro_offset_is_learned);
   RUN_TEST(test_caller_bus_delegates_to_raw_sensor);

@@ -11,6 +11,8 @@ import {
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
 import { SensorGroupCard, rowMode } from '../components/SensorGroupCard';
+import { LevelCard } from '../components/LevelCard';
+import { levelChannels } from '../levelBubble';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
@@ -447,6 +449,17 @@ export function Dashboard({ snap, err, alarmByRef }: {
         if (channels.length === 0) return null;
         const { base: baseId, keys } = parseSensorEntry(id);
         if (channels.length > 1) {
+          // Pitch and roll together are a spirit level, not a channel list.
+          const level = levelChannels(channels);
+          if (level) {
+            return (
+              <LevelCard baseId={baseId} level={level}
+                onCalibrate={editMode && channels.some(isCalibratable) ? () => setCalibrateId(baseId) : undefined}
+                onEdit={editMode ? () => startEdit('sensor', baseId, id) : undefined}
+                onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
+              />
+            );
+          }
           return (
             <SensorGroupCard baseId={baseId} channels={channels}
               modeOf={(cid) => channelMode(cid, baseId)}

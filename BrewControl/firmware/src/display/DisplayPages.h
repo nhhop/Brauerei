@@ -2,7 +2,9 @@
 
 // What the round display shows: one page per sensor, actuator and controller
 // of a dashboard, swiped left/right; swiping up/down moves to the next or
-// previous dashboard. The web grid layout is not interpreted. Built on
+// previous dashboard. The web grid layout is not interpreted. A sensor entry
+// with both pitch and roll (a GY-521) is a spirit level - one page with the
+// bubble, and a second one with its other channels, if it has any. Built on
 // DisplayUI, which owns the panel and the LVGL driver; everything here runs on
 // loopTask via lv_timer_handler(), so touch actions call Registry directly,
 // like registry.tick() does.
@@ -39,10 +41,14 @@ class DisplayPages {
 
  private:
   enum class Kind : uint8_t { Sensor, Actuator, Controller };
+  // A spirit-level sensor gets two pages with the same id: the bubble (Level)
+  // and the channels it does not show (Rest).
+  enum class View : uint8_t { Normal, Level, Rest };
 
   struct Page {
     Kind kind;
     std::string id;  // as listed in the dashboard; sensors may be "id.key"
+    View view = View::Normal;
     lv_obj_t* title = nullptr;
     lv_obj_t* value = nullptr;
     lv_obj_t* unit = nullptr;
@@ -56,6 +62,15 @@ class DisplayPages {
     lv_obj_t* minus = nullptr;   // invisible tap zones on the ring, just
     lv_obj_t* plus = nullptr;    // before and after the knob: one step
     float lo = 0, hi = 100, step = 1;  // ring range in item units
+    // View::Level: the round glass and the straight level (an axis at 45 degrees
+    // or more), one of them visible at a time. Indices into `shapes`:
+    static constexpr size_t kGlass = 0, kHLine = 1, kVLine = 2, kRing = 3, kTarget = 4,
+                            kBubble = 5, kTube = 6, kTubeMarks = 7 /* three */,
+                            kTubeBubble = 10, kShapes = 11;
+    lv_obj_t* shapes[kShapes] = {};
+    bool straight = false;
+    bool tubeVertical = false;   // the straight level is turned for Nick
+    uint8_t tone = 0;            // bubble colour shown: 0 none yet, 1 tilted, 2 level
   };
 
   void rebuild_(bool keepPage = true);
@@ -67,6 +82,9 @@ class DisplayPages {
   void refresh_();
   void refreshVisible_();
   void refreshPage_(Page& p);
+  // The bubble alone (and the angles' text if `text`), for the fast timer.
+  void refreshLevel_(Page& p, SensActCtrl::Sensor& s, bool text);
+  void refreshLevelVisible_();
 
   // Why the item on p may not be changed from here; nullptr if it may.
   const char* lockReason_(const Page& p, char* buf, size_t cap) const;
@@ -74,6 +92,7 @@ class DisplayPages {
   void setTarget_(Page& p, float v);
 
   static void onTimer_(lv_timer_t* t);
+  static void onLevelTimer_(lv_timer_t* t);
   static void onTileChanged_(lv_event_t* e);
   static void onKnob_(lv_event_t* e);
   static void onToggle_(lv_event_t* e);

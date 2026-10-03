@@ -35,10 +35,10 @@ type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 type Step = 1 | 2 | 3 | 4;
 
 // GY521 channel keys in the firmware's order (the first four are calibratable).
-const GY521_ORDER = ['pitch', 'roll', 'tilt', 'temp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz'];
+const GY521_ORDER = ['pitch', 'roll', 'tilt', 'temp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz', 'dir'];
 // The same channels as checkbox rows of the form.
 const GY521_GROUPS: { title: string; items: [string, string][] }[] = [
-  { title: 'Winkel (°)', items: [['pitch', 'um Y'], ['roll', 'um X'], ['tilt', 'gesamt']] },
+  { title: 'Winkel (°)', items: [['pitch', 'um Y'], ['roll', 'um X'], ['tilt', 'gesamt'], ['dir', 'Richtung']] },
   { title: 'Beschleunigung (g)', items: [['ax', 'X'], ['ay', 'Y'], ['az', 'Z']] },
   { title: 'Drehrate (°/s)', items: [['gx', 'X'], ['gy', 'Y'], ['gz', 'Z']] },
   { title: 'Temperatur (°C)', items: [['temp', 'Chip']] },
@@ -1087,6 +1087,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         </div>
         <p class="mt-1.5 text-xs text-faint">
           Gilt nur für diese Karte. Welche Kanäle der Sensor misst, steht oben.
+          {sensorType === 'GY521' && ' Nick und Roll zusammen ergeben die Libelle.'}
         </p>
       </div>
     );

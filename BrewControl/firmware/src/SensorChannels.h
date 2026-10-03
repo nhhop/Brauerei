@@ -36,8 +36,8 @@ inline bool parseChannelMask(JsonObjectConst cfg, const char* const* keys, size_
 }
 
 // GY521 channel keys in mask-bit order (GY521TiltSensor::kChannel*).
-constexpr const char* kGy521Channels[] = {"pitch", "roll", "tilt", "temp", "ax",
-                                          "ay",    "az",   "gx",   "gy",   "gz"};
+constexpr const char* kGy521Channels[] = {"pitch", "roll", "tilt", "temp", "ax", "ay",
+                                          "az",    "gx",   "gy",   "gz",   "dir"};
 constexpr size_t kGy521ChannelCount = sizeof(kGy521Channels) / sizeof(kGy521Channels[0]);
 
 // A GY521 stored before it had channels exposed only its tilt angle (what is

@@ -102,7 +102,9 @@ Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle), `GY521Sensor`
 Chip-Temperatur `temp`), `GY521TiltSensor` (Winkel aus einem eigenen
 `GY521Sensor`: `pitch` um Y und `roll` um X per Komplementärfilter mit
 gelerntem Kreisel-Nullpunkt, `tilt` als Neigung der Z-Achse gegen die
-Senkrechte; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 10;
+Senkrechte, `dir` als Richtung der Neigung — Peilung der oberen Seite in
+der X/Y-Ebene, `atan2(roll, pitch)`, 0…360° (0 = −X-Seite oben, 90 = +Y,
+180 = +X, 270 = −Y), unter 0,5° Neigung ungültig; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 11;
 kein Gierwinkel, der braucht ein Magnetometer), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei
 konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),
