@@ -21,6 +21,13 @@ namespace SensActCtrl {
 //                leans: 0 flat, 90 on an edge, 180 upside down
 //   "temp", "ax", "ay", "az", "gx", "gy", "gz"  passed through from the raw
 //                GY521Sensor
+//   "dir"    °   the side that is up, in the chip's X/Y plane, as a bearing:
+//                atan2(roll, pitch), 0..360 (0 = the -X side is up, 90 = Y,
+//                180 = X, 270 = -Y; pitch is atan2(-ax, ...), so pitch > 0
+//                lifts -X). Undefined -- invalid -- while the tilt (hypot of
+//                pitch and roll) is below kDirMinTiltDeg. The direction a
+//                spirit level's bubble moves in, seen with -X pointing up and
+//                Y to the right.
 // A rotation about Z (yaw) is not among them: gravity does not change with
 // it, so without a magnetometer only the drifting gyro integral could tell.
 //
@@ -59,7 +66,8 @@ class GY521TiltSensor : public Sensor {
   static constexpr uint16_t kChannelGx    = 0x080;
   static constexpr uint16_t kChannelGy    = 0x100;
   static constexpr uint16_t kChannelGz    = 0x200;
-  static constexpr uint16_t kChannelAll   = 0x3FF;
+  static constexpr uint16_t kChannelDir   = 0x400;  // after gz: keeps the bits above stable
+  static constexpr uint16_t kChannelAll   = 0x7FF;
   // Default: pitch only. A mask without any valid bit is ignored.
   void setChannelMask(uint16_t mask) {
     if (mask & kChannelAll) channelMask_ = mask & kChannelAll;
@@ -89,6 +97,8 @@ class GY521TiltSensor : public Sensor {
   static constexpr float kTauS = 0.5f;
   // Integral gain for the gyro offset (1/s²); learns it within ~20 s.
   static constexpr float kBiasGain = 0.1f;
+  // Below this tilt the direction is noise: "dir" is invalid.
+  static constexpr float kDirMinTiltDeg = 0.5f;
 
   void filter(Reading& angle, float& bias, float angleAccelDeg,
               float gyroRateDegPerS, float dt, uint32_t now);
@@ -98,7 +108,8 @@ class GY521TiltSensor : public Sensor {
   Reading     pitch_{};
   Reading     roll_{};
   Reading     tilt_{};
-  float       pitchBias_   = 0.0f;   // learned gyro offsets, °/s
+  Reading     dir_{};
+  float      pitchBias_   = 0.0f;   // learned gyro offsets, °/s
   float       rollBias_    = 0.0f;
   uint16_t    channelMask_ = kChannelPitch;
   uint32_t    lastTickMs_  = 0;

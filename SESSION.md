@@ -6087,3 +6087,62 @@ eine Gruppenkarte, und die zeigte immer alle Kanäle.
   - Umgebauter Dialog: `gyro` → Kanalauswahl `gx`/`gy`/`gz` → Übernehmen ergibt `gyro.gx,gy,gz`, der Dialog schließt.
     Der Aktor `kettle` wird per Klick hinzugefügt und steht danach ausgegraut da. `HLT` ist ausgegraut, `gyro` und
     `Durchfluss` bleiben hinzufügbar.
+
+## 2026-10-03 — GY-521-Libelle auf Dashboard und Display (Branch `feat/gy521-libelle`)
+
+Nutzerwunsch: Für den GY-521 eine Wasserwaage-Ansicht wie in einer Libellen-App, rund, mit `pitch` und `roll` auf einer
+Karte. Der Screenshot zeigte außerdem eine Linie Zentrum → Blase mit einer Winkelangabe am Rand. Das ist **nicht** der
+Neigungswinkel, sondern die Richtung des Ausschlags (im Uhrzeigersinn ab oben, hier 146,9°); die Neigung steht in den
+beiden Digitalfeldern, „N“ bräuchte ein Magnetometer.
+
+**Entscheidungen** (mit dem Nutzer):
+- **Auslöser automatisch:** Eine Karte, deren Kanäle `pitch` **und** `roll` enthalten, ist eine Libelle. Kein neuer
+  `WidgetMode`, kein neues Konfig-Feld; Firmware-`DashboardStore`, `types.ts` und die Shape der API bleiben unverändert.
+  Eine Karte mit nur `pitch` bleibt eine normale Karte.
+- **Display:** Eine Seite mit der Libelle, dahinter eine zweite mit den übrigen Kanälen (`tilt`, `dir`, `temp` …),
+  nur wenn es welche gibt. Die Blase läuft über einen eigenen 80-ms-Timer, nur für die sichtbare Libelle-Seite.
+- **Richtungslinie nur im Web.** Dazu ein neuer Sensorkanal `dir`, weil die Richtung sonst in keinem Wert steht.
+
+**Umsetzung:**
+- **Library:** `GY521TiltSensor` bekommt den Kanal `dir` (Maskenbit `kChannelDir = 0x400`, hinten angehängt, damit die
+  übrigen Bits und ihre Tests stabil bleiben). `dir = atan2(roll, −pitch)`, 0…360° im Uhrzeigersinn ab der X-Achse, aus
+  den **gefilterten** Winkeln; ungültig unter 0,5° Neigung. (Erste Fassung `atan2(roll, −pitch)`, nach dem Test am
+  Gerät auf `atan2(roll, pitch)` gedreht, siehe unten.) `SensorChannels.h`: `"dir"` an `kGy521Channels`.
+- **Gemeinsame Mathematik**, in Firmware und Web gespiegelt und je mit denselben Tests: `levelBubble()` in
+  `firmware/src/LevelBubble.h` und `web/src/levelBubble.ts`. Radiale Klemmung auf den Einheitskreis, Vollausschlag
+  ±15°, „waagerecht“ innerhalb ±1°, Richtung = Peilung der Blase. Bildschirm: Y-Seite oben (`roll` > 0) → Blase rechts,
+  −X-Seite oben (`pitch` > 0) → Blase oben; dadurch stimmt die Randangabe mit dem Kanal `dir` überein.
+- **Web:** `LevelCard.tsx` (SVG: Glas, Fadenkreuz, Zielring, Blase, gestrichelte Richtungslinie, Winkel am Rand, darunter
+  Nick/Roll/Neigung und die übrigen Kanäle als Zeilen). `Dashboard.tsx` rendert sie statt der `SensorGroupCard`, wenn
+  `levelChannels()` pitch und roll findet. `AddItemModal.tsx`: `dir` in Auswahl und Gruppe „Winkel“, Hinweis im Dialog.
+- **Display:** `DisplayPages` bekommt `View::Level`/`View::Rest`. `rebuild_` legt zwei Seiten mit derselben Id an und
+  bleibt nach einem Neuaufbau auf der gleichen. Kanal-Indizes von pitch/roll werden bei jedem Refresh neu gesucht, nicht
+  gemerkt (der Sensor kann währenddessen bearbeitet werden).
+- **Doku:** `openapi.yaml` (Kanal `dir`, Libelle-Satz bei `sensors`), `BrewControl/README.md` (Seitentabelle),
+  `SensActCtrl/README.md`.
+
+**Verifikation:**
+- `pio test -e native`: SensActCtrl `test_gy521_tilt` 23/23 (neu: `dir` für 0/90/180/270/45°, flach ungültig, Maske),
+  Firmware 117/117 (neu: `test_level_bubble`, `kGy521Channels` mit elf Schlüsseln). Web `pnpm test` 86/86, `pnpm typecheck`,
+  `pnpm build`. Redocly-Lint ohne neue Warnung. `pio run` für `lilygo_t_display_s3_amoled` grün.
+- Web gegen einen Node-Mock (Scratchpad): Blase wandert zur höheren Seite, grün und ohne Linie innerhalb ±1°, am Rand
+  geklemmt, Randwinkel entspricht `dir`; Mobilbreite geprüft. Dabei fiel auf, dass das Randlabel bei seitlicher Neigung das
+  Glas überlappte; der Abstand hängt jetzt von der Richtung ab.
+- **Am Gerät geprüft (LilyGo, OTA + UI-Paket):** Display flüssig, Wischen und zweite Seite funktionieren. Nick war
+  vertauscht: `pitch = atan2(−ax, …)` ist positiv, wenn die X-Seite *unten* liegt, `roll` positiv, wenn die Y-Seite
+  *oben* liegt. Bildschirm-Zuordnung und `dir` auf `pitch` > 0 → oben gedreht (`dir = atan2(roll, pitch)`), danach
+  bestätigt. Im Web ruckelte die Blase, weil der Snapshot nur einmal pro Sekunde kommt (`lastPushMs_`, 1000 ms):
+  `LevelCard` gleitet jetzt per `requestAnimationFrame` zur neuen Position (Zeitkonstante 300 ms).
+- **Skala (Nutzerwunsch: Blase blieb ab 15° am Rand hängen):** zweiteilig. 0–15° füllen die inneren 60 % des
+  Radius (Empfindlichkeit wie vorher), 15–45° die äußeren 40 %; ein gestrichelter Ring bei 15° markiert den Wechsel.
+  Ab 45° einer Achse (`max(|roll|, |pitch|)`, Rückkehr unter 43°) zeigt die Karte eine **gerade Libelle**. Das Kriterium
+  ist die Achse, nicht `hypot` (30°/30° bleibt rund). Mathematik gespiegelt in `LevelBubble.h` / `levelBubble.ts`
+  (`levelBubble`, `levelStraight`, `levelStraightMode`) mit denselben Tests (Firmware 122, Web 95).
+- **Gerade Libelle zeigt die *andere* Achse (Nutzerkorrektur):** Erst zeigte sie die dominante Achse (−90…90°), und
+  Nick lief waagerecht. Richtig ist: Steht das Gerät auf der Kante, bleibt die andere Achse auszurichten. Bei dominantem
+  Nick läuft **Roll waagerecht**, bei dominantem Roll **Nick senkrecht** (oben = positiv, wie im Glas). Skala wie im Glas
+  (fein bis 15°, Ende bei 45°), Marken bei 0 und ±15°, grün innerhalb ±1°; „senkrecht“ erscheint, wenn die dominante
+  Achse bei 90° ± 1° liegt.
+- **„Neigung“ auf der Karte** ist kein Kanal, sondern `hypot(roll, pitch)` (Länge der Richtungslinie); `tilt` ist der
+  Winkel der Z-Achse und weicht bei großen Winkeln davon ab.
+- **Offen am Gerät:** gerade Libelle am Display (Aussehen, Umschalten bei 45°), LVGL-Pool-Reserve bei 16 Seiten.

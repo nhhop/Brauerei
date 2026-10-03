@@ -56,15 +56,18 @@ void test_mask_rejects_unknown_empty_and_non_array() {
   TEST_ASSERT_EQUAL_STRING("channels must be an array", err);
 }
 
-void test_mask_ten_gy521_keys() {
-  JsonDocument doc = parse(R"({"channels":["gz","pitch","temp","tilt"]})");
+void test_mask_eleven_gy521_keys() {
+  JsonDocument doc = parse(R"({"channels":["gz","pitch","temp","tilt","dir"]})");
   uint16_t m = 0;
   const char* err = nullptr;
-  TEST_ASSERT_TRUE(parseChannelMask(doc.as<JsonObjectConst>(), kGy521Channels, 10, 1, m, err));
-  TEST_ASSERT_EQUAL_UINT16(0x200 | 0x001 | 0x008 | 0x004, m);
+  TEST_ASSERT_EQUAL(11, kGy521ChannelCount);
+  TEST_ASSERT_TRUE(parseChannelMask(doc.as<JsonObjectConst>(), kGy521Channels,
+                                    kGy521ChannelCount, 1, m, err));
+  TEST_ASSERT_EQUAL_UINT16(0x400 | 0x200 | 0x001 | 0x008 | 0x004, m);
   // A key from before the angles were split up is unknown now.
   JsonDocument old = parse(R"({"channels":["angle"]})");
-  TEST_ASSERT_FALSE(parseChannelMask(old.as<JsonObjectConst>(), kGy521Channels, 10, 1, m, err));
+  TEST_ASSERT_FALSE(parseChannelMask(old.as<JsonObjectConst>(), kGy521Channels,
+                                     kGy521ChannelCount, 1, m, err));
 }
 
 // ── normalizeLegacyGy521 ─────────────────────────────────────────────────────
@@ -137,7 +140,7 @@ int main(int, char**) {
   RUN_TEST(test_mask_absent_is_default);
   RUN_TEST(test_mask_selects_keys_by_position);
   RUN_TEST(test_mask_rejects_unknown_empty_and_non_array);
-  RUN_TEST(test_mask_ten_gy521_keys);
+  RUN_TEST(test_mask_eleven_gy521_keys);
   RUN_TEST(test_legacy_gy521_gets_pitch_channel);
   RUN_TEST(test_legacy_gy521_calibration_moves_to_pitch);
   RUN_TEST(test_migrated_gy521_and_other_types_untouched);

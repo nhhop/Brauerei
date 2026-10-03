@@ -145,8 +145,8 @@ paths:
         Serialized into a fixed 4160-byte buffer (`kSnapshotCap`). If the buffer
         cannot be allocated, or the registry no longer fits it, the response is
         `503` — never a truncated or empty `200`. Every exposed sensor channel is
-        its own entry of roughly 150–200 bytes; a GY521 with all ten channels
-        takes about 1.6 KB, so two of those leave little room for anything else.
+        its own entry of roughly 150–200 bytes; a GY521 with all eleven channels
+        takes about 1.8 KB, so two of those leave little room for anything else.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -3369,7 +3369,9 @@ components:
             (`pitch` rotation about Y and `roll` about X in °, −90…90; `tilt`
             angle of the Z axis against the vertical in °, 0…180; `temp` chip
             temperature in °C; `ax`/`ay`/`az` acceleration in g; `gx`/`gy`/`gz`
-            rotation rate in °/s). Absent → all channels; for `GY521` only
+            rotation rate in °/s; `dir` direction of the lean in °, 0…360,
+            `atan2(roll, pitch)` — the side that is up, 0 = the −X side,
+            90 = +Y, 180 = +X, 270 = −Y; invalid below 0.5° of tilt). Absent → all channels; for `GY521` only
             `pitch`. The measurement itself always
             runs; the array only decides which channels appear in the snapshot
             (as `<id>.<channel>`, in the order listed here). `derived` requires
@@ -3848,7 +3850,10 @@ components:
             base id once every channel is picked. A sensor may appear in several
             entries, i.e. on several cards of the same dashboard. An entry stays
             visible while at least one of its channels exists; the device
-            display shows the same selection per page.
+            display shows the same selection per page. An entry with both
+            `pitch` and `roll` (a GY521) is drawn as a spirit level, on the
+            web card and on the device display (there with a second page for
+            its other channels); `dir` adds the lean direction.
           items: { type: string }
         actuators: { type: array, items: { type: string } }
         controllers: { type: array, items: { type: string } }
@@ -3892,7 +3897,10 @@ components:
             base id once every channel is picked. A sensor may appear in several
             entries, i.e. on several cards of the same dashboard. An entry stays
             visible while at least one of its channels exists; the device
-            display shows the same selection per page.
+            display shows the same selection per page. An entry with both
+            `pitch` and `roll` (a GY521) is drawn as a spirit level, on the
+            web card and on the device display (there with a second page for
+            its other channels); `dir` adds the lean direction.
           items: { type: string }
         actuators: { type: array, items: { type: string } }
         controllers: { type: array, items: { type: string } }
