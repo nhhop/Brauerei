@@ -5911,3 +5911,113 @@ nicht bei jedem Tick; je für GY521, Tilt und BME280). `SensActCtrl` `pio test -
   ohne Neustart von selbst an. SDA im Betrieb abgezogen → sofort `ok:false`, Board läuft weiter.
 - Beim Abziehen des ganzen Moduls startete das Board neu (`resetReason: power_on`, also Stromunterbrechung, nicht die
   Firmware).
+
+## 2026-10-03 — GY-521 als Mehrkanal-Sensor (Branch `feat/gy521-channels`)
+
+Umsetzung des PLAN.md-Backlog-Punkts: Ein GY521-Item hat jetzt einzeln wählbare Kanäle nach dem Muster von
+YF-S201/HC-SR04. Unterwegs ist ein Fehler im Neigungsfilter aufgefallen und behoben worden.
+
+**Entscheidungen** (mit dem Nutzer, teils im Lauf der Umsetzung revidiert):
+- **Ein Sensor-Objekt:** `GY521TiltSensor` bekommt eine Kanalmaske und reicht die Rohkanäle seines eigenen
+  `GY521Sensor`-Members durch, pro Tick bleibt es ein I²C-Zugriff. Zwei Item-Typen auf demselben Chip scheiterten
+  ohnehin an der I²C-Adressprüfung.
+- **Kanäle**, in dieser Reihenfolge (16-Bit-Maske):
+  - `pitch`: Drehung um Y, die Neigung der X-Achse gegen die Waagerechte, −90…90°.
+  - `roll`: Drehung um X, dasselbe für die Y-Achse.
+  - `tilt`: Neigung der Z-Achse gegen die Senkrechte, 0…180°, unabhängig von der Kipprichtung; das ist die
+    iSpindel-Größe.
+  - `temp`: Chip-Temperatur in °C, liest einige Grad über Raumtemperatur.
+  - `ax`/`ay`/`az` in g, `gx`/`gy`/`gz` in °/s.
+
+  Einen Gierwinkel (Drehung um Z) gibt es nicht: Die Schwerkraft ändert sich dabei nicht, nur das Integral von `gz`
+  bliebe, und das driftet. Als Kanal für Sensoren mit Magnetometer steht er im PLAN.md-Backlog. Zunächst war ein
+  einzelner Winkel `angle` umgesetzt; als der Nutzer die Winkel um die anderen Achsen wollte, wurde daraus
+  `pitch`/`roll`/`tilt`.
+- **Alle Kanäle sind benannt** (`<id>.<key>`), statt den Winkel als Basiskanal unter der nackten ID zu lassen.
+  Bestands-Referenzen werden dafür migriert. Physisch ist `pitch` Kanal 0, so wie der Winkel früher.
+- **Fehlt `channels`, ist nur `pitch` aktiv**, die bisherige Bedeutung von GY521. Das ist bewusst anders als bei
+  YF-S201/HC-SR04.
+- **Kalibrierung bleibt bei `kMaxChannels = 4`.** Kurz war 8 umgesetzt; der Nutzer hat das verworfen, weil die Rohachsen
+  keine Kalibrierung brauchen. Der Filter rechnet ohnehin mit den unkalibrierten Werten, eine Kalibrierung von `ax`
+  verschöbe also nur die Anzeige. Deshalb stehen Winkel und `temp` vorn und sind bei jeder Auswahl kalibrierbar.
+  Jede Checkbox bleibt einzeln wählbar.
+
+**Filter-Fehler (Root Cause):**
+- Der Beschleunigungswinkel `atan2(−ax, √(ay²+az²))` beschreibt eine Drehung um Y, integriert wurde aber die Drehrate
+  um X (`gx`). Beim Kippen um Y folgte der Winkel deshalb nur über den 2-%-Beschleunigungsanteil, und eine Drehung um X
+  verfälschte ihn.
+- Außerdem integrierte der Filter den Nullpunkt-Versatz des Kreisels (am LilyGo ≈ 2 °/s) mit. Das ergab einen
+  dauerhaften Fehler von Versatz × Zeitkonstante, gemessen +1,2°.
+- **Fix:** `pitch` integriert `gy`, `roll` integriert `gx`. Der Filter arbeitet mit einer festen Zeitkonstante
+  (`kTauS` 0,5 s, `alpha` aus `dt`) statt mit einem festen Faktor pro Tick. Ein Integralanteil (`kBiasGain` 0,1/s²)
+  lernt den Versatz in ≈ 20 s. Bei einem Ausfall des Moduls werden die gelernten Versätze verworfen.
+
+**Snapshot-Größe** (vorab gerechnet, am Gerät gemessen): Der LilyGo hatte 1552 B. Gerechnet waren ≈ 155–165 B je
+Kanal im ungünstigsten Fall. Gemessen sind es mit allen zehn GY521-Kanälen 2965 B, die Kanäle selbst 1561 B, also
+≈ 1,2 KB Luft bis `kSnapshotCap` (4160 B). Ein voller GY521 passt auf jedem Board, zwei lassen kaum Platz für den
+Rest (in `openapi.yaml` vermerkt).
+
+**Umsetzung:**
+- **SensActCtrl:**
+  - `GY521Sensor` liest die Temperatur aus `getEvent()` als siebten Kanal `temp`.
+  - `GY521TiltSensor` mit `kChannelPitch … kChannelGz` und `setChannelMask(uint16_t)`; alle Winkel werden immer
+    berechnet. Filter wie oben.
+  - Der native Stub nimmt Beschleunigung und Drehrate per Test-Hook (`gy521AccelG`, `gy521GyroDps`).
+  - Library-README nachgezogen.
+- **Firmware:**
+  - Neuer Header `SensorChannels.h` (Arduino-frei, nativ getestet) mit einem `parseChannelMask` für beliebig viele
+    Keys (YF-S201/HC-SR04 verhalten sich gleich), `normalizeLegacyGy521` und `renameRefs`/`renameLogRefs`.
+  - **Migration in `DynamicItems::loadFromSD`:** Ein GY521 ohne `channels` bekommt `["pitch"]`, eine Kalibrierung auf
+    `channel: ""` wandert nach `pitch`. Noch bevor die übrigen Stores laden, werden exakte Treffer `sensor/<id>` in
+    `logs.json`, `alarms.json`, `programs.json` und `profiles.json` zu `sensor/<id>.pitch`. Ein Log mit geänderter
+    Serie beginnt eine neue CSV, weil das Chart Live-Werte über den CSV-Kopf auflöst; alte Sessions behalten ihren
+    Kopf. `registry.json` wird zuletzt geschrieben, ein Absturz dazwischen wiederholt die idempotente Umbenennung.
+  - Unverändert bleiben Dashboards (`sensor/<id>` heißt dort „ganzer Sensor“) und Regler (nackte ID, lesen
+    `channel(0)` = `pitch`). Das MQTT-Topic wird `…/sensor/<id>/pitch`; kein Board abonniert es (geprüft).
+  - `openapi.yaml`: Kanäle, Migration, geänderte Winkel-Kennlinie (eine vorhandene poly-Kalibrierung neu machen),
+    Snapshot-Größe, Kalibrierbarkeit.
+- **Web:** Zehn Checkboxen, gruppiert in Winkel (um Y / um X / gesamt), Beschleunigung, Drehrate und Temperatur.
+  Gesendet wird in Firmware-Reihenfolge. Ein Bestandsitem ohne `channels` zeigt nur `pitch`.
+
+**Verifikation:**
+- **Tests und Builds:**
+  - SensActCtrl `pio test -e native` 304/304. Neu: Kanalform und Maske, Vorzeichen von `pitch`/`roll`/`tilt` bei
+    ±30°-Drehungen, `tilt` bis 180°, Kreiselachse je Winkel, Lernen des Versatzes, 4er-Kalibriergrenze.
+  - Firmware `pio test -e native` 108/108 (+9 `test_sensor_channels`).
+  - `pio run` für esp32dev, lolin_s2_mini und LilyGo grün, Redocly-Lint ohne neue Warnung.
+  - Web: `pnpm typecheck`, `pnpm test` 62/62, `pnpm build`.
+- **LilyGo (OTA, echter GY-521 am `i2c-board`), Migration:**
+  - Ein Backup mit Legacy-`gyro` wurde zurückgespielt, mit Kalibrierung auf `""` und `sensor/gyro` in Log, Alarm,
+    Programm und Profil.
+  - Nach dem Boot steht überall `gyro.pitch`, die Kalibrierung liegt unter `pitch`. Das Log hat eine neue Session,
+    das Dashboard ist unverändert (die Karte heißt jetzt „gyro.pitch“). Ein Neustart migriert nichts erneut.
+  - Das erste Branch-Zwischenstadium (`gyro.angle`) wurde am Gerät genauso geprüft, einschließlich Reboot-Persistenz.
+- **LilyGo, Display:** Die Gruppenseite zeigt alle zehn Zeilen; die oberste ragt am runden Rand ins Titel-Label
+  (in PLAN.md, vom Nutzer als unkritisch eingestuft).
+- **LilyGo, Kanäle:** Per Formular alle zehn gewählt; die Gruppenkarte zeigt sie, kalibrierbar sind genau
+  `pitch`/`roll`/`tilt`/`temp`.
+- **LilyGo, Versatz-Schätzung:** Flach nach einer Minute liegen `pitch`/`roll` ±0,1° am reinen Beschleunigungswinkel,
+  vorher waren es konstant +1,2°.
+- **Kipplagen** (vom Nutzer gestellt; Abweichungen von ±90/180 aus den Nullpunkt-Fehlern des Beschleunigungssensors,
+  az 0,96 g flach, und schräg aufliegendem Modul):
+
+  | Lage | `pitch` | `roll` | `tilt` |
+  |---|---|---|---|
+  | lange Kante | 86,6 | −1,2 | 93,0 |
+  | kurze Kante | −3,4 | −83,5 | 95,5 |
+  | kopfüber | −6,6 | 1,8 | 173,5 |
+
+- **Langsames Kippen, mit 5 Hz aufgezeichnet:** `pitch` steigt mit rund 10 °/s bei `gy` +7…+10 °/s, `roll` fällt bei
+  negativem `gx`. Die gefilterten Winkel liegen während der Bewegung ±1–3° am Beschleunigungswinkel; das
+  Kreisel-Vorzeichen stimmt.
+- **Nebenbefund:** Der Nutzer hatte zwischendurch den Test-Offset (+10° auf den Winkel) neu kalibriert. Er wurde dabei
+  bei −2,5° Lage aufgenommen und verschob die Anzeige. Das war kein Fehler; der Offset ist inzwischen entfernt.
+
+**Neu in PLAN.md:**
+- „Regler können keine Kanal-ID `<id>.<key>` als Eingang nutzen“: bestand schon, betrifft durch die Migration jetzt auch
+  GY521-Regler.
+- „Gierwinkel für IMUs mit Magnetometer“.
+- Der Tilt-Punkt ist auf das Offene reduziert: Einbaulage im Schwimmkörper und SG-Kalibrierung.
+
+**Einschränkung:** Wie bei der Bus-Migration versteht ältere Firmware die migrierten Configs nicht mehr. Vor einem
+Downgrade das Backup von vorher einspielen.

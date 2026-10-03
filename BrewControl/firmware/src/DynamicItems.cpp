@@ -7,6 +7,7 @@
 
 #include "BoardPins.h"
 #include "SdLock.h"
+#include "SensorChannels.h"
 #include "WebhookService.h"
 
 using namespace SensActCtrl;
@@ -255,27 +256,6 @@ DynamicItems::Result DynamicItems::resolveRemoteTransport(const JsonObject& cfg,
 
 // ── Sensor ────────────────────────────────────────────────────────────────
 
-// Parses the optional "channels" array of a multi-channel sensor config into a
-// bit mask (bit 0 = key0, bit 1 = key1). Absent → both channels. Returns false
-// with err set on a non-array, empty array or unknown key.
-static bool parseChannelMask(const JsonObject& cfg, const char* key0,
-                             const char* key1, uint8_t& mask,
-                             const char*& err) {
-  mask = 3;
-  if (cfg["channels"].isNull()) return true;
-  JsonArrayConst arr = cfg["channels"].as<JsonArrayConst>();
-  if (arr.isNull()) { err = "channels must be an array"; return false; }
-  mask = 0;
-  for (JsonVariantConst v : arr) {
-    const char* k = v | "";
-    if (strcmp(k, key0) == 0)      mask |= 1;
-    else if (strcmp(k, key1) == 0) mask |= 2;
-    else { err = "unknown channel"; return false; }
-  }
-  if (!mask) { err = "channels must not be empty"; return false; }
-  return true;
-}
-
 DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
                                                      Registry& reg) {
   const char* type = cfg["type"] | "";
@@ -350,16 +330,25 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
   } else if (strcmp(type, "GY521") == 0) {
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x68);
+    uint16_t    mask;
+    const char* err = nullptr;
+    // Absent → pitch only, the one angle a GY521 had before it had channels.
+    if (!parseChannelMask(cfg, kGy521Channels, kGy521ChannelCount,
+                          GY521TiltSensor::kChannelPitch, mask, err))
+      return {false, err};
     e->bus = acquireBus(*bus);
-    e->ptr = std::make_unique<GY521TiltSensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
+    auto sensor = std::make_unique<GY521TiltSensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
+    sensor->setChannelMask(mask);
+    e->ptr = std::move(sensor);
   } else if (strcmp(type, "YF-S201") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
     float cal = cfg["calibration"] | YF_S201Sensor::kHzPerLiterPerMin;
     if (cal <= 0.0f) return {false, "invalid calibration"};
-    uint8_t     mask;
+    static const char* const kKeys[] = {"rate", "volume"};
+    uint16_t    mask;
     const char* err = nullptr;
-    if (!parseChannelMask(cfg, "rate", "volume", mask, err)) return {false, err};
+    if (!parseChannelMask(cfg, kKeys, 2, 3, mask, err)) return {false, err};
     // A non-default legacy `calibration` is applied as a gain by the
     // calibration wrapper below; the sensor itself stays at its default.
     auto sensor = std::make_unique<YF_S201Sensor>(e->id.c_str(), pin);
@@ -373,9 +362,10 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     int echo = cfg["echo"] | -1;
     if (trig < 0) return {false, "missing trig"};
     if (echo < 0) return {false, "missing echo"};
-    uint8_t     mask;
+    static const char* const kKeys[] = {"distance", "derived"};
+    uint16_t    mask;
     const char* err = nullptr;
-    if (!parseChannelMask(cfg, "distance", "derived", mask, err)) return {false, err};
+    if (!parseChannelMask(cfg, kKeys, 2, 3, mask, err)) return {false, err};
     if ((mask & HCSR04Sensor::kChannelDerived) && cfg["factor"].isNull() &&
         !cfg["channels"].isNull())
       return {false, "derived channel needs factor"};
@@ -1283,6 +1273,41 @@ DynamicItems::Result DynamicItems::setControllerLabel(const char* id, Registry& 
 
 // ── Persistence ───────────────────────────────────────────────────────────
 
+namespace {
+// The angle of these GY521s moved from "<id>" to "<id>.pitch"
+// (normalizeLegacyGy521): rewrite "sensor/<id>" in the stores that keep sensor
+// refs. Runs before those stores load (main.cpp). Dashboards stay as they are:
+// there "sensor/<id>" means the whole sensor, which still resolves; controllers
+// take the bare id and read channel 0, which is pitch.
+void migrateGy521Refs(fs::FS& sd, const std::vector<std::string>& ids) {
+  static const char* const kFiles[] = {"/config/logs.json", "/config/alarms.json",
+                                       "/config/programs.json", "/config/profiles.json"};
+  for (const char* path : kFiles) {
+    SdLock sdLock;
+    File f = sd.open(path);
+    if (!f) continue;
+    JsonDocument doc;
+    const bool ok = deserializeJson(doc, f) == DeserializationError::Ok;
+    f.close();
+    if (!ok) continue;
+    const bool logs = strcmp(path, "/config/logs.json") == 0;
+    bool changed = false;
+    for (const std::string& id : ids) {
+      const std::string from = "sensor/" + id;
+      const std::string to   = from + ".pitch";
+      changed |= logs ? renameLogRefs(doc.as<JsonArray>(), from.c_str(), to.c_str())
+                      : renameRefs(doc.as<JsonVariant>(), from.c_str(), to.c_str());
+    }
+    if (!changed) continue;
+    f = sd.open(path, FILE_WRITE);
+    if (!f) continue;
+    serializeJson(doc, f);
+    f.close();
+    Serial.printf("[items] GY521 pitch refs rewritten in %s\n", path);
+  }
+}
+}  // namespace
+
 void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   JsonDocument doc;
   {
@@ -1315,8 +1340,10 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   }
 
   bool migrated = false;
+  std::vector<std::string> gy521Migrated;
   for (JsonObject cfg : doc["sensors"].as<JsonArray>()) {
     migrated |= normalizeLegacyItem(cfg, buses_, currentBoard());
+    if (normalizeLegacyGy521(cfg)) gy521Migrated.push_back(cfg["id"] | "");
     addSensorNoBegin(cfg, reg);
   }
   for (JsonObject cfg : doc["actuators"].as<JsonArray>())
@@ -1333,10 +1360,15 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
     Serial.printf("[pins] GPIO %d conflict (%s):%s\n", c.gpio, c.reason.c_str(), who.c_str());
   }
 
-  if (migrated) {
-    Serial.println("[buses] moved items from before bus definitions onto buses");
-    saveToSD(sd);
+  if (migrated) Serial.println("[buses] moved items from before bus definitions onto buses");
+  // The refs first, the registry last: a crash in between leaves the GY521
+  // unmigrated, and the next boot repeats the (idempotent) rename.
+  if (!gy521Migrated.empty()) {
+    for (const std::string& id : gy521Migrated)
+      Serial.printf("[items] GY521 %s: angle is now %s.pitch\n", id.c_str(), id.c_str());
+    migrateGy521Refs(sd, gy521Migrated);
   }
+  if (migrated || !gy521Migrated.empty()) saveToSD(sd);
 }
 
 std::string DynamicItems::storedBusesJson() const {

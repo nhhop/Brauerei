@@ -143,6 +143,31 @@ void test_multi_channel_and_cumulative_rules() {
   TEST_ASSERT_EQUAL(CalibratedSensor::Result::BadChannel, c.calibrateGain(2, 1, 1));
 }
 
+// Ten continuous channels like a fully enabled GY-521: the first kMaxChannels
+// take a calibration, the rest pass through -- which is why the GY-521 lists
+// its angles and temperature first.
+class TenChannelSensor : public Sensor {
+ public:
+  const char* id() const override { return "imu"; }
+  size_t channelCount() const override { return 10; }
+  Channel channel(size_t i) const override {
+    static const char* const kKeys[] = {"pitch", "roll", "tilt", "temp", "ax",
+                                        "ay", "az", "gx", "gy", "gz"};
+    return Channel{kKeys[i], contMeta(), Reading(10.0f + i, 1, true)};
+  }
+  void tick() override {}
+};
+
+void test_channels_beyond_max_pass_through() {
+  TenChannelSensor s;
+  CalibratedSensor c(s);
+  TEST_ASSERT_EQUAL(CalibratedSensor::Result::Ok, c.calibrateOffset(3, 13.0f, 11.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 11.0f, c.channel(3).reading.value);
+  TEST_ASSERT_EQUAL(CalibratedSensor::Result::NotCalibratable, c.calibrateOffset(4, 14.0f, 0.0f));
+  TEST_ASSERT_FALSE(c.setCalibration(9, 0.0f, 0.0f, 2.0f));
+  TEST_ASSERT_FLOAT_WITHIN(0.0001f, 19.0f, c.channel(9).reading.value);
+}
+
 void test_binary_is_not_calibratable() {
   MockSensor m("d", {ValueKind::Binary, Quantity::None, "", 0, 1, 1});
   CalibratedSensor c(m);
@@ -377,6 +402,7 @@ int main(int, char**) {
   RUN_TEST(test_precision_with_large_raw_counts);
   RUN_TEST(test_invalid_reading_is_not_calibrated);
   RUN_TEST(test_multi_channel_and_cumulative_rules);
+  RUN_TEST(test_channels_beyond_max_pass_through);
   RUN_TEST(test_binary_is_not_calibratable);
   RUN_TEST(test_clear_restores_identity);
   RUN_TEST(test_restore_from_persisted_values);
