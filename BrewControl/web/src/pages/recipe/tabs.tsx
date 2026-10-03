@@ -5,6 +5,8 @@ import { inp } from '../../ui';
 import { Card, Field, NumInput } from './fields';
 import { IngredientCard } from './IngredientCard';
 import { PhaseList } from './PhaseList';
+import { StyleCard } from './StyleCard';
+import { StylePicker } from './StylePicker';
 
 export interface TabProps {
   recipe: Recipe;
@@ -35,8 +37,7 @@ export function OverviewTab({ recipe, onChange }: TabProps) {
               onInput={(e) => onChange({ name: e.currentTarget.value })} />
           </Field>
           <Field label="Stil">
-            <input class={`${inp} w-full`} value={recipe.style} placeholder="z.B. Pale Ale"
-              onInput={(e) => onChange({ style: e.currentTarget.value })} />
+            <StylePicker recipe={recipe} onChange={onChange} />
           </Field>
           <Field label="Ausschlagmenge (l)">
             <NumInput value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
@@ -72,6 +73,7 @@ export function OverviewTab({ recipe, onChange }: TabProps) {
           <p class="text-sm text-muted">Katalog nicht geladen, Kennwerte nicht verfügbar.</p>
         )}
       </Card>
+      <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">
           <li>{recipe.ingredients.length} Zutat{recipe.ingredients.length === 1 ? '' : 'en'}</li>

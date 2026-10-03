@@ -5946,3 +5946,30 @@ zählen nicht mit und werden unter der Karte vermerkt.
 - **Prüfung:** Typecheck, 91 Tests, Build (JS gzip 142,4 kB, +1,3 kB). Browser über den Mock mit einem Rezept ohne
   `efficiencyPct`: 13,6 °P, IBU 21 mit 60 min und 14 mit 15 min (von Hand nachgerechnet), Alkohol 5,8 % vol nach
   Hefeauswahl, Vermerke für Freitext-Zeile und Trockenhopfen, keine Konsolenfehler.
+
+## 2026-10-04 — Stilvergleich im Rezept (Branch `feature/rezept-sud-editor`)
+
+Das Rezept lässt sich jetzt einem BJCP-2021-Stil zuordnen, die neue Stil-Karte in der Übersicht zeigt je Kennwert
+(Stammwürze, Restextrakt, Alkohol, Bittere, Farbe) den Stilbereich als Balken mit dem Rezeptwert, „x von y im Stil“
+und ein Abzeichen („im Stil“, „+1,6 über Stil“). Das Stilfeld ist ein Suchfeld (`StylePicker`), die Wahl setzt
+`Recipe.styleId` und den Namen in `style`; Weitertippen macht es wieder zu Freitext. Altrezepte mit Freitextstil
+funktionieren unverändert.
+
+- **Daten:** `web/public/catalog/bjcp-2021.json`, 95 Stile, 3 kB gzip, nur Nummer, Name, Kategorie und die fünf
+  Bereiche (OG/FG in SG, IBU, SRM, ABV). Erzeugt aus den beiden von bjcp.org verlinkten JSON-Konvertierungen
+  (ascholer/bjcp-styleview, beerjson/bjcp-json), die bei 86 Stilen in allen zehn Werten übereinstimmen, und gegen das
+  offizielle PDF (Fassung 1.25, Feb. 2025) geprüft: 73 Stile über einen Parser, 12 per Einzelsuche, 27B–27I einzeln.
+  Die Quellen widersprachen sich bei Saison (Vereinigung aller Stärkestufen gegen Standardstufe) und Specialty IPA
+  (Werte je Unterstil). Saison steht als Standardstufe/hell (5–7 % vol, SRM 5–14), 21B fehlt. Ebenfalls ohne feste
+  Werte und deshalb nicht dabei: Kategorien 28–34, Kellerbier, die provisorischen X1–X5.
+- **Code:** `styleSource.ts` (Laden, Suche), `styleCompare.ts` (reiner Vergleich, SG→°P per `sgToPlato`, SRM→EBC mit
+  dem jetzt exportierten `EBC_PER_SRM`), `StylePicker.tsx`, `StyleCard.tsx`.
+- **Lizenz:** Die BJCP verlangt für Apps eine Genehmigung und einen Hinweistext. Bis zur Zusage nennt die Karte nur
+  Quelle und Copyright, der Satz „mit Genehmigung“ fehlt bewusst. PLAN.md hat dafür einen Punkt als Voraussetzung für
+  Merge und Auslieferung.
+- **Nebenbei behoben:** In `IngredientPicker` (und dem neuen `StylePicker`) blieb die Vorschlagsliste nach einer Auswahl
+  zu, solange das Feld fokussiert blieb. Tippen öffnet sie jetzt wieder.
+- **Prüfung:** Typecheck, 103 Tests, Build (JS gzip 143,7 kB). Browser über den Mock: „alt“ tippen, Altbier wählen,
+  Karte zeigt fünf Zeilen mit nachgerechneten Bereichen (11,0–12,9 °P, 4,3–5,5 % vol, 25–50 IBU, 18–33 EBC), Tippen löscht
+  die Verknüpfung, erneutes Tippen nach einer Auswahl öffnet die Liste, Speichern schreibt `styleId`, die Liste zeigt den
+  Stilnamen, keine Konsolenfehler.

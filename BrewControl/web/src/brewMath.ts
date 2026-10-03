@@ -240,6 +240,8 @@ export function platoFromExtract(extractKg: number, volumeL: number): number {
   return (lo + hi) / 2;
 }
 
+export const EBC_PER_SRM = 1.97;
+
 // Beer colour (EBC) after Morey. Sources: Morey's equation SRM = 1.4922 × MCU^0.6859
 // and EBC = 1.97 × SRM (beerandbrewing.com, Brewfather docs); the EBC→°L step
 // inverts Daniels' SRM = 1.3546 × °L − 0.76. TODO(verify): that last conversion
@@ -249,10 +251,10 @@ export function moreyEbc(rows: { kg: number; ebc: number }[], volumeL: number): 
   const LB_PER_KG = 2.20462;
   const L_PER_GAL = 3.78541;
   const mcu = rows.reduce((sum, r) => {
-    const lovibond = (r.ebc / 1.97 + 0.76) / 1.3546;
+    const lovibond = (r.ebc / EBC_PER_SRM + 0.76) / 1.3546;
     return sum + (lovibond * r.kg * LB_PER_KG) / (volumeL / L_PER_GAL);
   }, 0);
-  return 1.97 * 1.4922 * Math.pow(mcu, 0.6859);
+  return EBC_PER_SRM * 1.4922 * Math.pow(mcu, 0.6859);
 }
 
 // Tinseth: utilisation = bigness(gravity) × boil-time factor.

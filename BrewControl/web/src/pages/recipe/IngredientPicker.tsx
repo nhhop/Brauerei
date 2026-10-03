@@ -18,7 +18,7 @@ export function IngredientPicker({ ingredient, onChange }: {
     <div class="relative min-w-0 flex-1 basis-40">
       <input class={`${inp} w-full ${ingredient.ingredientId ? 'pr-7' : ''}`} placeholder="Name"
         value={ingredient.name}
-        onInput={(e) => onChange({ name: e.currentTarget.value, ingredientId: undefined })}
+        onInput={(e) => { onChange({ name: e.currentTarget.value, ingredientId: undefined }); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)} />
       {ingredient.ingredientId && (

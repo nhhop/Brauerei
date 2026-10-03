@@ -85,6 +85,7 @@ export interface Recipe {
   name: string;
   description: string;
   style: string;
+  styleId?: string; // BJCP 2021 number the style text was picked from; unset = free text
   volumeL: number;
   efficiencyPct?: number; // Sudhausausbeute; unset in old recipes, read via DEFAULT_EFFICIENCY
   status: 'draft' | 'final';
