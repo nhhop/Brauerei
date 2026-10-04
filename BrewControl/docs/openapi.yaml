@@ -2277,7 +2277,8 @@ paths:
           description: |
             Validation failed. Body is one of `invalid JSON`, `invalid mode`,
             `invalid background`, `invalid accent`, `invalid secondary`,
-            `invalid channel`,
+            `invalid gradient color`, `invalid gradient angle`,
+            `invalid gradient intensity`, `invalid channel`,
             `invalid utcOffsetSec`, `invalid dstOffsetSec`, `invalid timeFormat`,
             `invalid dateFormat`, `invalid mqtt mode`,
             `embedded broker not supported on this board`, `invalid mqtt port`,
@@ -4517,6 +4518,23 @@ components:
           pattern: "^#[0-9a-fA-F]{6}$"
           description: Second series color, used for controller output bars.
         background: { type: string, enum: [neutral, warm, cool] }
+        gradient:
+          $ref: "#/components/schemas/GradientSettings"
+
+    GradientSettings:
+      type: object
+      description: >
+        Diagonal color wash behind the web UI. The stops carry only hue and chroma
+        (the UI keeps the page background's lightness), so the same values work in
+        light and dark mode. Devices that predate it omit the object (= off).
+      required: [enabled, from, via, to, angle, intensity]
+      properties:
+        enabled: { type: boolean }
+        from: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        via: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        to: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+        angle: { type: integer, minimum: 0, maximum: 360, description: CSS gradient angle in degrees. }
+        intensity: { type: integer, minimum: 0, maximum: 100, description: "How strongly the stops tint the background, in percent." }
 
     FirmwareSettings:
       type: object

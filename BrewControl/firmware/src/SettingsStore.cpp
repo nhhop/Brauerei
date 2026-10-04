@@ -18,6 +18,7 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* a = theme["accent"])     accent_     = a;
     if (const char* s = theme["secondary"])  secondary_  = s;
     if (const char* b = theme["background"]) background_ = b;
+    readGradient_(theme["gradient"].as<JsonObject>());
   }
   JsonObject fw = doc["firmware"].as<JsonObject>();
   if (!fw.isNull()) {
@@ -93,6 +94,16 @@ void SettingsStore::readEnergy_(const JsonObject& energy) {
   // "wakeCause" is read-only (GET /api/settings) — never read from a patch.
 }
 
+void SettingsStore::readGradient_(const JsonObject& g) {
+  if (g.isNull()) return;
+  if (g["enabled"].is<bool>()) gradientEnabled_ = g["enabled"].as<bool>();
+  if (const char* c = g["from"]) gradientFrom_ = c;
+  if (const char* c = g["via"])  gradientVia_  = c;
+  if (const char* c = g["to"])   gradientTo_   = c;
+  if (g["angle"].is<int>())      gradientAngle_     = g["angle"].as<int>();
+  if (g["intensity"].is<int>())  gradientIntensity_ = g["intensity"].as<int>();
+}
+
 void SettingsStore::saveToSD(fs::FS& sd) const {
   SdLock sdLock;
   sd.mkdir("/config");
@@ -109,6 +120,13 @@ String SettingsStore::serialize() const {
   theme["accent"]     = accent_.c_str();
   theme["secondary"]  = secondary_.c_str();
   theme["background"] = background_.c_str();
+  JsonObject gradient = theme["gradient"].to<JsonObject>();
+  gradient["enabled"]   = gradientEnabled_;
+  gradient["from"]      = gradientFrom_.c_str();
+  gradient["via"]       = gradientVia_.c_str();
+  gradient["to"]        = gradientTo_.c_str();
+  gradient["angle"]     = gradientAngle_;
+  gradient["intensity"] = gradientIntensity_;
   JsonObject fw = doc["firmware"].to<JsonObject>();
   fw["channel"]   = fwChannel_.c_str();
   fw["autoCheck"] = fwAutoCheck_;
@@ -181,6 +199,7 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* a = theme["accent"])     accent_     = a;
     if (const char* s = theme["secondary"])  secondary_  = s;
     if (const char* b = theme["background"]) background_ = b;
+    readGradient_(theme["gradient"].as<JsonObject>());
   }
   JsonObject fw = patch["firmware"].as<JsonObject>();
   if (!fw.isNull()) {

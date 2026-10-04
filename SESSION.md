@@ -6309,6 +6309,16 @@ Auslöser: Auf dem LilyGo fehlten Rezepte und Rechner, weil ein Tar mit dem alte
 
 **Nachtrag, Stilauswahl blieb leer (UTF-16):** Auf dem LilyGo war der Stilvergleich sichtbar, die Auswahl aber leer. Ursache: Die Datei wurde mit dem README-Befehl `git show … > bjcp-2021.json` in Windows PowerShell 5.1 angelegt; `>` schreibt dort UTF-16 mit BOM (33.192 statt 16.493 Bytes, `FF FE 7B 00 …`). Der Server lieferte die Datei korrekt (gzip, 200), aber `fetch(...).json()` scheitert an UTF-16, `useStyles` blieb `null` und still ohne Fehler. Fix: README nutzt `cmd /c "git show … > …"` (schreibt die Bytes unverändert, in PowerShell geprüft: 16.493 Bytes, gleiche MD5), und `vite.config.ts` bricht den Build mit `VITE_STYLE_COMPARISON=1` ab, wenn die Datei kein gültiges UTF-8-JSON ist (geprüft: UTF-16 mit Schalter → Fehler, ohne Schalter → Datei entfernt, korrekte Datei → Build ok). Die falsche Datei im Haupt-Checkout habe ich durch die korrekte aus der Historie ersetzt.
 
+## 2026-10-04 — Web-UI: konfigurierbarer Hintergrund-Verlauf
+
+Die Hintergrund-Tönung (neutral/warm/kalt) bekam einen optionalen Farbverlauf nach Vorbild eines Mockups im Windows-11-Mica-Stil.
+Einstellungen → Darstellung → „Hintergrund-Verlauf“: Schalter, vier Presets (Aurora = Mockup, Glut, Wald, Dämmerung), drei Stopp-Farben, Richtung 0–360°, Intensität 0–100 %.
+
+- **Modell:** `theme.gradient { enabled, from, via, to, angle, intensity }`, optional (ältere Geräte = aus). Die Stopps tragen nur Farbton und Sättigung; die Helligkeit bleibt die von `--bg` (`oklch(from var(--bg) l C H)`), deshalb funktioniert derselbe Verlauf in Hell und Dunkel und kombiniert sich mit der Tönung. Ohne Relative-Color-Support verwirft der Browser die Deklaration, es bleibt der flache `--bg`.
+- **Durchscheinen:** Der Verlauf liegt fix auf `html` (`--bg-gradient`). Dafür verloren NavShell, PageShell, Dashboard (3×) und ReloadRetry ihr deckendes `bg-bg`; die ohnehin halbtransparenten Karten (`--card-bg`) zeigen ihn dann. Ohne Verlauf ändert sich nichts (`html` malt weiter `--bg`).
+- **Firmware:** `SettingsStore` speichert/liefert das Objekt, `POST /api/settings` validiert Hex, Winkel und Intensität (400: `invalid gradient color|angle|intensity`); `openapi.yaml` nachgezogen (`GradientSettings`).
+- **Verifikation:** `pnpm test` (141), `pnpm typecheck`, Redocly-Lint (nur die alte info-license-Warnung), `pio run -e esp32dev` grün. Im Browser (Mock) Dunkel und Hell geprüft: Aurora liefert `#162229 / #1c1f2f / #172226` gegen `#171f26 / #1c1e31 / #1a282f` im Mockup. Noch nicht auf einem Gerät geprüft.
+
 ## 2026-10-04 — Rezepte auf der SD-Karte statt im Browser (Branch `feat/recipes-sd`)
 
 Der Rezeptspeicher lag im `localStorage`, also pro Browser und Gerät. Jetzt liegt jedes Rezept als `/recipes/<id>.json` auf der SD, die Seiten lesen und schreiben über `/api/recipes`.

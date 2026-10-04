@@ -112,7 +112,7 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
   }
 
   return (
-    <div class="flex h-screen bg-bg">
+    <div class="flex h-screen">
       {mobileOpen && (
         <div class="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMobileOpen(false)} />
       )}

@@ -1,14 +1,16 @@
 // BrewControl/web/src/pages/AppearancePage.tsx
 import { useState, useEffect } from 'preact/hooks';
-import type { ThemeSettings } from '../types';
+import type { GradientSettings, ThemeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
-import { applyTheme, DEFAULT_SECONDARY } from '../theme';
+import { applyTheme, DEFAULT_SECONDARY, DEFAULT_GRADIENT, GRADIENT_PRESETS } from '../theme';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { Segmented } from '../components/Segmented';
-import { Contrast, Palette, PaintBucket } from 'lucide-preact';
+import { ToggleSwitch } from '../components/ToggleSwitch';
+import { Slider } from '../components/Slider';
+import { Contrast, Palette, PaintBucket, Blend } from 'lucide-preact';
 
 const SECONDARY_PRESETS: { label: string; value: string }[] = [
   { label: 'Grün',     value: '#22c55e' },
@@ -52,11 +54,27 @@ export function AppearancePage(_: { path?: string }) {
     });
   }
 
+  // Gradient edits apply live; `persist` is false while a slider/picker is still
+  // being dragged and true on release, so the device sees one write per gesture.
+  function updateGradient(partial: Partial<GradientSettings>, persist = true) {
+    setSettings((prev) => {
+      const next = { ...prev, gradient: { ...(prev.gradient ?? DEFAULT_GRADIENT), ...partial } };
+      applyTheme(next);
+      if (persist) updateSettings({ theme: next }).catch(() => {});
+      return next;
+    });
+  }
+
   const header = (
     <header class="mb-6">
       <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Darstellung' }]} />
     </header>
   );
+
+  const g = settings.gradient ?? DEFAULT_GRADIENT;
+  const stops: { key: 'from' | 'via' | 'to'; label: string }[] = [
+    { key: 'from', label: 'Start' }, { key: 'via', label: 'Mitte' }, { key: 'to', label: 'Ende' },
+  ];
 
   if (loading) return <PageShell>{header}<SkeletonList count={3} /></PageShell>;
 
@@ -116,6 +134,54 @@ export function AppearancePage(_: { path?: string }) {
               options={[{ value: 'neutral', label: 'Neutral' }, { value: 'warm', label: 'Warm' }, { value: 'cool', label: 'Kalt' }]}
               onChange={(b) => update({ background: b })} />
           } />
+
+        <SettingsCard title="Hintergrund-Verlauf" icon={Blend}
+          desc="Farbverlauf hinter der Oberfläche; die Karten scheinen durch"
+          control={<ToggleSwitch checked={g.enabled} onChange={(on) => updateGradient({ enabled: on })} />}>
+          {g.enabled && (
+            <div class="space-y-4">
+              <div class="flex flex-wrap items-center gap-2">
+                {GRADIENT_PRESETS.map((p) => {
+                  const active = p.from === g.from && p.via === g.via && p.to === g.to && p.angle === g.angle;
+                  return (
+                    <button key={p.label} type="button" title={p.label}
+                      onClick={() => updateGradient({ from: p.from, via: p.via, to: p.to, angle: p.angle })}
+                      class="h-6 w-12 rounded-md transition-transform hover:scale-105"
+                      style={{
+                        background: `linear-gradient(${p.angle}deg, ${p.from}, ${p.via}, ${p.to})`,
+                        boxShadow: active ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : 'none',
+                      }} />
+                  );
+                })}
+              </div>
+
+              <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                {stops.map((st) => (
+                  <label key={st.key} class="flex items-center gap-2 text-sm text-muted">
+                    <input type="color" value={g[st.key]}
+                      onInput={(e) => updateGradient({ [st.key]: (e.target as HTMLInputElement).value }, false)}
+                      onChange={(e) => updateGradient({ [st.key]: (e.target as HTMLInputElement).value })}
+                      class="h-6 w-6 cursor-pointer rounded border border-border" />
+                    {st.label}
+                  </label>
+                ))}
+              </div>
+
+              <div class="grid grid-cols-[6rem_1fr_3rem] items-center gap-x-3 gap-y-3 text-sm text-muted">
+                <span>Richtung</span>
+                <Slider min={0} max={360} step={1} value={g.angle} color="var(--accent)"
+                  onInput={(v) => updateGradient({ angle: v }, false)}
+                  onChange={(v) => updateGradient({ angle: v })} />
+                <span class="text-right tabular-nums">{g.angle}°</span>
+                <span>Intensität</span>
+                <Slider min={0} max={100} step={1} value={g.intensity} color="var(--accent)"
+                  onInput={(v) => updateGradient({ intensity: v }, false)}
+                  onChange={(v) => updateGradient({ intensity: v })} />
+                <span class="text-right tabular-nums">{g.intensity} %</span>
+              </div>
+            </div>
+          )}
+        </SettingsCard>
       </SettingsGroup>
     </PageShell>
   );

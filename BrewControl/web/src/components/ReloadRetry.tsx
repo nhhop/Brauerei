@@ -42,7 +42,7 @@ export function ReloadRetry({ title, body, targetUrl, retrySecs = 5 }: {
   }, [targetUrl, retrySecs]);
 
   return (
-    <div class="flex min-h-full items-center justify-center bg-bg p-6 text-fg">
+    <div class="flex min-h-full items-center justify-center p-6 text-fg">
       <div class="max-w-md text-center">
         <h1 class="text-xl font-medium tracking-tight">{title}</h1>
         <div class="mt-3 text-sm text-muted">{body}</div>

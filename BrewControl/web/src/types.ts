@@ -538,6 +538,18 @@ export interface PairResult {
   message?: string;
 }
 
+// Diagonal color wash behind the whole UI. The three stops only carry hue and
+// chroma — lightness stays that of the page background, so the same stops work
+// in light and dark mode. Older devices omit it (= off).
+export interface GradientSettings {
+  enabled: boolean;
+  from: string;
+  via: string;
+  to: string;
+  angle: number;       // degrees, CSS convention (90 = left→right)
+  intensity: number;   // 0–100, how strongly the stops tint the background
+}
+
 export interface ThemeSettings {
   mode: 'light' | 'dark' | 'system';
   accent: string;
@@ -545,6 +557,7 @@ export interface ThemeSettings {
   // omit it; the UI falls back to the default green.
   secondary?: string;
   background: 'neutral' | 'warm' | 'cool';
+  gradient?: GradientSettings;
 }
 
 export interface FirmwareSettings {

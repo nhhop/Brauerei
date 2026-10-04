@@ -7,7 +7,7 @@ import type { ComponentChildren } from 'preact';
 
 export function PageShell({ wide, children }: { wide?: boolean; children: ComponentChildren }) {
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full p-4 text-fg md:p-6">
       <div class={wide ? '' : 'mx-auto max-w-4xl'}>{children}</div>
     </div>
   );
