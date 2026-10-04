@@ -574,7 +574,7 @@ void loop() {
       state = BrewControl::captureState(registry, dynamicItems);
       // Rare (a finished AutoTune), so written right here, under the lock
       // that keeps REST from changing the item list mid-save.
-      if (dynamicItems.syncTunedGains()) dynamicItems.saveToSD(deviceFs);
+      if (dynamicItems.syncTunedParams()) dynamicItems.saveToSD(deviceFs);
     }
 #ifdef BREWCTL_HAS_DISPLAY
     // A new alert wakes a dimmed or dark display, as the latched stop does.

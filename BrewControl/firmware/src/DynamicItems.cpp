@@ -1018,7 +1018,7 @@ bool DynamicItems::drivenByController(const char* actuatorId) const {
   return false;
 }
 
-bool DynamicItems::syncTunedGains() {
+bool DynamicItems::syncTunedParams() {
   // Relative: the stored value went through a float→JSON→float round trip.
   auto same = [](float a, float b) {
     return fabsf(a - b) <= 1e-5f * std::max(fabsf(a), fabsf(b)) + 1e-9f;
@@ -1029,26 +1029,61 @@ bool DynamicItems::syncTunedGains() {
     if (deserializeJson(cfg, e->cfgJson) != DeserializationError::Ok) continue;
     const char* type = cfg["type"] | "";
     Controller* c = e->innerPtr ? e->innerPtr.get() : e->ptr.get();
-    float kp, ki, kd;
+
+    // Each helper writes the live value under its config key when it differs
+    // from what is stored; the defaults are those of addControllerNoBegin.
+    bool dirty = false;
+    auto syncF = [&](const char* key, float live, float def) {
+      if (same(live, cfg[key] | def)) return;
+      cfg[key] = live;
+      dirty = true;
+    };
+    auto syncU = [&](const char* key, uint32_t live, uint32_t def) {
+      if (live == (cfg[key] | def)) return;
+      cfg[key] = live;
+      dirty = true;
+    };
+
     if (strcmp(type, "PID") == 0) {
       auto* p = static_cast<PIDController*>(c);
-      kp = p->kp(); ki = p->ki(); kd = p->kd();
+      syncF("Kp", p->kp(), 2.0f);
+      syncF("Ki", p->ki(), 0.1f);
+      syncF("Kd", p->kd(), 0.0f);
     } else if (strcmp(type, "SplitRangePID") == 0) {
       auto* p = static_cast<SplitRangePIDController*>(c);
-      kp = p->kp(); ki = p->ki(); kd = p->kd();
+      syncF("Kp", p->kp(), 2.0f);
+      syncF("Ki", p->ki(), 0.1f);
+      syncF("Kd", p->kd(), 0.0f);
+      syncF("deadband", p->deadband(), 0.05f);
+      syncU("changeover_ms", p->changeoverMs(), 0u);
+    } else if (strcmp(type, "TwoPoint") == 0) {
+      auto* p = static_cast<TwoPointController*>(c);
+      syncF("hyst_low", p->hysteresisLow(), -0.5f);
+      syncF("hyst_high", p->hysteresisHigh(), 0.5f);
+      if (p->inverted() != (cfg["inverted"] | false)) {
+        cfg["inverted"] = p->inverted();
+        dirty = true;
+      }
+    } else if (strcmp(type, "DualStage") == 0) {
+      auto* p = static_cast<DualStageController*>(c);
+      syncF("heat_diff", p->heatDiff(), 0.5f);
+      syncF("cool_diff", p->coolDiff(), 0.5f);
+      syncU("cool_min_on_ms", p->coolMinOnMs(), 0u);
+      syncU("cool_min_off_ms", p->coolMinOffMs(), 0u);
+      syncU("changeover_ms", p->changeoverMs(), 0u);
     } else {
       continue;
     }
-    // Same defaults as addControllerNoBegin.
-    if (same(kp, cfg["Kp"] | 2.0f) && same(ki, cfg["Ki"] | 0.1f) && same(kd, cfg["Kd"] | 0.0f))
-      continue;
-    cfg["Kp"] = kp;
-    cfg["Ki"] = ki;
-    cfg["Kd"] = kd;
+    // The rate limit wraps the controller only while it is set.
+    if (e->innerPtr) {
+      syncF("max_rate_per_sec",
+            static_cast<RateLimitedController*>(e->ptr.get())->maxRatePerSec(), 0.0f);
+    }
+
+    if (!dirty) continue;
     e->cfgJson.clear();
     serializeJson(cfg, e->cfgJson);
-    Serial.printf("[controllers] %s: tuned gains saved (Kp %.4f Ki %.4f Kd %.4f)\n",
-                  e->id.c_str(), kp, ki, kd);
+    Serial.printf("[controllers] %s: tuned parameters saved\n", e->id.c_str());
     changed = true;
   }
   return changed;
