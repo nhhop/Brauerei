@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  deleteRecipe, getRecipe, importLocalRecipes, listRecipes, newRecipe, saveRecipe, type Recipe,
+  deleteRecipe, exportRecipes, getRecipe, importLocalRecipes, importRecipes, listRecipes, newRecipe, saveRecipe,
+  type Recipe,
 } from './recipes';
 
 // A tiny stand-in for /api/recipes: ids → stored recipes.
@@ -68,6 +69,39 @@ describe('recipe store', () => {
     const { files } = mockDevice([recipe('a1')]);
     await deleteRecipe('a1');
     expect(files.size).toBe(0);
+  });
+});
+
+describe('recipe backup file', () => {
+  it('round-trips through export and import, overwriting by id and keeping updatedAt', async () => {
+    const { files } = mockDevice([recipe('a', { updatedAt: 4 }), recipe('b', { updatedAt: 7 })]);
+    const text = await exportRecipes();
+    files.clear();
+    files.set('a', recipe('a', { name: 'changed', updatedAt: 99 }));
+    expect(await importRecipes(text)).toBe(2);
+    expect(files.get('a')!.name).toBe('a');
+    expect(files.get('a')!.updatedAt).toBe(4);
+    expect(files.get('b')!.updatedAt).toBe(7);
+  });
+
+  it.each([
+    ['not json', 'not json', 'keine gültige JSON-Datei'],
+    ['wrong type', JSON.stringify({ type: 'brewcontrol-backup' }), 'keine Rezept-Sicherung'],
+    ['wrong version', JSON.stringify({ type: 'brewcontrol-recipes', version: 2, recipes: [] }), 'nicht unterstützte Version'],
+    ['missing list', JSON.stringify({ type: 'brewcontrol-recipes', version: 1 }), 'Rezeptliste fehlt'],
+    ['bad id', JSON.stringify({ type: 'brewcontrol-recipes', version: 1, recipes: [recipe('ok'), recipe('../x')] }), 'ungültiger ID'],
+  ])('rejects %s without touching the device', async (_name, text, message) => {
+    const { calls } = mockDevice();
+    await expect(importRecipes(text)).rejects.toThrow(message);
+    expect(calls).toEqual([]);
+  });
+
+  it('reports how far it got when a write fails', async () => {
+    let puts = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => (++puts === 2 ? new Response('write failed', { status: 500 }) : new Response(null, { status: 204 }))));
+    const text = JSON.stringify({ type: 'brewcontrol-recipes', version: 1, recipes: [recipe('a'), recipe('b'), recipe('c')] });
+    await expect(importRecipes(text)).rejects.toThrow('1 von 3');
+    expect(puts).toBe(2);
   });
 });
 
