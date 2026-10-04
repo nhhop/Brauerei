@@ -1,6 +1,8 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-02. Noch nicht umgesetzt. Das UI ist als Design-Canvas entworfen:
+Stand: 2026-10-04. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD) und das Sudhaus-Modell der
+Brauanlage (Etappe 1); Wasser-Tab, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
 Dieses Dokument hält die **Entscheidungen und Regeln** fest, die das Design nicht von selbst zeigt.
@@ -197,7 +199,10 @@ Liste und Detailansicht.
 - **Darstellung:** Karte „Wassermenge“ mit Kennzahlen (Hauptguss, Nachguss, Gesamtwasser), Schalter und
   farbigem Balken (Gesamtwasser aufgeteilt in Ausschlag, Verdampfung, Treber, Totraum). Die Rechnung steht in
   einem Aufklappbereich „Berechnung“, standardmäßig zu.
-- Die Verlustwerte kommen als Vorgabe aus dem Sudhaus und lassen sich pro Rezept überschreiben.
+- Toträume, Transferverluste und Verdampfung kommen als Vorgabe aus dem Sudhaus; die Verdampfung lässt
+  sich pro Rezept überschreiben.
+- **Prozessverluste rechnet das Rezept**, nicht die Anlage: Treber (l/kg × Schüttung), Hopfenaufnahme
+  (etwa 5 ml/g, je Produkt weniger), Hefetrub (%) und die Aufnahme durch Kalthopfung.
 
 ### Maischen und Würzekochen
 - **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
@@ -245,7 +250,8 @@ Liste und Detailansicht.
 - **Verfahren (Infusion/Dekoktion)** hat keinen eigenen Schalter mehr. Es ergibt sich aus den Schritten im
   Maischeplan: Enthält er einen Schritt Dekoktion, ist es ein Dekoktionsverfahren. Das Sudhaus bestimmt,
   was möglich ist und wie geheizt wird:
-  - **Maischeheizung** am Gefäß Maischen & Läutern: HERMS, direkt beheizt, RIMS oder Heißwasser-Aufguss.
+  - **Maischeheizung** aus dem Schritt Maischen des Sudhauses: direkt beheizt, HERMS, Kettle-RIMS, RIMS
+    oder Heißwasser-Aufguss.
     Bei Aufguss rechnet das Rezept Zubrühmengen statt Heizzeiten.
   - **Dekoktion möglich**, wenn ein zweites beheizbares Gefäß die Teilmaische kochen kann (Schalter an der
     Würzepfanne). Sonst ist die Schritt-Art Dekoktion im Rezept ausgegraut, mit Hinweis aufs Sudhaus.
@@ -289,20 +295,61 @@ Liste und Detailansicht.
 Die Anlage ist in **Sudhaus** und **Gärkeller** geteilt. Die meisten Brauer haben ein Sudhaus, aber oft
 mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
 
-### Sudhaus
-- Profile, z. B. „Hobbybrauanlage 20 l (HERMS)“; Rezepte wählen eins davon.
-- Allgemein: Vorgabe für die Maische-Effizienz, Volumenschwund beim Abkühlen, Malztemperatur.
-- Gefäße:
-  - HLT (Heißwasser)
-  - Maischen & Läutern (getrennt oder kombiniert; Totraum, Treberverlust, Heizrate)
-  - Würzepfanne (Verdampfung, Würzeverlust, Whirlpool in der Pfanne)
-  - Hop Back (an/aus)
+Über den Sudhäusern steht die **Brauerei**: Malztemperatur und Leitungswassertemperatur hängen am Standort,
+nicht an der Anlage, und werden deshalb einmal für alle Sudhäuser gepflegt. Sie sind Vorgabe für die
+Rezept-Rechnungen und Vorbelegung im Sud; die Werte vom Brautag trägt der Sud als Messung ein.
 
-  Jedes Gefäß lässt sich mit einem Regler oder Aktor der Registry verknüpfen.
-- **Keine freie Zuordnung von Rollen zu Gefäßen,** etwa „Hauptguss wird im Maischebottich erhitzt“. Das
-  ist bewusst zurückgestellt, weil es eigene Konfigurationslogik braucht.
-- **Pumpen & Transfers:** je Transfer Weg (von → nach), Antrieb (Aktor, Schwerkraft oder von Hand),
-  Durchfluss, Verlust und der Sud-Tab, in dem er erscheint. Ein eigener allgemeiner Transferverlust entfällt.
+### Sudhaus
+Umgesetzt seit 2026-10-04 (Etappe 1, `web/src/brewhouse.ts`, `/api/brewhouses`, `/api/brewery`), nur auf
+SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasser-Tab (Etappe 2).
+
+- **Prozessschritte werden frei auf Behälter verteilt.** Schritte: Hauptguss bereiten · Maischen · Läutern ·
+  Nachguss bereiten · Kochen · Whirlpool · Hop Back · Kühlen. Pflicht sind Maischen, Läutern und Kochen. Je
+  Schritt gibt es genau einen Behälter; einen Schritt, den kein Behälter übernimmt, gibt es in diesem Sudhaus
+  nicht. Ohne Nachguss kann das Sudhaus nur Vollguss (der Wasser-Tab sperrt dann „Mit Nachguss“).
+- **Kombinationen:** Maischen und Läutern in einem Bottich; Maische-/Würzepfanne mit separatem
+  Läuterbottich; ein Topf für alles (Sack, Malzkorb oder Ablassen in einen Zwischenbehälter);
+  2-Kessel-HERMS (Kochen und Nachguss in einem Kessel). Vorlagen: Ein Topf (Sack/Malzkorb), Ein Topf mit
+  Malzrohr, Maische-/Würzepfanne + Läuterbottich, 2- und 3-Kessel-HERMS, Leer. Alle Geräte stehen dort auf
+  „von Hand“.
+- **Allgemein:** Name, Beschreibung, Maische-Effizienz, Abkühlschwund (Vorgabe 4 %).
+- **Behälter:** Name, Volumen, Totraum (Behälterverlust, z. B. ohne Bodenablauf) und die Schritte, die er
+  übernimmt. Eine Art (HLT, Maischbottich/-pfanne, Läuterbottich, Würzepfanne, All-in-One,
+  Zwischenbehälter …) hakt die Schritte nur vor und wird nicht gespeichert; die Bezeichnung ergibt sich aus
+  den Schritten („…pfanne“, wenn der Behälter beim Maischen direkt beheizt ist, sonst „…bottich“).
+  Verdampfung in l/h gibt es nur am Kochbehälter (das Rezept kann sie später überschreiben), die
+  Läutermethode (Senkboden, Sack, Malzkorb …) nur am Läuterbehälter, rein beschreibend.
+- **Geräte:** Heizquellen, Pumpen, Rührwerke, Ventile (nur Wasserzulauf), Spiralen, Kühler und
+  Kondensatoren. Jedes hat einen Ort (Behälter oder inline) und ist **„von Hand“ oder „angeschlossen“**.
+  Angeschlossen braucht es eine Registry-Verknüpfung: Heizquelle → Regler oder Aktor, alle anderen → Aktor.
+  Bei Kühler, Kondensator und Spirale ist der Aktor das Kühlwasserventil, eine Kette Kühler → Ventil gibt
+  es nicht. Kühler haben eine Bauart (Eintauch, Platte, Gegenstrom, Eisbad, No-Chill).
+  - Die **HERMS-Spirale** ist ein Gerät, keine Eigenschaft des Behälters: beim Maischen Wärmetauscher, beim
+    Kühlen auch als fest verbauter Eintauchkühler wählbar.
+  - Ein **Dampfkondensator** am Kochbehälter verlangt eine reduzierte Heizleistung beim Kochen.
+- **Heizung je Schritt:** direkt oder indirekt. Indirekt heißt, die Heizquelle sitzt in einem anderen
+  Behälter oder inline: „indirekt über Spirale im HLT“ (HERMS), „indirekt über Würzepfanne“ (Kettle-RIMS)
+  oder „indirekt über RIMS-Rohr“. Jede indirekte Heizung braucht eine Umwälzpumpe. Umwälzen geht auch im
+  Ein-Kessel (Malzrohr), statt Umwälzen auch ein Rührwerk.
+- **Prozessschritte:** je Schritt Heizquelle, Umwälzpumpe, Rührwerk, Wasserzulauf und Heizrate; Kochen
+  zusätzlich Kondensator und Heizleistung in %, Kühlen den Kühler (auch eine Spirale im Kühlbehälter) und
+  die angenommene Kühldauer für die spätere IBU-Rechnung. Vorbelegt wird nur einmal, beim Zuordnen eines
+  Schritts bzw. beim Anlegen eines Geräts: Rührwerk am Behälter beim Maischen, Kondensator am Kochbehälter
+  beim Kochen.
+- **Transfers:** von → nach (inkl. Ausschlagen), Schritt, Antrieb (Pumpe, Schwerkraft, von Hand). Ein
+  Verlust zählt nur bei Pumpe; „kommt im nächsten Schritt zurück“ markiert, dass das Restvolumen wieder
+  eingebracht wird.
+- **Messungen gibt der Prozess vor**, nicht das Sudhaus: eine feste Liste je Schritt (Malz- und
+  Leitungswassertemperatur, Haupt- und Nachgussmenge, Temperaturen, pH, Pfannevoll, Stammwürze vor und
+  nach dem Kochen, Ausschlagmenge, Anstelltemperatur). Das Sudhaus verknüpft jede mit einem Sensor oder
+  lässt sie „von Hand“ (Vorgabe); dann zeigt der Sud ein Eingabefeld und speichert den Wert.
+- **Prüfung:** Fehler sperren das Speichern (leerer Name, Pflichtschritt ohne Behälter, Verweis auf
+  Gelöschtes, Maischen/Kochen ohne Heizquelle, indirekt ohne Pumpe, Pumpentransfer ohne Pumpe,
+  angeschlossen ohne Verknüpfung). Hinweise sperren nicht (Registry-ID fehlt im Snapshot, Kondensator bei
+  100 %, Kühlen ohne Kühler, Sensor-Einheit passt nicht zur Messung). Ein gelöschter Behälter nimmt den Ort
+  seiner Geräte nicht mit, damit eine Heizquelle nicht stillschweigend zum RIMS-Rohr wird; die Prüfung
+  meldet die Lücke.
+- **Prozessverluste gehören nicht zur Anlage** (Treber, Hopfen, Hefetrub, Kalthopfung), siehe Wasser.
 
 ### Gärkeller
 - Gärplätze mit Name, Bauart, Volumen, Trubverlust, druckfest bis, Temperierung und verknüpftem
@@ -353,7 +400,6 @@ mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
   Gärplatz-Wahl).
 - **Stil-Auswahl:** bespricht der Nutzer noch, dazu die Datenquelle der Stiltabelle.
 - **Läutern und Dekoktion** im Tab Maischen.
-- **Rollen frei auf Gefäße verteilen** (siehe Sudhaus).
 - **Datenmodell und Ablage der Sude** auf SD bzw. LittleFS. Die 256-KB-Partition der LittleFS-Boards begrenzt
   Sude, Messreihen und Zutatenlisten. Rezepte liegen seit 2026-10-04 einzeln auf der SD
   (`/recipes/<id>.json`, `/api/recipes`) und gibt es nur auf SD-Boards.
