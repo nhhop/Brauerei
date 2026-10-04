@@ -120,6 +120,14 @@ tags:
       Brewing recipes, one file each on the SD card. Only on boards with an SD
       slot — the LittleFS boards answer 404 for every route here. The firmware
       stores a recipe as the web UI sent it and interprets nothing but its `id`.
+  - name: Brewhouse
+    description: |
+      The brewing system the recipe package calculates with: brewhouses (one
+      file each, `/brewhouses/<id>.json`) and the brewery site values shared by
+      all of them (`/brewery.json`). Only on boards with an SD slot — the
+      LittleFS boards answer 404 for every route here. Like recipes, the
+      documents are owned by the web UI; the firmware checks a brewhouse's `id`
+      and nothing else.
   - name: Settings
     description: Theme, time, firmware channel and remote-transport settings.
   - name: Network
@@ -2220,6 +2228,108 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ── Brewhouse ──────────────────────────────────────────────────────────────
+  /api/brewhouses:
+    get:
+      tags: [Brewhouse]
+      operationId: listBrewhouses
+      summary: List the brewhouses
+      description: |
+        Every `/brewhouses/<id>.json`, complete, in no particular order. There
+        is no index: a site has only a few brewhouses, and the list needs the
+        full objects anyway. Temp files of an interrupted save and other names
+        are skipped. A missing card or directory gives `[]`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All brewhouses, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Brewhouse" }
+
+  /api/brewhouses/{id}:
+    parameters: [{ $ref: "#/components/parameters/BrewhouseId" }]
+    put:
+      tags: [Brewhouse]
+      operationId: putBrewhouse
+      summary: Create or replace a brewhouse
+      description: |
+        The client picks the id. Written to `/brewhouses/<id>.json` via a
+        temporary file, so a power cut during the save leaves the previous
+        version. The body is re-serialized, not byte-for-byte; the 16 KB body
+        limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Brewhouse" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Brewhouse]
+      operationId: deleteBrewhouse
+      summary: Delete a brewhouse
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/brewery:
+    get:
+      tags: [Brewhouse]
+      operationId: getBrewery
+      summary: Get the brewery site values
+      description: |
+        `/brewery.json` as stored. `404` until it was first saved; the web UI
+        falls back to its defaults then.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: The brewery, as stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Brewery" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Brewhouse]
+      operationId: putBrewery
+      summary: Replace the brewery site values
+      description: |
+        Written to `/brewery.json` via a temporary file. The firmware does not
+        interpret the object.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Brewery" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+
   # ── Settings ───────────────────────────────────────────────────────────────
   /api/settings:
     get:
@@ -3047,6 +3157,14 @@ components:
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       description: Recipe id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+
+    BrewhouseId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Brewhouse id, chosen by the client; it becomes the file name.
       example: mgx4k2a1b2c3d4
 
     ProgramId:
@@ -4508,6 +4626,114 @@ components:
         than the 16 KB body limit cannot be saved.
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      additionalProperties: true
+
+    # ── Brewhouse ────────────────────────────────────────────────────────────
+    Brewery:
+      type: object
+      description: |
+        Site values shared by all brewhouses (`web/src/brewhouse.ts`, type
+        `Brewery`): defaults for recipe calculations and the brew day.
+      properties:
+        grainTempC: { type: number, description: "Grain temperature, °C." }
+        tapWaterTempC: { type: number, description: "Tap water temperature, °C." }
+      additionalProperties: true
+
+    Brewhouse:
+      type: object
+      required: [id]
+      description: |
+        Owned by the web UI (`web/src/brewhouse.ts`, type `Brewhouse`). The
+        firmware checks only `id`; the other fields are documented for clients
+        and stay optional on read (no schema version). Process steps are
+        assigned freely to vessels; references point only into the same
+        document and to registry item ids (snapshot ids), so a brew can copy the
+        whole object as it stood on the brew day.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        name: { type: string }
+        description: { type: string }
+        updatedAt: { type: string, format: date-time }
+        mashEfficiencyPct: { type: number }
+        coolingShrinkPct: { type: number, description: "Volume shrink on cooling, %." }
+        vessels:
+          type: array
+          items: { $ref: "#/components/schemas/BrewhouseVessel" }
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/BrewhouseDevice" }
+        steps:
+          type: object
+          description: |
+            One entry per step this brewhouse has; a missing step does not
+            exist here. `mash`, `lauter` and `boil` are required by the UI;
+            without `sparge` only full-volume mashing is possible.
+          propertyNames:
+            enum: [strike, mash, lauter, sparge, boil, whirlpool, hopback, chill]
+          additionalProperties: { $ref: "#/components/schemas/BrewhouseStep" }
+        transfers:
+          type: array
+          items: { $ref: "#/components/schemas/BrewhouseTransfer" }
+        measurements:
+          type: object
+          description: |
+            Measurement key (fixed list in the web UI, e.g. `strikeVolume`) →
+            sensor id. A missing key means "by hand": the brew asks for the value.
+          additionalProperties: { type: string }
+      additionalProperties: true
+
+    BrewhouseVessel:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        volumeL: { type: number }
+        deadSpaceL: { type: number, description: Volume left behind when emptied. }
+        evaporationLPerH: { type: number, description: Only for the boil vessel. }
+        lauterMethod: { type: string, description: "Descriptive only (false bottom, bag …)." }
+      additionalProperties: true
+
+    BrewhouseDevice:
+      type: object
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [heater, pump, agitator, valve, chiller, condenser, coil] }
+        name: { type: string }
+        vesselId: { type: string, description: "Location; missing = inline (RIMS tube, plate chiller)." }
+        manual: { type: boolean, description: "Operated by hand: no registry link needed." }
+        controller: { type: string, description: Registry controller id (heater). }
+        actuator: { type: string, description: "Registry actuator id; for chiller, condenser and coil the cooling water valve." }
+        powerW: { type: number }
+        flowLPerMin: { type: number }
+        chillerType: { type: string, enum: [immersion, plate, counterflow, icebath, nochill] }
+      additionalProperties: true
+
+    BrewhouseStep:
+      type: object
+      properties:
+        vesselId: { type: string }
+        heaterId: { type: string }
+        pumpId: { type: string, description: Recirculation pump. }
+        agitatorId: { type: string }
+        valveIds: { type: array, items: { type: string } }
+        chillerId: { type: string, description: "chill: a chiller or a coil." }
+        coolMinutes: { type: number }
+        condenserId: { type: string }
+        powerPct: { type: number, description: "boil: heating power while boiling." }
+        heatRateKPerMin: { type: number }
+      additionalProperties: true
+
+    BrewhouseTransfer:
+      type: object
+      properties:
+        id: { type: string }
+        step: { type: string, enum: [strike, mash, lauter, sparge, boil, whirlpool, hopback, chill] }
+        from: { type: string }
+        to: { type: string, description: "Vessel id, or `out` for knocking out to the fermenter." }
+        drive: { type: string, enum: [pump, gravity, manual] }
+        pumpId: { type: string }
+        lossL: { type: number, description: Only counted with drive `pump`. }
+        recovered: { type: boolean, description: The loss comes back in the next step. }
       additionalProperties: true
 
     # ── Settings ─────────────────────────────────────────────────────────────
