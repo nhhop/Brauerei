@@ -1,7 +1,9 @@
 // The style comparison is switched off in builds until the BJCP has allowed the
 // use of its style data (PLAN.md): visible in `pnpm dev`, which needs the local,
-// untracked web/public/modules/recipes/bjcp-2021.json.
-export const STYLE_COMPARISON = import.meta.env.DEV;
+// untracked web/public/modules/recipes/bjcp-2021.json. For a local test build set
+// VITE_STYLE_COMPARISON=1 (shell or .env.local); vite.config.ts then keeps the
+// data file in dist/, otherwise it removes it.
+export const STYLE_COMPARISON = import.meta.env.DEV || import.meta.env.VITE_STYLE_COMPARISON === '1';
 
 // BJCP style data. A static, versioned JSON file today; `loadStyles` is the only
 // place that knows where it comes from, like `loadCatalog` for the ingredients.
