@@ -6010,3 +6010,12 @@ Die Rechner unter `/rechner` (14 Rechner, `Calc*.tsx`, `brewMath.ts`, `gravityUn
 - **Folge:** Boards mit `webui.tar` (esp32dev, lolin_s2_mini) haben die Rechner nicht mehr.
 
 **Nachtrag, BJCP-Stilvergleich ausgeblendet:** Statt der ganzen Rezeptseiten ist nur der Stilvergleich aus: `STYLE_COMPARISON = import.meta.env.DEV` (`styleSource.ts`) schaltet `StylePicker` und `StyleCard` in `tabs.tsx`; im Build gibt es wieder das freie Stilfeld. `bjcp-2021.json` ist aus dem Index genommen und in `web/.gitignore`, bleibt lokal für `pnpm dev`. Damit enthält das Paket (und `webui-full.tar` aus der CI) keine BJCP-Daten; ein lokaler `pnpm build` nimmt die Datei weiter mit, weil sie im Arbeitsverzeichnis liegt. Die Rezeptseiten (Revert von `8973584`) und der Menüpunkt „Rezepte“ sind wieder sichtbar.
+
+## 2026-10-04 — Update-Suche im Vorschau-Kanal: „check failed“ (Branch `feature/rezept-sud-editor`)
+
+Auf dem LilyGo zeigte die Update-Suche im Kanal „Vorschau“ nur „check failed“, ohne Netzfehler in Klammern.
+
+- **Root Cause:** `FirmwareUpdater::fetchReleaseMeta` wendete einen Objekt-Filter auf die Release-**Liste** (`/releases?per_page=10`) an. ArduinoJson wirft bei einem Objekt-Filter ein ganzes Array weg, das Dokument blieb leer, kein Release wurde gefunden, und `doCheck` meldete „check failed“. Der Stable-Kanal (`/releases/latest`, ein Objekt) war nie betroffen. Der Fehler steckt seit `ef8885e` im Code; der Vorschau-Kanal hat also nie funktioniert (Kommentar „the same filter applies element-wise“ war falsch). Reproduziert mit ArduinoJson 7.4.3 in einem Scratch-Programm: Objekt-Filter → 0 Elemente, Array-Filter `filter[0]` → beide Releases.
+- **Fix:** `src/ReleaseFilter.h` (`makeReleaseFilter(filter, list)`) baut für die Liste `filter[0]`, für ein einzelnes Release das Objekt. Dazu `test/test_release_filter` (native), der mit dem alten Objekt-Filter „Expected 2 Was 0“ liefert und mit dem Fix besteht.
+- **Prüfung:** `pio test -e native` 101 Tests grün, `pio run` für `esp32dev` (Flash 94,6 %) und `lilygo_t_display_s3_amoled` baut. Nicht auf dem Gerät geprüft.
+- **Folge für den Test:** Das Release `v0.2.1-rc.1` enthält den Fehler noch. Ein Board mit dieser oder älterer Firmware sieht über „Vorschau“ nie ein Pre-release; die Firmware mit dem Fix muss einmal anders aufs Board (USB oder `POST /api/update/firmware`).

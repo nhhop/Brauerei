@@ -9,6 +9,7 @@
 #include <time.h>
 
 #include "AssetInstall.h"
+#include "ReleaseFilter.h"
 #include "SdLock.h"
 #include "SdTarSink.h"
 #include "TarExtractor.h"
@@ -237,12 +238,7 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
 
   // Filter to keep only the fields we need (releases JSON is large).
   JsonDocument filter;
-  filter["tag_name"] = true;
-  filter["prerelease"] = true;
-  filter["body"] = true;
-  filter["assets"][0]["name"] = true;
-  filter["assets"][0]["browser_download_url"] = true;
-  // For the array form, the same filter applies element-wise.
+  makeReleaseFilter(filter, channel != "stable");
   JsonDocument doc;
   DeserializationError err = deserializeJson(
       doc, http.getStream(), DeserializationOption::Filter(filter));
