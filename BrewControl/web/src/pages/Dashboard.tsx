@@ -762,7 +762,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   );
 
   if (err) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full p-4 text-fg md:p-6">
       {header}{tabBar}
       <p class="text-sm text-critical">{err}</p>
       {modals}
@@ -770,7 +770,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   );
 
   if (!displaySnap) return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6">
+    <div class="min-h-full p-4 text-fg md:p-6">
       {header}{tabBar}
       <SkeletonList count={3} />
       {modals}
@@ -780,7 +780,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
   const hasProgramSheet = (activeDash?.programs?.length ?? 0) === 1;
 
   return (
-    <div class="min-h-full bg-bg p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
+    <div class="min-h-full p-4 text-fg md:p-6 lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:pb-0">
       {header}
       {tabBar}
       {editMode && (
