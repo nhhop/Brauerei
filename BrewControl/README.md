@@ -274,7 +274,11 @@ Listenfeldern, die die Firmware bei jedem Speichern und Löschen mitführt. Von 
 kopierte Rezeptdateien erscheinen erst in der Liste, wenn sie über die UI gespeichert werden.
 Rezepte, die früher im `localStorage` des Browsers angelegt
 wurden, lädt die Rezeptseite beim ersten Öffnen einmalig aufs Gerät hoch. Das Backup
-(`/api/backup`) enthält sie nicht; die Dateien lassen sich über die SD-Dateiverwaltung sichern.
+(`/api/backup`) enthält sie nicht — der Restore nimmt höchstens 16 KB Body an. Stattdessen hat
+„Backup & Restore“ (nur mit installiertem Rezept-Paket) einen eigenen Rezept-Export/-Import: Der
+Browser lädt alle Rezepte über `/api/recipes` zu einer Datei `brewcontrol-recipes-<datum>.json`
+(`{type:"brewcontrol-recipes", version:1, recipes:[…]}`) zusammen und spielt sie beim Import einzeln
+per `PUT` zurück (gleiche ID wird überschrieben, kein Neustart).
 
 ## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
 
