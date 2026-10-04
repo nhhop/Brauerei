@@ -866,17 +866,45 @@ Pfade relativ zur dist-Wurzel (nicht unter `dist/`):
 Aus `web/`:
 
 ```powershell
-pnpm build:sd            # vite build + gzip-dist (NICHT nur `pnpm build` — sonst fehlen die .gz)
+pnpm build:tars          # build:sd + beide Tars: web/webui.tar und web/webui-full.tar
+```
+
+`pnpm build:tars` baut dieselben Tars wie die CI (`scripts/make-tars.js`; gleiche Größen).
+Von Hand geht es so, wobei `pnpm build:sd` (NICHT nur `pnpm build`, sonst fehlen die `.gz`)
+vorher laufen muss:
+
+```powershell
 tar -C dist --exclude=./modules -cf webui.tar .
 tar -C dist -cf webui-full.tar .
 ```
 
-Das ist exakt die Form, die auch die CI baut. Sie erzeugt `./`-präfixierte Namen;
+Die CI erzeugt `./`-präfixierte Namen;
 die Firmware normalisiert die in `SdTarSink` weg (die Glob-Variante
 `cd dist; tar -cf ../webui.tar *` ohne `./` geht ebenso). Aufspielen: über
 `/settings/firmware` → „UI-Paket (.tar)", oder
 `curl -F "f=@webui.tar" http://<ip>/api/update/assets` (SD-Boards mit Rezepten:
-`webui-full.tar`).
+`webui-full.tar`). Ein SD-Board mit dem schlanken `webui.tar` hat weder Rezepte noch Rechner.
+
+#### Lokaler Test mit den BJCP-Stilwerten
+Der Stilvergleich ist in Builds aus, bis die BJCP zugestimmt hat (PLAN.md), und
+`bjcp-2021.json` liegt nicht im Repo. Für einen lokalen Test-Build die Datei aus der
+Historie holen und den Schalter setzen; die Datei ist in `.gitignore`:
+
+```powershell
+cmd /c "git show 218ec58:BrewControl/web/public/catalog/bjcp-2021.json > BrewControl\web\public\modules\recipes\bjcp-2021.json"
+cd BrewControl/web
+$env:VITE_STYLE_COMPARISON = '1'     # oder VITE_STYLE_COMPARISON=1 in web/.env.local
+pnpm build:tars                      # nur webui-full.tar enthält die Daten
+Remove-Item Env:VITE_STYLE_COMPARISON
+```
+
+⚠ Die Datei **nicht** mit der PowerShell-Umleitung (`>`) anlegen: Windows PowerShell 5.1 schreibt
+dann UTF-16 mit BOM, der Browser kann das nicht als JSON lesen, und die Stilauswahl bleibt
+leer. Darum `cmd /c`, das die Bytes unverändert schreibt; der Build bricht bei so einer
+Datei mit einer Fehlermeldung ab.
+
+Ohne den Schalter entfernt `vite.config.ts` die Datei wieder aus `dist/`, auch wenn sie
+in `public/` liegt. Ein so gebautes Tar nicht verteilen und nicht in ein Release packen.
 
 ### firmware.bin manuell bauen
 Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:

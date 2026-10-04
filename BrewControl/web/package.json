@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build:sd": "vite build && node scripts/gzip-dist.js",
-    "build:lfs": "pnpm build:sd && node scripts/copy-lfs.js"
+    "build:lfs": "pnpm build:sd && node scripts/copy-lfs.js",
+    "build:tars": "pnpm build:sd && node scripts/make-tars.js"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.0",
