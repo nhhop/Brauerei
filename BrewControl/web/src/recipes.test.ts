@@ -96,6 +96,14 @@ describe('recipe backup file', () => {
     expect(calls).toEqual([]);
   });
 
+  it('reports progress after every written recipe', async () => {
+    mockDevice();
+    const steps: string[] = [];
+    const text = JSON.stringify({ type: 'brewcontrol-recipes', version: 1, recipes: [recipe('a'), recipe('b')] });
+    await importRecipes(text, (done, total) => steps.push(`${done}/${total}`));
+    expect(steps).toEqual(['0/2', '1/2', '2/2']);
+  });
+
   it('reports how far it got when a write fails', async () => {
     let puts = 0;
     vi.stubGlobal('fetch', vi.fn(async () => (++puts === 2 ? new Response('write failed', { status: 500 }) : new Response(null, { status: 204 }))));
