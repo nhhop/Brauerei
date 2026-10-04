@@ -100,6 +100,10 @@ namespace BrewControl {
 //   POST /api/profile-categories           — create profile category
 //   POST /api/profile-categories/<id>      — rename profile category
 //   DELETE /api/profile-categories/<id>    — remove category and its profiles
+//   GET  /api/recipes                      — recipe list fields (SD boards only)
+//   GET  /api/recipes/<id>                 — one recipe, as stored
+//   PUT  /api/recipes/<id>                 — create or replace a recipe
+//   DELETE /api/recipes/<id>               — remove a recipe
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
 //   GET  /api/remote/discover?transport=mqtt|espnow|websocket
 //                                          — async discovery of remote items

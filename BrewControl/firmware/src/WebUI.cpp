@@ -18,6 +18,8 @@
 #include "EnergyManager.h"
 #include "HeapDiag.h"
 #include "Hostname.h"
+#include "RecipeFiles.h"
+#include "RecipeStore.h"
 #include "RegistryLock.h"
 #include "SdLock.h"
 #include "version.h"
@@ -1750,6 +1752,60 @@ void WebUI::begin(bool serve) {
         profiles_.saveToSD(fs_);
         req->send(201, "application/json", "{\"id\":\"" + id + "\"}");
       }));
+
+#ifndef BREWCTL_USE_LITTLEFS
+  // ── Recipes ─────────────────────────────────────────────────────────────────
+  // One file per recipe on the SD card (RecipeStore.h). Not built for the
+  // LittleFS boards: they have no room for recipes and no recipe UI package.
+  server_.on(AsyncURIMatcher::exact("/api/recipes"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", RecipeStore::list(fs_).c_str());
+  });
+
+  // GET /api/recipes/:id
+  server_.addHandler(new GetPrefixHandler("/api/recipes/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/recipes/"));
+        std::string body;
+        if (!RecipeStore::read(fs_, id.c_str(), body)) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(200, "application/json", body.c_str());
+      }));
+
+  // PUT /api/recipes/:id — create or replace; the id is chosen by the client
+  server_.addHandler(new PutJsonPrefixHandler("/api/recipes/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(strlen("/api/recipes/"));
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!RecipeStore::write(fs_, id.c_str(), body, recipeSummaryLine(json, id.c_str()))) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // DELETE /api/recipes/:id
+  server_.addHandler(new DeletePrefixHandler("/api/recipes/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/recipes/"));
+        if (!RecipeStore::remove(fs_, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+#endif
 
   // ── Settings ──────────────────────────────────────────────────────────────
   server_.on("/api/settings", HTTP_GET, [this](AsyncWebServerRequest* req) {

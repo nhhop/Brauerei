@@ -1,6 +1,7 @@
-// Recipe model + store. Phase 1 keeps recipes in localStorage; the functions at
-// the bottom are the only persistence surface, so they can later move behind
-// /api/recipes without touching the pages.
+// Recipe model + store. Recipes live on the device's SD card behind /api/recipes
+// (SD boards only); the functions at the bottom are the only persistence surface.
+
+import { failed } from './api';
 
 export type IngredientKind = 'fermentable' | 'hop' | 'yeast' | 'aroma' | 'auxiliary';
 
@@ -113,36 +114,61 @@ export function newRecipe(): Recipe {
   };
 }
 
-const KEY = 'bc.recipes';
+// What the list shows; GET /api/recipes returns only these fields.
+export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'updatedAt'>;
 
-function readAll(): Recipe[] {
+const BASE = '/api/recipes';
+const urlOf = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
+
+async function fetchList(): Promise<RecipeSummary[]> {
+  const r = await fetch(BASE);
+  if (!r.ok) await failed(r);
+  return (await r.json()) as RecipeSummary[];
+}
+
+async function put(r: Recipe): Promise<void> {
+  const res = await fetch(urlOf(r.id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(r),
+  });
+  if (!res.ok) await failed(res);
+}
+
+// Before the SD storage, recipes lived in this browser's localStorage. Uploads
+// the ones the device does not have yet (the device wins on a clash) and drops
+// the local copy only when every upload worked, so a failure can be retried.
+const LOCAL_KEY = 'bc.recipes';
+
+export async function importLocalRecipes(): Promise<void> {
+  let local: Recipe[];
   try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Recipe[]) : [];
-  } catch { return []; }
+    local = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as Recipe[];
+  } catch { return; }
+  if (!Array.isArray(local) || local.length === 0) return;
+  const known = new Set((await fetchList()).map((r) => r.id));
+  for (const r of local) if (!known.has(r.id)) await put(r);
+  try { localStorage.removeItem(LOCAL_KEY); } catch { /* storage blocked */ }
 }
 
-function writeAll(list: Recipe[]) {
-  try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* storage blocked */ }
+export async function listRecipes(): Promise<RecipeSummary[]> {
+  return (await fetchList()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function listRecipes(): Recipe[] {
-  return readAll().sort((a, b) => b.updatedAt - a.updatedAt);
+export async function getRecipe(id: string): Promise<Recipe | null> {
+  const r = await fetch(urlOf(id));
+  if (r.status === 404) return null;
+  if (!r.ok) await failed(r);
+  return (await r.json()) as Recipe;
 }
 
-export function getRecipe(id: string): Recipe | null {
-  return readAll().find((r) => r.id === id) ?? null;
-}
-
-export function saveRecipe(r: Recipe): Recipe {
+export async function saveRecipe(r: Recipe): Promise<Recipe> {
   const saved = { ...r, updatedAt: Date.now() };
-  const list = readAll();
-  const i = list.findIndex((x) => x.id === r.id);
-  if (i >= 0) list[i] = saved; else list.push(saved);
-  writeAll(list);
+  await put(saved);
   return saved;
 }
 
-export function deleteRecipe(id: string) {
-  writeAll(readAll().filter((r) => r.id !== id));
+export async function deleteRecipe(id: string): Promise<void> {
+  const r = await fetch(urlOf(id), { method: 'DELETE' });
+  if (!r.ok) await failed(r);
 }

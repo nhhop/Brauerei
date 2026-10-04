@@ -1,7 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { route } from 'preact-router';
 import { Pencil, Plus, Trash2, BookOpen } from 'lucide-preact';
-import { deleteRecipe, listRecipes, newRecipe, saveRecipe, type Recipe } from '../recipes';
+import {
+  deleteRecipe, importLocalRecipes, listRecipes, newRecipe, saveRecipe, type RecipeSummary,
+} from '../recipes';
 import { PageShell } from '../components/PageShell';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Fab } from '../components/Fab';
@@ -9,19 +11,37 @@ import { badgeAccent, btnPrimary } from '../ui';
 
 // Recipe library. Picking a row opens the editor; new recipes start as drafts.
 export function RecipesPage(_: { path?: string }) {
-  const [recipes, setRecipes] = useState<Recipe[]>(listRecipes);
-  const [deleteTarget, setDeleteTarget] = useState<Recipe | null>(null);
+  const [recipes, setRecipes] = useState<RecipeSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RecipeSummary | null>(null);
 
-  function create() {
-    const r = saveRecipe(newRecipe());
-    route(`/rezepte/${r.id}`);
+  function refresh() {
+    return listRecipes().then(setRecipes);
   }
 
-  function confirmDelete() {
+  // A failed import keeps the browser's copy for the next visit; the list shows regardless.
+  useEffect(() => {
+    importLocalRecipes()
+      .catch((e) => console.warn('recipe import failed', e))
+      .then(refresh)
+      .catch(() => setError('Rezepte konnten nicht geladen werden.'));
+  }, []);
+
+  async function create() {
+    try {
+      const r = await saveRecipe(newRecipe());
+      route(`/rezepte/${r.id}`);
+    } catch { setError('Rezept konnte nicht angelegt werden.'); }
+  }
+
+  async function confirmDelete() {
     if (!deleteTarget) return;
-    deleteRecipe(deleteTarget.id);
+    const target = deleteTarget;
     setDeleteTarget(null);
-    setRecipes(listRecipes());
+    try {
+      await deleteRecipe(target.id);
+      await refresh();
+    } catch { setError('Rezept konnte nicht gelöscht werden.'); }
   }
 
   return (
@@ -34,7 +54,10 @@ export function RecipesPage(_: { path?: string }) {
       </header>
       <Fab icon={Plus} label="Neues Rezept" onClick={create} />
 
-      {recipes.length === 0 ? (
+      {error && <p class="mt-4 text-sm text-critical">{error}</p>}
+      {recipes === null ? (
+        !error && <p class="mt-4 text-sm text-muted">Lädt …</p>
+      ) : recipes.length === 0 ? (
         <p class="mt-4 text-sm text-muted">Noch keine Rezepte. Lege über „Neues Rezept“ das erste an.</p>
       ) : (
         <div class="mt-4 space-y-4">

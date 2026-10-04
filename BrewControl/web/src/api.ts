@@ -4,7 +4,7 @@ import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,Discove
 // password-protected and this client has no valid session (or it expired) —
 // announced once here as an event so no caller has to know about auth at all;
 // app.tsx listens and opens the login modal.
-async function failed(r: Response): Promise<never> {
+export async function failed(r: Response): Promise<never> {
   const body = await r.text();
   if (r.status === 401) window.dispatchEvent(new Event('bc:unauthorized'));
   throw new Error(`${r.status} ${body}`);

@@ -115,6 +115,11 @@ tags:
       Reusable step templates ("Maischeplan", "Gaerverlauf") grouped into
       user-defined categories. Applying a profile copies its steps — target
       ids included — into a program; nothing here runs.
+  - name: Recipes
+    description: |
+      Brewing recipes, one file each on the SD card. Only on boards with an SD
+      slot — the LittleFS boards answer 404 for every route here. The firmware
+      stores a recipe as the web UI sent it and interprets nothing but its `id`.
   - name: Settings
     description: Theme, time, firmware channel and remote-transport settings.
   - name: Network
@@ -2138,6 +2143,83 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ── Recipes ────────────────────────────────────────────────────────────────
+  /api/recipes:
+    get:
+      tags: [Recipes]
+      operationId: listRecipes
+      summary: List the recipes
+      description: |
+        Only the fields the recipe list shows, in no particular order, read from
+        the index `/recipes/index.jsonl` that the firmware keeps with every
+        `PUT` and `DELETE` (opening every recipe took ~60 ms each on the SD
+        card). A recipe file put on the card by hand is not listed until it is
+        saved through `PUT`. A missing card or index gives `[]`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: One summary per recipe.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecipeSummary" }
+
+  /api/recipes/{id}:
+    parameters: [{ $ref: "#/components/parameters/RecipeId" }]
+    get:
+      tags: [Recipes]
+      operationId: getRecipe
+      summary: Get one recipe
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: The recipe exactly as it was stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Recipes]
+      operationId: putRecipe
+      summary: Create or replace a recipe
+      description: |
+        The client picks the id. Written to `/recipes/<id>.json` via a temporary
+        file, so a power cut during the save leaves the previous version; then
+        the recipe's line in the list index is replaced. The body is
+        re-serialized, not byte-for-byte; the 16 KB body limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Recipe" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Recipes]
+      operationId: deleteRecipe
+      summary: Delete a recipe
+      description: |
+        Also drops the recipe's line from the list index, whether or not the
+        file still existed (`404` then, but a stale entry is gone).
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ── Settings ───────────────────────────────────────────────────────────────
   /api/settings:
     get:
@@ -2957,6 +3039,14 @@ components:
       schema: { type: string, pattern: "^[0-9a-f]{6}$" }
       description: Six-character lowercase hex id assigned at creation.
       example: 3f9ac1
+
+    RecipeId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Recipe id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
 
     ProgramId:
       name: id
@@ -4390,6 +4480,30 @@ components:
         profiles:
           type: array
           items: { $ref: "#/components/schemas/Profile" }
+
+    # ── Recipes ──────────────────────────────────────────────────────────────
+    RecipeSummary:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        name: { type: string }
+        style: { type: string }
+        volumeL: { type: number }
+        status: { type: string, enum: [draft, final] }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
+
+    Recipe:
+      type: object
+      required: [id]
+      description: |
+        Owned by the web UI (`web/src/recipes.ts`, type `Recipe`): name, style,
+        volume, status, ingredients, mash, boil and fermentation. The firmware
+        keeps whatever it is given, so only `id` is fixed here; a recipe larger
+        than the 16 KB body limit cannot be saved.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      additionalProperties: true
 
     # ── Settings ─────────────────────────────────────────────────────────────
     ThemeSettings:

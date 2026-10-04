@@ -268,7 +268,13 @@ mit Zutaten- und Stilkatalog sowie die Rechner unter `/rechner`). Sie gehören m
 SD-Karte; fehlt der Ordner, blendet die UI die Funktion aus (Menüpunkte „Rezepte“ und
 „Rechner“ weg, `/rezepte` und `/rechner` zeigen einen Hinweis). Ein Paket ist
 vorhanden, wenn `/modules/<name>/manifest.json` ausgeliefert wird (`web/src/optionalModules.ts`).
-Rezepte liegen vorerst nur im `localStorage` des Browsers.
+Die Rezepte selbst liegen einzeln auf der SD-Karte unter `/recipes/<id>.json` (`/api/recipes`,
+nur SD-Boards, bis 16 KB je Rezept), dazu eine Indexdatei `/recipes/index.jsonl` mit den
+Listenfeldern, die die Firmware bei jedem Speichern und Löschen mitführt. Von Hand auf die Karte
+kopierte Rezeptdateien erscheinen erst in der Liste, wenn sie über die UI gespeichert werden.
+Rezepte, die früher im `localStorage` des Browsers angelegt
+wurden, lädt die Rezeptseite beim ersten Öffnen einmalig aufs Gerät hoch. Das Backup
+(`/api/backup`) enthält sie nicht; die Dateien lassen sich über die SD-Dateiverwaltung sichern.
 
 ## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
 
@@ -617,6 +623,8 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/profiles/<id>` | POST, DELETE | Profil ändern / löschen |
 | `/api/profile-categories` | POST | Kategorie anlegen |
 | `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
+| `/api/recipes` | GET | Rezeptliste (Kopfdaten), nur SD-Boards |
+| `/api/recipes/<id>` | GET, PUT, DELETE | Rezept lesen / anlegen oder ersetzen / löschen (`/recipes/<id>.json` auf der SD) |
 | `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW, Gerätedisplay |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
 | `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |
