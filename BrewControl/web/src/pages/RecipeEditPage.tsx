@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import { getRecipe, saveRecipe, type Recipe } from '../recipes';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -19,16 +19,36 @@ const TABS: { id: string; label: string; view: (p: TabProps) => JSX.Element }[] 
 
 // Recipe editor. Changes stay in a local draft until "Speichern" — no autosave.
 export function RecipeEditPage({ id }: { path?: string; id?: string }) {
-  const stored = useMemo(() => (id ? getRecipe(id) : null), [id]);
-  const [saved, setSaved] = useState<Recipe | null>(stored);
-  const [draft, setDraft] = useState<Recipe | null>(stored);
+  const [saved, setSaved] = useState<Recipe | null>(null);
+  const [draft, setDraft] = useState<Recipe | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'missing' | 'error'>('loading');
+  const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState('overview');
 
+  useEffect(() => {
+    let alive = true;
+    setLoadState('loading');
+    (id ? getRecipe(id) : Promise.resolve(null))
+      .then((r) => {
+        if (!alive) return;
+        setSaved(r);
+        setDraft(r);
+        setLoadState('missing');
+      })
+      .catch(() => alive && setLoadState('error'));
+    return () => { alive = false; };
+  }, [id]);
+
   if (!draft || !saved) {
+    const [crumb, text] = {
+      loading: ['Lädt …', 'Lädt …'],
+      missing: ['Nicht gefunden', 'Rezept nicht gefunden.'],
+      error: ['Fehler', 'Rezept konnte nicht geladen werden.'],
+    }[loadState];
     return (
       <PageShell>
-        <Breadcrumb trail={[{ label: 'Rezepte', href: '/rezepte' }, { label: 'Nicht gefunden' }]} />
-        <p class="mt-4 text-sm text-muted">Rezept nicht gefunden.</p>
+        <Breadcrumb trail={[{ label: 'Rezepte', href: '/rezepte' }, { label: crumb }]} />
+        <p class="mt-4 text-sm text-muted">{text}</p>
       </PageShell>
     );
   }
@@ -37,8 +57,12 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
   const dirty = JSON.stringify({ ...draft, updatedAt: 0 }) !== JSON.stringify({ ...saved, updatedAt: 0 });
   const View = TABS.find((t) => t.id === tab)!.view;
 
+  // The saved copy is what was sent, so edits made while the request runs stay dirty.
   function save() {
-    setSaved(saveRecipe(draft!));
+    setSaveError(false);
+    saveRecipe(draft!)
+      .then(setSaved)
+      .catch(() => setSaveError(true));
   }
 
   return (
@@ -60,6 +84,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
           </button>
         </div>
       </header>
+      {saveError && <p class="mt-2 text-sm text-critical">Speichern fehlgeschlagen. Das Rezept ist nur im Browser vorhanden, bis es gespeichert ist.</p>}
 
       <div class="my-4 flex overflow-x-auto border-b border-border">
         {TABS.map((t) => (

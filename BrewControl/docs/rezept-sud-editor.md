@@ -354,8 +354,9 @@ mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
 - **Stil-Auswahl:** bespricht der Nutzer noch, dazu die Datenquelle der Stiltabelle.
 - **Läutern und Dekoktion** im Tab Maischen.
 - **Rollen frei auf Gefäße verteilen** (siehe Sudhaus).
-- **Datenmodell und Ablage** auf SD bzw. LittleFS. Die 256-KB-Partition der LittleFS-Boards begrenzt Rezepte,
-  Sude, Messreihen und Zutatenlisten.
+- **Datenmodell und Ablage der Sude** auf SD bzw. LittleFS. Die 256-KB-Partition der LittleFS-Boards begrenzt
+  Sude, Messreihen und Zutatenlisten. Rezepte liegen seit 2026-10-04 einzeln auf der SD
+  (`/recipes/<id>.json`, `/api/recipes`) und gibt es nur auf SD-Boards.
 - **Zutaten-Datenbanken** (Malz, Hopfen, Hefen, Stile): mitgeliefert oder vom Nutzer gepflegt?
 - **Berechnungen:** Auf `web/src/brewMath.ts` aufbauen. Mehrere Konstanten dort sind laut PLAN.md noch
   unverifiziert, darunter die Definitionen der Effizienzen. Dazu kommen Morey (Farbe), Tinseth (IBU), die
