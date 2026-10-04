@@ -280,18 +280,18 @@ ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ih
 ```powershell
 cd web
 pnpm install                      # einmalig
-pnpm build:sd                     # vite build + gzip, dist/ enthält nur .gz
-
-Remove-Item -Recurse -Force ..\firmware\data\www -ErrorAction SilentlyContinue
-Copy-Item -Recurse .\dist ..\firmware\data\www
-# Optionale UI-Pakete (Rezepte) passen nicht in die 256-KB-Partition:
-Remove-Item -Recurse -Force ..\firmware\data\www\modules -ErrorAction SilentlyContinue
+pnpm build:lfs                    # build:sd + dist/ (ohne modules/) nach ../firmware/data/www
 
 cd ..\firmware
 pio run -e esp32dev -t buildfs        # optional: Größen-Check ohne Hardware
 pio run -e esp32dev -t uploadfs       # LittleFS-Image per USB flashen
 pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
 ```
+
+`pnpm build:lfs` lässt `dist/modules/` bewusst weg: Die optionalen UI-Pakete (Rezepte) sind
+für diese Boards nicht vorgesehen, und ein späteres „Installieren“ mit dem schlanken
+`webui.tar` würde sie ohnehin wieder löschen. Ein Ordner `data/www/modules` von Hand
+bringt das Paket trotzdem aufs Board, das ist dann deine Entscheidung.
 
 `data/` ist projektweit geteilt zwischen allen Envs — **nicht** gegen
 `lilygo_t_display_s3_amoled` ausführen (kein `littlefs`-Filesystem dort).
