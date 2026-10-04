@@ -11,7 +11,7 @@ export interface Catalog {
   ingredients: CatalogIngredient[];
 }
 
-const CATALOG_URL = '/catalog/zutaten-datenblaetter.json';
+const CATALOG_URL = '/modules/recipes/zutaten-datenblaetter.json';
 const USER_KEY = 'bc.userIngredients';
 
 // Recipe kinds use "yeast", the catalog "culture".

@@ -24,7 +24,7 @@ export interface StyleGuide {
   styles: BjcpStyle[];
 }
 
-const STYLES_URL = '/catalog/bjcp-2021.json';
+const STYLES_URL = '/modules/recipes/bjcp-2021.json';
 
 // Case-insensitive match on number, name or category; prefix matches on number or
 // name first.

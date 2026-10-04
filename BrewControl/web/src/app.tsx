@@ -10,8 +10,7 @@ import { AlertCenter } from './components/AlertCenter';
 import { EmergencyStopBanner } from './components/EmergencyStopBanner';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
-import { RecipesPage } from './pages/RecipesPage';
-import { RecipeEditPage } from './pages/RecipeEditPage';
+import { RecipesRoute } from './pages/RecipesRoute';
 import { SettingsIndex } from './pages/SettingsIndex';
 import { RechnerIndex } from './pages/RechnerIndex';
 import { RechnerDetail } from './pages/RechnerDetail';
@@ -184,8 +183,8 @@ export function App() {
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
         <ProfilesPage path="/profiles" snap={snap} />
-        <RecipesPage path="/rezepte" />
-        <RecipeEditPage path="/rezepte/:id" />
+        <RecipesRoute path="/rezepte" />
+        <RecipesRoute path="/rezepte/:id" />
         <RechnerIndex path="/rechner" />
         <RechnerDetail path="/rechner/:calc" />
         <SettingsIndex path="/settings" />

@@ -48,7 +48,13 @@ jobs:
           # raw copies are never served and would not fit the 256 KB data
           # partition of esp32dev/lolin_s2_mini during "Installieren".
           pnpm build:sd
-          tar -C dist -cf ../webui.tar .
+          # dist/modules holds the optional UI packages (recipes, ...). The
+          # small-partition boards get webui.tar without them, the others
+          # webui-full.tar (picked in FirmwareUpdater::fetchReleaseMeta).
+          tar -C dist --exclude=./modules -cf ../webui.tar .
+          tar -C dist -cf ../webui-full.tar .
       - uses: softprops/action-gh-release@v2
         with:
-          files: BrewControl/webui.tar
+          files: |
+            BrewControl/webui.tar
+            BrewControl/webui-full.tar

@@ -5973,3 +5973,29 @@ funktionieren unverändert.
   Karte zeigt fünf Zeilen mit nachgerechneten Bereichen (11,0–12,9 °P, 4,3–5,5 % vol, 25–50 IBU, 18–33 EBC), Tippen löscht
   die Verknüpfung, erneutes Tippen nach einer Auswahl öffnet die Liste, Speichern schreibt `styleId`, die Liste zeigt den
   Stilnamen, keine Konsolenfehler.
+
+## 2026-10-04 — Rezepte als nachladbares Paket mit Opt-in (Branch `feature/rezept-sud-editor`)
+
+Die Rezeptverwaltung ist jetzt ein optionales UI-Paket: Auf Boards ohne das Paket verschwinden Menüpunkt und Seiten,
+und das Paket kostet dort keinen Flash. Der Anlass: Das Menü „Rezepte“ stand auf jedem Board, auch auf esp32dev und
+lolin_s2_mini mit der 256-KB-Partition.
+
+- **Paket:** Ordner `modules/recipes/` (Quelle `web/public/modules/recipes/`, vorher `public/catalog/`) mit
+  `manifest.json`, Zutaten- und Stilkatalog und dem Chunk mit den Rezeptseiten. Einstieg ist `src/modules/recipes.ts`,
+  `vite.config.ts` legt Chunks dieses Einstiegs nach `dist/modules/recipes/`. Der Chunk hat 7,4 kB gzip, das Hauptbundle
+  sank von 143,7 auf 138,7 kB. Das Paket insgesamt wiegt etwa 15 kB gzip.
+- **Opt-in ohne Firmware-Flag:** `src/optionalModules.ts` (`useModule`) holt `/modules/<name>/manifest.json` und prüft
+  dessen Inhalt; vorhanden heißt eingeschaltet. Das Gerät antwortet auf fehlende Dateien mit Endung 404 (`onNotFound`
+  in `WebUI.cpp`), nicht mit der Startseite. `NavShell` blendet „Rezepte“ aus, `RecipesRoute` lädt den Chunk erst bei
+  Bedarf und zeigt sonst einen Hinweis („nicht installiert“, bzw. „unvollständig“, wenn das Manifest da ist, aber der
+  Chunk fehlt). Eine neue API-Route gibt es nicht, `openapi.yaml` bleibt unberührt.
+- **Auslieferung:** Ein „Installieren“ ersetzt das ganze `/www` und würde das Paket löschen. Deshalb baut
+  `.github/workflows/release.yml` zwei Tars: `webui.tar` ohne `modules/` (155 KB, für Boards mit `BREWCTL_ASSETS_IN_PLACE`)
+  und `webui-full.tar` (170 KB). `FirmwareUpdater::fetchReleaseMeta` nimmt auf Boards ohne die kleine Partition das volle
+  Tar, mit Rückfall auf `webui.tar` für ältere Releases. README: beide Tars, und beim LittleFS-Deploy per `uploadfs`
+  den Ordner `modules` aus `data/www` löschen.
+- **Prüfung:** Typecheck, 103 Tests, Build. Browser über den Mock mit Paket (Liste, Editor, Direktaufruf, Kataloge aus dem
+  neuen Pfad, Chunk lazy), ohne `dist/modules` (Menüpunkt weg, Hinweis, kein Konsolenfehler; der Mock liefert für
+  fehlende Dateien die Startseite mit 200, die Inhaltsprüfung hat das als „fehlt“ gewertet) und mit Manifest, aber ohne
+  Chunk (Meldung statt weißer Seite). Beide Tars gebaut und aufgelistet. Firmware: `pio run` für `esp32dev` (Flash 94,6 %, ein Vorher-Wert wurde nicht gemessen; die Änderung ist ein Zweizeiler) und `lilygo_t_display_s3_amoled` (SD-Zweig) baut. Eine native Teststrecke für den Updater gibt es nicht.
+- **Offen:** Rezepte liegen weiter im `localStorage` (Schritt 3, `/api/recipes` auf SD, im PLAN.md).
