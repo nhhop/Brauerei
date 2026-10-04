@@ -17,6 +17,11 @@ namespace SensActCtrl {
 //   channel(1): Humidity     "%RH"  (key="hum")
 //   channel(2): Pressure     "hPa"  (key="pres")
 //
+// Without a device (wrong address, module unplugged) all channels stay
+// invalid. A failed begin() is retried from tick() every kRetryIntervalMs, so a
+// module plugged in later starts by itself; a module pulled while running is
+// noticed by an address probe on every tick and goes invalid again.
+//
 // Typical use:
 //   BME280Sensor bme("amb", 0x76);
 //   registry.add(&bme);
@@ -43,6 +48,13 @@ class BME280Sensor : public Sensor {
   TwoWire*         bus_      = nullptr;
   Adafruit_BME280* dev_     = nullptr;
   bool             initialized_ = false;
+  uint32_t         nextRetryMs_ = 0;
+
+  static constexpr uint32_t kRetryIntervalMs = 5000;
+
+  bool connect();
+  bool devicePresent() const;
+  void invalidate();
 
   Reading tempReading_{};
   Reading humReading_{};

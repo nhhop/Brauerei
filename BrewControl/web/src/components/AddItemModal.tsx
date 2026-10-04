@@ -18,6 +18,7 @@ import {
 } from '../itemTypes';
 import { AutotuneProgress } from './AutotuneProgress';
 import { AddItemWizard, ChoiceCard, type WizardStep } from './AddItemWizard';
+import { parseSensorEntry, sensorEntry } from '../dashboardLayout';
 
 const AUTOTUNE_METHODS = [
   'ZieglerNichols', 'CohenCoon', 'IMC', 'TyreusLuyben', 'LambdaTuning',
@@ -32,6 +33,16 @@ type ActuatorType = 'DigitalOutput' | 'AnalogOutput' | 'PulseOutput' | 'IDS1' | 
 type MqttKind = 'Binary' | 'Continuous';
 type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 type Step = 1 | 2 | 3 | 4;
+
+// GY521 channel keys in the firmware's order (the first four are calibratable).
+const GY521_ORDER = ['pitch', 'roll', 'tilt', 'temp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz', 'dir'];
+// The same channels as checkbox rows of the form.
+const GY521_GROUPS: { title: string; items: [string, string][] }[] = [
+  { title: 'Winkel (°)', items: [['pitch', 'um Y'], ['roll', 'um X'], ['tilt', 'gesamt'], ['dir', 'Richtung']] },
+  { title: 'Beschleunigung (g)', items: [['ax', 'X'], ['ay', 'Y'], ['az', 'Z']] },
+  { title: 'Drehrate (°/s)', items: [['gx', 'X'], ['gy', 'Y'], ['gz', 'Z']] },
+  { title: 'Temperatur (°C)', items: [['temp', 'Chip']] },
+];
 
 const DEFAULT_RREF: Record<RtdType, string> = { PT100: '430', PT1000: '4300' };
 
@@ -73,7 +84,7 @@ const STEP_TEXT: Record<Step, { label: string; title: string; sub: string }> = {
        sub: 'Name und Anschluss festlegen — danach ist das Gerät sofort aktiv.' },
 };
 
-export function AddItemModal({ open, snap, onClose, editConfig, editRole, initialRole, prefill, onCreated, onRenamed }: {
+export function AddItemModal({ open, snap, onClose, editConfig, editRole, initialRole, prefill, onCreated, onRenamed, cardEntry, onCardChange }: {
   open: boolean;
   snap: Snapshot | null;
   onClose: () => void;
@@ -87,9 +98,15 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // (the hydration effect keys on `open` alone), so the caller must set it in
   // the same handler that opens the dialog and clear it in onClose.
   prefill?: ItemPrefill;
-  // dashboardIds: what to add to a dashboard (channel ids for multi-channel sensors).
-  onCreated?: (role: Role, id: string, dashboardIds: string[]) => void;
-  onRenamed?: (role: Role, oldId: string, newId: string) => void;
+  onCreated?: (role: Role, id: string) => void;
+  // `card`: set when the dashboard card's channel selection changed in the
+  // same save; `card.to` already carries the new id.
+  onRenamed?: (role: Role, oldId: string, newId: string, card?: { from: string; to: string }) => void;
+  // The dashboard sensor entry whose card opened this dialog ("gyro",
+  // "gyro.pitch,roll"). Shows the "Auf dieser Karte anzeigen" section, which
+  // picks the card's channels -- separate from the channels the sensor measures.
+  cardEntry?: string;
+  onCardChange?: (from: string, to: string) => void;
 }) {
   const isEdit = !!(editConfig && editRole);
 
@@ -107,6 +124,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // shared
   const [id, setId] = useState('');
   const [label, setLabel] = useState('');
+  // Channels the dashboard card shows; null = all of them.
+  const [cardKeys, setCardKeys] = useState<string[] | null>(null);
   const [pin, setPin] = useState('');
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -129,6 +148,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
   // GY521
   const [gy521Addr, setGy521Addr] = useState<number>(0x68);
+  const [gy521Channels, setGy521Channels] = useState<string[]>(['pitch']);
 
   // HCSR04
   const [trigPin, setTrigPin] = useState('');
@@ -281,6 +301,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       setRole(editRole);
       setId(String(editConfig.id ?? ''));
       setLabel(String(editConfig.label ?? ''));
+      setCardKeys(cardEntry ? parseSensorEntry(cardEntry).keys : null);
 
       if (editRole === 'sensor') {
         const t = String(editConfig.type ?? 'DS18B20') as SensorType;
@@ -304,6 +325,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setI2cAddr((editConfig.address ?? 0x76) as number);
         } else if (t === 'GY521') {
           setGy521Addr((editConfig.address ?? 0x68) as number);
+          // No "channels": a GY521 from before it had them, i.e. pitch only.
+          const chs = editConfig.channels as string[] | undefined;
+          setGy521Channels(chs ?? ['pitch']);
         } else if (t === 'HX711') {
           setHx711Dout(String(editConfig.dout ?? ''));
           setHx711Sck(String(editConfig.sck ?? ''));
@@ -464,6 +488,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       setRref(DEFAULT_RREF.PT100); setRrefTouched(false);
       setTrigPin(''); setEchoPin('');
       setChDistance(true); setChRate(true); setChVolume(true);
+      setGy521Channels(['pitch']);
       setShowScale(false); setScaleFactor(''); setScaleOffset(''); setScaleUnit('');
       setHx711Dout(''); setHx711Sck('');
       setDiPin(''); setDiInvert(false); setDiPullup(false); setDiDebounce('0');
@@ -644,8 +669,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
 
     try {
       let cfg: Record<string, unknown>;
-      // Dashboard entries a new sensor brings along: one per selected channel.
-      let createdIds = [trimId];
+      // The card's new entry, when its channel selection changed.
+      let cardTo: string | undefined;
 
       if (role === 'sensor') {
         if (sensorType === 'DS18B20') {
@@ -667,11 +692,17 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           const channels = [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
           if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
           cfg = { type: 'YF-S201', id: trimId, pin: p, channels };
-        } else if (sensorType === 'BME280' || sensorType === 'GY521') {
+        } else if (sensorType === 'BME280') {
           const bus = effectiveBus('i2c');
           if (!bus) throw new Error('Kein I²C-Bus gewählt');
-          cfg = { type: sensorType, id: trimId, bus,
-            address: sensorType === 'BME280' ? i2cAddr : gy521Addr };
+          cfg = { type: sensorType, id: trimId, bus, address: i2cAddr };
+        } else if (sensorType === 'GY521') {
+          const bus = effectiveBus('i2c');
+          if (!bus) throw new Error('Kein I²C-Bus gewählt');
+          // In the firmware's channel order, whatever order they were ticked in.
+          const channels = GY521_ORDER.filter((k) => gy521Channels.includes(k));
+          if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
+          cfg = { type: sensorType, id: trimId, bus, address: gy521Addr, channels };
         } else if (sensorType === 'HX711') {
           const dout = parseInt(hx711Dout, 10);
           const sck  = parseInt(hx711Sck,  10);
@@ -754,6 +785,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         if (isEdit && editConfig?.calibrations) cfg.calibrations = editConfig.calibrations;
         const trimmedLabel = label.trim();
         if (trimmedLabel) cfg.label = trimmedLabel;
+        if (cardEntry) {
+          const offered = cardOptions();
+          if (offered.length > 1) {
+            const picked = cardKeys == null ? offered : offered.filter((k) => cardKeys.includes(k));
+            if (!picked.length) throw new Error('Mindestens einen Kanal für die Karte wählen');
+            const to = sensorEntry(trimId, picked, offered);
+            const oldId = String(editConfig!.id);
+            if (to !== trimId + cardEntry.slice(oldId.length)) cardTo = to;
+          }
+        }
         if (!risksConfirmed(cfg)) { setPending(false); return; }
         if (isEdit && trimId === String(editConfig!.id) &&
             onlyLabelDiffers(cfg, editConfig!)) {
@@ -763,7 +804,6 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         } else {
           await createSensor(cfg);
         }
-        if (Array.isArray(cfg.channels)) createdIds = (cfg.channels as string[]).map((c) => `${trimId}.${c}`);
 
       } else if (role === 'actuator') {
         if (actuatorType === 'IDS1' || actuatorType === 'IDS2') {
@@ -929,12 +969,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       if (wizard) {
         // Fire onCreated as soon as the item exists, so the parent stays
         // consistent even if the success screen is dismissed via the backdrop.
-        onCreated?.(role, trimId, createdIds);
+        onCreated?.(role, trimId);
         setCreated({ role: role, id: trimId });
       } else {
         onClose();
-        if (!isEdit) onCreated?.(role, trimId, createdIds);
-        else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId);
+        const card = cardTo && cardEntry ? { from: cardEntry, to: cardTo } : undefined;
+        if (!isEdit) onCreated?.(role, trimId);
+        else if (trimId !== String(editConfig!.id)) onRenamed?.(role, String(editConfig!.id), trimId, card);
+        else if (card) onCardChange?.(card.from, card.to);
       }
     } catch (e) {
       const msg = String(e);
@@ -997,6 +1039,56 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  // Channels a dashboard card of this sensor can show: what the form is about to
+  // save for types with a channel selection, otherwise what the sensor reports.
+  function cardOptions(): string[] {
+    if (sensorType === 'GY521') return GY521_ORDER.filter((k) => gy521Channels.includes(k));
+    if (sensorType === 'YF-S201') return [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
+    if (sensorType === 'HCSR04') return [chDistance && 'distance', showScale && 'derived'].filter(Boolean) as string[];
+    const prefix = String(editConfig?.id ?? '') + '.';
+    return (snap?.sensors ?? []).filter((s) => s.id.startsWith(prefix)).map((s) => s.id.slice(prefix.length));
+  }
+
+  // "Auf dieser Karte anzeigen": only when the dialog was opened from a
+  // dashboard card of a sensor with more than one channel.
+  function cardFields() {
+    if (!isEdit || role !== 'sensor' || !cardEntry) return null;
+    const offered = cardOptions();
+    if (offered.length < 2) return null;
+    const on = (k: string) => cardKeys == null || cardKeys.includes(k);
+    const toggleKey = (k: string) => {
+      const cur = cardKeys ?? offered;
+      setCardKeys(cur.includes(k) ? cur.filter((c) => c !== k) : [...cur, k]);
+    };
+    const groups = sensorType === 'GY521'
+      ? GY521_GROUPS
+          .map((g) => ({ title: g.title, keys: g.items.map(([k]) => k).filter((k) => offered.includes(k)) }))
+          .filter((g) => g.keys.length > 0)
+      : [{ title: '', keys: offered }];
+    return (
+      <div class="border-t border-border pt-4">
+        <label class={lbl}>Auf dieser Karte anzeigen</label>
+        <div class="space-y-1">
+          {groups.map((g) => (
+            <div key={g.title} class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {g.title && <span class="w-32 shrink-0 text-xs text-muted">{g.title}</span>}
+              {g.keys.map((k) => (
+                <label key={k} class="flex cursor-pointer items-center gap-1.5 text-sm text-fg">
+                  <input type="checkbox" checked={on(k)} class="accent-accent" onChange={() => toggleKey(k)} />
+                  {k}
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p class="mt-1.5 text-xs text-faint">
+          Gilt nur für diese Karte. Welche Kanäle der Sensor misst, steht oben.
+          {sensorType === 'GY521' && ' Nick und Roll zusammen ergeben die Libelle.'}
+        </p>
       </div>
     );
   }
@@ -1460,9 +1552,32 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   ))}
                 </div>
               </div>
+              <div>
+                <label class={lbl}>Kanäle</label>
+                <div class="space-y-1">
+                  {GY521_GROUPS.map((g) => (
+                    <div key={g.title} class="flex items-center gap-3">
+                      <span class="w-32 shrink-0 text-xs text-muted">{g.title}</span>
+                      {g.items.map(([k, text]) => (
+                        <label key={k} class="flex items-center gap-1.5 text-sm text-fg cursor-pointer">
+                          <input type="checkbox" checked={gy521Channels.includes(k)} class="accent-accent"
+                            onChange={(e) => {
+                              const on = (e.target as HTMLInputElement).checked;
+                              setGy521Channels((cs) => on ? [...cs, k] : cs.filter((c) => c !== k));
+                            }} />
+                          {text}
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
               <p class="text-xs text-faint">
-                1 Kanal: <strong>id</strong> — Neigungswinkel in °, per Kalibrierung
-                (Modus „poly") auf Stammwürze/SG umrechenbar.
+                Je Kanal <strong>id.kanal</strong>: <strong>pitch</strong> (um Y), <strong>roll</strong> (um X),
+                <strong> tilt</strong> (Neigung der Z-Achse gegen die Senkrechte), <strong>temp</strong>,
+                <strong> ax</strong>…<strong>gz</strong>. Winkel und Temperatur sind kalibrierbar,
+                z. B. ein Winkel per „poly" auf Stammwürze/SG; die Temperatur ist die des Chips,
+                nicht der Umgebung.
               </p>
             </div>
           )}
@@ -2133,6 +2248,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           </div>
 
           {fieldBlocks()}
+          {cardFields()}
           </div>
 
           <div class={dialogFooter}>

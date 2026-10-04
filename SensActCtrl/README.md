@@ -53,7 +53,7 @@ Beispiele:
 Jede Sensor-Instanz kann mehrere **Kanäle** haben (`channelCount()` +
 `channel(idx)`, `Channel`-Struct aus `key`+`SensorMeta`+`Reading`) — z.B.
 liefert `YF_S201Sensor` einen `"rate"`- und einen `"volume"`-Kanal aus
-derselben Instanz. `YF_S201Sensor` und `HCSR04Sensor` lassen per
+derselben Instanz. `YF_S201Sensor`, `HCSR04Sensor` und `GY521TiltSensor` lassen per
 `setChannelMask()` nur einen Teil ihrer Kanäle nach außen zeigen (Messung
 und ISR laufen unverändert; `channelCount()`/`channel()` liefern nur die
 gewählten). Einkanalige Sensoren melden `channelCount()==1` mit
@@ -97,7 +97,15 @@ R1/R2, z. B. Batterie, liest kalibrierte Millivolt per `analogReadMilliVolts`),
 `OneWire&`, den sich mehrere Sensoren teilen — mit ROM-Adresse oder ohne, dann
 erstes Gerät), `BME280Sensor` (I2C, Temp/Feuchte/Druck),
 `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss +
-Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle), `HX711LoadCellSensor`
+Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle), `GY521Sensor`
+(I2C, MPU-6050: Beschleunigung `ax`/`ay`/`az`, Drehrate `gx`/`gy`/`gz`,
+Chip-Temperatur `temp`), `GY521TiltSensor` (Winkel aus einem eigenen
+`GY521Sensor`: `pitch` um Y und `roll` um X per Komplementärfilter mit
+gelerntem Kreisel-Nullpunkt, `tilt` als Neigung der Z-Achse gegen die
+Senkrechte, `dir` als Richtung der Neigung — Peilung der oberen Seite in
+der X/Y-Ebene, `atan2(roll, pitch)`, 0…360° (0 = −X-Seite oben, 90 = +Y,
+180 = +X, 270 = −Y), unter 0,5° Neigung ungültig; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 11;
+kein Gierwinkel, der braucht ein Magnetometer), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei
 konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),
 `CalibratedSensor` (Decorator: umhüllt einen beliebigen Sensor und rechnet
@@ -112,7 +120,8 @@ wird tangential-linear fortgesetzt, damit eine Kubik dort nicht unmonoton
 wird; die Stützpunkte bleiben in `Calibration` erhalten, sodass eine Ober-
 fläche einzelne korrigieren und der Fit nach einem Reload neu gerechnet werden
 kann. Binary/Discrete-Kanäle sind nicht kalibrierbar, Cumulative nur per
-Faktor).
+Faktor; kalibrierbar sind die ersten vier Kanäle eines Sensors, weitere
+werden unverändert durchgereicht).
 
 **Aktoren** (`src/actuators/`): `DigitalOutputActuator` (binär oder
 Time-Proportional/SSR), `PulseOutputActuator` (nicht-blockierende

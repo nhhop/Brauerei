@@ -8,6 +8,9 @@
 #include <cmath>
 #include <cstring>
 
+#include "../LevelBubble.h"
+#include "../SensorChannels.h"
+
 namespace BrewControl {
 namespace {
 
@@ -19,6 +22,7 @@ using SensActCtrl::Sensor;
 using SensActCtrl::ValueKind;
 
 constexpr uint32_t kRefreshMs = 500;
+constexpr uint32_t kLevelMs = 80;  // the bubble moves faster than the numbers change
 constexpr size_t kMaxPages = 16;  // ~1.5 kB LVGL pool each, see rebuild_()
 constexpr int16_t kArcSize = 420;  // leaves a 23 px rim on the 466 px glass
 constexpr int16_t kArcWidth = 22;
@@ -38,6 +42,26 @@ constexpr lv_coord_t kYUnit = 28;
 constexpr lv_coord_t kYOut = 62;
 constexpr lv_coord_t kYSteps = 124;  // master switch below the output
 
+// Spirit level page: the glass sits a little above the centre, the angles
+// below it. The bubble's centre travels on a circle inside the glass's rim.
+constexpr int16_t kGlassSize = 240;
+constexpr int16_t kGlassBorder = 3;
+constexpr int16_t kLevelCy = 225;
+constexpr int16_t kBubbleSize = 28;
+constexpr int16_t kTargetSize = 40;  // the ring in the middle: bubble inside = level
+constexpr float kBubbleTravel = kGlassSize / 2 - kGlassBorder - kBubbleSize / 2;
+constexpr lv_coord_t kYAngles = 140;
+// The straight level (a device standing on an edge): a tube across the page for
+// Roll, turned upright for Nick (up is positive, as in the round glass).
+constexpr int16_t kTubeLength = 300;
+constexpr int16_t kTubeLengthUpright = kGlassSize;  // the title sits above, the angles below
+constexpr int16_t kTubeHeight = 56;
+constexpr float kTubeTravel = kTubeLength / 2 - kBubbleSize / 2 - 4;  // for +-90 degrees
+constexpr float kTubeTravelUpright = kTubeLengthUpright / 2 - kBubbleSize / 2 - 4;
+constexpr lv_coord_t kYTubeLabel = kLevelCy - kCentre - 56;           // "Roll" above the tube
+constexpr lv_coord_t kYTubeNote = kLevelCy - kCentre + 56;            // "senkrecht" below it
+constexpr lv_coord_t kXTubeSide = kTubeHeight / 2 + 56;               // beside the upright tube
+
 // Pixel shift (display.pixelShift): the whole tileview walks round a small
 // circle, one step a minute, so static edges do not sit on the same pixels
 // for hours. The ring's 23 px rim leaves room; touch geometry ignores it.
@@ -48,6 +72,7 @@ constexpr uint8_t kShiftSteps = 8;
 const lv_color_t kDim = lv_color_hex(0x9AA0A6);
 const lv_color_t kOff = lv_color_hex(0x303030);
 const lv_color_t kAlert = lv_color_hex(0xEF5350);
+const lv_color_t kLevelOk = lv_color_hex(0x22C55E);  // spirit level: level within tolerance
 const lv_color_t kEstopBg = lv_color_hex(0xB71C1C);
 
 // "67.5" -> "67,5": the UI is German. One decimal below a resolution of 1.
@@ -68,9 +93,9 @@ void setText(lv_obj_t* label, const char* text) {
     lv_label_set_text(label, text);
 }
 
-// Dashboard sensor ids are either a sensor id or "sensorId.channelKey".
-// Returns the sensor and sets *channel (-1: all channels of a multi-channel
-// sensor listed by its bare id).
+// Dashboard sensor ids are a sensor id, "sensorId.channelKey" or a key list
+// "sensorId.key1,key2". Returns the sensor and sets *channel (-1: several
+// channels on one page - all of them for a bare id, see keyList() for a list).
 Sensor* resolveSensor(const Registry& reg, const std::string& id, int* channel) {
   if (Sensor* s = reg.findSensor(id.c_str())) {
     *channel = s->channelCount() == 1 ? 0 : -1;
@@ -81,6 +106,16 @@ Sensor* resolveSensor(const Registry& reg, const std::string& id, int* channel) 
   Sensor* s = reg.findSensor(id.substr(0, dot).c_str());
   if (!s) return nullptr;
   const char* key = id.c_str() + dot + 1;
+  if (strchr(key, ',')) {
+    // A key list stays on the dashboard while any of its channels exists.
+    for (size_t i = 0; i < s->channelCount(); ++i) {
+      if (keyInList(key, s->channel(i).key)) {
+        *channel = -1;
+        return s;
+      }
+    }
+    return nullptr;
+  }
   for (size_t i = 0; i < s->channelCount(); ++i) {
     if (strcmp(s->channel(i).key, key) == 0) {
       *channel = static_cast<int>(i);
@@ -88,6 +123,35 @@ Sensor* resolveSensor(const Registry& reg, const std::string& id, int* channel) 
     }
   }
   return nullptr;
+}
+
+// The key list of a dashboard sensor id ("gyro.pitch,roll" -> "pitch,roll"),
+// or nullptr when the id shows a single channel or all of them.
+const char* keyList(const std::string& id) {
+  const size_t dot = id.rfind('.');
+  if (dot == std::string::npos || id.find(',', dot) == std::string::npos) return nullptr;
+  return id.c_str() + dot + 1;
+}
+
+bool isLevelKey(const char* key) {
+  return strcmp(key, "pitch") == 0 || strcmp(key, "roll") == 0;
+}
+
+// Whether a multi-channel sensor entry shows pitch and roll (list: the key list
+// of the entry, nullptr for all channels), i.e. is a spirit level. Their
+// channel indices are looked up again on every refresh, never kept: the sensor
+// may be edited (other channels) while a page stands.
+bool levelChannels(Sensor& s, const char* list, int* pitch, int* roll, size_t* rest) {
+  *pitch = *roll = -1;
+  *rest = 0;
+  for (size_t i = 0; i < s.channelCount(); ++i) {
+    const char* key = s.channel(i).key;
+    if (list && !keyInList(list, key)) continue;
+    if (strcmp(key, "pitch") == 0) *pitch = static_cast<int>(i);
+    else if (strcmp(key, "roll") == 0) *roll = static_cast<int>(i);
+    else ++*rest;
+  }
+  return *pitch >= 0 && *roll >= 0;
 }
 
 size_t itemCount(const Registry& reg) {
@@ -164,6 +228,21 @@ lv_obj_t* makeKnob(lv_obj_t* parent) {
   lv_obj_clear_flag(k, LV_OBJ_FLAG_SCROLL_CHAIN);
   lv_obj_clear_flag(k, LV_OBJ_FLAG_GESTURE_BUBBLE);
   return k;
+}
+
+// A round or rectangular decoration of the level glass: no touch, no scroll,
+// so swipes on it still reach the tileview (as on the ring).
+lv_obj_t* makeShape(lv_obj_t* parent, int16_t w, int16_t h, lv_coord_t x, lv_coord_t y,
+                    bool round) {
+  lv_obj_t* o = lv_obj_create(parent);
+  lv_obj_set_size(o, w, h);
+  lv_obj_set_pos(o, x, y);
+  lv_obj_set_style_radius(o, round ? LV_RADIUS_CIRCLE : 0, 0);
+  lv_obj_set_style_border_width(o, 0, 0);
+  lv_obj_set_style_pad_all(o, 0, 0);
+  lv_obj_clear_flag(o, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE |
+                                                  LV_OBJ_FLAG_SCROLLABLE));
+  return o;
 }
 
 lv_obj_t* makeStepZone(lv_obj_t* parent) {
@@ -256,15 +335,20 @@ void DisplayPages::begin(Registry& reg, DashboardStore& dashboards,
   lv_obj_add_event_cb(lv_scr_act(), onGesture_, LV_EVENT_GESTURE, this);
   rebuild_();
   lv_timer_create(onTimer_, kRefreshMs, this);
+  lv_timer_create(onLevelTimer_, kLevelMs, this);
 }
 
 void DisplayPages::rebuild_(bool keepPage) {
   // Keep the visible item across a rebuild if it is still there.
   std::string current;
+  View currentView = View::Normal;
   if (keepPage && tileview_ && !pages_.empty()) {
     const lv_obj_t* act = lv_tileview_get_tile_act(tileview_);
     const size_t idx = lv_obj_get_index(act);
-    if (idx < pages_.size()) current = pages_[idx].id;
+    if (idx < pages_.size()) {
+      current = pages_[idx].id;
+      currentView = pages_[idx].view;
+    }
   }
 
   builtRevision_ = dashboards_->revision();
@@ -285,8 +369,24 @@ void DisplayPages::rebuild_(bool keepPage) {
     int ch;
     for (const std::string& id : items.controllers)
       if (reg_->findController(id.c_str())) pages_.push_back(Page{Kind::Controller, id});
-    for (const std::string& id : items.sensors)
-      if (resolveSensor(*reg_, id, &ch)) pages_.push_back(Page{Kind::Sensor, id});
+    for (const std::string& id : items.sensors) {
+      Sensor* s = resolveSensor(*reg_, id, &ch);
+      if (!s) continue;
+      int pitch, roll;
+      size_t rest;
+      if (ch < 0 && levelChannels(*s, keyList(id), &pitch, &roll, &rest)) {
+        Page level{Kind::Sensor, id};
+        level.view = View::Level;
+        pages_.push_back(level);
+        if (rest > 0) {
+          Page others{Kind::Sensor, id};
+          others.view = View::Rest;
+          pages_.push_back(others);
+        }
+      } else {
+        pages_.push_back(Page{Kind::Sensor, id});
+      }
+    }
     for (const std::string& id : items.actuators)
       if (reg_->findActuator(id.c_str())) pages_.push_back(Page{Kind::Actuator, id});
   }
@@ -308,6 +408,7 @@ void DisplayPages::rebuild_(bool keepPage) {
     return;
   }
   size_t show = 0;
+  bool matched = false;
   for (size_t i = 0; i < pages_.size(); ++i) {
     lv_dir_t dir = LV_DIR_NONE;
     if (i > 0) dir = static_cast<lv_dir_t>(dir | LV_DIR_LEFT);
@@ -318,7 +419,12 @@ void DisplayPages::rebuild_(bool keepPage) {
     lv_label_set_text_fmt(pager, "%s · %u / %u", items.name.c_str(),
                           static_cast<unsigned>(i + 1),
                           static_cast<unsigned>(pages_.size()));
-    if (pages_[i].id == current) show = i;
+    // A level sensor has two pages with one id: stay on the same one, or on
+    // the first if its view is gone.
+    if (pages_[i].id == current && (!matched || pages_[i].view == currentView)) {
+      show = i;
+      matched = true;
+    }
   }
   lv_obj_set_tile_id(tileview_, show, 0, LV_ANIM_OFF);
   refreshPage_(pages_[show]);
@@ -347,7 +453,80 @@ void DisplayPages::buildPage_(Page& p, lv_obj_t* tile, size_t /*index*/,
   lv_obj_set_width(p.footer, 280);
   lv_label_set_long_mode(p.footer, LV_LABEL_LONG_DOT);
 
-  if (p.kind == Kind::Sensor) {
+  if (p.kind == Kind::Sensor && p.view == View::Level) {
+    lv_obj_add_flag(p.value, LV_OBJ_FLAG_HIDDEN);
+    // p.unit names the axis of the straight level, p.out says "senkrecht".
+    lv_obj_align(p.unit, LV_ALIGN_CENTER, 0, kYTubeLabel);
+    lv_obj_add_flag(p.unit, LV_OBJ_FLAG_HIDDEN);
+    p.out = makeLabel(tile, &brew_font_20, kLevelOk, LV_ALIGN_CENTER, kYTubeNote);
+    // Round glass with a crosshair and a ring in the middle; the bubble is the
+    // only thing that moves, so a refresh only invalidates its two positions.
+    constexpr int16_t kR = kGlassSize / 2;
+    lv_obj_t* glass = makeShape(tile, kGlassSize, kGlassSize, kCentre - kR, kLevelCy - kR, true);
+    lv_obj_set_style_bg_color(glass, accent_, 0);
+    lv_obj_set_style_bg_opa(glass, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(glass, kGlassBorder, 0);
+    lv_obj_set_style_border_color(glass, kDim, 0);
+    p.shapes[Page::kGlass] = glass;
+    const int16_t arm = kR - kGlassBorder;
+    for (bool horizontal : {true, false}) {
+      lv_obj_t* line = makeShape(tile, horizontal ? 2 * arm : 2, horizontal ? 2 : 2 * arm,
+                                 horizontal ? kCentre - arm : kCentre - 1,
+                                 horizontal ? kLevelCy - 1 : kLevelCy - arm, false);
+      lv_obj_set_style_bg_color(line, kDim, 0);
+      lv_obj_set_style_bg_opa(line, LV_OPA_40, 0);
+      p.shapes[horizontal ? Page::kHLine : Page::kVLine] = line;
+    }
+    lv_obj_t* target = makeShape(tile, kTargetSize, kTargetSize, kCentre - kTargetSize / 2,
+                                 kLevelCy - kTargetSize / 2, true);
+    lv_obj_set_style_bg_opa(target, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(target, 2, 0);
+    lv_obj_set_style_border_color(target, kDim, 0);
+    p.shapes[Page::kTarget] = target;
+    // Where the fine scale (to 15 degrees) ends and the squeezed one begins.
+    constexpr int16_t kRingSize = static_cast<int16_t>(2 * kLevelInnerFrac * kBubbleTravel);
+    lv_obj_t* ring = makeShape(tile, kRingSize, kRingSize, kCentre - kRingSize / 2,
+                               kLevelCy - kRingSize / 2, true);
+    lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ring, 1, 0);
+    lv_obj_set_style_border_color(ring, kDim, 0);
+    lv_obj_set_style_border_opa(ring, LV_OPA_40, 0);
+    p.shapes[Page::kRing] = ring;
+    lv_obj_t* bubble = makeShape(tile, kBubbleSize, kBubbleSize, kCentre - kBubbleSize / 2,
+                                 kLevelCy - kBubbleSize / 2, true);
+    lv_obj_set_style_bg_opa(bubble, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(bubble, 3, 0);
+    p.shapes[Page::kBubble] = bubble;
+
+    // The straight level of the axis left to level when the device stands on an
+    // edge: a tube with marks at 0 and +-15 degrees (the ends are 45) and its own
+    // bubble. Hidden until an axis reaches 45 degrees.
+    lv_obj_t* tube = makeShape(tile, kTubeLength, kTubeHeight, kCentre - kTubeLength / 2,
+                               kLevelCy - kTubeHeight / 2, true);
+    lv_obj_set_style_bg_color(tube, accent_, 0);
+    lv_obj_set_style_bg_opa(tube, LV_OPA_10, 0);
+    lv_obj_set_style_border_width(tube, kGlassBorder, 0);
+    lv_obj_set_style_border_color(tube, kDim, 0);
+    p.shapes[Page::kTube] = tube;
+    for (int i = 0; i < 3; ++i) {
+      const int16_t dx = static_cast<int16_t>((i - 1) * kLevelInnerFrac * kTubeTravel);
+      lv_obj_t* mark = makeShape(tile, 2, kTubeHeight - 16, kCentre + dx - 1,
+                                 kLevelCy - (kTubeHeight - 16) / 2, false);
+      lv_obj_set_style_bg_color(mark, kDim, 0);
+      lv_obj_set_style_bg_opa(mark, i == 1 ? LV_OPA_COVER : LV_OPA_40, 0);
+      p.shapes[Page::kTubeMarks + i] = mark;
+    }
+    lv_obj_t* tubeBubble = makeShape(tile, kBubbleSize, kBubbleSize, kCentre - kBubbleSize / 2,
+                                     kLevelCy - kBubbleSize / 2, true);
+    lv_obj_set_style_bg_opa(tubeBubble, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(tubeBubble, 3, 0);
+    p.shapes[Page::kTubeBubble] = tubeBubble;
+    for (size_t i = Page::kTube; i < Page::kShapes; ++i)
+      lv_obj_add_flag(p.shapes[i], LV_OBJ_FLAG_HIDDEN);
+    p.sub = makeLabel(tile, &brew_font_28, lv_color_white(), LV_ALIGN_CENTER, kYAngles);
+  }
+
+  else if (p.kind == Kind::Sensor) {
     p.sub = makeLabel(tile, &brew_font_28, lv_color_white(), LV_ALIGN_CENTER, 0);
   }
 
@@ -485,6 +664,127 @@ void DisplayPages::refreshVisible_() {
   if (idx < pages_.size()) refreshPage_(pages_[idx]);
 }
 
+// Hidden flag only on a change: setting it invalidates the object's area.
+static void showShapes(lv_obj_t* const* shapes, size_t from, size_t to, bool shown) {
+  for (size_t i = from; i < to; ++i) {
+    if (lv_obj_has_flag(shapes[i], LV_OBJ_FLAG_HIDDEN) != shown) continue;
+    if (shown) lv_obj_clear_flag(shapes[i], LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(shapes[i], LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+static void placeBubble(lv_obj_t* bubble, float cx, float cy) {
+  const lv_coord_t x = static_cast<lv_coord_t>(std::lround(cx - kBubbleSize / 2));
+  const lv_coord_t y = static_cast<lv_coord_t>(std::lround(cy - kBubbleSize / 2));
+  if (lv_obj_get_x(bubble) != x || lv_obj_get_y(bubble) != y) lv_obj_set_pos(bubble, x, y);
+}
+
+// The bubble moves to the high side of the glass; its colour (and the glass's
+// rim) tell whether it is level. A change of position or colour invalidates
+// only the bubble's old and new area, never the page. With an axis at 45
+// degrees or more the page shows the straight level of that axis instead.
+void DisplayPages::refreshLevel_(Page& p, Sensor& s, bool text) {
+  int pitch, roll;
+  size_t rest;
+  if (!levelChannels(s, keyList(p.id), &pitch, &roll, &rest)) {
+    showShapes(p.shapes, Page::kBubble, Page::kBubble + 1, false);
+    showShapes(p.shapes, Page::kTubeBubble, Page::kTubeBubble + 1, false);
+    if (text) setText(p.sub, "");
+    return;
+  }
+  const Channel cp = s.channel(pitch);
+  const Channel cr = s.channel(roll);
+  const bool live = cp.reading.valid && cr.reading.valid;
+  const float rollDeg = live ? cr.reading.value : NAN;
+  const float pitchDeg = live ? cp.reading.value : NAN;
+
+  const bool straight = levelStraightMode(p.straight, rollDeg, pitchDeg);
+  if (straight != p.straight) {
+    p.straight = straight;
+    p.tone = 0;
+    showShapes(p.shapes, Page::kGlass, Page::kTube, !straight);
+    showShapes(p.shapes, Page::kTube, Page::kShapes, straight);
+    if (straight) lv_obj_clear_flag(p.unit, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(p.unit, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  if (straight) {
+    const LevelStraight st = levelStraight(rollDeg, pitchDeg);
+    lv_obj_t* bubble = p.shapes[Page::kTubeBubble];
+    showShapes(p.shapes, Page::kTubeBubble, Page::kTubeBubble + 1, st.valid);
+    // Nick turns the tube upright: the page's shapes and labels move, once per change.
+    if (st.valid && st.axisIsPitch != p.tubeVertical) {
+      const bool up = st.axisIsPitch;
+      p.tubeVertical = up;
+      const int16_t length = up ? kTubeLengthUpright : kTubeLength;
+      const int16_t w = up ? kTubeHeight : length, h = up ? length : kTubeHeight;
+      lv_obj_set_size(p.shapes[Page::kTube], w, h);
+      lv_obj_set_pos(p.shapes[Page::kTube], kCentre - w / 2, kLevelCy - h / 2);
+      const float travel = up ? kTubeTravelUpright : kTubeTravel;
+      const int16_t mark = kTubeHeight - 16;
+      for (int i = 0; i < 3; ++i) {
+        lv_obj_t* m = p.shapes[Page::kTubeMarks + i];
+        const int16_t off = static_cast<int16_t>((i - 1) * kLevelInnerFrac * travel);
+        lv_obj_set_size(m, up ? mark : 2, up ? 2 : mark);
+        lv_obj_set_pos(m, up ? kCentre - mark / 2 : kCentre + off - 1,
+                       up ? kLevelCy - off - 1 : kLevelCy - mark / 2);
+      }
+      lv_obj_align(p.unit, LV_ALIGN_CENTER, up ? -kXTubeSide : 0, up ? kLevelCy - kCentre : kYTubeLabel);
+      lv_obj_align(p.out, LV_ALIGN_CENTER, up ? kXTubeSide + 28 : 0, up ? kLevelCy - kCentre : kYTubeNote);
+    }
+    if (st.valid) {
+      if (p.tubeVertical) placeBubble(bubble, kCentre, kLevelCy - st.x * kTubeTravelUpright);
+      else placeBubble(bubble, kCentre + st.x * kTubeTravel, kLevelCy);
+    }
+    const uint8_t tone = st.valid && st.level ? 2 : 1;
+    if (p.tone != tone) {
+      p.tone = tone;
+      const lv_color_t c = tone == 2 ? kLevelOk : accent_;
+      lv_obj_set_style_bg_color(bubble, c, 0);
+      lv_obj_set_style_border_color(bubble, c, 0);
+      lv_obj_set_style_border_color(p.shapes[Page::kTube], tone == 2 ? kLevelOk : kDim, 0);
+    }
+    setText(p.unit, st.axisIsPitch ? "Nick" : "Roll");
+    setText(p.out, st.valid && st.upright ? "senkrecht" : "");
+  } else {
+    const LevelBubble b = levelBubble(rollDeg, pitchDeg);
+    lv_obj_t* bubble = p.shapes[Page::kBubble];
+    showShapes(p.shapes, Page::kBubble, Page::kBubble + 1, b.valid);
+    if (b.valid)
+      placeBubble(bubble, kCentre + b.x * kBubbleTravel, kLevelCy - b.y * kBubbleTravel);
+    const uint8_t tone = b.valid && b.level ? 2 : 1;
+    if (p.tone != tone) {
+      p.tone = tone;
+      const lv_color_t c = tone == 2 ? kLevelOk : accent_;
+      lv_obj_set_style_bg_color(bubble, c, 0);
+      lv_obj_set_style_border_color(bubble, c, 0);
+      lv_obj_set_style_border_color(p.shapes[Page::kGlass], tone == 2 ? kLevelOk : kDim, 0);
+    }
+  }
+
+  if (text) {
+    char a[16], r[16], buf[48];
+    formatValue(a, sizeof(a), live ? cp.reading.value : NAN, cp.meta.resolution);
+    formatValue(r, sizeof(r), live ? cr.reading.value : NAN, cr.meta.resolution);
+    snprintf(buf, sizeof(buf), "Nick %s°  Roll %s°", a, r);
+    setText(p.sub, buf);
+  }
+}
+
+// The fast timer: only the visible spirit-level page, only its bubble.
+void DisplayPages::refreshLevelVisible_() {
+  if (pages_.empty()) return;
+  const size_t idx = lv_obj_get_index(lv_tileview_get_tile_act(tileview_));
+  if (idx >= pages_.size() || pages_[idx].view != View::Level) return;
+  int ch;
+  if (Sensor* s = resolveSensor(*reg_, pages_[idx].id, &ch); s && ch < 0)
+    refreshLevel_(pages_[idx], *s, false);
+}
+
+void DisplayPages::onLevelTimer_(lv_timer_t* t) {
+  static_cast<DisplayPages*>(t->user_data)->refreshLevelVisible_();
+}
+
 const char* DisplayPages::lockReason_(const Page& p, char* buf,
                                       size_t cap) const {
   if (webUI_->estopLatched()) return "NOT-AUS aktiv";
@@ -529,16 +829,24 @@ void DisplayPages::refreshPage_(Page& p) {
                   c.meta.resolution);
       setText(p.value, buf);
       setText(p.unit, c.meta.unit);
-    } else {
-      // A multi-channel sensor listed by its bare id: all channels as lines.
+    } else if (p.view == View::Level) {
       setText(p.title, displayName(*reg_, s->id()));
+      refreshLevel_(p, *s, true);
+    } else {
+      // A multi-channel sensor listed by its bare id: all channels as lines;
+      // by a key list: the listed ones. The page behind a spirit level leaves
+      // out pitch and roll, which the bubble shows.
+      setText(p.title, displayName(*reg_, s->id()));
+      const char* list = keyList(p.id);
       std::string lines;
       for (size_t i = 0; i < s->channelCount(); ++i) {
         const Channel c = s->channel(i);
+        if (list && !keyInList(list, c.key)) continue;
+        if (p.view == View::Rest && isLevelKey(c.key)) continue;
         char v[24];
         formatValue(v, sizeof(v), c.reading.valid ? c.reading.value : NAN,
                     c.meta.resolution);
-        snprintf(buf, sizeof(buf), "%s%s: %s %s", i ? "\n" : "", c.key, v,
+        snprintf(buf, sizeof(buf), "%s%s: %s %s", lines.empty() ? "" : "\n", c.key, v,
                  c.meta.unit);
         lines += buf;
       }

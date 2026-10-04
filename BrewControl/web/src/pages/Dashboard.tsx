@@ -11,6 +11,8 @@ import {
 } from '../api';
 import { SensorCard } from '../components/SensorCard';
 import { SensorGroupCard, rowMode } from '../components/SensorGroupCard';
+import { LevelCard } from '../components/LevelCard';
+import { levelChannels } from '../levelBubble';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
@@ -18,12 +20,14 @@ import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
 import { TimerCard } from '../components/TimerCard';
 import { DashboardLayout } from '../components/DashboardLayout';
-import { isCardRef, linearize, memberRefs, reconcile, refId, refKind, renameRef } from '../dashboardLayout';
+import {
+  entryChannelIds, isCardRef, linearize, memberRefs, parseSensorEntry, reconcile, refId, refKind, renameRef,
+} from '../dashboardLayout';
 import { AddItemModal } from '../components/AddItemModal';
 import { CalibrateModal } from '../components/CalibrateModal';
 import { NameModal } from '../components/NameModal';
 import { TabBtn } from '../components/TabBtn';
-import { DashboardContentModal } from '../components/DashboardContentModal';
+import { DashboardContentModal, type WidgetKind } from '../components/DashboardContentModal';
 import { ProgramEditorModal } from '../components/ProgramEditorModal';
 import { TimerEditorModal } from '../components/TimerEditorModal';
 import { ProfileEditorModal } from '../components/ProfileEditorModal';
@@ -41,16 +45,24 @@ function isCalibratable(s: Sensor): boolean {
 }
 
 function filterSnap(snap: Snapshot, dash: DashboardConfig): Snapshot {
-  const si = new Set(dash.sensors);
+  const snapIds = snap.sensors.map(s => s.id);
+  const si = new Set(dash.sensors.flatMap(e => entryChannelIds(e, snapIds)));
   const ai = new Set(dash.actuators);
   const ci = new Set(dash.controllers);
   return {
-    sensors: snap.sensors.filter(s => {
-      const base = s.id.includes('.') ? s.id.split('.')[0] : s.id;
-      return si.has(base) || si.has(s.id);
-    }),
+    sensors: snap.sensors.filter(s => si.has(s.id)),
     actuators: snap.actuators.filter(a => ai.has(a.id)),
     controllers: snap.controllers.filter(c => ci.has(c.id)),
+  };
+}
+
+// Replaces one sensor card's entry with another channel selection. The card
+// keeps its place in the layout; if an identical card is already there, the two
+// merge (reconcile() drops the duplicate ref).
+function swapSensorEntry(sensors: string[], layout: LayoutNode | undefined, from: string, to: string) {
+  return {
+    sensors: sensors.includes(to) ? sensors.filter(x => x !== from) : sensors.map(x => (x === from ? to : x)),
+    layout: renameRef(layout, 'sensor/' + from, 'sensor/' + to),
   };
 }
 
@@ -170,7 +182,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
 
   // ── Edit item (from card buttons) ─────────────────────────────────────────
   const [addOpen, setAddOpen] = useState(false);
-  const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig } | null>(null);
+  // `card`: the dashboard sensor entry whose ✎ opened the dialog, so its
+  // channel selection can be edited alongside the sensor.
+  const [editItem, setEditItem] = useState<{ role: Role; cfg: ItemConfig; card?: string } | null>(null);
   const [calibrateId, setCalibrateId] = useState<string | null>(null);
 
   // POST /api/dashboards/<id> replaces every field, so a key left out of the
@@ -225,33 +239,58 @@ export function Dashboard({ snap, err, alarmByRef }: {
     return { ...rest, [newId]: v };
   }
 
-  async function handleRenamed(role: Role, oldId: string, newId: string) {
+  // `card`: a channel selection changed in the same save, on the active
+  // dashboard. `card.to` already carries the new id; applying it here keeps
+  // rename and selection in one write instead of two racing ones.
+  async function handleRenamed(role: Role, oldId: string, newId: string, card?: { from: string; to: string }) {
     const key = role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers';
-    // A sensor can sit on a dashboard as its base id or as single channel ids
-    // ("<old>.distance"); both follow the rename.
+    // A sensor can sit on a dashboard as its base id or as channel entries
+    // ("<old>.distance", "<old>.pitch,roll"); all follow the rename.
     const affected = (x: string) => x === oldId || (role === 'sensor' && x.startsWith(oldId + '.'));
     const renamed = (x: string) => newId + x.slice(oldId.length);
     for (const d of dashboards) {
       const hits = d[key].filter(affected);
       if (hits.length === 0) continue;
       let sensorModes = d.sensorModes ?? {};
+      // Keyed by channel id (or base id), not by entry: a key-list card has no
+      // key of its own, its rows' modes must follow too.
+      if (role === 'sensor') {
+        for (const k of Object.keys(sensorModes)) if (affected(k)) sensorModes = remapMode(sensorModes, k, renamed(k));
+      }
       let layout = d.layout;
       for (const x of hits) {
-        if (role === 'sensor') sensorModes = remapMode(sensorModes, x, renamed(x));
         // Without this the card would lose its place: reconcile() drops the old
         // ref and appends the new one at the end.
         layout = renameRef(layout, role + '/' + x, role + '/' + renamed(x));
+      }
+      let entries = d[key].map(x => affected(x) ? renamed(x) : x);
+      if (card && d.id === activeDash?.id) {
+        ({ sensors: entries, layout } = swapSensorEntry(entries, layout, renamed(card.from), card.to));
       }
       const updated = {
         ...dashBody(d),
         sensorModes,
         controllerModes: role === 'controller' ? remapMode(d.controllerModes, oldId, newId) : (d.controllerModes ?? {}),
         layout,
-        [key]: d[key].map(x => affected(x) ? renamed(x) : x),
+        [key]: entries,
       };
       await updateDashboard(d.id, updated);
       setDashboards(ds => ds.map(x => x.id === d.id ? { ...x, ...updated } : x));
     }
+  }
+
+  // From the widget picker. A duplicate (same item, same channel selection)
+  // would only be dropped again by reconcile(), so it isn't stored.
+  async function addToDashboard(kind: WidgetKind, id: string) {
+    if (!activeDash) return;
+    const list = activeDash[kind] ?? [];
+    if (list.includes(id)) return;
+    await patchActiveDash({ [kind]: [...list, id] } as Partial<DashboardConfig>);
+  }
+
+  async function handleCardChange(from: string, to: string) {
+    if (!activeDash) return;
+    await patchActiveDash(swapSensorEntry(activeDash.sensors, activeDash.layout, from, to));
   }
 
   async function removeProgramRef(id: string) {
@@ -317,14 +356,14 @@ export function Dashboard({ snap, err, alarmByRef }: {
     refreshTimers();
   }
 
-  async function startEdit(role: Role, id: string) {
+  async function startEdit(role: Role, id: string, card?: string) {
     try {
       const config = await getConfig();
       const list = role === 'sensor' ? config.sensors
                  : role === 'actuator' ? config.actuators
                  : config.controllers;
       const cfg = list.find((c) => c.id === id);
-      if (cfg) { setEditItem({ role, cfg }); setAddOpen(true); }
+      if (cfg) { setEditItem({ role, cfg, card }); setAddOpen(true); }
     } catch { /* ignore */ }
   }
 
@@ -341,11 +380,12 @@ export function Dashboard({ snap, err, alarmByRef }: {
   const refs = activeDash ? memberRefs(activeDash, snap, logs, programs, timers) : [];
   const layout = activeDash ? reconcile(activeDash.layout, refs) : null;
 
-  // The snapshot rows behind a sensor ref: every channel for a base id, the one
-  // channel for a channel id.
+  // The snapshot rows behind a sensor entry: every channel for a base id, the
+  // listed ones for "<base>.<key>[,<key>...]".
   function sensorChannels(id: string) {
-    return (displaySnap?.sensors ?? []).filter(
-      (s) => s.id === id || (s.id.includes('.') ? s.id.split('.')[0] : s.id) === id);
+    const all = displaySnap?.sensors ?? [];
+    const ids = new Set(entryChannelIds(id, all.map((s) => s.id)));
+    return all.filter((s) => ids.has(s.id));
   }
 
   // A group row's mode is stored under the channel id — the same key a
@@ -401,13 +441,25 @@ export function Dashboard({ snap, err, alarmByRef }: {
     switch (refKind(ref)) {
       case 'sensor': {
         // "sensor/<baseId>" is the whole sensor: one card with a row per
-        // channel once there are several. "sensor/<baseId>.<channel>" is a
-        // single channel and stays a plain card, as does a one-channel sensor.
-        // Edit/reset act on the sensor (base id), delete on the ref itself.
+        // channel once there are several. "sensor/<baseId>.<k1>,<k2>" shows
+        // those channels; a single channel stays a plain card, as does a
+        // one-channel sensor. Edit/reset act on the sensor (base id), delete on
+        // the ref itself.
         const channels = sensorChannels(id);
         if (channels.length === 0) return null;
-        const baseId = id.includes('.') ? id.split('.')[0] : id;
+        const { base: baseId, keys } = parseSensorEntry(id);
         if (channels.length > 1) {
+          // Pitch and roll together are a spirit level, not a channel list.
+          const level = levelChannels(channels);
+          if (level) {
+            return (
+              <LevelCard baseId={baseId} level={level}
+                onCalibrate={editMode && channels.some(isCalibratable) ? () => setCalibrateId(baseId) : undefined}
+                onEdit={editMode ? () => startEdit('sensor', baseId, id) : undefined}
+                onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
+              />
+            );
+          }
           return (
             <SensorGroupCard baseId={baseId} channels={channels}
               modeOf={(cid) => channelMode(cid, baseId)}
@@ -416,18 +468,21 @@ export function Dashboard({ snap, err, alarmByRef }: {
               onReset={channels.some((s) => s.meta.kind === 'Cumulative')
                 ? () => resetSensor(baseId) : undefined}
               onCalibrate={editMode && channels.some(isCalibratable) ? () => setCalibrateId(baseId) : undefined}
-              onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+              onEdit={editMode ? () => startEdit('sensor', baseId, id) : undefined}
               onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
             />
           );
         }
         const s = channels[0];
-        const mode = activeDash?.sensorModes?.[id] ?? 'normal';
+        // A key list down to one existing channel stores its mode under that
+        // channel's id, like a single-channel entry does.
+        const modeKey = keys ? s.id : id;
+        const mode = activeDash?.sensorModes?.[modeKey] ?? 'normal';
         return (
           <SensorCard sensor={s}
             alarm={alarmByRef?.get(`sensor/${s.id}`)}
             viewMode={mode}
-            onEdit={editMode ? () => startEdit('sensor', baseId) : undefined}
+            onEdit={editMode ? () => startEdit('sensor', baseId, id) : undefined}
             onCalibrate={editMode && isCalibratable(s) ? () => setCalibrateId(baseId) : undefined}
             onDelete={editMode ? () => removeFromDashboard('sensor', id) : undefined}
             onReset={s.meta.kind === 'Cumulative'
@@ -435,11 +490,11 @@ export function Dashboard({ snap, err, alarmByRef }: {
               // Tare = one-point offset: what the scale shows right now becomes 0.
               : s.meta.quantity === 'Mass'
                 ? () => calibrateSensor(baseId, {
-                    channel: id.includes('.') ? id.split('.')[1] : '',
+                    channel: s.id.includes('.') ? s.id.split('.')[1] : '',
                     mode: 'offset', points: [{ value: 0 }],
                   })
                 : undefined}
-            onCycleMode={editMode ? () => cycleMode('sensorModes', id, mode) : undefined}
+            onCycleMode={editMode ? () => cycleMode('sensorModes', modeKey, mode) : undefined}
           />
         );
       }
@@ -629,7 +684,9 @@ export function Dashboard({ snap, err, alarmByRef }: {
         onClose={() => { setAddOpen(false); setEditItem(null); }}
         editConfig={editItem?.cfg}
         editRole={editItem?.role}
+        cardEntry={editItem?.card}
         onRenamed={handleRenamed}
+        onCardChange={handleCardChange}
       />
 
       <CalibrateModal open={calibrateId !== null} sensorId={calibrateId ?? ''}
@@ -660,7 +717,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
           programs={programs}
           timers={timers}
           dash={activeDash}
-          onSave={(m) => { patchActiveDash(m); setContentOpen(false); }}
+          onAdd={addToDashboard}
           onNewProgram={openCreateProgram}
           onNewTimer={openCreateTimer}
           onClose={() => setContentOpen(false)}

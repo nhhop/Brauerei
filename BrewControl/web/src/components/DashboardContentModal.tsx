@@ -9,11 +9,11 @@ import type {
 import { fmtDuration } from '../format';
 import type { Role } from '../itemTypes';
 import { AddItemModal } from './AddItemModal';
+import { parseSensorEntry, sensorEntry } from '../dashboardLayout';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 
-export interface DashboardMembers {
-  sensors: string[]; actuators: string[]; controllers: string[]; charts: string[]; programs: string[]; timers: string[];
-}
+// The dashboard lists an added widget's id under this key.
+export type WidgetKind = 'sensors' | 'actuators' | 'controllers' | 'charts' | 'programs' | 'timers';
 
 interface Props {
   open: boolean;
@@ -21,25 +21,25 @@ interface Props {
   logs?: LogConfig[];
   programs?: ProgramConfig[];
   timers?: TimerConfig[];
-  dash: DashboardConfig;                 // current membership to preselect
-  onSave: (members: DashboardMembers) => void;
+  dash: DashboardConfig;                 // only to grey out what is already there
+  onAdd: (kind: WidgetKind, id: string) => void;
   onNewProgram?: () => void;
   onNewTimer?: () => void;
   onClose: () => void;
 }
 
-// One selectable entry: `id` is what gets stored in the dashboard config,
+// One widget in the list: `id` is what gets stored in the dashboard config,
 // `detail` the right-aligned secondary text that tells two similar ids apart.
-interface Row { id: string; label: string; detail?: string }
+// `channels`: a multi-channel sensor, whose "Hinzufügen" asks for the card's
+// channels first. `present`: already on the dashboard and only allowed once.
+interface Row { id: string; label: string; detail?: string; channels?: Sensor[]; present?: boolean }
 
 interface Section {
-  key: string;
+  key: WidgetKind;
   title: string;
   icon: LucideIcon;
   rows: Row[];
-  sel: Set<string>;
-  setSel: (s: Set<string>) => void;
-  // "+ Neuer ..." row at the end of this group. Charts have none: a chart is
+  // "+ Neuer ..." button of this group. Charts have none: a chart is
   // configured on its own page, not from here.
   add?: { label: string; onClick: () => void };
 }
@@ -61,54 +61,53 @@ function fmtValue(state: ItemState, unit: string): string {
   return `${v.toFixed(1)} ${unit}`.trim();
 }
 
-// Content picker: check which sensors / actuators / controllers / charts /
-// programs the dashboard shows. Name & delete live in NameModal.
-export function DashboardContentModal({ open, snap, logs, programs, timers, dash, onSave, onNewProgram, onNewTimer, onClose }: Props) {
-  const [sensors, setSensors] = useState<Set<string>>(new Set());
-  const [actuators, setActuators] = useState<Set<string>>(new Set());
-  const [controllers, setControllers] = useState<Set<string>>(new Set());
-  const [charts, setCharts] = useState<Set<string>>(new Set());
-  const [progs, setProgs] = useState<Set<string>>(new Set());
-  const [timerIds, setTimerIds] = useState<Set<string>>(new Set());
+// Keyless channels (a bare base channel) can't be listed in an entry; they
+// only ever show on an "all channels" card.
+const keyOf = (s: Sensor) => (s.id.includes('.') ? s.id.slice(s.id.indexOf('.') + 1) : '');
+
+// Widget picker: one entry per widget with an "add" button. It deliberately
+// doesn't mirror the dashboard — removing happens with × on the card. A
+// multi-channel sensor may sit on a dashboard several times, each card with its
+// own channels, so its button first opens the channel selection. Name & delete
+// live in NameModal.
+export function DashboardContentModal({ open, snap, logs, programs, timers, dash, onAdd, onNewProgram, onNewTimer, onClose }: Props) {
   const [query, setQuery] = useState('');
-  const [cat, setCat] = useState('all');
+  const [cat, setCat] = useState<'all' | WidgetKind>('all');
   const [subAddOpen, setSubAddOpen] = useState(false);
   const [addRole, setAddRole] = useState<Role>('sensor');
+  // The multi-channel sensor whose channels are being picked, and the picks.
+  const [config, setConfig] = useState<{ base: string; channels: Sensor[] } | null>(null);
+  const [cfgKeys, setCfgKeys] = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
-      setSensors(new Set(dash.sensors));
-      setActuators(new Set(dash.actuators));
-      setControllers(new Set(dash.controllers));
-      setCharts(new Set(dash.charts ?? []));
-      setProgs(new Set(dash.programs ?? []));
-      setTimerIds(new Set(dash.timers ?? []));
       setQuery('');
       setCat('all');
+      setConfig(null);
     }
-  }, [open, dash]);
+  }, [open]);
 
   if (!open) return null;
 
-  // Every channel of a multi-channel sensor (e.g. "flow.rate") is its own row
-  // and its own card. The bare base id is offered alongside them: it puts all
-  // channels of that sensor on one group card. Both may be picked at once.
   const snapSensors = snap?.sensors ?? [];
   const baseId = (id: string) => (id.includes('.') ? id.split('.')[0] : id);
   const sensorRows: Row[] = [];
   for (const [base, chs] of groupByBase(snapSensors, baseId)) {
     if (chs.length > 1) {
-      sensorRows.push({ id: base, label: base, detail: `Gruppenkarte · ${chs.length} Kanäle` });
+      sensorRows.push({ id: base, label: base, detail: `${chs.length} Kanäle`, channels: chs });
+      continue;
     }
-    for (const s of chs) sensorRows.push({ id: s.id, label: s.id, detail: fmtValue(s.state, s.meta.unit) });
-    // A sensor that lost channels (channel mask, edit) can leave a selected
-    // base id without a group behind — keep it listed so it can be unchecked.
-    if (chs.length <= 1 && sensors.has(base) && !chs.some((s) => s.id === base))
-      sensorRows.push({ id: base, label: base, detail: 'alle Kanäle' });
+    const s = chs[0];
+    sensorRows.push({
+      id: s.id, label: s.id, detail: fmtValue(s.state, s.meta.unit),
+      present: dash.sensors.some((e) => parseSensorEntry(e).base === base),
+    });
   }
 
+  const has = (list: string[] | undefined, id: string) => (list ?? []).includes(id);
+
   const actuatorRows: Row[] = (snap?.actuators ?? []).map((a) => ({
-    id: a.id, label: a.id,
+    id: a.id, label: a.id, present: has(dash.actuators, a.id),
     detail: a.meta.kind === 'Binary'
       ? (a.enabled ? 'An' : 'Aus')
       : fmtValue(a.state, a.meta.unit),
@@ -116,58 +115,45 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
 
   const controllerRows: Row[] = (snap?.controllers ?? []).map((c) => {
     const unit = snapSensors.find((s) => s.id === c.params?.sensor)?.meta.unit ?? '';
-    return { id: c.id, label: c.id, detail: `→ ${c.setpoint.toFixed(1)} ${unit}`.trim() };
+    return {
+      id: c.id, label: c.id, present: has(dash.controllers, c.id),
+      detail: `→ ${c.setpoint.toFixed(1)} ${unit}`.trim(),
+    };
   });
 
   const chartRows: Row[] = (logs ?? []).map((l) => ({
-    id: l.id, label: l.name,
+    id: l.id, label: l.name, present: has(dash.charts, l.id),
     detail: l.series.length === 1 ? '1 Serie' : `${l.series.length} Serien`,
   }));
 
   const programRows: Row[] = (programs ?? []).map((p) => ({
-    id: p.id, label: p.name,
+    id: p.id, label: p.name, present: has(dash.programs, p.id),
     detail: p.steps.length === 1 ? '1 Schritt' : `${p.steps.length} Schritte`,
   }));
 
   const timerRows: Row[] = (timers ?? []).map((t) => ({
-    id: t.id, label: t.name,
+    id: t.id, label: t.name, present: has(dash.timers, t.id),
     detail: t.mode === 'clock' ? (t.timeOfDay ?? '') : fmtDuration(t.durationSec),
   }));
 
   const openAdd = (role: Role) => { setAddRole(role); setSubAddOpen(true); };
 
   const sections: Section[] = ([
-    { key: 'sensors',     title: 'Sensoren',  icon: Gauge,             rows: sensorRows,     sel: sensors,     setSel: setSensors,
+    { key: 'sensors',     title: 'Sensoren',  icon: Gauge,             rows: sensorRows,
       add: { label: 'Neuer Sensor', onClick: () => openAdd('sensor') } },
-    { key: 'actuators',   title: 'Aktoren',   icon: Zap,               rows: actuatorRows,   sel: actuators,   setSel: setActuators,
+    { key: 'actuators',   title: 'Aktoren',   icon: Zap,               rows: actuatorRows,
       add: { label: 'Neuer Aktor', onClick: () => openAdd('actuator') } },
-    { key: 'controllers', title: 'Regler',    icon: SlidersHorizontal, rows: controllerRows, sel: controllers, setSel: setControllers,
+    { key: 'controllers', title: 'Regler',    icon: SlidersHorizontal, rows: controllerRows,
       add: { label: 'Neuer Regler', onClick: () => openAdd('controller') } },
-    { key: 'charts',      title: 'Charts',    icon: LineChart,         rows: chartRows,      sel: charts,      setSel: setCharts },
-    { key: 'programs',    title: 'Programme', icon: ListChecks,        rows: programRows,    sel: progs,       setSel: setProgs,
+    { key: 'charts',      title: 'Charts',    icon: LineChart,         rows: chartRows },
+    { key: 'programs',    title: 'Programme', icon: ListChecks,        rows: programRows,
       add: onNewProgram && { label: 'Neues Programm', onClick: onNewProgram } },
-    { key: 'timers',      title: 'Timer',     icon: TimerIcon,         rows: timerRows,      sel: timerIds,    setSel: setTimerIds,
+    { key: 'timers',      title: 'Timer',     icon: TimerIcon,         rows: timerRows,
       add: onNewTimer && { label: 'Neuer Timer', onClick: onNewTimer } },
   ] as Section[])
     // An empty group stays visible when it can be filled from here, so the
     // first sensor of a fresh device is one click away.
     .filter((s) => s.rows.length > 0 || s.add);
-
-  const total = sections.reduce((n, s) => n + s.rows.length, 0);
-  const selected = sections.reduce((n, s) => n + s.rows.filter((r) => s.sel.has(r.id)).length, 0);
-
-  // Delta against what the dashboard held when the dialog opened.
-  const baseSets: Record<string, string[]> = {
-    sensors: dash.sensors, actuators: dash.actuators, controllers: dash.controllers,
-    charts: dash.charts ?? [], programs: dash.programs ?? [], timers: dash.timers ?? [],
-  };
-  let added = 0, removed = 0;
-  for (const s of sections) {
-    const base = new Set(baseSets[s.key]);
-    for (const id of s.sel) if (!base.has(id)) added++;
-    for (const id of base) if (!s.sel.has(id)) removed++;
-  }
-  const noChanges = added === 0 && removed === 0;
 
   const q = query.trim().toLowerCase();
   const visible = sections
@@ -177,122 +163,143 @@ export function DashboardContentModal({ open, snap, logs, programs, timers, dash
     // group stays so its "+ Neu" button remains reachable.
     .filter((s) => !q || s.rows.length > 0);
 
-  const tabs = [{ key: 'all', title: 'Alle', on: selected, of: total }].concat(
-    sections.map((s) => ({
-      key: s.key, title: s.title, on: s.rows.filter((r) => s.sel.has(r.id)).length, of: s.rows.length,
-    })));
+  const tabs: { key: 'all' | WidgetKind; title: string }[] =
+    [{ key: 'all' as const, title: 'Alle' }, ...sections.map((s) => ({ key: s.key, title: s.title }))];
 
-  function toggle(set: Set<string>, setFn: (s: Set<string>) => void, id: string) {
-    const next = new Set(set);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setFn(next);
+  function add(kind: WidgetKind, r: Row) {
+    if (r.channels) {
+      setConfig({ base: r.id, channels: r.channels });
+      setCfgKeys(r.channels.map(keyOf).filter(Boolean));
+      return;
+    }
+    onAdd(kind, r.id);
+    onClose();
   }
 
-  function handleSubmit(e: Event) {
+  function addCard(e: Event) {
     e.preventDefault();
-    onSave({
-      sensors: [...sensors], actuators: [...actuators], controllers: [...controllers],
-      charts: [...charts], programs: [...progs], timers: [...timerIds],
-    });
+    if (!config || cfgKeys.length === 0) return;
+    onAdd('sensors', sensorEntry(config.base, cfgKeys, config.channels.map(keyOf).filter(Boolean)));
+    onClose();
   }
+
+  function toggleKey(k: string) {
+    setCfgKeys((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]));
+  }
+
+  const frame = `flex h-[640px] max-h-[90vh] w-full max-w-[720px] flex-col ${dialogFrame} ${dialogSheet}`;
 
   return (
     <>
     <div class={dialogScrim}>
-      <form onSubmit={handleSubmit} class={`flex h-[640px] max-h-[90vh] w-full max-w-[720px] flex-col ${dialogFrame} ${dialogSheet}`}>
-        <div class="flex min-h-0 flex-1 flex-col px-6 pt-6">
-          <h2 class="text-xl font-semibold text-fg">Widgets zum Dashboard hinzufügen</h2>
-          <p class="mt-1.5 text-sm text-muted">Wähle die Widgets aus, die auf dem Dashboard angezeigt werden sollen.</p>
-
-          <div class="relative mt-5">
-            <input type="search" value={query} placeholder="Widgets durchsuchen" aria-label="Widgets durchsuchen"
-              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-              class={`${inp} h-9 w-full pr-10`} />
-            <Search size={16} class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
+      {config ? (
+        // Channel selection of a multi-channel sensor's new card.
+        <form onSubmit={addCard} class={frame}>
+          <div class="flex min-h-0 flex-1 flex-col px-6 pt-6">
+            <h2 class="text-xl font-semibold text-fg">{config.base} hinzufügen</h2>
+            <p class="mt-1.5 text-sm text-muted">Welche Kanäle soll die Karte zeigen?</p>
+            <div class="-mx-2 mt-5 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+              <div class="grid grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2">
+                {config.channels.filter((s) => keyOf(s)).map((s) => {
+                  const k = keyOf(s);
+                  return (
+                    <label key={k} class="flex h-10 cursor-pointer items-center gap-3 rounded-md px-3 transition-colors hover:bg-subtle-hover">
+                      <input type="checkbox" class="size-4 shrink-0 accent-accent"
+                        checked={cfgKeys.includes(k)} onChange={() => toggleKey(k)} />
+                      <span class="min-w-0 flex-1 truncate text-sm text-fg">{k}</span>
+                      <span class="shrink-0 font-mono text-xs tabular-nums text-faint">{fmtValue(s.state, s.meta.unit)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-
-          <div role="tablist" class="mt-3.5 flex overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]">
-            {tabs.map((t) => {
-              const active = cat === t.key;
-              return (
-                <button key={t.key} type="button" role="tab" aria-selected={active}
-                  onClick={() => setCat(t.key)}
-                  class={`relative flex h-10 shrink-0 items-center gap-1.5 rounded-t-md px-2.5 text-sm transition-colors hover:text-fg ${
-                    active ? 'font-semibold text-fg' : 'text-muted'
-                  }`}>
-                  <span>{t.title}</span>
-                  <span class="font-mono text-[11px] font-normal text-faint">{t.on}/{t.of}</span>
-                  {active && <span class="absolute bottom-0 left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full bg-accent" />}
-                </button>
-              );
-            })}
+          <div class="flex shrink-0 gap-2 border-t border-border bg-bg/60 p-6">
+            <button type="submit" disabled={cfgKeys.length === 0} class={`${btnPrimary} h-10 flex-1`}>Übernehmen</button>
+            <button type="button" onClick={() => setConfig(null)} class={`${btnSecondary} h-10 flex-1`}>Zurück</button>
           </div>
+        </form>
+      ) : (
+        <div class={frame}>
+          <div class="flex min-h-0 flex-1 flex-col px-6 pt-6">
+            <h2 class="text-xl font-semibold text-fg">Widgets zum Dashboard hinzufügen</h2>
+            <p class="mt-1.5 text-sm text-muted">Wähle ein Widget, das auf dem Dashboard erscheinen soll.</p>
 
-          <div class="flex items-center justify-between px-1 pb-1.5 pt-2.5 text-xs text-muted">
-            <span>{selected} von {total} ausgewählt</span>
-            <span>{[added && `${added} hinzugefügt`, removed && `${removed} entfernt`].filter(Boolean).join(' · ')}</span>
-          </div>
+            <div class="relative mt-5">
+              <input type="search" value={query} placeholder="Widgets durchsuchen" aria-label="Widgets durchsuchen"
+                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+                class={`${inp} h-9 w-full pr-10`} />
+              <Search size={16} class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
+            </div>
 
-          <div class="-mx-2 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-            {visible.map((sec) => {
-              const Icon = sec.icon;
-              const hits = sec.rows.filter((r) => sec.sel.has(r.id)).length;
-              return (
-                <section key={sec.key}>
-                  <div class="mb-1 mt-2.5 flex items-center justify-between pl-2">
-                    <div class="flex items-baseline gap-2">
+            <div role="tablist" class="mt-3.5 flex overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-sm:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]">
+              {tabs.map((t) => {
+                const active = cat === t.key;
+                return (
+                  <button key={t.key} type="button" role="tab" aria-selected={active}
+                    onClick={() => setCat(t.key)}
+                    class={`relative flex h-10 shrink-0 items-center rounded-t-md px-2.5 text-sm transition-colors hover:text-fg ${
+                      active ? 'font-semibold text-fg' : 'text-muted'
+                    }`}>
+                    <span>{t.title}</span>
+                    {active && <span class="absolute bottom-0 left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full bg-accent" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div class="-mx-2 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+              {visible.map((sec) => {
+                const Icon = sec.icon;
+                return (
+                  <section key={sec.key}>
+                    <div class="mb-1 mt-2.5 flex items-center justify-between pl-2">
                       <span class="text-sm font-semibold text-fg">{sec.title}</span>
-                      <span class="text-xs text-faint">{hits} von {sec.rows.length}</span>
+                      {/* Creating is not a search result — hide it while filtering. */}
+                      {!q && sec.add && (
+                        <button type="button" onClick={sec.add.onClick}
+                          class="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-accent transition-colors hover:bg-subtle-hover">
+                          <Plus size={14} />
+                          {sec.add.label}
+                        </button>
+                      )}
                     </div>
-                    {/* Creating is not a search result — hide it while filtering. */}
-                    {!q && sec.add && (
-                      <button type="button" onClick={sec.add.onClick}
-                        class="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-accent transition-colors hover:bg-subtle-hover">
-                        <Plus size={14} />
-                        {sec.add.label}
-                      </button>
-                    )}
-                  </div>
-                  {sec.rows.map((r) => {
-                    const on = sec.sel.has(r.id);
-                    return (
-                      <label key={r.id}
-                        class={`mb-0.5 flex h-11 cursor-pointer items-center gap-3 rounded-md px-3 transition-colors ${
-                          on ? 'bg-subtle-hover' : 'hover:bg-subtle-hover'
-                        }`}>
-                        <input type="checkbox" class="size-4 shrink-0 accent-accent"
-                          checked={on} onChange={() => toggle(sec.sel, sec.setSel, r.id)} />
+                    {sec.rows.map((r) => (
+                      <div key={r.id} class="mb-0.5 flex h-11 items-center gap-3 rounded-md px-3 transition-colors hover:bg-subtle-hover">
                         <Icon size={18} class="shrink-0 text-muted" />
                         <span class="min-w-0 flex-1 truncate text-sm text-fg">{r.label}</span>
                         {r.detail && (
                           <span class="shrink-0 font-mono text-xs tabular-nums text-faint">{r.detail}</span>
                         )}
-                      </label>
-                    );
-                  })}
-                </section>
-              );
-            })}
+                        <button type="button" disabled={r.present} onClick={() => add(sec.key, r)}
+                          class="flex h-8 w-40 shrink-0 items-center justify-center gap-1.5 rounded-md text-[13px] text-accent transition-colors hover:bg-subtle-hover disabled:text-faint disabled:hover:bg-transparent">
+                          {r.present ? 'Auf dem Dashboard' : <><Plus size={14} /> Hinzufügen</>}
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                );
+              })}
 
-            {visible.length === 0 && (
-              <p class="px-5 py-14 text-center text-sm text-muted">Keine Widgets gefunden.</p>
-            )}
+              {visible.length === 0 && (
+                <p class="px-5 py-14 text-center text-sm text-muted">Keine Widgets gefunden.</p>
+              )}
+            </div>
+          </div>
+
+          <div class="flex shrink-0 gap-2 border-t border-border bg-bg/60 p-6">
+            <button type="button" onClick={onClose} class={`${btnSecondary} h-10 flex-1`}>Schließen</button>
           </div>
         </div>
-
-        <div class="flex shrink-0 gap-2 border-t border-border bg-bg/60 p-6">
-          <button type="submit" disabled={noChanges} class={`${btnPrimary} h-10 flex-1`}>Übernehmen</button>
-          <button type="button" onClick={onClose} class={`${btnSecondary} h-10 flex-1`}>Abbrechen</button>
-        </div>
-      </form>
+      )}
     </div>
 
+    {/* A widget created from here lands on the dashboard right away; the
+        dialog stays open behind the wizard's success screen. */}
     <AddItemModal open={subAddOpen} snap={snap} initialRole={addRole}
       onClose={() => setSubAddOpen(false)}
-      onCreated={(role, id, dashboardIds) => {
-        if (role === 'sensor') setSensors(new Set([...sensors, ...dashboardIds]));
-        else if (role === 'actuator') toggle(actuators, setActuators, id);
-        else toggle(controllers, setControllers, id);
+      onCreated={(role, id) => {
+        onAdd(role === 'sensor' ? 'sensors' : role === 'actuator' ? 'actuators' : 'controllers', id);
       }} />
     </>
   );

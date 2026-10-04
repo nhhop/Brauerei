@@ -5883,6 +5883,270 @@ werden einmalig neu berechnet (vorher CRC aus dem gzip-Trailer, jetzt `lastWrite
   danach gelöscht.
 - **esp32dev (LittleFS), per OTA:** JS-Bundle, `/` und SPA-Route byte-identisch, 404 für fehlendes Asset.
 
+## 2026-10-03 — GY521/BME280 ohne Gerät: ungültig statt Fantasiewerte (Branch `fix/gy521-no-device`)
+
+**Root Cause:** `GY521Sensor::begin()` und `BME280Sensor::begin()` ignorierten den Rückgabewert des Treibers und
+setzten `initialized_` immer. `tick()` las danach blind weiter und markierte das Ergebnis als gültig. Ein
+Modul auf einer Adresse ohne Gerät lieferte so Werte aus einem uninitialisierten Stack-Puffer (am LilyGo
+26–29 bzw. −48…−140 °) mit `ok: true`. Ein Abziehen im Betrieb blieb ebenfalls unbemerkt. Die Treiber helfen dabei
+nicht: `Adafruit_MPU6050::getEvent()` gibt immer `true` zurück, `Adafruit_BME280::read24()` wertet I²C-Fehler nicht aus.
+`GY521TiltSensor` hatte das Muster nicht selbst, ließ aber bei ungültigem Rohsensor den alten Winkel stehen.
+
+**Umsetzung (SensActCtrl):** `GY521Sensor` und `BME280Sensor` merken das `begin()`-Ergebnis. Schlägt es fehl, versucht
+`tick()` es alle 5 s erneut (`kRetryIntervalMs`, Vergleich über `int32_t`-Differenz, überlauffest). Bis dahin
+bleiben alle Kanäle ungültig. Läuft das Modul, prüft jeder `tick()` vorab per Adress-Probe
+(`beginTransmission`/`endTransmission` auf dem Bus des Sensors), ob es noch antwortet. Wenn nicht, werden die Kanäle
+ungültig und der Retry beginnt. Der BME280 verwirft zusätzlich NaN-Messwerte. `GY521TiltSensor` setzt den Winkel
+auf ungültig und den Filter zurück (nächster Winkel startet wieder aus der Beschleunigung). Die Probe dauert bei
+vorhandenem Gerät Mikrosekunden, bei fehlendem ein NACK. Nur ein hängender Bus (keine Pull-ups) könnte bis zum
+Wire-Timeout (50 ms) stehen, dann aber höchstens alle 5 s. Der native Stub bekommt Hooks
+(`SensActCtrlTest::gy521Present/gy521NowMs`, `bme280Present/bme280NowMs`) für „Modul da/weg" und die Uhr. Die
+API bleibt unverändert (keine Änderung an `openapi.yaml`), sichtbar ist nur `ok:false` statt falscher Werte.
+
+**Verifikation:** Neue native Tests (vorher rot: kein Gerät, später angesteckt, abgezogen, wieder angesteckt, Retry
+nicht bei jedem Tick; je für GY521, Tilt und BME280). `SensActCtrl` `pio test -e native` 294/294, `BrewControl/firmware`
+`pio test -e native` 99/99, `pio run` für esp32dev, lolin_s2_mini und LilyGo grün.
+- **LilyGo, per OTA, echter GY-521 (0x68 am Board-Bus):** Modul dran → Winkel gültig (≈ −1 °). GY521 auf 0x69 (ohne
+  Gerät) → `ok:false`, bleibt es; danach gelöscht. Modul beim Start fehlend → `ok:false`, nach dem Anstecken läuft es
+  ohne Neustart von selbst an. SDA im Betrieb abgezogen → sofort `ok:false`, Board läuft weiter.
+- Beim Abziehen des ganzen Moduls startete das Board neu (`resetReason: power_on`, also Stromunterbrechung, nicht die
+  Firmware).
+
+## 2026-10-03 — GY-521 als Mehrkanal-Sensor (Branch `feat/gy521-channels`)
+
+Umsetzung des PLAN.md-Backlog-Punkts: Ein GY521-Item hat jetzt einzeln wählbare Kanäle nach dem Muster von
+YF-S201/HC-SR04. Unterwegs ist ein Fehler im Neigungsfilter aufgefallen und behoben worden.
+
+**Entscheidungen** (mit dem Nutzer, teils im Lauf der Umsetzung revidiert):
+- **Ein Sensor-Objekt:** `GY521TiltSensor` bekommt eine Kanalmaske und reicht die Rohkanäle seines eigenen
+  `GY521Sensor`-Members durch, pro Tick bleibt es ein I²C-Zugriff. Zwei Item-Typen auf demselben Chip scheiterten
+  ohnehin an der I²C-Adressprüfung.
+- **Kanäle**, in dieser Reihenfolge (16-Bit-Maske):
+  - `pitch`: Drehung um Y, die Neigung der X-Achse gegen die Waagerechte, −90…90°.
+  - `roll`: Drehung um X, dasselbe für die Y-Achse.
+  - `tilt`: Neigung der Z-Achse gegen die Senkrechte, 0…180°, unabhängig von der Kipprichtung; das ist die
+    iSpindel-Größe.
+  - `temp`: Chip-Temperatur in °C, liest einige Grad über Raumtemperatur.
+  - `ax`/`ay`/`az` in g, `gx`/`gy`/`gz` in °/s.
+
+  Einen Gierwinkel (Drehung um Z) gibt es nicht: Die Schwerkraft ändert sich dabei nicht, nur das Integral von `gz`
+  bliebe, und das driftet. Als Kanal für Sensoren mit Magnetometer steht er im PLAN.md-Backlog. Zunächst war ein
+  einzelner Winkel `angle` umgesetzt; als der Nutzer die Winkel um die anderen Achsen wollte, wurde daraus
+  `pitch`/`roll`/`tilt`.
+- **Alle Kanäle sind benannt** (`<id>.<key>`), statt den Winkel als Basiskanal unter der nackten ID zu lassen.
+  Bestands-Referenzen werden dafür migriert. Physisch ist `pitch` Kanal 0, so wie der Winkel früher.
+- **Fehlt `channels`, ist nur `pitch` aktiv**, die bisherige Bedeutung von GY521. Das ist bewusst anders als bei
+  YF-S201/HC-SR04.
+- **Kalibrierung bleibt bei `kMaxChannels = 4`.** Kurz war 8 umgesetzt; der Nutzer hat das verworfen, weil die Rohachsen
+  keine Kalibrierung brauchen. Der Filter rechnet ohnehin mit den unkalibrierten Werten, eine Kalibrierung von `ax`
+  verschöbe also nur die Anzeige. Deshalb stehen Winkel und `temp` vorn und sind bei jeder Auswahl kalibrierbar.
+  Jede Checkbox bleibt einzeln wählbar.
+
+**Filter-Fehler (Root Cause):**
+- Der Beschleunigungswinkel `atan2(−ax, √(ay²+az²))` beschreibt eine Drehung um Y, integriert wurde aber die Drehrate
+  um X (`gx`). Beim Kippen um Y folgte der Winkel deshalb nur über den 2-%-Beschleunigungsanteil, und eine Drehung um X
+  verfälschte ihn.
+- Außerdem integrierte der Filter den Nullpunkt-Versatz des Kreisels (am LilyGo ≈ 2 °/s) mit. Das ergab einen
+  dauerhaften Fehler von Versatz × Zeitkonstante, gemessen +1,2°.
+- **Fix:** `pitch` integriert `gy`, `roll` integriert `gx`. Der Filter arbeitet mit einer festen Zeitkonstante
+  (`kTauS` 0,5 s, `alpha` aus `dt`) statt mit einem festen Faktor pro Tick. Ein Integralanteil (`kBiasGain` 0,1/s²)
+  lernt den Versatz in ≈ 20 s. Bei einem Ausfall des Moduls werden die gelernten Versätze verworfen.
+
+**Snapshot-Größe** (vorab gerechnet, am Gerät gemessen): Der LilyGo hatte 1552 B. Gerechnet waren ≈ 155–165 B je
+Kanal im ungünstigsten Fall. Gemessen sind es mit allen zehn GY521-Kanälen 2965 B, die Kanäle selbst 1561 B, also
+≈ 1,2 KB Luft bis `kSnapshotCap` (4160 B). Ein voller GY521 passt auf jedem Board, zwei lassen kaum Platz für den
+Rest (in `openapi.yaml` vermerkt).
+
+**Umsetzung:**
+- **SensActCtrl:**
+  - `GY521Sensor` liest die Temperatur aus `getEvent()` als siebten Kanal `temp`.
+  - `GY521TiltSensor` mit `kChannelPitch … kChannelGz` und `setChannelMask(uint16_t)`; alle Winkel werden immer
+    berechnet. Filter wie oben.
+  - Der native Stub nimmt Beschleunigung und Drehrate per Test-Hook (`gy521AccelG`, `gy521GyroDps`).
+  - Library-README nachgezogen.
+- **Firmware:**
+  - Neuer Header `SensorChannels.h` (Arduino-frei, nativ getestet) mit einem `parseChannelMask` für beliebig viele
+    Keys (YF-S201/HC-SR04 verhalten sich gleich), `normalizeLegacyGy521` und `renameRefs`/`renameLogRefs`.
+  - **Migration in `DynamicItems::loadFromSD`:** Ein GY521 ohne `channels` bekommt `["pitch"]`, eine Kalibrierung auf
+    `channel: ""` wandert nach `pitch`. Noch bevor die übrigen Stores laden, werden exakte Treffer `sensor/<id>` in
+    `logs.json`, `alarms.json`, `programs.json` und `profiles.json` zu `sensor/<id>.pitch`. Ein Log mit geänderter
+    Serie beginnt eine neue CSV, weil das Chart Live-Werte über den CSV-Kopf auflöst; alte Sessions behalten ihren
+    Kopf. `registry.json` wird zuletzt geschrieben, ein Absturz dazwischen wiederholt die idempotente Umbenennung.
+  - Unverändert bleiben Dashboards (`sensor/<id>` heißt dort „ganzer Sensor“) und Regler (nackte ID, lesen
+    `channel(0)` = `pitch`). Das MQTT-Topic wird `…/sensor/<id>/pitch`; kein Board abonniert es (geprüft).
+  - `openapi.yaml`: Kanäle, Migration, geänderte Winkel-Kennlinie (eine vorhandene poly-Kalibrierung neu machen),
+    Snapshot-Größe, Kalibrierbarkeit.
+- **Web:** Zehn Checkboxen, gruppiert in Winkel (um Y / um X / gesamt), Beschleunigung, Drehrate und Temperatur.
+  Gesendet wird in Firmware-Reihenfolge. Ein Bestandsitem ohne `channels` zeigt nur `pitch`.
+
+**Verifikation:**
+- **Tests und Builds:**
+  - SensActCtrl `pio test -e native` 304/304. Neu: Kanalform und Maske, Vorzeichen von `pitch`/`roll`/`tilt` bei
+    ±30°-Drehungen, `tilt` bis 180°, Kreiselachse je Winkel, Lernen des Versatzes, 4er-Kalibriergrenze.
+  - Firmware `pio test -e native` 108/108 (+9 `test_sensor_channels`).
+  - `pio run` für esp32dev, lolin_s2_mini und LilyGo grün, Redocly-Lint ohne neue Warnung.
+  - Web: `pnpm typecheck`, `pnpm test` 62/62, `pnpm build`.
+- **LilyGo (OTA, echter GY-521 am `i2c-board`), Migration:**
+  - Ein Backup mit Legacy-`gyro` wurde zurückgespielt, mit Kalibrierung auf `""` und `sensor/gyro` in Log, Alarm,
+    Programm und Profil.
+  - Nach dem Boot steht überall `gyro.pitch`, die Kalibrierung liegt unter `pitch`. Das Log hat eine neue Session,
+    das Dashboard ist unverändert (die Karte heißt jetzt „gyro.pitch“). Ein Neustart migriert nichts erneut.
+  - Das erste Branch-Zwischenstadium (`gyro.angle`) wurde am Gerät genauso geprüft, einschließlich Reboot-Persistenz.
+- **LilyGo, Display:** Die Gruppenseite zeigt alle zehn Zeilen; die oberste ragt am runden Rand ins Titel-Label
+  (in PLAN.md, vom Nutzer als unkritisch eingestuft).
+- **LilyGo, Kanäle:** Per Formular alle zehn gewählt; die Gruppenkarte zeigt sie, kalibrierbar sind genau
+  `pitch`/`roll`/`tilt`/`temp`.
+- **LilyGo, Versatz-Schätzung:** Flach nach einer Minute liegen `pitch`/`roll` ±0,1° am reinen Beschleunigungswinkel,
+  vorher waren es konstant +1,2°.
+- **Kipplagen** (vom Nutzer gestellt; Abweichungen von ±90/180 aus den Nullpunkt-Fehlern des Beschleunigungssensors,
+  az 0,96 g flach, und schräg aufliegendem Modul):
+
+  | Lage | `pitch` | `roll` | `tilt` |
+  |---|---|---|---|
+  | lange Kante | 86,6 | −1,2 | 93,0 |
+  | kurze Kante | −3,4 | −83,5 | 95,5 |
+  | kopfüber | −6,6 | 1,8 | 173,5 |
+
+- **Langsames Kippen, mit 5 Hz aufgezeichnet:** `pitch` steigt mit rund 10 °/s bei `gy` +7…+10 °/s, `roll` fällt bei
+  negativem `gx`. Die gefilterten Winkel liegen während der Bewegung ±1–3° am Beschleunigungswinkel; das
+  Kreisel-Vorzeichen stimmt.
+- **Nebenbefund:** Der Nutzer hatte zwischendurch den Test-Offset (+10° auf den Winkel) neu kalibriert. Er wurde dabei
+  bei −2,5° Lage aufgenommen und verschob die Anzeige. Das war kein Fehler; der Offset ist inzwischen entfernt.
+
+**Neu in PLAN.md:**
+- „Regler können keine Kanal-ID `<id>.<key>` als Eingang nutzen“: bestand schon, betrifft durch die Migration jetzt auch
+  GY521-Regler.
+- „Gierwinkel für IMUs mit Magnetometer“.
+- Der Tilt-Punkt ist auf das Offene reduziert: Einbaulage im Schwimmkörper und SG-Kalibrierung.
+
+**Einschränkung:** Wie bei der Bus-Migration versteht ältere Firmware die migrierten Configs nicht mehr. Vor einem
+Downgrade das Backup von vorher einspielen.
+
+## 2026-10-03 — Dashboard-Sensorkarten mit Kanalauswahl (Branch `feat/dashboard-sensor-channels`)
+
+Nutzerwunsch nach dem GY-521-Umbau: Im Dialog „Widgets zum Dashboard hinzufügen“ stand jeder Kanal eines
+Mehrkanal-Sensors als eigene Zeile, beim GY-521 also elf Zeilen mit Gruppenkarte. Außerdem gab es pro Sensor höchstens
+eine Gruppenkarte, und die zeigte immer alle Kanäle.
+
+**Entscheidungen** (mit dem Nutzer):
+- Pro Sensor gibt es im Dialog einen Eintrag. Beim Hinzufügen wählt man die Kanäle der Karte.
+- Der Dialog dient nur noch zum Hinzufügen und bildet den Zustand des Dashboards nicht ab: Jeder Eintrag (alle
+  Kategorien) hat einen Button „Hinzufügen“, Checkboxen und „x von y“-Zähler sind weg. Entfernt wird per × an der
+  Karte. Was es pro Dashboard nur einmal gibt und schon drauf ist, steht ausgegraut als „Auf dem Dashboard“ da.
+  Ein erster Entwurf mit aufklappbarer Kartenliste je Sensor wurde vom Nutzer verworfen.
+- Ein Sensor darf mehrmals auf einem Dashboard stehen, jede Karte mit eigener Auswahl (z. B. Winkel und Beschleunigung).
+- Nachträglich geändert wird die Auswahl über den Stift der Karte. „Sensor bearbeiten“ bekommt dafür einen eigenen
+  Abschnitt „Auf dieser Karte anzeigen“, getrennt von den Kanälen, die der Sensor misst; die gelten für alle Dashboards,
+  Logs und Alarme.
+
+**Datenmodell, ohne neues Feld und ohne Migration:**
+- `dashboard.sensors` bleibt ein String-Array, ein Eintrag ist eine Karte.
+  - `gyro`: alle Kanäle, auch künftige.
+  - `gyro.pitch`: ein Kanal.
+  - `gyro.pitch,roll,tilt` (neu): diese Kanäle.
+- Die Keys stehen in Kanalreihenfolge. Sind alle gewählt, wird die nackte ID gespeichert.
+- Layout-Refs sind `sensor/<eintrag>`, mehrere Karten pro Sensor gehen deshalb ohne Modelländerung. Eine geänderte
+  Auswahl behält über `renameRef` ihren Platz.
+- `sensorModes` bleibt pro Kanal-ID; zeigen zwei Karten denselben Kanal, teilen sie sich dessen Modus.
+- `DashboardStore` speichert die Strings unverändert und brauchte keine Änderung. Alte Einträge bleiben gültig.
+
+**Umsetzung:**
+- **Web:**
+  - `dashboardLayout.ts`: `parseSensorEntry`, `sensorEntry`, `entryChannelIds`; `memberRefs` behält einen Eintrag,
+    solange einer seiner Kanäle existiert. Neue Testdatei `dashboardLayout.test.ts` (13 Tests).
+  - `Dashboard.tsx`: Filter und Rendern über den Parser. Der Stift reicht den Karteneintrag an den Dialog weiter.
+    Umbenennen und Kartenänderung im selben Speichern ergeben ein Dashboard-Update. Beim Umbenennen wandern jetzt auch
+    die Zeilenmodi der Kanäle mit (vorher nur die der eigenen Einträge).
+  - `AddItemModal.tsx`: Abschnitt „Auf dieser Karte anzeigen“. Angeboten werden die im Formular gewählten Kanäle
+    (GY521, YF-S201, HC-SR04), sonst die aus dem Snapshot. Ändert sich nur die Karte, wird der Sensor nicht neu
+    angelegt. Ein neu angelegter Mehrkanal-Sensor kommt als eine Karte statt einer pro Kanal aufs Dashboard.
+  - `DashboardContentModal.tsx` umgebaut: `onAdd(kind, id)` statt `onSave(members)`. Ein Klick fügt hinzu und
+    schließt. Beim Mehrkanal-Sensor öffnet er zuerst eine eigene Ansicht „`<id>` hinzufügen“ mit Kanal-Checkboxen
+    (alle vorbelegt, mit Live-Werten), danach „Übernehmen“ oder „Zurück“. Ein dort neu angelegtes Item landet sofort
+    auf dem Dashboard.
+- **Firmware-Display:** `keyInList` in `SensorChannels.h` (nativ getestet). `resolveSensor` erkennt die Kanalliste,
+  und die Gruppenseite zeigt dann nur die gelisteten Kanäle.
+- **`openapi.yaml`:** `sensors` und `sensorModes` beschreiben Listenform und mehrere Karten pro Sensor.
+
+**Verifikation:**
+- Web `pnpm typecheck`, `pnpm test` 75/75, `pnpm build`.
+- Firmware `pio test -e native` 109/109; `pio run` für esp32dev, lolin_s2_mini und LilyGo grün. Redocly-Lint ohne neue
+  Warnung.
+- **Browser gegen einen Mock**, der GETs ans LilyGo durchreicht und Dashboards nur im RAM hält:
+  - zwei `gyro`-Karten angelegt, „alle Kanäle“ abgewählt;
+  - per Stift `temp` ergänzt: Die Karte blieb an ihrem Platz, und am Sensor kam nur das Label-POST an, kein Neuanlegen;
+  - eine Karte auf `az` reduziert: Sie wird zur Einzelkarte.
+- **LilyGo (OTA + UI-Paket):**
+  - Dasselbe per echter UI, also `gyro.pitch,roll,tilt,temp` und `gyro.ax,ay,az`.
+  - `temp`-Zeile auf kompakt.
+  - Nach einem Neustart stehen beide Einträge und `gyro.temp: compact` in `/config/dashboards.json`, und das
+    Dashboard sieht gleich aus. Damit ist der alte PLAN-Punkt „Gruppenkarte für Multi-Channel-Sensoren am Gerät“
+    erledigt: Gruppenkarte, Zeilenmodus und Reboot sind am echten Board geprüft, `Durchfluss.rate` als Alt-Eintrag
+    neben Chart und Programm unverändert.
+  - Das runde Display zeigt pro Karte eine Seite mit genau den gewählten Kanälen (vom Nutzer bestätigt).
+  - Umgebauter Dialog: `gyro` → Kanalauswahl `gx`/`gy`/`gz` → Übernehmen ergibt `gyro.gx,gy,gz`, der Dialog schließt.
+    Der Aktor `kettle` wird per Klick hinzugefügt und steht danach ausgegraut da. `HLT` ist ausgegraut, `gyro` und
+    `Durchfluss` bleiben hinzufügbar.
+
+## 2026-10-03 — GY-521-Libelle auf Dashboard und Display (Branch `feat/gy521-libelle`)
+
+Nutzerwunsch: Für den GY-521 eine Wasserwaage-Ansicht wie in einer Libellen-App, rund, mit `pitch` und `roll` auf einer
+Karte. Der Screenshot zeigte außerdem eine Linie Zentrum → Blase mit einer Winkelangabe am Rand. Das ist **nicht** der
+Neigungswinkel, sondern die Richtung des Ausschlags (im Uhrzeigersinn ab oben, hier 146,9°); die Neigung steht in den
+beiden Digitalfeldern, „N“ bräuchte ein Magnetometer.
+
+**Entscheidungen** (mit dem Nutzer):
+- **Auslöser automatisch:** Eine Karte, deren Kanäle `pitch` **und** `roll` enthalten, ist eine Libelle. Kein neuer
+  `WidgetMode`, kein neues Konfig-Feld; Firmware-`DashboardStore`, `types.ts` und die Shape der API bleiben unverändert.
+  Eine Karte mit nur `pitch` bleibt eine normale Karte.
+- **Display:** Eine Seite mit der Libelle, dahinter eine zweite mit den übrigen Kanälen (`tilt`, `dir`, `temp` …),
+  nur wenn es welche gibt. Die Blase läuft über einen eigenen 80-ms-Timer, nur für die sichtbare Libelle-Seite.
+- **Richtungslinie nur im Web.** Dazu ein neuer Sensorkanal `dir`, weil die Richtung sonst in keinem Wert steht.
+
+**Umsetzung:**
+- **Library:** `GY521TiltSensor` bekommt den Kanal `dir` (Maskenbit `kChannelDir = 0x400`, hinten angehängt, damit die
+  übrigen Bits und ihre Tests stabil bleiben). `dir = atan2(roll, −pitch)`, 0…360° im Uhrzeigersinn ab der X-Achse, aus
+  den **gefilterten** Winkeln; ungültig unter 0,5° Neigung. (Erste Fassung `atan2(roll, −pitch)`, nach dem Test am
+  Gerät auf `atan2(roll, pitch)` gedreht, siehe unten.) `SensorChannels.h`: `"dir"` an `kGy521Channels`.
+- **Gemeinsame Mathematik**, in Firmware und Web gespiegelt und je mit denselben Tests: `levelBubble()` in
+  `firmware/src/LevelBubble.h` und `web/src/levelBubble.ts`. Radiale Klemmung auf den Einheitskreis, Vollausschlag
+  ±15°, „waagerecht“ innerhalb ±1°, Richtung = Peilung der Blase. Bildschirm: Y-Seite oben (`roll` > 0) → Blase rechts,
+  −X-Seite oben (`pitch` > 0) → Blase oben; dadurch stimmt die Randangabe mit dem Kanal `dir` überein.
+- **Web:** `LevelCard.tsx` (SVG: Glas, Fadenkreuz, Zielring, Blase, gestrichelte Richtungslinie, Winkel am Rand, darunter
+  Nick/Roll/Neigung und die übrigen Kanäle als Zeilen). `Dashboard.tsx` rendert sie statt der `SensorGroupCard`, wenn
+  `levelChannels()` pitch und roll findet. `AddItemModal.tsx`: `dir` in Auswahl und Gruppe „Winkel“, Hinweis im Dialog.
+- **Display:** `DisplayPages` bekommt `View::Level`/`View::Rest`. `rebuild_` legt zwei Seiten mit derselben Id an und
+  bleibt nach einem Neuaufbau auf der gleichen. Kanal-Indizes von pitch/roll werden bei jedem Refresh neu gesucht, nicht
+  gemerkt (der Sensor kann währenddessen bearbeitet werden).
+- **Doku:** `openapi.yaml` (Kanal `dir`, Libelle-Satz bei `sensors`), `BrewControl/README.md` (Seitentabelle),
+  `SensActCtrl/README.md`.
+
+**Verifikation:**
+- `pio test -e native`: SensActCtrl `test_gy521_tilt` 23/23 (neu: `dir` für 0/90/180/270/45°, flach ungültig, Maske),
+  Firmware 117/117 (neu: `test_level_bubble`, `kGy521Channels` mit elf Schlüsseln). Web `pnpm test` 86/86, `pnpm typecheck`,
+  `pnpm build`. Redocly-Lint ohne neue Warnung. `pio run` für `lilygo_t_display_s3_amoled` grün.
+- Web gegen einen Node-Mock (Scratchpad): Blase wandert zur höheren Seite, grün und ohne Linie innerhalb ±1°, am Rand
+  geklemmt, Randwinkel entspricht `dir`; Mobilbreite geprüft. Dabei fiel auf, dass das Randlabel bei seitlicher Neigung das
+  Glas überlappte; der Abstand hängt jetzt von der Richtung ab.
+- **Am Gerät geprüft (LilyGo, OTA + UI-Paket):** Display flüssig, Wischen und zweite Seite funktionieren. Nick war
+  vertauscht: `pitch = atan2(−ax, …)` ist positiv, wenn die X-Seite *unten* liegt, `roll` positiv, wenn die Y-Seite
+  *oben* liegt. Bildschirm-Zuordnung und `dir` auf `pitch` > 0 → oben gedreht (`dir = atan2(roll, pitch)`), danach
+  bestätigt. Im Web ruckelte die Blase, weil der Snapshot nur einmal pro Sekunde kommt (`lastPushMs_`, 1000 ms):
+  `LevelCard` gleitet jetzt per `requestAnimationFrame` zur neuen Position (Zeitkonstante 300 ms).
+- **Skala (Nutzerwunsch: Blase blieb ab 15° am Rand hängen):** zweiteilig. 0–15° füllen die inneren 60 % des
+  Radius (Empfindlichkeit wie vorher), 15–45° die äußeren 40 %; ein gestrichelter Ring bei 15° markiert den Wechsel.
+  Ab 45° einer Achse (`max(|roll|, |pitch|)`, Rückkehr unter 43°) zeigt die Karte eine **gerade Libelle**. Das Kriterium
+  ist die Achse, nicht `hypot` (30°/30° bleibt rund). Mathematik gespiegelt in `LevelBubble.h` / `levelBubble.ts`
+  (`levelBubble`, `levelStraight`, `levelStraightMode`) mit denselben Tests (Firmware 122, Web 95).
+- **Gerade Libelle zeigt die *andere* Achse (Nutzerkorrektur):** Erst zeigte sie die dominante Achse (−90…90°), und
+  Nick lief waagerecht. Richtig ist: Steht das Gerät auf der Kante, bleibt die andere Achse auszurichten. Bei dominantem
+  Nick läuft **Roll waagerecht**, bei dominantem Roll **Nick senkrecht** (oben = positiv, wie im Glas). Skala wie im Glas
+  (fein bis 15°, Ende bei 45°), Marken bei 0 und ±15°, grün innerhalb ±1°; „senkrecht“ erscheint, wenn die dominante
+  Achse bei 90° ± 1° liegt.
+- **„Neigung“ auf der Karte** ist kein Kanal, sondern `hypot(roll, pitch)` (Länge der Richtungslinie); `tilt` ist der
+  Winkel der Z-Achse und weicht bei großen Winkeln davon ab.
+- **Offen am Gerät:** gerade Libelle am Display (Aussehen, Umschalten bei 45°), LVGL-Pool-Reserve bei 16 Seiten.
+
 ## 2026-10-01 – 2026-10-02 — Rezept- und Sud-Editor: UI-Entwurf (nur Design, kein Code)
 
 Rezept- und Sud-Editor als Design-Canvas entworfen und Bildschirm für Bildschirm mit dem Nutzer verfeinert. Teil des

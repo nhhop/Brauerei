@@ -386,6 +386,7 @@ Akzentfarben, baut das Display ohne Neustart neu auf.
 | Stetiger Aktor | Ring = Zustand, Griff = Vorgabe, ggf. Intervall | Griff, Tippzonen, Power-Knopf |
 | Binärer Aktor | großer Knopf AN/AUS | Knopf = Master-Schalter, wie in der Web-UI |
 | Sensor | Wert + Einheit, bei Mehrkanal-Sensoren alle Kanäle | — |
+| Libelle (GY-521 mit `pitch` und `roll`) | Glas mit Fadenkreuz, Blase wandert zur höheren Seite (die ersten 15° füllen die inneren 60 % des Radius, bis 45° am Rand gestaucht, grün innerhalb ±1°), darunter Nick und Roll. Ab 45° einer Achse (Gerät steht auf der Kante) eine gerade Libelle der *anderen* Achse, die es noch auszurichten gilt: bei dominantem Nick Roll waagerecht, bei dominantem Roll Nick senkrecht (oben = positiv); gleiche Skala wie das Glas (fein bis 15°, Ende bei 45°), grün innerhalb ±1°, „senkrecht“ wenn die dominante Achse bei 90° liegt. Weitere Kanäle (`tilt`, `dir`, …) auf einer zweiten Seite direkt danach | — |
 
 **Gesperrt** (die Fußzeile nennt den Grund) ist eine Seite in diesen Fällen:
 - Der **Not-Aus** ist eingerastet. Dann wird zusätzlich der Hintergrund rot.

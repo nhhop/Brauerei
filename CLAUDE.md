@@ -21,11 +21,11 @@ Brauerei/
 ```powershell
 # SensActCtrl — Unit-Tests (native, kein Hardware nötig)
 cd SensActCtrl
-pio test -e native               # 271 Tests
+pio test -e native               # 304 Tests
 
 # BrewControl — Firmware
 cd BrewControl/firmware
-pio test -e native               # 37 Tests der Firmware selbst (test/, kein Hardware nötig)
+pio test -e native               # 109 Tests der Firmware selbst (test/, kein Hardware nötig)
 pio run -e esp32dev              # compile-smoke
 pio run -e esp32dev -t upload    # flash
 pio device monitor               # serial @ 115200
