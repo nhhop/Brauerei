@@ -891,12 +891,17 @@ Der Stilvergleich ist in Builds aus, bis die BJCP zugestimmt hat (PLAN.md), und
 Historie holen und den Schalter setzen; die Datei ist in `.gitignore`:
 
 ```powershell
-git show 218ec58:BrewControl/web/public/catalog/bjcp-2021.json > BrewControl/web/public/modules/recipes/bjcp-2021.json
+cmd /c "git show 218ec58:BrewControl/web/public/catalog/bjcp-2021.json > BrewControl\web\public\modules\recipes\bjcp-2021.json"
 cd BrewControl/web
 $env:VITE_STYLE_COMPARISON = '1'     # oder VITE_STYLE_COMPARISON=1 in web/.env.local
 pnpm build:tars                      # nur webui-full.tar enthält die Daten
 Remove-Item Env:VITE_STYLE_COMPARISON
 ```
+
+⚠ Die Datei **nicht** mit der PowerShell-Umleitung (`>`) anlegen: Windows PowerShell 5.1 schreibt
+dann UTF-16 mit BOM, der Browser kann das nicht als JSON lesen, und die Stilauswahl bleibt
+leer. Darum `cmd /c`, das die Bytes unverändert schreibt; der Build bricht bei so einer
+Datei mit einer Fehlermeldung ab.
 
 Ohne den Schalter entfernt `vite.config.ts` die Datei wieder aus `dist/`, auch wenn sie
 in `public/` liegt. Ein so gebautes Tar nicht verteilen und nicht in ein Release packen.
