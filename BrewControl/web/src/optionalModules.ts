@@ -5,6 +5,11 @@
 // manifest is checked for its content anyway, so a fallback page never counts.
 import { useEffect, useState } from 'preact/hooks';
 
+// The recipe pages are unfinished (recipes only live in the browser's
+// localStorage): shown in `pnpm dev`, hidden in every build. The package itself
+// (Rechner, catalogs) is delivered regardless.
+export const RECIPE_PAGES = import.meta.env.DEV;
+
 const checks = new Map<string, Promise<boolean>>();
 const known = new Map<string, boolean>();
 
