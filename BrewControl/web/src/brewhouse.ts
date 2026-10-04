@@ -220,7 +220,7 @@ export function heatingOf(bh: Brewhouse, step: StepKey): Heating {
 export function heatingText(h: Heating): string {
   if (!h.heater) return '';
   if (h.direct) return 'direkt';
-  const where = h.viaVessel?.name || 'anderem Behälter';
+  const where = h.viaVessel?.name || '?';
   if (h.via === 'coil') return `indirekt über Spirale im ${where}`;
   if (h.via === 'vessel') return `indirekt über ${where}`;
   return 'indirekt über RIMS-Rohr';
@@ -386,15 +386,16 @@ export function addDevice(bh: Brewhouse, d: Device): Brewhouse {
   return { ...bh, devices: [...bh.devices, d], steps };
 }
 
-// Removes the vessel and every reference to it; the gaps show up in the check.
-// Its steps go (a step exists only through its vessel), its devices become inline.
+// Removes the vessel and the references to it; the gaps show up in the check.
+// Its steps go (a step exists only through its vessel). Its devices keep their
+// location so the check flags them: clearing it would quietly turn a heater
+// into an inline one (a RIMS tube).
 export function removeVessel(bh: Brewhouse, id: string): Brewhouse {
   const steps = { ...bh.steps };
   for (const k of Object.keys(steps) as StepKey[]) if (steps[k]?.vesselId === id) delete steps[k];
   return {
     ...bh,
     vessels: bh.vessels.filter((v) => v.id !== id),
-    devices: bh.devices.map((d) => (d.vesselId === id ? { ...d, vesselId: undefined } : d)),
     steps,
     transfers: bh.transfers.map((t) => ({
       ...t, from: t.from === id ? '' : t.from, to: t.to === id ? '' : t.to,

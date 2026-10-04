@@ -1,0 +1,626 @@
+import { useEffect, useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
+import { route } from 'preact-router';
+import { Plus, Trash2 } from 'lucide-preact';
+import {
+  CHILLER_TYPES, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
+  addDevice, anchor, assignStep, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
+  newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel,
+  type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
+} from '../brewhouse';
+import { uid } from '../recipes';
+import { Breadcrumb } from '../components/Breadcrumb';
+import { PageShell } from '../components/PageShell';
+import { Segmented } from '../components/Segmented';
+import type { Snapshot } from '../types';
+import { badgeAccent, badgeCaution, badgeCritical, btnPrimary, inp } from '../ui';
+import { Card, Field, NumInput } from './recipe/fields';
+
+const LIST_URL = '/settings/anlage';
+const LAUTER_METHODS = ['Senkboden', 'Schlitzrohr', 'Malzrohr', 'Malzkorb', 'Sack', 'Ablassen in Zwischenbehälter'];
+
+// Where a new device of a kind most likely sits: the vessel of this step.
+const HOME_STEP: Partial<Record<DeviceKind, StepKey>> = {
+  heater: 'mash', agitator: 'mash', condenser: 'boil', chiller: 'chill', coil: 'strike', valve: 'strike',
+};
+
+type Props = { path?: string; id?: string; vorlage?: string; von?: string; snap: Snapshot | null };
+
+// Brewhouse editor. /settings/anlage/sudhaus/neu?vorlage=<key> starts from a
+// template, ?von=<id> from a copy; both are drafts until "Speichern".
+export function BrewhouseEditPage({ id, vorlage, von, snap }: Props) {
+  const [saved, setSaved] = useState<Brewhouse | null>(null);
+  const [draft, setDraft] = useState<Brewhouse | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'missing' | 'error'>('loading');
+  const [saveError, setSaveError] = useState(false);
+
+  useEffect(() => {
+    if (draft && draft.id === id) return;  // just saved a new draft under its id
+    let alive = true;
+    setLoadState('loading');
+    const template = id === 'neu' && vorlage ? TEMPLATES.find((t) => t.key === vorlage) : undefined;
+    if (template) {
+      setSaved(null);
+      setDraft(template.build());
+      return;
+    }
+    listBrewhouses()
+      .then((list) => {
+        if (!alive) return;
+        const source = list.find((b) => b.id === (id === 'neu' ? von : id));
+        if (id === 'neu') {
+          setSaved(null);
+          setDraft(source ? duplicateBrewhouse(source) : null);
+        } else {
+          setSaved(source ?? null);
+          setDraft(source ?? null);
+        }
+        setLoadState('missing');
+      })
+      .catch(() => alive && setLoadState('error'));
+    return () => { alive = false; };
+  }, [id, vorlage, von]);
+
+  if (!draft) {
+    const [crumb, text] = {
+      loading: ['Lädt …', 'Lädt …'],
+      missing: ['Nicht gefunden', 'Sudhaus nicht gefunden.'],
+      error: ['Fehler', 'Sudhaus konnte nicht geladen werden.'],
+    }[loadState];
+    return (
+      <PageShell>
+        <Breadcrumb trail={[{ label: 'Brauanlage', href: LIST_URL }, { label: crumb }]} />
+        <p class="mt-4 text-sm text-muted">{text}</p>
+      </PageShell>
+    );
+  }
+
+  const bh = draft;
+  const set = (next: Brewhouse) => setDraft(next);
+  const { errors, hints } = checkBrewhouse(bh, snap);
+  // updatedAt only changes on save, so it must not count as an edit.
+  const dirty = !saved || JSON.stringify({ ...bh, updatedAt: 0 }) !== JSON.stringify({ ...saved, updatedAt: 0 });
+
+  function save() {
+    setSaveError(false);
+    saveBrewhouse(bh)
+      .then((s) => {
+        setSaved(s);
+        setDraft(s);
+        if (id !== s.id) route(`/settings/anlage/sudhaus/${encodeURIComponent(s.id)}`, true);
+      })
+      .catch(() => setSaveError(true));
+  }
+
+  return (
+    <PageShell>
+      <header class="flex flex-wrap items-center justify-between gap-3">
+        <Breadcrumb trail={[{ label: 'Brauanlage', href: LIST_URL }, { label: bh.name || 'Ohne Namen' }]} />
+        <div class="flex items-center gap-2">
+          {errors.length > 0 && (
+            <a href="#bh-check" class={badgeCritical}>{errors.length} Fehler</a>
+          )}
+          <button type="button" class={btnPrimary} disabled={!dirty || errors.length > 0} onClick={save}>
+            Speichern{dirty ? ' •' : ''}
+          </button>
+        </div>
+      </header>
+      {saveError && <p class="mt-2 text-sm text-critical">Speichern fehlgeschlagen. Die Änderungen sind nur im Browser vorhanden, bis gespeichert ist.</p>}
+      <div class="mt-4">
+        <GeneralSection bh={bh} set={set} />
+        <VesselsSection bh={bh} set={set} />
+        <DevicesSection bh={bh} set={set} snap={snap} />
+        <StepsSection bh={bh} set={set} />
+        <TransfersSection bh={bh} set={set} />
+        <MeasurementsSection bh={bh} set={set} snap={snap} />
+        <CheckSection errors={errors} hints={hints} />
+      </div>
+    </PageShell>
+  );
+}
+
+type SectionProps = { bh: Brewhouse; set: (bh: Brewhouse) => void };
+
+// ── Inputs ─────────────────────────────────────────────────────────────────────
+
+function TextInput({ value, onChange, placeholder, list, class: cls = 'w-full' }: {
+  value: string; onChange: (s: string) => void; placeholder?: string; list?: string; class?: string;
+}) {
+  return (
+    <input class={`${inp} ${cls}`} value={value} placeholder={placeholder} list={list}
+      onInput={(e) => onChange(e.currentTarget.value)} />
+  );
+}
+
+// Like NumInput, but an empty field means "not set".
+function OptNum({ value, onChange }: { value: number | undefined; onChange: (n: number | undefined) => void }) {
+  const [text, setText] = useState(value == null ? '' : String(value));
+  useEffect(() => {
+    if ((text === '' ? undefined : parseFloat(text)) !== value) setText(value == null ? '' : String(value));
+  }, [value]);
+  return (
+    <input type="number" inputMode="decimal" class={`${inp} w-24`} value={text}
+      onInput={(e) => {
+        const t = e.currentTarget.value;
+        setText(t);
+        const n = parseFloat(t);
+        if (t.trim() === '') onChange(undefined);
+        else if (!Number.isNaN(n)) onChange(n);
+      }} />
+  );
+}
+
+type Opt = { value: string; text: string };
+
+// A <select> over `groups`; a value that is not among them stays selectable as
+// "<value> (fehlt)", like the program editor's columns.
+function Select({ value, groups, onChange, empty = '— keins —', missing, class: cls = 'w-full' }: {
+  value: string; groups: { label?: string; opts: Opt[] }[]; onChange: (v: string) => void;
+  empty?: string | null; missing?: string; class?: string;
+}) {
+  const listed = groups.some((g) => g.opts.some((o) => o.value === value));
+  return (
+    <select class={`${inp} ${cls}`} value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+      {empty !== null && <option value="">{empty}</option>}
+      {value !== '' && !listed && <option value={value}>{missing ?? `${value} (fehlt)`}</option>}
+      {groups.map((g, i) => g.opts.length === 0 ? null : g.label
+        ? <optgroup key={i} label={g.label}>{g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>)}</optgroup>
+        : g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>))}
+    </select>
+  );
+}
+
+const itemText = (item: { id: string; label?: string }) => (item.label ? `${item.label} (${item.id})` : item.id);
+
+function RemoveButton({ title, onClick }: { title: string; onClick: () => void }) {
+  return (
+    <button type="button" title={title} onClick={onClick}
+      class="shrink-0 rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
+      <Trash2 size={14} />
+    </button>
+  );
+}
+
+function AddButton({ children, onClick }: { children: ComponentChildren; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} class="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+      <Plus size={12} /> {children}
+    </button>
+  );
+}
+
+function Section({ id, title, action, children }: { id: string; title: string; action?: ComponentChildren; children: ComponentChildren }) {
+  return <div id={id} class="scroll-mt-4"><Card title={title} action={action}>{children}</Card></div>;
+}
+
+// ── 1. General ─────────────────────────────────────────────────────────────────
+
+function GeneralSection({ bh, set }: SectionProps) {
+  return (
+    <Section id={anchor.general} title="Allgemein">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <Field label="Name"><TextInput value={bh.name} onChange={(name) => set({ ...bh, name })} /></Field>
+        <div class="flex flex-wrap gap-4">
+          <Field label="Maische-Effizienz (%)">
+            <NumInput value={bh.mashEfficiencyPct} onChange={(n) => set({ ...bh, mashEfficiencyPct: n })} />
+          </Field>
+          <Field label="Abkühlschwund (%)">
+            <NumInput value={bh.coolingShrinkPct} onChange={(n) => set({ ...bh, coolingShrinkPct: n })} />
+          </Field>
+        </div>
+        <div class="sm:col-span-2">
+          <Field label="Beschreibung">
+            <textarea class={`${inp} w-full`} rows={2} value={bh.description}
+              onInput={(e) => set({ ...bh, description: e.currentTarget.value })} />
+          </Field>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ── 2. Vessels ─────────────────────────────────────────────────────────────────
+
+function VesselsSection({ bh, set }: SectionProps) {
+  function addVessel() {
+    set({ ...bh, vessels: [...bh.vessels, { id: uid(), name: `Behälter ${bh.vessels.length + 1}`, volumeL: 50, deadSpaceL: 1 }] });
+  }
+  return (
+    <Section id={anchor.vessels} title="Behälter" action={<AddButton onClick={addVessel}>Behälter</AddButton>}>
+      {bh.vessels.length === 0 && <p class="text-sm text-muted">Noch keine Behälter. Jeder Behälter übernimmt die Schritte, die du anhakst.</p>}
+      <div class="space-y-3">
+        {bh.vessels.map((v) => <VesselCard key={v.id} bh={bh} set={set} vessel={v} />)}
+      </div>
+      <datalist id="bh-lauter-methods">{LAUTER_METHODS.map((m) => <option key={m} value={m} />)}</datalist>
+    </Section>
+  );
+}
+
+function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
+  const steps = stepsOf(bh, v.id);
+  const patch = (p: Partial<Vessel>) => set({ ...bh, vessels: bh.vessels.map((x) => (x.id === v.id ? { ...x, ...p } : x)) });
+
+  // A preset only ticks steps; steps ticked elsewhere move here.
+  function applyPreset(i: number) {
+    const preset = VESSEL_PRESETS[i];
+    let next = bh;
+    for (const s of STEPS) next = assignStep(next, v.id, s.key, preset.steps.includes(s.key));
+    set(next);
+  }
+
+  return (
+    <div id={anchor.vessel(v.id)} class="scroll-mt-4 rounded-md border border-border p-3">
+      <div class="mb-3 flex items-start gap-2">
+        <div class="min-w-0 flex-1">
+          <TextInput value={v.name} onChange={(name) => patch({ name })} />
+          <div class="mt-1 text-xs text-muted">{vesselLabel(bh, v)}</div>
+        </div>
+        <RemoveButton title="Behälter löschen" onClick={() => set(removeVessel(bh, v.id))} />
+      </div>
+      <div class="mb-3 flex flex-wrap gap-4">
+        <Field label="Volumen (l)"><NumInput value={v.volumeL} onChange={(volumeL) => patch({ volumeL })} /></Field>
+        <Field label="Totraum (l)"><NumInput value={v.deadSpaceL} onChange={(deadSpaceL) => patch({ deadSpaceL })} /></Field>
+        {steps.includes('boil') && (
+          <Field label="Verdampfung (l/h)">
+            <OptNum value={v.evaporationLPerH} onChange={(evaporationLPerH) => patch({ evaporationLPerH })} />
+          </Field>
+        )}
+        {steps.includes('lauter') && (
+          <Field label="Läutermethode">
+            <TextInput class="w-44" list="bh-lauter-methods" value={v.lauterMethod ?? ''}
+              onChange={(m) => patch({ lauterMethod: m || undefined })} />
+          </Field>
+        )}
+        <Field label="Art (hakt die Schritte vor)">
+          <select class={`${inp} w-52`} value=""
+            onChange={(e) => { const i = parseInt(e.currentTarget.value, 10); if (!Number.isNaN(i)) applyPreset(i); }}>
+            <option value="">— wählen —</option>
+            {VESSEL_PRESETS.map((p, i) => <option key={p.label} value={i}>{p.heated ? `${p.label} / ${p.heated}` : p.label}</option>)}
+          </select>
+        </Field>
+      </div>
+      <div class="text-xs text-muted">Übernimmt</div>
+      <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+        {STEPS.map((s) => {
+          const other = bh.steps[s.key] && bh.steps[s.key]!.vesselId !== v.id
+            ? bh.vessels.find((x) => x.id === bh.steps[s.key]!.vesselId) : undefined;
+          return (
+            <label key={s.key} class="flex items-center gap-1.5 text-sm"
+              title={other ? `Bisher bei „${other.name}“, wandert beim Anhaken hierher` : undefined}>
+              <input type="checkbox" checked={steps.includes(s.key)}
+                onChange={(e) => set(assignStep(bh, v.id, s.key, e.currentTarget.checked))} />
+              {s.label}
+              {other && <span class="text-xs text-faint">({other.name})</span>}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── 3. Devices ─────────────────────────────────────────────────────────────────
+
+function DevicesSection({ bh, set, snap }: SectionProps & { snap: Snapshot | null }) {
+  function add(kind: DeviceKind) {
+    const home = HOME_STEP[kind];
+    const vesselId = kind === 'pump' ? undefined : (home && bh.steps[home]?.vesselId) || bh.vessels[0]?.id;
+    set(addDevice(bh, newDevice(kind, vesselId)));
+  }
+  return (
+    <Section id="bh-devices" title="Geräte">
+      <div class="space-y-4">
+        {DEVICE_KINDS.map((k) => {
+          const devices = bh.devices.filter((d) => d.kind === k.kind);
+          return (
+            <div key={k.kind}>
+              <div class="mb-1.5 flex items-center justify-between gap-3">
+                <span class="text-xs font-medium uppercase tracking-wide text-muted">{k.group}</span>
+                <AddButton onClick={() => add(k.kind)}>{k.label}</AddButton>
+              </div>
+              <div class="space-y-2">
+                {devices.map((d) => <DeviceRow key={d.id} bh={bh} set={set} snap={snap} device={d} />)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function DeviceRow({ bh, set, snap, device: d }: SectionProps & { snap: Snapshot | null; device: Device }) {
+  const patch = (p: Partial<Device>) => set({ ...bh, devices: bh.devices.map((x) => (x.id === d.id ? { ...x, ...p } : x)) });
+  const kind = DEVICE_KINDS.find((k) => k.kind === d.kind)!;
+  const actuators: Opt[] = (snap?.actuators ?? []).map((a) => ({ value: a.id, text: itemText(a) }));
+  const controllers: Opt[] = (snap?.controllers ?? []).map((c) => ({ value: c.id, text: itemText(c) }));
+
+  return (
+    <div id={anchor.device(d.id)} class="scroll-mt-4 rounded-md border border-border p-3">
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="min-w-40 flex-1">
+          <Field label="Name"><TextInput value={d.name} onChange={(name) => patch({ name })} /></Field>
+        </div>
+        <Field label="Ort">
+          <Select class="w-48" value={d.vesselId ?? ''} empty="inline / ohne Behälter" missing="gelöschter Behälter"
+            groups={[{ opts: bh.vessels.map((v) => ({ value: v.id, text: v.name })) }]}
+            onChange={(v) => patch({ vesselId: v || undefined })} />
+        </Field>
+        {d.kind === 'heater' && (
+          <Field label="Leistung (W)"><OptNum value={d.powerW} onChange={(powerW) => patch({ powerW })} /></Field>
+        )}
+        {d.kind === 'pump' && (
+          <Field label="Förderleistung (l/min)"><OptNum value={d.flowLPerMin} onChange={(flowLPerMin) => patch({ flowLPerMin })} /></Field>
+        )}
+        {d.kind === 'chiller' && (
+          <Field label="Bauart">
+            <Select class="w-44" value={d.chillerType ?? 'immersion'} empty={null}
+              groups={[{ opts: CHILLER_TYPES.map((t) => ({ value: t.value, text: t.label })) }]}
+              onChange={(v) => patch({ chillerType: v as Device['chillerType'] })} />
+          </Field>
+        )}
+        <RemoveButton title="Gerät löschen" onClick={() => set(removeDevice(bh, d.id))} />
+      </div>
+      <div class="mt-3 flex flex-wrap items-end gap-3">
+        <Segmented value={d.manual ? 'manual' : 'linked'}
+          options={[{ value: 'manual', label: 'von Hand' }, { value: 'linked', label: 'angeschlossen' }]}
+          onChange={(v) => patch({ manual: v === 'manual' })} />
+        {!d.manual && (d.kind === 'heater' ? (
+          <Field label={kind.actuator}>
+            <Select class="w-56" value={d.controller ? `c:${d.controller}` : d.actuator ? `a:${d.actuator}` : ''}
+              empty="— wählen —" missing={`${d.controller ?? d.actuator} (fehlt)`}
+              groups={[
+                { label: 'Regler', opts: controllers.map((o) => ({ ...o, value: `c:${o.value}` })) },
+                { label: 'Aktoren', opts: actuators.map((o) => ({ ...o, value: `a:${o.value}` })) },
+              ]}
+              onChange={(v) => patch(v.startsWith('c:')
+                ? { controller: v.slice(2), actuator: undefined }
+                : { controller: undefined, actuator: v.slice(2) || undefined })} />
+          </Field>
+        ) : (
+          <Field label={kind.actuator}>
+            <Select class="w-56" value={d.actuator ?? ''} empty="— wählen —" groups={[{ opts: actuators }]}
+              onChange={(v) => patch({ actuator: v || undefined })} />
+          </Field>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 4. Steps ───────────────────────────────────────────────────────────────────
+
+const withLabel = (name: string, label: string) => (label && label !== name ? `${name} (${label})` : name);
+
+function StepsSection({ bh, set }: SectionProps) {
+  const present = STEPS.filter((s) => bh.steps[s.key]);
+  return (
+    <Section id="bh-steps" title="Prozessschritte">
+      {present.length === 0 && <p class="text-sm text-muted">Noch kein Schritt. Schritte entstehen, wenn ein Behälter sie übernimmt.</p>}
+      <div class="space-y-2">
+        {present.map((s) => <StepRow key={s.key} bh={bh} set={set} step={s.key} heated={!!s.heated} />)}
+      </div>
+    </Section>
+  );
+}
+
+function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heated: boolean }) {
+  const cfg = bh.steps[step]!;
+  const vessel = bh.vessels.find((v) => v.id === cfg.vesselId);
+  const patch = (p: Partial<StepConfig>) => set({ ...bh, steps: { ...bh.steps, [step]: { ...cfg, ...p } } });
+  const of = (kind: DeviceKind, here = false) => bh.devices
+    .filter((d) => d.kind === kind && (!here || d.vesselId === cfg.vesselId))
+    .map((d) => ({ value: d.id, text: d.name || d.id }));
+  const where = (d: Device) => (d.vesselId ? bh.vessels.find((v) => v.id === d.vesselId)?.name ?? '?' : 'inline');
+  const heaters = bh.devices.filter((d) => d.kind === 'heater').map((d) => ({ value: d.id, text: `${d.name} (${where(d)})` }));
+  const pumps = of('pump');
+  const agitators = of('agitator', true);
+  const valves = bh.devices.filter((d) => d.kind === 'valve');
+  const h = heatingOf(bh, step);
+
+  return (
+    <div id={anchor.step(step)} class="scroll-mt-4 rounded-md border border-border p-3">
+      <div class="mb-2 flex flex-wrap items-baseline gap-2">
+        <span class="font-medium">{stepLabel(step)}</span>
+        <span class="text-xs text-muted">in {vessel ? withLabel(vessel.name, vesselLabel(bh, vessel)) : '?'}</span>
+        {h.heater && <span class={h.direct ? badgeAccent : badgeCaution}>{heatingText(h)}</span>}
+      </div>
+      <div class="flex flex-wrap items-end gap-3">
+        {heated && (
+          <Field label="Heizquelle">
+            <Select class="w-52" value={cfg.heaterId ?? ''} groups={[{ opts: heaters }]}
+              onChange={(v) => patch({ heaterId: v || undefined })} />
+          </Field>
+        )}
+        {(pumps.length > 0 || cfg.pumpId) && (
+          <Field label="Umwälzpumpe">
+            <Select class="w-44" value={cfg.pumpId ?? ''} groups={[{ opts: pumps }]}
+              onChange={(v) => patch({ pumpId: v || undefined })} />
+          </Field>
+        )}
+        {(agitators.length > 0 || cfg.agitatorId) && (
+          <Field label="Rührwerk">
+            <Select class="w-44" value={cfg.agitatorId ?? ''} groups={[{ opts: agitators }]}
+              onChange={(v) => patch({ agitatorId: v || undefined })} />
+          </Field>
+        )}
+        {heated && (
+          <Field label="Heizrate (K/min)">
+            <OptNum value={cfg.heatRateKPerMin} onChange={(heatRateKPerMin) => patch({ heatRateKPerMin })} />
+          </Field>
+        )}
+        {step === 'boil' && (
+          <>
+            {(of('condenser', true).length > 0 || cfg.condenserId) && (
+              <Field label="Kondensator">
+                <Select class="w-44" value={cfg.condenserId ?? ''} groups={[{ opts: of('condenser', true) }]}
+                  onChange={(v) => patch({ condenserId: v || undefined })} />
+              </Field>
+            )}
+            <Field label="Heizleistung beim Kochen (%)">
+              <OptNum value={cfg.powerPct} onChange={(powerPct) => patch({ powerPct })} />
+            </Field>
+          </>
+        )}
+        {step === 'chill' && (
+          <>
+            <Field label="Kühler">
+              <Select class="w-52" value={cfg.chillerId ?? ''}
+                groups={[{ label: 'Kühler', opts: of('chiller') }, { label: 'Spiralen im Behälter', opts: of('coil', true) }]}
+                onChange={(v) => patch({ chillerId: v || undefined })} />
+            </Field>
+            <Field label="Kühldauer (min)">
+              <OptNum value={cfg.coolMinutes} onChange={(coolMinutes) => patch({ coolMinutes })} />
+            </Field>
+          </>
+        )}
+      </div>
+      {valves.length > 0 && (
+        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span class="text-xs text-muted">Wasserzulauf</span>
+          {valves.map((d) => (
+            <label key={d.id} class="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" checked={cfg.valveIds?.includes(d.id) ?? false}
+                onChange={(e) => {
+                  const ids = (cfg.valveIds ?? []).filter((x) => x !== d.id);
+                  patch({ valveIds: e.currentTarget.checked ? [...ids, d.id] : ids });
+                }} />
+              {d.name || d.id}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 5. Transfers ───────────────────────────────────────────────────────────────
+
+function TransfersSection({ bh, set }: SectionProps) {
+  const present = STEPS.filter((s) => bh.steps[s.key]);
+  const vessels: Opt[] = bh.vessels.map((v) => ({ value: v.id, text: v.name }));
+  const pumps: Opt[] = bh.devices.filter((d) => d.kind === 'pump').map((d) => ({ value: d.id, text: d.name || d.id }));
+  const patch = (id: string, p: Partial<Transfer>) =>
+    set({ ...bh, transfers: bh.transfers.map((t) => (t.id === id ? { ...t, ...p } : t)) });
+
+  function add() {
+    const t: Transfer = {
+      id: uid(), step: present[0]?.key ?? 'mash', from: bh.vessels[0]?.id ?? '', to: 'out',
+      drive: 'gravity', lossL: 0, recovered: false,
+    };
+    set({ ...bh, transfers: [...bh.transfers, t] });
+  }
+
+  return (
+    <Section id="bh-transfers" title="Transfers" action={<AddButton onClick={add}>Transfer</AddButton>}>
+      {bh.transfers.length === 0 && <p class="text-sm text-muted">Noch keine Transfers. Ein Transfer bewegt Wasser, Maische oder Würze von einem Behälter in den nächsten.</p>}
+      <div class="space-y-2">
+        {bh.transfers.map((t) => (
+          <div key={t.id} id={anchor.transfer(t.id)} class="scroll-mt-4 flex flex-wrap items-end gap-3 rounded-md border border-border p-3">
+            <Field label="Schritt">
+              <Select class="w-44" value={t.step} empty={null}
+                groups={[{ opts: present.map((s) => ({ value: s.key, text: s.label })) }]}
+                onChange={(v) => patch(t.id, { step: v as StepKey })} />
+            </Field>
+            <Field label="Von">
+              <Select class="w-40" value={t.from} empty="— wählen —" groups={[{ opts: vessels }]}
+                onChange={(from) => patch(t.id, { from })} />
+            </Field>
+            <Field label="Nach">
+              <Select class="w-40" value={t.to} empty="— wählen —"
+                groups={[{ opts: [...vessels, { value: 'out', text: 'Ausschlagen' }] }]}
+                onChange={(to) => patch(t.id, { to })} />
+            </Field>
+            <Field label="Antrieb">
+              <Select class="w-36" value={t.drive} empty={null} groups={[{ opts: DRIVES.map((d) => ({ value: d.value, text: d.label })) }]}
+                onChange={(v) => patch(t.id, { drive: v as Transfer['drive'] })} />
+            </Field>
+            {t.drive === 'pump' && (
+              <>
+                <Field label="Pumpe">
+                  <Select class="w-36" value={t.pumpId ?? ''} empty="— wählen —" groups={[{ opts: pumps }]}
+                    onChange={(v) => patch(t.id, { pumpId: v || undefined })} />
+                </Field>
+                <Field label="Verlust (l)">
+                  <NumInput value={t.lossL} onChange={(lossL) => patch(t.id, { lossL })} />
+                </Field>
+                <label class="flex items-center gap-1.5 pb-2 text-sm">
+                  <input type="checkbox" checked={t.recovered} onChange={(e) => patch(t.id, { recovered: e.currentTarget.checked })} />
+                  kommt im nächsten Schritt zurück
+                </label>
+              </>
+            )}
+            <div class="ml-auto">
+              <RemoveButton title="Transfer löschen"
+                onClick={() => set({ ...bh, transfers: bh.transfers.filter((x) => x.id !== t.id) })} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// ── 6. Measurements ────────────────────────────────────────────────────────────
+
+function MeasurementsSection({ bh, set, snap }: SectionProps & { snap: Snapshot | null }) {
+  const sensors: Opt[] = (snap?.sensors ?? []).map((s) => ({
+    value: s.id, text: s.meta.unit ? `${itemText(s)} · ${s.meta.unit}` : itemText(s),
+  }));
+  const present = STEPS.filter((s) => bh.steps[s.key] && MEASUREMENTS.some((m) => m.step === s.key));
+  function link(key: string, id: string) {
+    const measurements = { ...bh.measurements } as Record<string, string>;
+    if (id) measurements[key] = id;
+    else delete measurements[key];
+    set({ ...bh, measurements });
+  }
+  return (
+    <Section id="bh-measurements" title="Messungen">
+      <p class="mb-3 text-xs text-muted">
+        Der Prozess gibt die Messungen vor. Bei „von Hand“ fragt der Sud den Wert ab und speichert ihn.
+      </p>
+      <div class="space-y-3">
+        {present.map((s) => (
+          <div key={s.key}>
+            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{s.label}</div>
+            <div class="space-y-1.5">
+              {MEASUREMENTS.filter((m) => m.step === s.key).map((m) => (
+                <div key={m.key} id={anchor.measurement(m.key)} class="scroll-mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-sm">{m.label} <span class="text-xs text-muted">({m.unit})</span></span>
+                  <Select class="w-60" value={bh.measurements[m.key] ?? ''} empty="von Hand"
+                    groups={[{ label: 'Sensoren', opts: sensors }]} onChange={(v) => link(m.key, v)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// ── 7. Check ───────────────────────────────────────────────────────────────────
+
+function CheckSection({ errors, hints }: { errors: Issue[]; hints: Issue[] }) {
+  const jump = (at: string) => document.getElementById(at)?.scrollIntoView({ block: 'start' });
+  const row = (i: Issue, n: number, cls: string, tag: string) => (
+    <li key={n}>
+      <button type="button" onClick={() => jump(i.at)} class="flex w-full items-start gap-2 rounded px-1 py-0.5 text-left text-sm hover:bg-fg/5">
+        <span class={`${cls} shrink-0`}>{tag}</span><span>{i.text}</span>
+      </button>
+    </li>
+  );
+  return (
+    <Section id="bh-check" title="Prüfung">
+      {errors.length === 0 && hints.length === 0 ? (
+        <p class="text-sm text-muted">Keine Fehler, keine Hinweise.</p>
+      ) : (
+        <ul class="space-y-1">
+          {errors.map((e, n) => row(e, n, badgeCritical, 'Fehler'))}
+          {hints.map((h, n) => row(h, errors.length + n, badgeCaution, 'Hinweis'))}
+        </ul>
+      )}
+      {errors.length > 0 && <p class="mt-2 text-xs text-muted">Solange Fehler bestehen, lässt sich nicht speichern.</p>}
+    </Section>
+  );
+}

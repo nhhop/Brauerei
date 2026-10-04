@@ -3,10 +3,11 @@ import { useEffect, useState } from 'preact/hooks';
 import { getSettings, getUpdateStatus } from '../api';
 import { SettingsCard } from '../components/SettingsCard';
 import { PageShell } from '../components/PageShell';
+import { useModule } from '../optionalModules';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, ChartLine, Network, FolderOpen,
-  ShieldCheck, BellRing, Smartphone, Monitor, Activity, BatteryMedium, Cable,
+  ShieldCheck, BellRing, Smartphone, Monitor, Activity, BatteryMedium, Cable, Factory,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -22,6 +23,7 @@ const ENTRIES: Entry[] = [
   { href: '/settings/display', icon: Monitor, title: 'Gerätedisplay', desc: 'Dimmen, Ausschalten, Pixel-Shift' },
   { href: '/settings/energy', icon: BatteryMedium, title: 'Energiemanagement', desc: 'Batteriespannung' },
   { href: '/settings/devices', icon: Cpu, title: 'Geräte', desc: 'Sensoren, Regler, Aktoren verwalten' },
+  { href: '/settings/anlage', icon: Factory, title: 'Brauanlage', desc: 'Brauerei und Sudhäuser: Behälter, Geräte, Verluste' },
   { href: '/settings/buses', icon: Cable, title: 'Bus-Schnittstellen', desc: 'I²C, OneWire, SPI: Pins festlegen, Busse scannen' },
   { href: '/settings/firmware', icon: CloudDownload, title: 'Firmware-Update', desc: 'Version, Kanal, Upload' },
   { href: '/settings/system', icon: Activity, title: 'Systemstatus', desc: 'Version, letzter Neustart, Speicher' },
@@ -40,6 +42,8 @@ export function SettingsIndex(_: { path?: string }) {
   const [updateAvail, setUpdateAvail] = useState(false);
   // Only boards built with a display get the entry.
   const [hasDisplay, setHasDisplay] = useState(false);
+  // The brewing system belongs to the recipe package.
+  const hasRecipes = useModule('recipes') === true;
 
   useEffect(() => {
     getUpdateStatus().then((s) => setUpdateAvail(s.state === 'updateAvailable')).catch(() => {});
@@ -52,7 +56,8 @@ export function SettingsIndex(_: { path?: string }) {
         <h1 class="text-2xl font-semibold tracking-tight">Einstellungen</h1>
       </header>
       <div class="space-y-1">
-        {ENTRIES.filter((e) => e.href !== '/settings/display' || hasDisplay).map(({ href, icon, title, desc }) => (
+        {ENTRIES.filter((e) => (e.href !== '/settings/display' || hasDisplay)
+          && (e.href !== '/settings/anlage' || hasRecipes)).map(({ href, icon, title, desc }) => (
           <SettingsCard key={href} href={href} icon={icon} title={title} desc={desc}
             control={href === '/settings/firmware' && updateAvail
               ? <span class={badgeCaution}>Update verfügbar</span>

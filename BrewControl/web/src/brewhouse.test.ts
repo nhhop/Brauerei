@@ -304,14 +304,15 @@ describe('edits', () => {
     expect(bh.steps.mash?.condenserId).toBeUndefined();
   });
 
-  it('removing a vessel drops its steps and every reference to it', () => {
+  it('removing a vessel drops its steps and transfer ends, and flags its devices', () => {
     let bh = minimal();
     bh.transfers.push({ id: 't', step: 'boil', from: 'pot', to: 'out', drive: 'gravity', lossL: 0, recovered: false });
     bh = removeVessel(bh, 'pot');
     expect(bh.vessels).toEqual([]);
     expect(bh.steps).toEqual({});
-    expect(bh.devices[0].vesselId).toBeUndefined();
     expect(bh.transfers[0].from).toBe('');
+    // not silently turned into an inline heater
+    expect(errorsOf(bh)).toContain('heat: Den Behälter gibt es nicht mehr.');
   });
 
   it('removing a device clears it from steps and transfers', () => {
