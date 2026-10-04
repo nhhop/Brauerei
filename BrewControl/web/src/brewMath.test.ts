@@ -3,7 +3,7 @@ import {
   cylinderVolumeL, frustumVolumeL, dilutionVolumeL, boilDownResult, blendGravitySg,
   strikeWaterTempC, extractEfficiencyPercent, primingSugarGrams, hydrometerCorrectedSg,
   overrangeConcentration, apparentExtractFromRefractometer, originalExtractFromDualMeasurement,
-  ballingBeerAnalysis,
+  ballingBeerAnalysis, platoFromExtract, moreyEbc, tinsethUtilization, relativeUtilization, hopIbu,
 } from './brewMath';
 import { platoToSg } from './gravityUnits';
 
@@ -127,5 +127,64 @@ describe('ballingBeerAnalysis', () => {
   it('attenuation is 0% when FG equals OG', () => {
     const { apparentAttenuationPercent } = ballingBeerAnalysis(12, 12);
     expect(apparentAttenuationPercent).toBeCloseTo(0, 6);
+  });
+});
+
+describe('platoFromExtract', () => {
+  it('inverts the extractEfficiencyPercent mass balance', () => {
+    // 20 l of 12 °P wort holds V·SG·p/100 kg of extract; feeding that back must return 12.
+    const extractKg = 20 * platoToSg(12) * 0.12;
+    expect(platoFromExtract(extractKg, 20)).toBeCloseTo(12, 6);
+    expect(extractEfficiencyPercent(1, extractKg * 100, 20, 12)).toBeCloseTo(100, 6);
+  });
+  it('is 0 without extract or volume', () => {
+    expect(platoFromExtract(0, 20)).toBe(0);
+    expect(platoFromExtract(2, 0)).toBe(0);
+  });
+});
+
+describe('moreyEbc', () => {
+  it('matches a hand calculation for 5 kg of 3.5 EBC malt in 20 l', () => {
+    // °L=(3.5/1.97+0.76)/1.3546=1.873, MCU=1.873·11.023/5.283=3.908, SRM=1.4922·MCU^0.6859=3.80, EBC=7.49
+    expect(moreyEbc([{ kg: 5, ebc: 3.5 }], 20)).toBeCloseTo(7.49, 1);
+  });
+  it('is not additive: doubling the malt less than doubles the colour', () => {
+    expect(moreyEbc([{ kg: 10, ebc: 3.5 }], 20)).toBeLessThan(2 * moreyEbc([{ kg: 5, ebc: 3.5 }], 20));
+  });
+  it('is 0 for an empty grist', () => {
+    expect(moreyEbc([], 20)).toBe(0);
+  });
+});
+
+describe('tinsethUtilization', () => {
+  it('is 0 without boil time', () => {
+    expect(tinsethUtilization(1.05, 0)).toBe(0);
+  });
+});
+
+describe('relativeUtilization', () => {
+  it('is about 1 at boiling and drops with temperature', () => {
+    expect(relativeUtilization(100)).toBeCloseTo(1, 1);
+    expect(relativeUtilization(90)).toBeCloseTo(0.49, 2); // source: ~50 % at 90 °C
+    expect(relativeUtilization(80)).toBeCloseTo(0.23, 2);
+  });
+});
+
+describe('hopIbu', () => {
+  const base = { alphaPct: 10, grams: 28, volumeL: 20, sg: 1.05, boilMin: 60, whirlpoolTempC: 80, whirlpoolMin: 0 };
+  it('matches the Tinseth hand calculation without whirlpool', () => {
+    // 140 mg/l alpha × 1.0527 × (1-e^-2.4)/4.15 = 32.3
+    expect(hopIbu(base)).toBeCloseTo(32.3, 1);
+  });
+  it('adds bitterness during the whirlpool, more when it is hotter', () => {
+    const cool = hopIbu({ ...base, whirlpoolMin: 15 });
+    const hot = hopIbu({ ...base, whirlpoolMin: 15, whirlpoolTempC: 95 });
+    expect(cool).toBeGreaterThan(hopIbu(base));
+    expect(hot).toBeGreaterThan(cool);
+  });
+  it('gives a whirlpool-only hop (boilMin 0) some bitterness but less than a 60 min hop', () => {
+    const wp = hopIbu({ ...base, boilMin: 0, whirlpoolMin: 15, whirlpoolTempC: 80 });
+    expect(wp).toBeGreaterThan(0);
+    expect(wp).toBeLessThan(hopIbu(base));
   });
 });

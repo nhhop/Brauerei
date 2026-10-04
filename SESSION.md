@@ -6146,3 +6146,140 @@ beiden Digitalfeldern, „N“ bräuchte ein Magnetometer.
 - **„Neigung“ auf der Karte** ist kein Kanal, sondern `hypot(roll, pitch)` (Länge der Richtungslinie); `tilt` ist der
   Winkel der Z-Achse und weicht bei großen Winkeln davon ab.
 - **Offen am Gerät:** gerade Libelle am Display (Aussehen, Umschalten bei 45°), LVGL-Pool-Reserve bei 16 Seiten.
+
+## 2026-10-01 – 2026-10-02 — Rezept- und Sud-Editor: UI-Entwurf (nur Design, kein Code)
+
+Rezept- und Sud-Editor als Design-Canvas entworfen und Bildschirm für Bildschirm mit dem Nutzer verfeinert. Teil des
+Entwurfs: Rezeptliste, Rezept-Tabs (Übersicht, Zutaten mit zwei Ansichten, Wasser, Brautag, Gärung, Sude),
+Status und Versionen samt Vergleichsdialog, Stil- und Zutaten-Auswahl, Sud-Phasen mit Soll/Ist-Messwerten, Pumpen
+und Gärplatz-Wahl sowie die Brauanlage, getrennt in Sudhaus und Gärkeller. Entscheidungen, Fachregeln und offene
+Fragen: [BrewControl/docs/rezept-sud-editor.md](BrewControl/docs/rezept-sud-editor.md). Backlog-Eintrag in
+PLAN.md → „Größere Brocken“. Keine Änderung an Firmware, Web-Code oder API.
+
+## 2026-10-03 — Rezept-UI Grundstruktur (Branch `feature/rezept-sud-editor`)
+
+Erste Umsetzung im Web-UI, bewusst schlicht und nur Frontend: Rezeptliste (`/rezepte`) und Bearbeiten-Seite
+(`/rezepte/:id`) mit fünf Tabs (Übersicht, Zutaten, Maischen, Würzekochen, Gärung), Nav-Eintrag „Rezepte“.
+Rezepte liegen vorläufig in `localStorage` (`web/src/recipes.ts`), das ist die einzige Persistenz-Schnittstelle
+und später durch `/api/recipes` ersetzbar. Es gibt **eine gemeinsame Zutatenliste** mit Art und Zeitpunkt; die
+Prozess-Tabs zeigen sie gefiltert, nichts wird doppelt gepflegt. Maischen ist nur ein einfacher Plan aus Rasten
+(Name, °C, min, umsortierbar). Gärung hat eine einfache Phasenliste (Tage). Speichern ist explizit.
+Nicht enthalten: Wasser- und Sude-Tab, Berechnungen, Versionen, Stil-Dialog, Zutaten-Backend, Firmware/API,
+Opt-in-Flag und nachladbares Paket. Verifikation: `pnpm typecheck`, `pnpm build`, `pnpm test` (62 grün) und
+Browser-Durchlauf über einen Node-Mock (anlegen, Zutat/Rasten, umsortieren, speichern, Reload, Konsole ohne Fehler).
+
+## 2026-10-03 — Zutaten-Schema für die Rezeptverwaltung (Entwurf, Branch `feature/rezept-sud-editor`)
+
+Schema für Katalog- und Nutzerzutaten als reine Typen entworfen: `BrewControl/web/src/ingredientCatalog.ts`, dazu
+erfundene Beispieleinträge in `BrewControl/docs/zutaten-beispiele.json`. Nichts im Code nutzt es bisher. Eckpunkte:
+Einheiten fest im Schema (`FIELD_UNITS`), Werte als `Range` mit `null` für „min.“ und „max.“; Fermentables in
+Malz, Rohfrucht, Zucker und Extrakt geteilt; Kulturen als Union aus Hefe, Bakterien und Mischkultur; Hopfenform nur an
+der Gabe im Rezept; Aromen mit Intensität 0 bis 5 aus einem Vokabular; Quellenfeld je Eintrag; Lagerposten (`StockLot`)
+mit eigenen Datenblattwerten nur als Typ. Gegen Datenblätter von Weyermann, Yakima Chief/NZ Hops, Hopsteiner (Thiole)
+und Lallemand geprüft; 13 echte Einträge daraus stehen in `BrewControl/web/public/catalog/zutaten-datenblaetter.json`. Zurückgestellte und offene Punkte stehen in PLAN.md beim Rezept- und Sud-Editor.
+
+## 2026-10-04 — Zutatenkatalog im Rezept-UI (Branch `feature/rezept-sud-editor`)
+
+Der Katalog wird jetzt im Frontend genutzt: `web/src/ingredientSource.ts` lädt `/catalog/zutaten-datenblaetter.json`
+(statische Datei aus `web/public/catalog/`, vorher unter `docs/`) einmal pro Sitzung, hängt Nutzerzutaten aus
+`localStorage` (`bc.userIngredients`, bisher ohne Oberfläche zum Anlegen) an und bietet `findIngredients` für die
+Suche. Die Zutatenzeilen haben statt des freien Namensfelds `IngredientPicker`: Vorschläge nach Art, Auswahl setzt
+`ingredientId` am Rezept, Weitertippen macht die Zeile wieder zu Freitext. Fehlt der Katalog, bleibt alles Freitext.
+`ingredientSource.test.ts` deckt die Suche ab. Typecheck, 69 Tests und Build grün, Browser-Durchlauf über den Mock
+(Vorschlag, Auswahl, Speichern, Entlinken). Nächster Schritt: Kennwerte aus den Zutaten berechnen.
+
+## 2026-10-04 — Rezept-Kennwerte (Branch `feature/rezept-sud-editor`)
+
+Die Karte „Kennwerte“ im Rezept rechnet jetzt Stammwürze, Restextrakt, Alkohol, Bittere und Farbe aus den
+Katalog-verknüpften Zutaten (`web/src/recipeStats.ts`, Formeln in `brewMath.ts`). Zeilen ohne Katalogverknüpfung
+zählen nicht mit und werden unter der Karte vermerkt.
+
+- **Stammwürze:** Extrakt je Zeile aus `extractDryPct` und Feuchte, maischendes Vergärbares (Malz, Rohfrucht) mit der
+  neuen Sudhausausbeute (`Recipe.efficiencyPct`, Standard 75 %), Zucker und Extrakt mit 100 %. Zucker zur Abfüllung
+  oder Hauptgärung zählt nicht. `platoFromExtract` ist die Umkehrung der Bilanz aus `extractEfficiencyPercent`.
+- **Farbe:** Morey (SRM = 1,4922 · MCU^0,6859, EBC = 1,97 · SRM). Der Schritt EBC → °L (Umkehrung von Daniels,
+  SRM = 1,3546 · °L − 0,76) hat keine Primärquelle, er trägt ein `TODO(verify)`.
+- **Alkohol:** Endvergärungsgrad der ersten verknüpften Hefe, dann `ballingBeerAnalysis`.
+- **Bittere:** Tinseth, dazu mIBU (alchemyoverlord, nach Malowicki & Shellhammer 2005) für die Zeit nach Kochende
+  bei der konstanten Whirlpool-Temperatur des Rezepts. Ohne Abkühlkurve und ohne die „ersten 5 Minuten“-Regel der
+  Quelle. Kochgaben haben ein neues Feld `Ingredient.timeMin` („min vor Kochende“, fehlt = ganze Kochdauer),
+  Vorderwürze zählt mit der ganzen Kochdauer. Hop Back, Dip, Maische und Gärung zählen nicht. Kochwürze und -menge
+  sind durch Stammwürze und Ausschlagmenge genähert.
+- **Nebenbei behoben** (aus dem Katalog-Eintrag): Das Vorschlagsfeld war durchsichtig (`bg-card`), jetzt `bg-surface`.
+  Und `useCatalog` startete bei jedem Mount mit `null`, was beim Tabwechsel kurz „Katalog nicht geladen“ zeigte.
+- **Prüfung:** Typecheck, 91 Tests, Build (JS gzip 142,4 kB, +1,3 kB). Browser über den Mock mit einem Rezept ohne
+  `efficiencyPct`: 13,6 °P, IBU 21 mit 60 min und 14 mit 15 min (von Hand nachgerechnet), Alkohol 5,8 % vol nach
+  Hefeauswahl, Vermerke für Freitext-Zeile und Trockenhopfen, keine Konsolenfehler.
+
+## 2026-10-04 — Stilvergleich im Rezept (Branch `feature/rezept-sud-editor`)
+
+Das Rezept lässt sich jetzt einem BJCP-2021-Stil zuordnen, die neue Stil-Karte in der Übersicht zeigt je Kennwert
+(Stammwürze, Restextrakt, Alkohol, Bittere, Farbe) den Stilbereich als Balken mit dem Rezeptwert, „x von y im Stil“
+und ein Abzeichen („im Stil“, „+1,6 über Stil“). Das Stilfeld ist ein Suchfeld (`StylePicker`), die Wahl setzt
+`Recipe.styleId` und den Namen in `style`; Weitertippen macht es wieder zu Freitext. Altrezepte mit Freitextstil
+funktionieren unverändert.
+
+- **Daten:** `web/public/catalog/bjcp-2021.json`, 95 Stile, 3 kB gzip, nur Nummer, Name, Kategorie und die fünf
+  Bereiche (OG/FG in SG, IBU, SRM, ABV). Erzeugt aus den beiden von bjcp.org verlinkten JSON-Konvertierungen
+  (ascholer/bjcp-styleview, beerjson/bjcp-json), die bei 86 Stilen in allen zehn Werten übereinstimmen, und gegen das
+  offizielle PDF (Fassung 1.25, Feb. 2025) geprüft: 73 Stile über einen Parser, 12 per Einzelsuche, 27B–27I einzeln.
+  Die Quellen widersprachen sich bei Saison (Vereinigung aller Stärkestufen gegen Standardstufe) und Specialty IPA
+  (Werte je Unterstil). Saison steht als Standardstufe/hell (5–7 % vol, SRM 5–14), 21B fehlt. Ebenfalls ohne feste
+  Werte und deshalb nicht dabei: Kategorien 28–34, Kellerbier, die provisorischen X1–X5.
+- **Code:** `styleSource.ts` (Laden, Suche), `styleCompare.ts` (reiner Vergleich, SG→°P per `sgToPlato`, SRM→EBC mit
+  dem jetzt exportierten `EBC_PER_SRM`), `StylePicker.tsx`, `StyleCard.tsx`.
+- **Lizenz:** Die BJCP verlangt für Apps eine Genehmigung und einen Hinweistext. Bis zur Zusage nennt die Karte nur
+  Quelle und Copyright, der Satz „mit Genehmigung“ fehlt bewusst. PLAN.md hat dafür einen Punkt als Voraussetzung für
+  Merge und Auslieferung.
+- **Nebenbei behoben:** In `IngredientPicker` (und dem neuen `StylePicker`) blieb die Vorschlagsliste nach einer Auswahl
+  zu, solange das Feld fokussiert blieb. Tippen öffnet sie jetzt wieder.
+- **Prüfung:** Typecheck, 103 Tests, Build (JS gzip 143,7 kB). Browser über den Mock: „alt“ tippen, Altbier wählen,
+  Karte zeigt fünf Zeilen mit nachgerechneten Bereichen (11,0–12,9 °P, 4,3–5,5 % vol, 25–50 IBU, 18–33 EBC), Tippen löscht
+  die Verknüpfung, erneutes Tippen nach einer Auswahl öffnet die Liste, Speichern schreibt `styleId`, die Liste zeigt den
+  Stilnamen, keine Konsolenfehler.
+
+## 2026-10-04 — Rezepte als nachladbares Paket mit Opt-in (Branch `feature/rezept-sud-editor`)
+
+Die Rezeptverwaltung ist jetzt ein optionales UI-Paket: Auf Boards ohne das Paket verschwinden Menüpunkt und Seiten,
+und das Paket kostet dort keinen Flash. Der Anlass: Das Menü „Rezepte“ stand auf jedem Board, auch auf esp32dev und
+lolin_s2_mini mit der 256-KB-Partition.
+
+- **Paket:** Ordner `modules/recipes/` (Quelle `web/public/modules/recipes/`, vorher `public/catalog/`) mit
+  `manifest.json`, Zutaten- und Stilkatalog und dem Chunk mit den Rezeptseiten. Einstieg ist `src/modules/recipes.ts`,
+  `vite.config.ts` legt Chunks dieses Einstiegs nach `dist/modules/recipes/`. Der Chunk hat 7,4 kB gzip, das Hauptbundle
+  sank von 143,7 auf 138,7 kB. Das Paket insgesamt wiegt etwa 15 kB gzip.
+- **Opt-in ohne Firmware-Flag:** `src/optionalModules.ts` (`useModule`) holt `/modules/<name>/manifest.json` und prüft
+  dessen Inhalt; vorhanden heißt eingeschaltet. Das Gerät antwortet auf fehlende Dateien mit Endung 404 (`onNotFound`
+  in `WebUI.cpp`), nicht mit der Startseite. `NavShell` blendet „Rezepte“ aus, `RecipesRoute` lädt den Chunk erst bei
+  Bedarf und zeigt sonst einen Hinweis („nicht installiert“, bzw. „unvollständig“, wenn das Manifest da ist, aber der
+  Chunk fehlt). Eine neue API-Route gibt es nicht, `openapi.yaml` bleibt unberührt.
+- **Auslieferung:** Ein „Installieren“ ersetzt das ganze `/www` und würde das Paket löschen. Deshalb baut
+  `.github/workflows/release.yml` zwei Tars: `webui.tar` ohne `modules/` (155 KB, für Boards mit `BREWCTL_ASSETS_IN_PLACE`)
+  und `webui-full.tar` (170 KB). `FirmwareUpdater::fetchReleaseMeta` nimmt auf Boards ohne die kleine Partition das volle
+  Tar, mit Rückfall auf `webui.tar` für ältere Releases. README: beide Tars, und beim LittleFS-Deploy per `uploadfs`
+  den Ordner `modules` aus `data/www` löschen.
+- **Prüfung:** Typecheck, 103 Tests, Build. Browser über den Mock mit Paket (Liste, Editor, Direktaufruf, Kataloge aus dem
+  neuen Pfad, Chunk lazy), ohne `dist/modules` (Menüpunkt weg, Hinweis, kein Konsolenfehler; der Mock liefert für
+  fehlende Dateien die Startseite mit 200, die Inhaltsprüfung hat das als „fehlt“ gewertet) und mit Manifest, aber ohne
+  Chunk (Meldung statt weißer Seite). Beide Tars gebaut und aufgelistet. Nachtrag: `pnpm build:lfs` (`scripts/copy-lfs.js`) legt `dist/` ohne `modules/` nach `firmware/data/www`, damit der `uploadfs`-Weg das Paket nicht versehentlich aufs schlanke Board bringt (156.009 Bytes, nur `.gz`, kein `modules/`). Der frühere README-Satz „passen nicht in die 256-KB-Partition“ war nicht gemessen und ist entfernt, der Grund ist Konsistenz mit dem schlanken `webui.tar`. Firmware: `pio run` für `esp32dev` (Flash 94,6 %, ein Vorher-Wert wurde nicht gemessen; die Änderung ist ein Zweizeiler) und `lilygo_t_display_s3_amoled` (SD-Zweig) baut. Eine native Teststrecke für den Updater gibt es nicht.
+- **Offen:** Rezepte liegen weiter im `localStorage` (Schritt 3, `/api/recipes` auf SD, im PLAN.md).
+
+## 2026-10-04 — Rechner ins nachladbare Paket (Branch `feature/rezept-sud-editor`)
+
+Die Rechner unter `/rechner` (14 Rechner, `Calc*.tsx`, `brewMath.ts`, `gravityUnits.ts`) gehören jetzt zum Paket `recipes` und sind damit nur mit `modules/recipes/` sichtbar. Die Rechner wurden nur von ihren eigenen Seiten und vom Rezeptcode benutzt, deshalb zog Rollup sie ohne weitere Umbauten in den Paket-Chunk.
+
+- **Umsetzung:** `src/modules/recipes.ts` exportiert zusätzlich `RechnerIndex` und `RechnerDetail`. `pages/RecipesRoute.tsx` heißt jetzt `pages/PackageRoutes.tsx` und enthält `RecipesRoute` und `RechnerRoute` über einen gemeinsamen Lade-Hook (`usePackage`), die Hinweistexte unterscheiden sich je Funktion. `app.tsx` importiert die Rechnerseiten nicht mehr statisch, der Menüpunkt „Rechner“ trägt `module: 'recipes'`. Der Paketname bleibt `recipes`, obwohl er jetzt auch die Rechner enthält; ein eigenes Paket wäre mit demselben Mechanismus möglich (`src/modules/<name>.ts`).
+- **Größen:** Hauptbundle 138,7 → 133,1 kB gzip, Chunk 7,45 → 12,71 kB, `dist/modules` 20.137 Bytes, `dist` ohne `modules` jetzt 150.461 Bytes (vorher 156.009). `webui.tar` 163.840, `webui-full.tar` 184.320 Bytes (Tar-Blockpadding).
+- **Prüfung:** Typecheck, 103 Tests, Build. Browser über den Mock: mit Paket Rechnerindex mit allen 14 Rechnern und Direktaufruf `/rechner/abv` mit Ergebnis (5,0 % vol), Chunk aus `/modules/recipes/`; ohne `dist/modules` beide Menüpunkte weg, Hinweis „Die Rechner sind auf diesem Gerät nicht installiert …“, kein Konsolenfehler.
+- **Folge:** Boards mit `webui.tar` (esp32dev, lolin_s2_mini) haben die Rechner nicht mehr.
+
+**Nachtrag, BJCP-Stilvergleich ausgeblendet:** Statt der ganzen Rezeptseiten ist nur der Stilvergleich aus: `STYLE_COMPARISON = import.meta.env.DEV` (`styleSource.ts`) schaltet `StylePicker` und `StyleCard` in `tabs.tsx`; im Build gibt es wieder das freie Stilfeld. `bjcp-2021.json` ist aus dem Index genommen und in `web/.gitignore`, bleibt lokal für `pnpm dev`. Damit enthält das Paket (und `webui-full.tar` aus der CI) keine BJCP-Daten; ein lokaler `pnpm build` nimmt die Datei weiter mit, weil sie im Arbeitsverzeichnis liegt. Die Rezeptseiten (Revert von `8973584`) und der Menüpunkt „Rezepte“ sind wieder sichtbar.
+
+## 2026-10-04 — Update-Suche im Vorschau-Kanal: „check failed“ (Branch `feature/rezept-sud-editor`)
+
+Auf dem LilyGo zeigte die Update-Suche im Kanal „Vorschau“ nur „check failed“, ohne Netzfehler in Klammern.
+
+- **Root Cause:** `FirmwareUpdater::fetchReleaseMeta` wendete einen Objekt-Filter auf die Release-**Liste** (`/releases?per_page=10`) an. ArduinoJson wirft bei einem Objekt-Filter ein ganzes Array weg, das Dokument blieb leer, kein Release wurde gefunden, und `doCheck` meldete „check failed“. Der Stable-Kanal (`/releases/latest`, ein Objekt) war nie betroffen. Der Fehler steckt seit `ef8885e` im Code; der Vorschau-Kanal hat also nie funktioniert (Kommentar „the same filter applies element-wise“ war falsch). Reproduziert mit ArduinoJson 7.4.3 in einem Scratch-Programm: Objekt-Filter → 0 Elemente, Array-Filter `filter[0]` → beide Releases.
+- **Fix:** `src/ReleaseFilter.h` (`makeReleaseFilter(filter, list)`) baut für die Liste `filter[0]`, für ein einzelnes Release das Objekt. Dazu `test/test_release_filter` (native), der mit dem alten Objekt-Filter „Expected 2 Was 0“ liefert und mit dem Fix besteht.
+- **Prüfung:** `pio test -e native` 101 Tests grün, `pio run` für `esp32dev` (Flash 94,6 %) und `lilygo_t_display_s3_amoled` baut. Nicht auf dem Gerät geprüft.
+- **Folge für den Test:** Das Release `v0.2.1-rc.1` enthält den Fehler noch. Ein Board mit dieser oder älterer Firmware sieht über „Vorschau“ nie ein Pre-release; die Firmware mit dem Fix muss einmal anders aufs Board (USB oder `POST /api/update/firmware`).

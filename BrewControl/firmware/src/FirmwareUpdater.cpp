@@ -9,6 +9,7 @@
 #include <time.h>
 
 #include "AssetInstall.h"
+#include "ReleaseFilter.h"
 #include "SdLock.h"
 #include "SdTarSink.h"
 #include "TarExtractor.h"
@@ -237,12 +238,7 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
 
   // Filter to keep only the fields we need (releases JSON is large).
   JsonDocument filter;
-  filter["tag_name"] = true;
-  filter["prerelease"] = true;
-  filter["body"] = true;
-  filter["assets"][0]["name"] = true;
-  filter["assets"][0]["browser_download_url"] = true;
-  // For the array form, the same filter applies element-wise.
+  makeReleaseFilter(filter, channel != "stable");
   JsonDocument doc;
   DeserializationError err = deserializeJson(
       doc, http.getStream(), DeserializationOption::Filter(filter));
@@ -266,12 +262,22 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   if (notes.length() > 500) notes = notes.substring(0, 500);
 
   String wantFw = String("firmware-") + variant_ + ".bin";
+  String slimTar, fullTar;
   for (JsonObject a : rel["assets"].as<JsonArray>()) {
     String name = a["name"] | "";
     String dl = a["browser_download_url"] | "";
     if (name == wantFw) fwUrl = dl;
-    else if (name == "webui.tar") tarUrl = dl;
+    else if (name == "webui.tar") slimTar = dl;
+    else if (name == "webui-full.tar") fullTar = dl;
   }
+  // webui-full.tar adds the optional UI packages (/modules, e.g. recipes). The
+  // boards with the small data partition have no room for them and take
+  // webui.tar; older releases only have that one.
+#ifdef BREWCTL_ASSETS_IN_PLACE
+  tarUrl = slimTar;
+#else
+  tarUrl = fullTar.length() > 0 ? fullTar : slimTar;
+#endif
   return tag.length() > 0;
 }
 

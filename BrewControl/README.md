@@ -263,6 +263,13 @@ Copy-Item -Recurse -Force .\dist\* D:\
 SD-Karte rausziehen, in den ESP32-Slot stecken — der Static-Serve-Handler
 liefert ab sofort `index.html` + Assets unter `/`.
 
+`dist/modules/` enthält die **optionalen UI-Pakete** (derzeit `recipes`: Rezeptverwaltung
+mit Zutaten- und Stilkatalog sowie die Rechner unter `/rechner`). Sie gehören mit auf die
+SD-Karte; fehlt der Ordner, blendet die UI die Funktion aus (Menüpunkte „Rezepte“ und
+„Rechner“ weg, `/rezepte` und `/rechner` zeigen einen Hinweis). Ein Paket ist
+vorhanden, wenn `/modules/<name>/manifest.json` ausgeliefert wird (`web/src/optionalModules.ts`).
+Rezepte liegen vorerst nur im `localStorage` des Browsers.
+
 ## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
 
 Diese beiden Boards haben keinen SD-Slot — die UI landet stattdessen per USB auf einer
@@ -274,16 +281,18 @@ ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ih
 ```powershell
 cd web
 pnpm install                      # einmalig
-pnpm build:sd                     # vite build + gzip, dist/ enthält nur .gz
-
-Remove-Item -Recurse -Force ..\firmware\data\www -ErrorAction SilentlyContinue
-Copy-Item -Recurse .\dist ..\firmware\data\www
+pnpm build:lfs                    # build:sd + dist/ (ohne modules/) nach ../firmware/data/www
 
 cd ..\firmware
 pio run -e esp32dev -t buildfs        # optional: Größen-Check ohne Hardware
 pio run -e esp32dev -t uploadfs       # LittleFS-Image per USB flashen
 pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
 ```
+
+`pnpm build:lfs` lässt `dist/modules/` bewusst weg: Die optionalen UI-Pakete (Rezepte) sind
+für diese Boards nicht vorgesehen, und ein späteres „Installieren“ mit dem schlanken
+`webui.tar` würde sie ohnehin wieder löschen. Ein Ordner `data/www/modules` von Hand
+bringt das Paket trotzdem aufs Board, das ist dann deine Entscheidung.
 
 `data/` ist projektweit geteilt zwischen allen Envs — **nicht** gegen
 `lilygo_t_display_s3_amoled` ausführen (kein `littlefs`-Filesystem dort).
@@ -293,7 +302,7 @@ pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
 `uploadfs` braucht die serielle Verbindung — beim esp32dev-Testboard heißt das,
 den BOOT-Button von Hand zu halten (kein zuverlässiger Auto-Reset). Ohne USB geht
 es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
-„webui.tar manuell bauen“ unten, ~160 KB, nur `.gz`) oder über „Installieren“
+„webui.tar und webui-full.tar manuell bauen“ unten, ~150 KB, nur `.gz`) oder über „Installieren“
 aus einem Release, das dasselbe Tar mitbringt:
 
 ```bash
@@ -814,7 +823,7 @@ angemeldet (`startMDNS()`).
 Vier Wege:
 - **Server-Pull (GitHub):** `/settings/firmware` → Kanal (stable/preview) wählen →
   „Auf Updates prüfen" → „Installieren". Zieht `firmware-<variant>.bin` + `webui.tar`
-  aus dem passenden Release. Repo `nhhop/Brauerei` muss **public** sein.
+  (SD-Boards: `webui-full.tar`) aus dem passenden Release. Repo `nhhop/Brauerei` muss **public** sein.
   „Installieren“ startet das Gerät zuerst neu in einen **Update-Modus**: Die
   Downloads laufen früh im Boot, direkt nach dem WLAN und bevor Webserver, MQTT
   und die übrigen Dienste Heap belegen (`FirmwareUpdater::runPendingInstall()`).
@@ -843,20 +852,31 @@ Die SPA wird aus `/www` auf der SD-Karte serviert (vorher SD-Root). Beim Deploy:
 `Copy-Item -Recurse -Force .\dist\* D:\www\`. Bestehende Karten: Assets nach `/www`
 verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an).
 
-### webui.tar manuell bauen
-Das `webui.tar` ist das gebaute, **gzippte** `dist/` als Tar, nur `.gz`-Dateien
-(~160 KB) — Pfade relativ zur dist-Wurzel (nicht unter `dist/`). Aus `web/`:
+### webui.tar und webui-full.tar manuell bauen
+Es gibt zwei UI-Pakete, beide das gebaute, **gzippte** `dist/` als Tar, nur `.gz`-Dateien,
+Pfade relativ zur dist-Wurzel (nicht unter `dist/`):
+
+- `webui.tar` (~150 KB) ohne `modules/` für die Boards mit der 256-KB-Partition
+  (`esp32dev`, `lolin_s2_mini`, Build-Flag `BREWCTL_ASSETS_IN_PLACE`).
+- `webui-full.tar` (~170 KB) mit `modules/` (optionale Pakete, derzeit Rezepte und Rechner) für die
+  Boards mit SD-Karte. Ein „Installieren“ ersetzt das ganze `/www`; deshalb nimmt die
+  Firmware auf diesen Boards das volle Tar, sonst wäre das Paket danach weg. Ältere
+  Releases ohne `webui-full.tar` fallen auf `webui.tar` zurück.
+
+Aus `web/`:
 
 ```powershell
 pnpm build:sd            # vite build + gzip-dist (NICHT nur `pnpm build` — sonst fehlen die .gz)
-tar -C dist -cf webui.tar .
+tar -C dist --exclude=./modules -cf webui.tar .
+tar -C dist -cf webui-full.tar .
 ```
 
 Das ist exakt die Form, die auch die CI baut. Sie erzeugt `./`-präfixierte Namen;
 die Firmware normalisiert die in `SdTarSink` weg (die Glob-Variante
 `cd dist; tar -cf ../webui.tar *` ohne `./` geht ebenso). Aufspielen: über
 `/settings/firmware` → „UI-Paket (.tar)", oder
-`curl -F "f=@webui.tar" http://<ip>/api/update/assets`.
+`curl -F "f=@webui.tar" http://<ip>/api/update/assets` (SD-Boards mit Rezepten:
+`webui-full.tar`).
 
 ### firmware.bin manuell bauen
 Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:
@@ -878,7 +898,7 @@ Firmware wertet ihn nicht aus und nimmt den ersten File-Part.
 
 ### Release erstellen
 `git tag vX.Y.Z && git push origin vX.Y.Z` → die GitHub-Action baut alle Board-
-Varianten und hängt `firmware-<env>.bin` + `webui.tar` ans Release. Stable = normales
+Varianten und hängt `firmware-<env>.bin` + `webui.tar` + `webui-full.tar` ans Release. Stable = normales
 Release, Preview = als „Pre-release" markieren.
 
 ### Partition-Layout (partitions_4mb_littlefs)

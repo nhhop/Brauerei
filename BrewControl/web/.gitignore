@@ -1,5 +1,7 @@
 node_modules
 dist
 webui.tar
+# BJCP style data: not distributed until the BJCP has agreed (PLAN.md)
+public/modules/recipes/bjcp-2021.json
 .env.local
 .env.*.local

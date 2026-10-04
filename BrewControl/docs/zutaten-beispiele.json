@@ -1,0 +1,206 @@
+{
+  "_comment": "Beispieleinträge zum Schema in web/src/ingredientCatalog.ts. NAMEN UND WERTE SIND ERFUNDEN, das Pilsner-Malz lehnt sich in der Form an ein Herstellerdatenblatt an; sie dienen dazu, das Ausfüllen des Schemas zu beurteilen, nicht als Daten.",
+
+  "vocab": {
+    "styles": [
+      { "id": "ale", "label": "Ale" },
+      { "id": "lager", "label": "Lager" },
+      { "id": "wheat", "label": "Weizen" },
+      { "id": "belgian", "label": "Belgisch" },
+      { "id": "saison", "label": "Saison" },
+      { "id": "farmhouse", "label": "Farmhouse" }
+    ],
+    "flavors": [
+      { "id": "malty", "label": "malzig", "group": "malt-aroma" },
+      { "id": "honey", "label": "Honig", "group": "malt-aroma" },
+      { "id": "pastry", "label": "Gebäck", "group": "malt-aroma" },
+      { "id": "toffee", "label": "Toffee", "group": "caramel" },
+      { "id": "light-caramel", "label": "helles Karamell", "group": "caramel" },
+      { "id": "coffee", "label": "Kaffee", "group": "roast" },
+      { "id": "cocoa", "label": "Kakao", "group": "roast" },
+      { "id": "bread-crust", "label": "Brotkruste", "group": "roast" },
+      { "id": "wood-smoke", "label": "Holzrauch", "group": "smoke" },
+      { "id": "raisin", "label": "Rosinen", "group": "fruit-nut" },
+      { "id": "vanilla", "label": "Vanille", "group": "fruit-nut" },
+      { "id": "sweet", "label": "süß", "group": "taste" },
+      { "id": "bitter", "label": "bitter", "group": "taste" },
+      { "id": "sour", "label": "sauer", "group": "taste" },
+      { "id": "red-apple", "label": "roter Apfel", "group": "yeast" },
+      { "id": "green-apple", "label": "grüner Apfel", "group": "yeast" },
+      { "id": "tropical-fruit", "label": "Tropenfrucht", "group": "yeast" },
+      { "id": "banana", "label": "Banane", "group": "yeast" },
+      { "id": "clove", "label": "Nelke", "group": "yeast" },
+      { "id": "pepper", "label": "Pfeffer", "group": "yeast" },
+      { "id": "alcoholic", "label": "alkoholisch", "group": "yeast" },
+      { "id": "acid", "label": "säuerlich", "group": "yeast" },
+      { "id": "neutral", "label": "neutral", "group": "yeast" },
+      { "id": "fruity", "label": "fruchtig", "group": "fruit" },
+      { "id": "citrus", "label": "Zitrus", "group": "fruit" },
+      { "id": "spicy", "label": "würzig", "group": "spice" },
+      { "id": "floral", "label": "blumig", "group": "floral" }
+    ]
+  },
+
+  "catalogVersion": "2026.10-beispiel",
+
+  "catalog": [
+    {
+      "id": "malt:beispiel-pilsner",
+      "kind": "fermentable",
+      "owner": "catalog",
+      "catalogVersion": "2026.10-beispiel",
+      "type": "malt",
+      "role": "base",
+      "grain": "barley",
+      "name": "Beispiel Pilsner Malz",
+      "manufacturer": "Beispielmälzerei",
+      "origin": "Deutschland",
+      "colorEbc": [2.5, 4.5],
+      "extractDryPct": [80.5, null],
+      "moisturePct": [null, 5],
+      "enzymaticActivity": "high",
+      "kolbachPct": [36, 42.5],
+      "proteinPct": [9, 12],
+      "colorBoiledEbc": [4, 5.5],
+      "saccharificationMin": [null, 15],
+      "viscosityMpas": [null, 1.58],
+      "friabilityPct": [84, null],
+      "glassyKernelsPct": [null, 2.5],
+      "maxSharePct": 100,
+      "flavors": [
+        { "id": "malty", "intensity": 3 },
+        { "id": "honey", "intensity": 2 },
+        { "id": "sweet", "intensity": 2 }
+      ]
+    },
+    {
+      "id": "malt:beispiel-roest",
+      "kind": "fermentable",
+      "owner": "catalog",
+      "catalogVersion": "2026.10-beispiel",
+      "type": "malt",
+      "role": "roasted",
+      "grain": "barley",
+      "name": "Beispiel Röstmalz",
+      "manufacturer": "Beispielmälzerei",
+      "origin": "Deutschland",
+      "colorEbc": [1200, 1400],
+      "extractDryPct": [65, null],
+      "diastaticPowerWk": [0, 0],
+      "maxSharePct": 5,
+      "flavors": [
+        { "id": "coffee", "intensity": 5 },
+        { "id": "cocoa", "intensity": 3 },
+        { "id": "bitter", "intensity": 4 }
+      ]
+    },
+    {
+      "id": "hop:beispiel-aroma",
+      "kind": "hop",
+      "owner": "catalog",
+      "catalogVersion": "2026.10-beispiel",
+      "name": "Beispiel Aromahopfen",
+      "origin": "Deutschland",
+      "purpose": "aroma",
+      "alphaPct": [3.5, 5.5],
+      "betaPct": [3.0, 5.0],
+      "oilMlPer100g": [0.8, 1.4],
+      "cohumulonePct": [22, 26],
+      "polyphenolsPct": [3.0, 5.0],
+      "xanthohumolPct": [0.2, 0.5],
+      "oilComposition": {
+        "betaPinene": [0.2, 0.6],
+        "myrcene": [25, 40],
+        "linalool": [0.3, 0.8],
+        "betaCaryophyllene": [8, 12],
+        "farnesene": [0, 1],
+        "humulene": [20, 30],
+        "geraniol": [0.1, 0.4],
+        "selinene": [0, 2],
+        "other": [10, 25]
+      },
+      "thiols": { "4MMP": [0, 0], "3MH": [null, 10], "3M4MP": [0, 0] },
+      "thiolImpact": "low",
+      "flavors": [{ "id": "floral" }, { "id": "spicy" }],
+      "source": { "name": "Beispiel-Datenblatt (erfunden)", "url": "https://example.org/datenblatt" }
+    },
+    {
+      "id": "culture:beispiel-ale-trocken",
+      "kind": "culture",
+      "owner": "catalog",
+      "catalogVersion": "2026.10-beispiel",
+      "organism": "saccharomyces",
+      "species": "Saccharomyces cerevisiae",
+      "style": "ale",
+      "form": "dry",
+      "name": "Beispiel Ale-Hefe trocken",
+      "manufacturer": "Beispiel-Hefelabor",
+      "productCode": "BA-1",
+      "productUrl": "https://example.org/ba-1",
+      "tempRangeC": [18, 22],
+      "alcoholTolerancePct": 11,
+      "attenuationPct": [78, 82],
+      "flocculation": ["medium", "high"],
+      "pitchRateGPerL": [0.5, 1],
+      "starterRequired": false,
+      "rehydration": { "tempC": [30, 35], "minutes": 15 },
+      "h2sProduction": "low",
+      "diacetylTendency": "low",
+      "repitchable": true,
+      "bottleConditioningSuitable": true,
+      "ferments": { "maltose": "yes", "maltotriose": "partial", "dextrins": "no", "melibiose": "no" },
+      "sta1": false,
+      "pof": false,
+      "enzymes": { "betaLyase": "medium", "betaGlucosidase": "none" },
+      "flavors": [{ "id": "fruity" }]
+    },
+    {
+      "id": "culture:beispiel-lacto",
+      "kind": "culture",
+      "owner": "catalog",
+      "catalogVersion": "2026.10-beispiel",
+      "organism": "bacteria",
+      "species": "Lactobacillus (Beispiel)",
+      "form": "liquid",
+      "name": "Beispiel Milchsäurebakterien",
+      "manufacturer": "Beispiel-Hefelabor",
+      "tempRangeC": [30, 40],
+      "acidProduction": "high",
+      "metabolism": "homofermentative",
+      "hopTolerance": { "alphaPpm": 4, "betaPpm": 8 },
+      "pitchRateGPerL": [0.1, 0.1]
+    }
+  ],
+
+  "userIngredients": [
+    {
+      "id": "user:mein-honig",
+      "kind": "fermentable",
+      "owner": "user",
+      "type": "sugar",
+      "name": "Mein Honig",
+      "origin": "Regional",
+      "colorEbc": [5, 5],
+      "extractDryPct": [80, 80],
+      "fermentabilityPct": 95,
+      "notes": "Vom Imker um die Ecke."
+    }
+  ],
+
+  "stock": [
+    {
+      "id": "lot:2024-001",
+      "ref": "hop:beispiel-aroma",
+      "cropYear": 2024,
+      "form": "t90",
+      "amount": 250,
+      "bestBefore": "2026-12-31",
+      "overrides": {
+        "alphaPct": [5.4, 5.4],
+        "betaPct": [4.1, 4.1],
+        "oilMlPer100g": [1.1, 1.1]
+      },
+      "source": { "name": "Datenblatt des Händlers (Beispiel)" }
+    }
+  ]
+}

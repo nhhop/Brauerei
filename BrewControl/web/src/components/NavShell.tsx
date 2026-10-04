@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route, useRouter } from 'preact-router';
-import { LayoutDashboard, ListChecks, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
+import { useModule } from '../optionalModules';
+import { LayoutDashboard, ListChecks, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -24,13 +25,15 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   match: (p: string) => boolean;
+  module?: string; // shown only when this optional package is installed (optionalModules.ts)
 }
 
 // Weitere Einträge (z.B. einzelne Dashboards, Logs) folgen in einer späteren Session.
 const mainItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p) => p === '/' },
   { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
-  { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner') },
+  { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes' },
+  { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner'), module: 'recipes' },
 ];
 const footerItems: NavItem[] = [
   { href: '/settings', label: 'Einstellungen', icon: Settings, match: (p) => p.startsWith('/settings') },
@@ -52,6 +55,7 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
   const [{ url }] = useRouter();
   const path = (url ?? '/').split('?')[0];
   const showLabels = expanded || mobileOpen;
+  const installed: Record<string, boolean | null> = { recipes: useModule('recipes') };
 
   // Also fires when the user leaves fullscreen by gesture, not just via the button.
   useEffect(() => {
@@ -125,7 +129,7 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
             class="flex items-center gap-3 rounded px-3 py-2 text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
             <Menu size={20} class="shrink-0" />
           </button>
-          {mainItems.map(renderItem)}
+          {mainItems.filter((i) => !i.module || installed[i.module] === true).map(renderItem)}
         </div>
         <div class="mt-auto flex flex-col gap-1 p-2">
           {onEmergencyStop && (
