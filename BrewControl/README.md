@@ -481,12 +481,11 @@ zurück (`src/RuntimeState.h`, Datei `/config/state.json`):
 - **Geänderte Regler-Parameter** bleiben ebenfalls: Weichen die Parameter
   eines Reglers (Kp/Ki/Kd, `deadband`, `hystLow`/`hystHigh`, `inverted`,
   `heatDiff`/`coolDiff`, `coolMinOnMs`/`coolMinOffMs`, `changeoverMs`,
-  `maxRatePerSec`) von seiner gespeicherten Konfiguration ab (fertiges
-  AutoTune, `POST …/params` oder eine `/tune`-Nachricht), schreibt `loop()`
-  sie in die Konfiguration zurück (`DynamicItems::syncTunedParams`, höchstens
-  eine Sekunde später). Damit überstehen sie den Neustart, landen im Backup,
-  und der Bearbeiten-Dialog zeigt sie an. Ausnahme: `autotuneMethod` kennt die
-  Konfiguration nicht, die Wahl fällt beim Neustart auf den Standard zurück.
+  `maxRatePerSec`, `autotuneMethod`) von seiner gespeicherten Konfiguration ab
+  (fertiges AutoTune, `POST …/params` oder eine `/tune`-Nachricht), schreibt
+  `loop()` sie in die Konfiguration zurück (`DynamicItems::syncTunedParams`,
+  höchstens eine Sekunde später). Damit überstehen sie den Neustart, landen im
+  Backup, und der Bearbeiten-Dialog zeigt sie an.
 
 ## Energiemanagement
 

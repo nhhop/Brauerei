@@ -961,6 +961,12 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
   }
 
   std::unique_ptr<Controller> concrete(built);
+  const char* method = cfg["autotune_method"] | "";
+  if (method[0] && (strcmp(type, "PID") == 0 || strcmp(type, "SplitRangePID") == 0)) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"autotuneMethod\":\"%s\"}", method);
+    concrete->setParamsJson(buf);
+  }
   concrete->setRange(cfg["range_min"] | 0.0f, cfg["range_max"] | 0.0f);
   float maxRate = cfg["max_rate_per_sec"] | 0.0f;
   if (maxRate > 0.0f) {
@@ -1044,16 +1050,27 @@ bool DynamicItems::syncTunedParams() {
       dirty = true;
     };
 
+    auto syncMethod = [&](TuningMethod live) {
+      static const char* const kNames[] = {"ZieglerNichols", "CohenCoon", "IMC",
+                                           "TyreusLuyben", "LambdaTuning"};
+      const char* name = kNames[static_cast<uint8_t>(live)];
+      if (strcmp(name, cfg["autotune_method"] | kNames[0]) == 0) return;
+      cfg["autotune_method"] = name;
+      dirty = true;
+    };
+
     if (strcmp(type, "PID") == 0) {
       auto* p = static_cast<PIDController*>(c);
       syncF("Kp", p->kp(), 2.0f);
       syncF("Ki", p->ki(), 0.1f);
       syncF("Kd", p->kd(), 0.0f);
+      syncMethod(p->tuningMethod());
     } else if (strcmp(type, "SplitRangePID") == 0) {
       auto* p = static_cast<SplitRangePIDController*>(c);
       syncF("Kp", p->kp(), 2.0f);
       syncF("Ki", p->ki(), 0.1f);
       syncF("Kd", p->kd(), 0.0f);
+      syncMethod(p->tuningMethod());
       syncF("deadband", p->deadband(), 0.05f);
       syncU("changeover_ms", p->changeoverMs(), 0u);
     } else if (strcmp(type, "TwoPoint") == 0) {

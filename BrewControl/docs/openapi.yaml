@@ -3602,6 +3602,10 @@ components:
         changeover_ms: { type: integer }
         deadband: { type: number }
         max_rate_per_sec: { type: number }
+        autotune_method:
+          type: string
+          enum: [ZieglerNichols, CohenCoon, IMC, TyreusLuyben, LambdaTuning]
+          description: PID / SplitRangePID. Tuning method for AutoTune; written back by the firmware when changed via `/params`. Default ZieglerNichols.
 
     ActuatorWrite:
       type: object

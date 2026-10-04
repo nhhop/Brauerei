@@ -6345,4 +6345,11 @@ Bisher schrieb nur `syncTunedGains` Kp/Ki/Kd aus dem laufenden Regler in die ges
 
 - **Umsetzung:** `DynamicItems::syncTunedGains` heißt jetzt `syncTunedParams` und gleicht je Reglertyp alle abstimmbaren Werte mit der Konfiguration ab, im 1-s-Takt aus `loop()` wie bisher: PID Kp/Ki/Kd; SplitRangePID zusätzlich `deadband`, `changeover_ms`; TwoPoint `hyst_low`, `hyst_high`, `inverted`; DualStage `heat_diff`, `cool_diff`, `cool_min_on_ms`, `cool_min_off_ms`, `changeover_ms`; bei vorhandenem Rate-Limit-Wrapper `max_rate_per_sec`. Quelle sind die **Live-Werte** über die Getter der Library, nicht der Request-Body: das deckt auch `/tune` über ESP-NOW ab, speichert eine von der Library begrenzte Eingabe so, wie sie wirkt, und braucht weder einen neuen Handler noch eine Sperre (läuft im selben Block wie bisher). Config-Defaults sind die von `addControllerNoBegin`, ein unveränderter Regler bleibt unangetastet.
 - **Prüfung:** Kompiliert für `esp32dev`. Am `esp32dev` (OTA, Test-Regler nur auf `adc_test`/`dac_test`, kein Remote-Aktor): je ein TwoPoint-, DualStage-, PID- (mit `max_rate_per_sec`) und SplitRangePID-Regler angelegt, die Werte über `/params` gesetzt; nach 4 s standen sie in `registry.json` (`hyst_low -0.3`, `hyst_high 0.7`, `inverted true`, `heat_diff 0.8`, `cool_diff 0.9`, `cool_min_on_ms 60000`, `cool_min_off_ms 120000`, `changeover_ms 30000`/`45000`, `deadband 0.2`, `max_rate_per_sec 0.5`); nach einem Neustart zeigte der Snapshot dieselben Werte. Test-Regler danach gelöscht. Die Funktion hängt an Arduino-Typen, einen nativen Test gibt es dafür nicht.
-- **Offen:** `autotuneMethod` (PLAN.md).
+- **Offen:** `autotuneMethod` — siehe nächster Eintrag.
+
+## 2026-10-04 — `autotuneMethod` überlebt den Neustart
+
+Letzte Lücke aus dem Eintrag davor: die Konfiguration kannte die Methode nicht, nach einem Neustart stand sie wieder auf `ZieglerNichols`.
+
+- **Umsetzung:** Neuer Konfigurationsschlüssel `autotune_method` (PID, SplitRangePID; in `openapi.yaml` unter `ControllerCreate`). `addControllerNoBegin` spielt ihn über `setParamsJson({"autotuneMethod":…})` ein, `syncTunedParams` schreibt `tuningMethod()` des laufenden Reglers zurück, wenn er vom gespeicherten Wert (Standard `ZieglerNichols`) abweicht. Keine Änderung an der Library.
+- **Prüfung:** Kompiliert für `esp32dev`. Am `esp32dev` (OTA): PID-Regler angelegt, `autotuneMethod` per `/params` auf `IMC` gesetzt, nach einem Neustart (Uptime-Zähler zurückgesetzt) zeigt der Snapshot weiter `IMC`. Test-Regler danach gelöscht.
