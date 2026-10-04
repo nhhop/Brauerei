@@ -96,7 +96,14 @@
 
 /* With viewport-fit=cover the layout no longer ends at the gesture bar; without
    a painted canvas Chrome leaves the strip below it white. */
-html { background: var(--bg); }
+html {
+  background-color: var(--bg);
+  /* Optional gradient from theme.ts (--bg-gradient). Fixed to the viewport so it
+     stays put under scrolling content; the page wrappers are transparent and the
+     semi-transparent cards (--card-bg) let it show through. */
+  background-image: var(--bg-gradient, none);
+  background-attachment: fixed;
+}
 
 /* ── Fluent elevation + surface tokens ───────────────────────────────────── */
 

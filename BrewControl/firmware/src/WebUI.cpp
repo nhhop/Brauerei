@@ -1805,6 +1805,22 @@ void WebUI::begin(bool serve) {
               req->send(400, "text/plain", "invalid accent"); return;
             }
           }
+          JsonObject gradient = theme["gradient"].as<JsonObject>();
+          if (!gradient.isNull()) {
+            for (const char* key : {"from", "via", "to"}) {
+              if (const char* c = gradient[key]) {
+                if (!isHexColor(c)) { req->send(400, "text/plain", "invalid gradient color"); return; }
+              }
+            }
+            if (gradient["angle"].is<int>()) {
+              int v = gradient["angle"].as<int>();
+              if (v < 0 || v > 360) { req->send(400, "text/plain", "invalid gradient angle"); return; }
+            }
+            if (gradient["intensity"].is<int>()) {
+              int v = gradient["intensity"].as<int>();
+              if (v < 0 || v > 100) { req->send(400, "text/plain", "invalid gradient intensity"); return; }
+            }
+          }
         }
         JsonObject fw = obj["firmware"].as<JsonObject>();
         if (!fw.isNull()) {

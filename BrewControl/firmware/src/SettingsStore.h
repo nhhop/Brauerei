@@ -101,6 +101,13 @@ class SettingsStore {
   String accent_     = "#0078d4";  // hex color (Windows accent blue)
   String secondary_  = "#22c55e";  // hex color (second series: controller output)
   String background_ = "neutral";  // "neutral" | "warm" | "cool"
+  // Background gradient (web UI only — nothing in the firmware reads it).
+  bool   gradientEnabled_   = false;
+  String gradientFrom_      = "#0ea5e9";  // hex colors, hue/chroma of the three stops
+  String gradientVia_       = "#6366f1";
+  String gradientTo_        = "#0891b2";
+  int    gradientAngle_     = 135;        // degrees, 0–360
+  int    gradientIntensity_ = 15;         // 0–100
   String fwChannel_   = "stable";  // "stable" | "preview"
   bool   fwAutoCheck_ = true;
 
@@ -152,6 +159,7 @@ class SettingsStore {
   bool     energyShortWakeWifi_ = true;
 
   void readEnergy_(const JsonObject& energy);
+  void readGradient_(const JsonObject& gradient);
 };
 
 }  // namespace BrewControl
