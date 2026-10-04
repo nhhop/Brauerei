@@ -6312,7 +6312,7 @@ Auslöser: Auf dem LilyGo fehlten Rezepte und Rechner, weil ein Tar mit dem alte
 ## 2026-10-04 — Web-UI: konfigurierbarer Hintergrund-Verlauf
 
 Die Hintergrund-Tönung (neutral/warm/kalt) bekam einen optionalen Farbverlauf nach Vorbild eines Mockups im Windows-11-Mica-Stil.
-Einstellungen → Darstellung → „Hintergrund-Verlauf“: Schalter, Vorschau, vier Presets (Aurora = Mockup, Glut, Wald, Dämmerung), drei Stopp-Farben, Richtung 0–360°, Intensität 0–100 %.
+Einstellungen → Darstellung → „Hintergrund-Verlauf“: Schalter, vier Presets (Aurora = Mockup, Glut, Wald, Dämmerung), drei Stopp-Farben, Richtung 0–360°, Intensität 0–100 %.
 
 - **Modell:** `theme.gradient { enabled, from, via, to, angle, intensity }`, optional (ältere Geräte = aus). Die Stopps tragen nur Farbton und Sättigung; die Helligkeit bleibt die von `--bg` (`oklch(from var(--bg) l C H)`), deshalb funktioniert derselbe Verlauf in Hell und Dunkel und kombiniert sich mit der Tönung. Ohne Relative-Color-Support verwirft der Browser die Deklaration, es bleibt der flache `--bg`.
 - **Durchscheinen:** Der Verlauf liegt fix auf `html` (`--bg-gradient`). Dafür verloren NavShell, PageShell, Dashboard (3×) und ReloadRetry ihr deckendes `bg-bg`; die ohnehin halbtransparenten Karten (`--card-bg`) zeigen ihn dann. Ohne Verlauf ändert sich nichts (`html` malt weiter `--bg`).

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import type { GradientSettings, ThemeSettings } from '../types';
 import { getSettings, updateSettings } from '../api';
-import { applyTheme, DEFAULT_SECONDARY, DEFAULT_GRADIENT, GRADIENT_PRESETS, gradientCss } from '../theme';
+import { applyTheme, DEFAULT_SECONDARY, DEFAULT_GRADIENT, GRADIENT_PRESETS } from '../theme';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
@@ -140,9 +140,6 @@ export function AppearancePage(_: { path?: string }) {
           control={<ToggleSwitch checked={g.enabled} onChange={(on) => updateGradient({ enabled: on })} />}>
           {g.enabled && (
             <div class="space-y-4">
-              <div class="h-16 rounded-md border border-card-border"
-                style={{ backgroundColor: 'var(--bg)', backgroundImage: gradientCss(g) }} />
-
               <div class="flex flex-wrap items-center gap-2">
                 {GRADIENT_PRESETS.map((p) => {
                   const active = p.from === g.from && p.via === g.via && p.to === g.to && p.angle === g.angle;
