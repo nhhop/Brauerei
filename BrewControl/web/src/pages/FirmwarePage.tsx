@@ -30,6 +30,7 @@ export function FirmwarePage(_: { path?: string }) {
   const [tarErr, setTarErr] = useState<string | null>(null);
   const [tarOk, setTarOk] = useState(false);
   const [rebooting, setRebooting] = useState(false);
+  const [installErr, setInstallErr] = useState<string | null>(null);
   const poll = useRef<number | null>(null);
 
   const refresh = () => getUpdateStatus().then(setSt).catch(() => {});
@@ -81,7 +82,7 @@ export function FirmwarePage(_: { path?: string }) {
                   : 'Auf Updates prüfen'}
               </button>
             }>
-            {(st.available || st.state === 'downloading' || st.state === 'flashing' || st.state === 'error') && (
+            {(st.available || st.state === 'downloading' || st.state === 'flashing' || st.state === 'error' || installErr) && (
               <div class="space-y-3">
                 {st.available && (
                   <div class="rounded-md bg-fg/5 p-3 text-sm">
@@ -101,6 +102,7 @@ export function FirmwarePage(_: { path?: string }) {
                   <ProgressBar label={st.state === 'downloading' ? 'Lade…' : 'Flashe…'} pct={st.progress} />
                 )}
                 {st.state === 'error' && <div class="text-sm text-critical">Fehler: {st.error}</div>}
+                {installErr && <div class="text-sm text-critical">Installation nicht gestartet: {installErr}</div>}
               </div>
             )}
           </SettingsCard>
@@ -147,10 +149,16 @@ export function FirmwarePage(_: { path?: string }) {
         onCancel={() => setConfirmInstall(false)}
         onConfirm={() => {
           setConfirmInstall(false);
-          installUpdate(channel).then(() => {
-            if (poll.current) clearInterval(poll.current);
-            setRebooting(true);
-          });
+          setInstallErr(null);
+          installUpdate(channel)
+            // The device restarts right after the 202, so the connection can drop
+            // before the answer arrives (fetch then rejects with a TypeError).
+            .catch((e) => { if (!(e instanceof TypeError)) throw e; })
+            .then(() => {
+              if (poll.current) clearInterval(poll.current);
+              setRebooting(true);
+            })
+            .catch((e) => setInstallErr(String(e)));
         }}>
         Firmware <span class="font-mono">{st.available?.version}</span> wird geflasht und das Gerät startet neu.
       </ConfirmModal>
