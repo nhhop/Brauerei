@@ -66,11 +66,13 @@ class DynamicItems {
   // refuses on).
   bool drivenByController(const char* actuatorId) const;
 
-  // Copies a PID/SplitRangePID's live Kp/Ki/Kd into its stored config where
-  // they differ — an AutoTune result (or a POST .../params) would otherwise
-  // be lost on the next reboot, and the edit dialog would offer the old
-  // gains. True if a config changed; the caller persists with saveToSD().
-  bool syncTunedGains();
+  // Copies each controller's live tunable parameters (gains, deadband,
+  // hysteresis, differentials, cycle limits, changeover, rate limit) into its
+  // stored config where they differ — an AutoTune result, a POST .../params
+  // or a /tune message would otherwise be lost on the next reboot, and the
+  // edit dialog would offer the old values. True if a config changed; the
+  // caller persists with saveToSD().
+  bool syncTunedParams();
 
   // Claims the board's fixed I2C bus once at boot (LilyGo: the display/touch
   // needs it before any dynamic item exists) and holds it forever. No-op on

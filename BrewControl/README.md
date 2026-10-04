@@ -478,14 +478,15 @@ zurück (`src/RuntimeState.h`, Datei `/config/state.json`):
 - ⚠ Ein Relais, das vor einem Stromausfall an war, schaltet danach wieder
   ein. Die Library selbst startet jeden Ausgang aus; das Wiederherstellen
   ist eine bewusste Entscheidung von BrewControl.
-- **AutoTune-Ergebnisse** bleiben ebenfalls: Weichen Kp/Ki/Kd eines PID-
-  oder SplitRangePID-Reglers von seiner gespeicherten Konfiguration ab
-  (fertiges AutoTune oder `POST …/params`), schreibt `loop()` sie in die
-  Konfiguration zurück (`DynamicItems::syncTunedGains`). Damit überstehen sie
-  den Neustart, landen im Backup, und der Bearbeiten-Dialog zeigt sie an.
-  Andere Parameter über `/params` (z. B. `deadband`, `hystLow`) fallen beim
-  Neustart auf die Konfiguration zurück; die UI ändert sie nur über den
-  Bearbeiten-Dialog.
+- **Geänderte Regler-Parameter** bleiben ebenfalls: Weichen die Parameter
+  eines Reglers (Kp/Ki/Kd, `deadband`, `hystLow`/`hystHigh`, `inverted`,
+  `heatDiff`/`coolDiff`, `coolMinOnMs`/`coolMinOffMs`, `changeoverMs`,
+  `maxRatePerSec`) von seiner gespeicherten Konfiguration ab (fertiges
+  AutoTune, `POST …/params` oder eine `/tune`-Nachricht), schreibt `loop()`
+  sie in die Konfiguration zurück (`DynamicItems::syncTunedParams`, höchstens
+  eine Sekunde später). Damit überstehen sie den Neustart, landen im Backup,
+  und der Bearbeiten-Dialog zeigt sie an. Ausnahme: `autotuneMethod` kennt die
+  Konfiguration nicht, die Wahl fällt beim Neustart auf den Standard zurück.
 
 ## Energiemanagement
 
