@@ -204,14 +204,18 @@ export function parseRecipeBundle(text: string): Recipe[] {
 
 // Same id → overwritten, updatedAt kept. Stops at the first failure; running it
 // again is safe, so the message says how far it got.
-export async function importRecipes(text: string): Promise<number> {
+export async function importRecipes(
+  text: string, onProgress?: (done: number, total: number) => void,
+): Promise<number> {
   const recipes = parseRecipeBundle(text);
   let done = 0;
+  onProgress?.(0, recipes.length);
   for (const r of recipes) {
     try { await put(r); } catch (e) {
       throw new Error(`${done} von ${recipes.length} Rezepten eingespielt, dann: ${e}`);
     }
     done++;
+    onProgress?.(done, recipes.length);
   }
   return done;
 }

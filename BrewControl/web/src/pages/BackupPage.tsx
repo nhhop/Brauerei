@@ -3,6 +3,7 @@ import { downloadBackup, restoreBackup } from '../api';
 import { useModule } from '../optionalModules';
 import { exportRecipes, importRecipes } from '../recipes';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ProgressBar } from '../components/ProgressBar';
 import { ReloadRetry } from '../components/ReloadRetry';
 import { PageShell } from '../components/PageShell';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -25,6 +26,7 @@ export function BackupPage(_: { path?: string }) {
   const hasRecipes = useModule('recipes');
   const [recipeFile, setRecipeFile] = useState<File | null>(null);
   const [recipeBusy, setRecipeBusy] = useState(false);
+  const [recipeProgress, setRecipeProgress] = useState(0);
   const [recipeMsg, setRecipeMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const recipeFileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +79,10 @@ export function BackupPage(_: { path?: string }) {
   const confirmRecipeImport = async () => {
     if (!recipeFile) return;
     setRecipeBusy(true);
+    setRecipeProgress(0);
     try {
-      const n = await importRecipes(await recipeFile.text());
+      const n = await importRecipes(await recipeFile.text(),
+        (done, total) => setRecipeProgress(total ? Math.round((done / total) * 100) : 100));
       setRecipeMsg({ ok: true, text: `${n} Rezepte eingespielt.` });
     } catch (e) {
       setRecipeMsg({ ok: false, text: `Fehler: ${e}` });
@@ -164,6 +168,7 @@ export function BackupPage(_: { path?: string }) {
         onConfirm={confirmRecipeImport}>
         Die Rezepte aus <span class="font-mono">{recipeFile?.name}</span> werden auf das Gerät
         geschrieben. Rezepte mit gleicher ID werden überschrieben.
+        {recipeBusy && <div class="mt-3"><ProgressBar label="Import" pct={recipeProgress} /></div>}
       </ConfirmModal>
 
       <ConfirmModal open={pendingFile !== null} title="Backup wiederherstellen?"

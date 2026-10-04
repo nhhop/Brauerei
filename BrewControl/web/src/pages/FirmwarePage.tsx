@@ -8,6 +8,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { ReloadRetry } from '../components/ReloadRetry';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
+import { ProgressBar } from '../components/ProgressBar';
 import { Spinner } from '../components/Spinner';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
@@ -163,17 +164,6 @@ export function FirmwarePage(_: { path?: string }) {
         Firmware <span class="font-mono">{st.available?.version}</span> wird geflasht und das Gerät startet neu.
       </ConfirmModal>
     </PageShell>
-  );
-}
-
-function ProgressBar({ label, pct }: { label: string; pct: number }) {
-  return (
-    <div>
-      <div class="text-xs text-muted">{label} {pct}%</div>
-      <div class="mt-1 h-2 rounded bg-fg/10">
-        <div class="h-2 rounded bg-fg" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
   );
 }
 
