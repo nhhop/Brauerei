@@ -104,7 +104,7 @@ pnpm typecheck
   wenn kein serieller Zugriff möglich ist, über `POST /api/update/assets` oder „Installieren“
   mit dem normalen `webui.tar`. Das enthält seit 2026-09-26 **nur `.gz`-Dateien** (~160 KB,
   `pnpm build:sd` ersetzt die Originale); roh + gzip (~610 KB) passte nicht in die 256-KB-
-  Partition. Optionale UI-Pakete (`dist/modules/`, derzeit Rezepte) sind für diese Boards nicht
+  Partition. Optionale UI-Pakete (`dist/modules/`, derzeit Rezepte und Rechner) sind für diese Boards nicht
   vorgesehen: `webui.tar` kommt ohne sie, `webui-full.tar` (mit Paketen) bekommen die SD-Boards
   (Auswahl in `FirmwareUpdater::fetchReleaseMeta`). Beide Envs setzen `BREWCTL_ASSETS_IN_PLACE`:
   `/www` wird vor dem Entpacken geleert (altes + neues Bundle passen nicht gleichzeitig), bei Fehlschlag liefert die

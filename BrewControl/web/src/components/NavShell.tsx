@@ -33,7 +33,7 @@ const mainItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p) => p === '/' },
   { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
   { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes' },
-  { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner') },
+  { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner'), module: 'recipes' },
 ];
 const footerItems: NavItem[] = [
   { href: '/settings', label: 'Einstellungen', icon: Settings, match: (p) => p.startsWith('/settings') },

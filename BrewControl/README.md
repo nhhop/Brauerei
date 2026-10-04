@@ -264,8 +264,9 @@ SD-Karte rausziehen, in den ESP32-Slot stecken — der Static-Serve-Handler
 liefert ab sofort `index.html` + Assets unter `/`.
 
 `dist/modules/` enthält die **optionalen UI-Pakete** (derzeit `recipes`: Rezeptverwaltung
-mit Zutaten- und Stilkatalog). Sie gehören mit auf die SD-Karte; fehlt der Ordner, blendet
-die UI die Funktion aus (Menüpunkt weg, `/rezepte` zeigt einen Hinweis). Ein Paket ist
+mit Zutaten- und Stilkatalog sowie die Rechner unter `/rechner`). Sie gehören mit auf die
+SD-Karte; fehlt der Ordner, blendet die UI die Funktion aus (Menüpunkte „Rezepte“ und
+„Rechner“ weg, `/rezepte` und `/rechner` zeigen einen Hinweis). Ein Paket ist
 vorhanden, wenn `/modules/<name>/manifest.json` ausgeliefert wird (`web/src/optionalModules.ts`).
 Rezepte liegen vorerst nur im `localStorage` des Browsers.
 
@@ -301,7 +302,7 @@ bringt das Paket trotzdem aufs Board, das ist dann deine Entscheidung.
 `uploadfs` braucht die serielle Verbindung — beim esp32dev-Testboard heißt das,
 den BOOT-Button von Hand zu halten (kein zuverlässiger Auto-Reset). Ohne USB geht
 es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
-„webui.tar und webui-full.tar manuell bauen“ unten, ~155 KB, nur `.gz`) oder über „Installieren“
+„webui.tar und webui-full.tar manuell bauen“ unten, ~150 KB, nur `.gz`) oder über „Installieren“
 aus einem Release, das dasselbe Tar mitbringt:
 
 ```bash
@@ -854,9 +855,9 @@ verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an
 Es gibt zwei UI-Pakete, beide das gebaute, **gzippte** `dist/` als Tar, nur `.gz`-Dateien,
 Pfade relativ zur dist-Wurzel (nicht unter `dist/`):
 
-- `webui.tar` (~155 KB) ohne `modules/` für die Boards mit der 256-KB-Partition
+- `webui.tar` (~150 KB) ohne `modules/` für die Boards mit der 256-KB-Partition
   (`esp32dev`, `lolin_s2_mini`, Build-Flag `BREWCTL_ASSETS_IN_PLACE`).
-- `webui-full.tar` (~170 KB) mit `modules/` (optionale Pakete, derzeit Rezepte) für die
+- `webui-full.tar` (~170 KB) mit `modules/` (optionale Pakete, derzeit Rezepte und Rechner) für die
   Boards mit SD-Karte. Ein „Installieren“ ersetzt das ganze `/www`; deshalb nimmt die
   Firmware auf diesen Boards das volle Tar, sonst wäre das Paket danach weg. Ältere
   Releases ohne `webui-full.tar` fallen auf `webui.tar` zurück.
