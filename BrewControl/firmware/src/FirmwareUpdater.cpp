@@ -233,6 +233,10 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   if (!http.begin(client, url)) { noteNetError_(HTTPC_ERROR_CONNECTION_REFUSED, client, url); return false; }
   http.addHeader("User-Agent", kUserAgent);
   http.addHeader("Accept", "application/vnd.github+json");
+  // GitHub answers a fresh (uncached) request with chunked encoding. getStream()
+  // hands the raw chunk-size lines to the JSON parser, which then reads "1000" as
+  // a number and finds no release. HTTP/1.0 gets a plain body instead.
+  http.useHTTP10(true);
   int code = http.GET();
   if (code != HTTP_CODE_OK) { noteNetError_(code, client, url); http.end(); return false; }
 
@@ -255,7 +259,7 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
     if (rel.isNull() && doc.as<JsonArray>().size() > 0)
       rel = doc[0].as<JsonObject>();  // fall back to newest overall
   }
-  if (rel.isNull()) return false;
+  if (rel.isNull()) { netError_ = "no release in the response"; return false; }
 
   tag = rel["tag_name"] | "";
   notes = rel["body"] | "";
@@ -278,7 +282,8 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
 #else
   tarUrl = fullTar.length() > 0 ? fullTar : slimTar;
 #endif
-  return tag.length() > 0;
+  if (tag.isEmpty()) { netError_ = "release without tag_name"; return false; }
+  return true;
 }
 
 void FirmwareUpdater::doCheck(const String& channel) {
