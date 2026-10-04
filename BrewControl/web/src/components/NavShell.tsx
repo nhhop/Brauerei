@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route, useRouter } from 'preact-router';
-import { RECIPE_PAGES, useModule } from '../optionalModules';
+import { useModule } from '../optionalModules';
 import { LayoutDashboard, ListChecks, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
@@ -26,14 +26,13 @@ interface NavItem {
   icon: LucideIcon;
   match: (p: string) => boolean;
   module?: string; // shown only when this optional package is installed (optionalModules.ts)
-  show?: boolean; // false hides the item
 }
 
 // Weitere Einträge (z.B. einzelne Dashboards, Logs) folgen in einer späteren Session.
 const mainItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p) => p === '/' },
   { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
-  { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes', show: RECIPE_PAGES },
+  { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes' },
   { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner'), module: 'recipes' },
 ];
 const footerItems: NavItem[] = [
@@ -130,7 +129,7 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
             class="flex items-center gap-3 rounded px-3 py-2 text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">
             <Menu size={20} class="shrink-0" />
           </button>
-          {mainItems.filter((i) => i.show !== false && (!i.module || installed[i.module] === true)).map(renderItem)}
+          {mainItems.filter((i) => !i.module || installed[i.module] === true).map(renderItem)}
         </div>
         <div class="mt-auto flex flex-col gap-1 p-2">
           {onEmergencyStop && (

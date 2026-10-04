@@ -1,3 +1,8 @@
+// The style comparison is switched off in builds until the BJCP has allowed the
+// use of its style data (PLAN.md): visible in `pnpm dev`, which needs the local,
+// untracked web/public/modules/recipes/bjcp-2021.json.
+export const STYLE_COMPARISON = import.meta.env.DEV;
+
 // BJCP style data. A static, versioned JSON file today; `loadStyles` is the only
 // place that knows where it comes from, like `loadCatalog` for the ingredients.
 import { useEffect, useState } from 'preact/hooks';

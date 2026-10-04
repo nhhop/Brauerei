@@ -7,6 +7,7 @@ import { IngredientCard } from './IngredientCard';
 import { PhaseList } from './PhaseList';
 import { StyleCard } from './StyleCard';
 import { StylePicker } from './StylePicker';
+import { STYLE_COMPARISON } from '../../styleSource';
 
 export interface TabProps {
   recipe: Recipe;
@@ -37,7 +38,12 @@ export function OverviewTab({ recipe, onChange }: TabProps) {
               onInput={(e) => onChange({ name: e.currentTarget.value })} />
           </Field>
           <Field label="Stil">
-            <StylePicker recipe={recipe} onChange={onChange} />
+            {STYLE_COMPARISON ? (
+              <StylePicker recipe={recipe} onChange={onChange} />
+            ) : (
+              <input class={`${inp} w-full`} value={recipe.style} placeholder="z.B. Pale Ale"
+                onInput={(e) => onChange({ style: e.currentTarget.value })} />
+            )}
           </Field>
           <Field label="Ausschlagmenge (l)">
             <NumInput value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
@@ -73,7 +79,7 @@ export function OverviewTab({ recipe, onChange }: TabProps) {
           <p class="text-sm text-muted">Katalog nicht geladen, Kennwerte nicht verfügbar.</p>
         )}
       </Card>
-      <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />
+      {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">
           <li>{recipe.ingredients.length} Zutat{recipe.ingredients.length === 1 ? '' : 'en'}</li>

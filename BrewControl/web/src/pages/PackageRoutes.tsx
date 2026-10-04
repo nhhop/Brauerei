@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { PageShell } from '../components/PageShell';
-import { RECIPE_PAGES, useModule } from '../optionalModules';
+import { useModule } from '../optionalModules';
 
 type RecipesModule = typeof import('../modules/recipes');
 
@@ -36,7 +36,6 @@ function usePackage(title: string, what: string): { mod: RecipesModule } | { pag
 
 // Route for /rezepte and /rezepte/:id.
 export function RecipesRoute({ id }: { path?: string; id?: string }) {
-  if (!RECIPE_PAGES) return <Notice title="Rezepte">Die Rezeptverwaltung ist noch nicht freigegeben.</Notice>;
   const r = usePackage('Rezepte', 'Die Rezeptverwaltung ist');
   if ('page' in r) return r.page;
   return id ? <r.mod.RecipeEditPage id={id} /> : <r.mod.RecipesPage />;
