@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route } from 'preact-router';
-import { Plus, Trash2 } from 'lucide-preact';
+import { Check, Plus, Trash2 } from 'lucide-preact';
 import {
   CHILLER_TYPES, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
-  addDevice, anchor, assignStep, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
+  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
   newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel,
   type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
 } from '../brewhouse';
@@ -12,8 +12,10 @@ import { uid } from '../recipes';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
 import { Segmented } from '../components/Segmented';
+import { TabBtn } from '../components/TabBtn';
 import type { Snapshot } from '../types';
 import { badgeAccent, badgeCaution, badgeCritical, btnPrimary, inp } from '../ui';
+import { BrewhouseSchema } from './BrewhouseSchema';
 import { Card, Field, NumInput } from './recipe/fields';
 
 const LIST_URL = '/settings/anlage';
@@ -33,6 +35,15 @@ export function BrewhouseEditPage({ id, vorlage, von, snap }: Props) {
   const [draft, setDraft] = useState<Brewhouse | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'missing' | 'error'>('loading');
   const [saveError, setSaveError] = useState(false);
+  const [tab, setTab] = useState<TabId>('overview');
+  const [scrollTo, setScrollTo] = useState<string | null>(null);
+
+  // A jump switches the tab first; the target exists only after that render.
+  useEffect(() => {
+    if (!scrollTo) return;
+    document.getElementById(scrollTo)?.scrollIntoView({ block: 'start' });
+    setScrollTo(null);
+  }, [scrollTo, tab]);
 
   useEffect(() => {
     if (draft && draft.id === id) return;  // just saved a new draft under its id
@@ -92,31 +103,98 @@ export function BrewhouseEditPage({ id, vorlage, von, snap }: Props) {
       .catch(() => setSaveError(true));
   }
 
+  function jump(at: string) {
+    setTab(tabOf(at));
+    setScrollTo(at);
+  }
+
+  const present = STEPS.filter((s) => bh.steps[s.key]);
+  const measures = MEASUREMENTS.filter((m) => bh.steps[m.step]);
+  const counts: Record<TabId, string> = {
+    overview: '',
+    vessels: String(bh.vessels.length),
+    devices: String(bh.devices.length),
+    steps: String(present.length),
+    transfers: String(bh.transfers.length),
+    measurements: `${measures.filter((m) => bh.measurements[m.key]).length} / ${measures.length}`,
+  };
+  const errorAt = new Set(errors.map((e) => e.at));
+
   return (
-    <PageShell>
-      <header class="flex flex-wrap items-center justify-between gap-3">
-        <Breadcrumb trail={[{ label: 'Brauanlage', href: LIST_URL }, { label: bh.name || 'Ohne Namen' }]} />
-        <div class="flex items-center gap-2">
-          {errors.length > 0 && (
-            <a href="#bh-check" class={badgeCritical}>{errors.length} Fehler</a>
-          )}
-          <button type="button" class={btnPrimary} disabled={!dirty || errors.length > 0} onClick={save}>
-            Speichern{dirty ? ' •' : ''}
-          </button>
+    <PageShell wide>
+      <div class="mx-auto max-w-7xl">
+        <header class="flex flex-wrap items-center justify-between gap-3">
+          <Breadcrumb trail={[{ label: 'Brauanlage', href: LIST_URL }, { label: bh.name || 'Ohne Namen' }]} />
+          <div class="flex items-center gap-2">
+            {errors.length > 0 && (
+              <button type="button" class={badgeCritical} onClick={() => jump(errors[0].at)}>
+                {errors.length} Fehler
+              </button>
+            )}
+            <button type="button" class={btnPrimary} disabled={!dirty || errors.length > 0} onClick={save}>
+              Speichern{dirty ? ' •' : ''}
+            </button>
+          </div>
+        </header>
+        {saveError && <p class="mt-2 text-sm text-critical">Speichern fehlgeschlagen. Die Änderungen sind nur im Browser vorhanden, bis gespeichert ist.</p>}
+
+        <div class="my-4 flex overflow-x-auto border-b border-border">
+          {TABS.map((t) => {
+            const n = errors.filter((e) => tabOf(e.at) === t.id).length;
+            return (
+              <TabBtn key={t.id} active={t.id === tab} onClick={() => setTab(t.id)}>
+                {t.label}
+                {counts[t.id] && <span class="ml-1.5 text-xs text-faint">{counts[t.id]}</span>}
+                {n > 0 && (
+                  <span class="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-critical px-1 text-[11px] font-bold text-white"
+                    title={`${n} Fehler`}>{n}</span>
+                )}
+              </TabBtn>
+            );
+          })}
         </div>
-      </header>
-      {saveError && <p class="mt-2 text-sm text-critical">Speichern fehlgeschlagen. Die Änderungen sind nur im Browser vorhanden, bis gespeichert ist.</p>}
-      <div class="mt-4">
-        <GeneralSection bh={bh} set={set} />
-        <VesselsSection bh={bh} set={set} />
-        <DevicesSection bh={bh} set={set} snap={snap} />
-        <StepsSection bh={bh} set={set} />
-        <TransfersSection bh={bh} set={set} />
-        <MeasurementsSection bh={bh} set={set} snap={snap} />
-        <CheckSection errors={errors} hints={hints} />
+
+        {tab === 'overview' && (
+          <>
+            <div class="flex flex-wrap gap-x-4">
+              <div class="min-w-0 flex-[2_1_560px]"><GeneralSection bh={bh} set={set} /></div>
+              <div class="min-w-0 flex-[1_1_300px]"><CheckSection errors={errors} hints={hints} onJump={jump} /></div>
+            </div>
+            <Section id="bh-schema" title="Anlagenschema"
+              action={<span class="text-xs text-muted">{brewhouseSummary(bh)}</span>}>
+              <BrewhouseSchema bh={bh} errorAt={errorAt} onJump={jump} />
+            </Section>
+          </>
+        )}
+        {tab === 'vessels' && <VesselsSection bh={bh} set={set} />}
+        {tab === 'devices' && <DevicesSection bh={bh} set={set} snap={snap} />}
+        {tab === 'steps' && <StepsSection bh={bh} set={set} />}
+        {tab === 'transfers' && <TransfersSection bh={bh} set={set} />}
+        {tab === 'measurements' && <MeasurementsSection bh={bh} set={set} snap={snap} />}
       </div>
     </PageShell>
   );
+}
+
+type TabId = 'overview' | 'vessels' | 'devices' | 'steps' | 'transfers' | 'measurements';
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'overview', label: 'Übersicht' },
+  { id: 'vessels', label: 'Behälter' },
+  { id: 'devices', label: 'Geräte' },
+  { id: 'steps', label: 'Schritte' },
+  { id: 'transfers', label: 'Transfers' },
+  { id: 'measurements', label: 'Messungen' },
+];
+
+// The tab that holds an anchor (see `anchor` in brewhouse.ts).
+function tabOf(at: string): TabId {
+  if (at === anchor.vessels || at.startsWith('bh-vessel-')) return 'vessels';
+  if (at.startsWith('bh-device-')) return 'devices';
+  if (at.startsWith('bh-step-')) return 'steps';
+  if (at.startsWith('bh-transfer-')) return 'transfers';
+  if (at.startsWith('bh-measure-')) return 'measurements';
+  return 'overview';
 }
 
 type SectionProps = { bh: Brewhouse; set: (bh: Brewhouse) => void };
@@ -601,8 +679,7 @@ function MeasurementsSection({ bh, set, snap }: SectionProps & { snap: Snapshot 
 
 // ── 7. Check ───────────────────────────────────────────────────────────────────
 
-function CheckSection({ errors, hints }: { errors: Issue[]; hints: Issue[] }) {
-  const jump = (at: string) => document.getElementById(at)?.scrollIntoView({ block: 'start' });
+function CheckSection({ errors, hints, onJump: jump }: { errors: Issue[]; hints: Issue[]; onJump: (at: string) => void }) {
   const row = (i: Issue, n: number, cls: string, tag: string) => (
     <li key={n}>
       <button type="button" onClick={() => jump(i.at)} class="flex w-full items-start gap-2 rounded px-1 py-0.5 text-left text-sm hover:bg-fg/5">
@@ -613,7 +690,7 @@ function CheckSection({ errors, hints }: { errors: Issue[]; hints: Issue[] }) {
   return (
     <Section id="bh-check" title="Prüfung">
       {errors.length === 0 && hints.length === 0 ? (
-        <p class="text-sm text-muted">Keine Fehler, keine Hinweise.</p>
+        <p class="flex items-center gap-2 text-sm text-success"><Check size={16} /> Keine Fehler, keine Hinweise.</p>
       ) : (
         <ul class="space-y-1">
           {errors.map((e, n) => row(e, n, badgeCritical, 'Fehler'))}

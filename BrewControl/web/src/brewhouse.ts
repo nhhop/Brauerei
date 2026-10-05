@@ -234,6 +234,90 @@ export function brewhouseSummary(bh: Brewhouse): string {
   return [`${bh.vessels.length} Behälter`, kind].filter(Boolean).join(' · ');
 }
 
+// ── Schema ─────────────────────────────────────────────────────────────────────
+// The overview diagram: vessels in process order (by their first step), then
+// the fermenter when something is knocked out. Edges are the transfers, merged
+// when several steps share route and drive, and the recirculations (dashed,
+// both ways; from a vessel to itself when it is heated directly or inline).
+
+const SHORT: Record<StepKey, string> = {
+  strike: 'Hauptguss', mash: 'Maischen', lauter: 'Läutern', sparge: 'Nachguss',
+  boil: 'Kochen', whirlpool: 'Whirlpool', hopback: 'Hop Back', chill: 'Kühlen',
+};
+export const stepShort = (k: StepKey) => SHORT[k];
+
+export const OUT = 'out';
+
+export interface SchemaEdge {
+  kind: 'transfer' | 'recirc';
+  from: string;     // vessel id, or OUT
+  to: string;
+  label: string;    // the steps
+  detail: string;   // drive, pump, loss
+  at: string;       // where to edit it (anchor)
+}
+
+const litres = (n: number) => `${String(n).replace('.', ',')} l`;
+
+export function schemaOf(bh: Brewhouse): { nodes: string[]; edges: SchemaEdge[] } {
+  const firstStep = (v: Vessel) => {
+    const s = stepsOf(bh, v.id);
+    return s.length ? STEPS.findIndex((x) => x.key === s[0]) : STEPS.length;
+  };
+  const nodes = bh.vessels.map((v, i) => ({ v, i }))
+    .sort((a, b) => firstStep(a.v) - firstStep(b.v) || a.i - b.i)
+    .map(({ v }) => v.id);
+  const isVessel = (id: string | undefined) => bh.vessels.some((v) => v.id === id);
+  const deviceName = (id: string | undefined) => {
+    const d = bh.devices.find((x) => x.id === id);
+    return d && (d.name || kindLabel(d.kind));
+  };
+
+  const edges: SchemaEdge[] = [];
+  const merged = new Map<string, { edge: SchemaEdge; steps: StepKey[] }>();
+  for (const t of bh.transfers) {
+    if (!isVessel(t.from) || (t.to !== OUT && !isVessel(t.to))) continue;
+    const parts: string[] = [];
+    const chiller = bh.devices.find((d) => d.id === bh.steps.chill?.chillerId);
+    if (t.step === 'chill' && chiller && !chiller.vesselId) parts.push(deviceName(chiller.id)!);
+    if (t.drive === 'pump') {
+      parts.push(deviceName(t.pumpId) ?? 'Pumpe', litres(t.lossL) + (t.recovered ? ' (kommt zurück)' : ''));
+    } else {
+      parts.push(DRIVES.find((d) => d.value === t.drive)!.label);
+    }
+    const detail = parts.join(' · ');
+    const key = `${t.from}|${t.to}|${detail}`;
+    const m = merged.get(key);
+    if (m) {
+      m.steps.push(t.step);
+    } else {
+      const edge: SchemaEdge = { kind: 'transfer', from: t.from, to: t.to, label: '', detail, at: anchor.transfer(t.id) };
+      merged.set(key, { edge, steps: [t.step] });
+      edges.push(edge);
+    }
+  }
+  for (const { edge, steps } of merged.values()) {
+    edge.label = STEPS.map((s) => s.key).filter((k) => steps.includes(k)).map(stepShort).join(' & ');
+  }
+
+  const seen = new Set<string>();
+  for (const s of STEPS) {
+    const cfg = bh.steps[s.key];
+    if (!cfg?.pumpId || !isVessel(cfg.vesselId)) continue;
+    const h = heatingOf(bh, s.key);
+    const other = h.heater && (h.via === 'coil' || h.via === 'vessel') && h.viaVessel ? h.viaVessel.id : cfg.vesselId;
+    const via = h.via === 'coil' ? `über ${h.coil!.name || 'Spirale'}` : h.via === 'inline' ? `über ${h.heater!.name || 'RIMS-Rohr'}` : '';
+    const detail = [deviceName(cfg.pumpId) ?? 'Pumpe', via].filter(Boolean).join(' · ');
+    const key = `${[cfg.vesselId, other].sort().join('|')}|${detail}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push({ kind: 'recirc', from: cfg.vesselId, to: other, label: 'Umwälzung', detail, at: anchor.step(s.key) });
+  }
+
+  if (edges.some((e) => e.to === OUT)) nodes.push(OUT);
+  return { nodes, edges };
+}
+
 // ── Check ──────────────────────────────────────────────────────────────────────
 // `at` is the DOM id of the place to fix it (the editor scrolls there).
 export interface Issue { text: string; at: string }

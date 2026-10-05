@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  TEMPLATES, addDevice, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, heatingOf, heatingText,
-  listBrewhouses, newDevice, removeDevice, removeVessel, saveBrewhouse, vesselLabel,
+  OUT, TEMPLATES, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, heatingOf, heatingText,
+  listBrewhouses, newDevice, removeDevice, removeVessel, saveBrewhouse, schemaOf, vesselLabel,
   type Brewhouse, type Device, type Vessel,
 } from './brewhouse';
 import type { Snapshot } from './types';
@@ -326,6 +326,45 @@ describe('edits', () => {
     expect(bh.steps.mash).toEqual({ vesselId: 'pot' });
     expect(bh.steps.lauter).toEqual({ vesselId: 'pot', valveIds: [] });
     expect(bh.transfers[0].pumpId).toBeUndefined();
+  });
+});
+
+describe('schemaOf', () => {
+  it('orders the vessels by their first step and merges transfers on the same route', () => {
+    const bh = template('herms3');
+    const { nodes, edges } = schemaOf(bh);
+    expect(nodes.map((id) => bh.vessels.find((v) => v.id === id)?.name ?? id))
+      .toEqual(['HLT', 'Maisch-/Läuterbottich', 'Würzepfanne', OUT]);
+    expect(edges.map((e) => [e.kind, e.label, e.detail])).toEqual([
+      ['transfer', 'Hauptguss & Nachguss', 'Pumpe 2 · 0,5 l'],
+      ['transfer', 'Läutern', 'Pumpe 1 · 0,5 l'],
+      ['transfer', 'Kühlen', 'Plattenkühler · Pumpe 2 · 1 l'],
+      ['recirc', 'Umwälzung', 'Pumpe 1 · über HERMS-Spirale'],
+    ]);
+    const recirc = edges[3];
+    expect([recirc.from, recirc.to]).toEqual([bh.vessels[1].id, bh.vessels[0].id]);
+    expect(recirc.at).toBe(anchor.step('mash'));
+  });
+
+  it('a directly heated vessel recirculates into itself', () => {
+    const bh = template('pot-pipe');
+    const { nodes, edges } = schemaOf(bh);
+    const pot = bh.vessels[0].id;
+    expect(nodes).toEqual([pot, OUT]);
+    expect(edges.find((e) => e.kind === 'recirc')).toMatchObject({ from: pot, to: pot, detail: 'Umwälzpumpe' });
+    expect(edges.find((e) => e.kind === 'transfer')).toMatchObject({ label: 'Kühlen', detail: 'Schwerkraft' });
+  });
+
+  it('leaves out transfers whose vessel is gone and the fermenter when nothing is knocked out', () => {
+    const bh = minimal();
+    bh.transfers.push({ id: 't', step: 'boil', from: '', to: 'pot', drive: 'manual', lossL: 0, recovered: false });
+    expect(schemaOf(bh)).toEqual({ nodes: ['pot'], edges: [] });
+  });
+
+  it('a vessel without steps comes last', () => {
+    const bh = minimal();
+    bh.vessels.unshift(vessel('tmp', 'Eimer'));
+    expect(schemaOf(bh).nodes).toEqual(['pot', 'tmp']);
   });
 });
 

@@ -349,6 +349,13 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
   100 %, Kühlen ohne Kühler, Sensor-Einheit passt nicht zur Messung). Ein gelöschter Behälter nimmt den Ort
   seiner Geräte nicht mit, damit eine Heizquelle nicht stillschweigend zum RIMS-Rohr wird; die Prüfung
   meldet die Lücke.
+- **Editor in Tabs** (Mockup: <https://claude.ai/artifact/FTzMBuDbcCZaksoJAXrASH>): Übersicht · Behälter ·
+  Geräte · Schritte · Transfers · Messungen, jeder Tab mit Anzahl und Fehlerzahl. Die **Übersicht** trägt
+  Allgemein, Prüfung und das **Anlagenschema**: Behälter als Karten in Prozessreihenfolge (nach ihrem
+  ersten Schritt), darin Volumen, Totraum, Schritte, indirekte Heizung und die Geräte mit „angeschlossen“
+  bzw. „von Hand“; Transfers als Pfeile (gleiche Strecke und gleicher Antrieb zusammengefasst), Umwälzung
+  gestrichelt, ein ausgeschlagener Sud endet im Gärkeller. Jeder Teil springt beim Klick in den Tab, in dem
+  man ihn bearbeitet; ebenso die Einträge der Prüfung.
 - **Prozessverluste gehören nicht zur Anlage** (Treber, Hopfen, Hefetrub, Kalthopfung), siehe Wasser.
 
 ### Gärkeller
