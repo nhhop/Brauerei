@@ -315,7 +315,8 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
 - **Allgemein:** Name, Beschreibung, Maische-Effizienz, Abkühlschwund (Vorgabe 4 %).
 - **Behälter:** Name, Volumen, Totraum (Behälterverlust, z. B. ohne Bodenablauf) und die Schritte, die er
   übernimmt. Eine Art (HLT, Maischbottich/-pfanne, Läuterbottich, Würzepfanne, All-in-One,
-  Zwischenbehälter …) hakt die Schritte nur vor und wird nicht gespeichert; die Bezeichnung ergibt sich aus
+  Zwischenbehälter …) hakt die Schritte nur vor und wird nicht gespeichert; das Auswahlfeld zeigt die Art,
+  die zu den angehakten Schritten passt, sonst „eigene Zusammenstellung“. Die Bezeichnung ergibt sich aus
   den Schritten („…pfanne“, wenn der Behälter beim Maischen direkt beheizt ist, sonst „…bottich“).
   Verdampfung in l/h gibt es nur am Kochbehälter (das Rezept kann sie später überschreiben), die
   Läutermethode (Senkboden, Sack, Malzkorb …) nur am Läuterbehälter, rein beschreibend.
@@ -355,7 +356,10 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
   ersten Schritt), darin Volumen, Totraum, Schritte, indirekte Heizung und die Geräte mit „angeschlossen“
   bzw. „von Hand“; Transfers als Pfeile (gleiche Strecke und gleicher Antrieb zusammengefasst), Umwälzung
   gestrichelt, ein ausgeschlagener Sud endet im Gärkeller. Jeder Teil springt beim Klick in den Tab, in dem
-  man ihn bearbeitet; ebenso die Einträge der Prüfung.
+  man ihn bearbeitet; ebenso die Einträge der Prüfung. Die Seite hat die übliche Breite der Einstellungen,
+  nur das Schema reicht rechts bis an den Fensterrand und scrollt links über die Spalte hinaus. Wie in den
+  Einstellungen steht eine kleine Gruppenüberschrift über den Karten, jeder Behälter, jedes Gerät, jeder
+  Schritt, Transfer und jede Messung ist eine eigene Karte.
 - **Prozessverluste gehören nicht zur Anlage** (Treber, Hopfen, Hefetrub, Kalthopfung), siehe Wasser.
 
 ### Gärkeller

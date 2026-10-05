@@ -5,7 +5,7 @@ import { Check, Plus, Trash2 } from 'lucide-preact';
 import {
   CHILLER_TYPES, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
   addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
-  newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel,
+  newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
 } from '../brewhouse';
 import { uid } from '../recipes';
@@ -121,8 +121,9 @@ export function BrewhouseEditPage({ id, vorlage, von, snap }: Props) {
   const errorAt = new Set(errors.map((e) => e.at));
 
   return (
-    <PageShell wide>
-      <div class="mx-auto max-w-7xl">
+    // @container: the schema bleeds out of the column to the window edges (cqw).
+    <div class="@container">
+      <PageShell>
         <header class="flex flex-wrap items-center justify-between gap-3">
           <Breadcrumb trail={[{ label: 'Brauanlage', href: LIST_URL }, { label: bh.name || 'Ohne Namen' }]} />
           <div class="flex items-center gap-2">
@@ -156,14 +157,12 @@ export function BrewhouseEditPage({ id, vorlage, von, snap }: Props) {
 
         {tab === 'overview' && (
           <>
-            <div class="flex flex-wrap gap-x-4">
-              <div class="min-w-0 flex-[2_1_560px]"><GeneralSection bh={bh} set={set} /></div>
-              <div class="min-w-0 flex-[1_1_300px]"><CheckSection errors={errors} hints={hints} onJump={jump} /></div>
-            </div>
-            <Section id="bh-schema" title="Anlagenschema"
+            <GeneralSection bh={bh} set={set} />
+            <CheckSection errors={errors} hints={hints} onJump={jump} />
+            <Group id="bh-schema" title="Anlagenschema"
               action={<span class="text-xs text-muted">{brewhouseSummary(bh)}</span>}>
               <BrewhouseSchema bh={bh} errorAt={errorAt} onJump={jump} />
-            </Section>
+            </Group>
           </>
         )}
         {tab === 'vessels' && <VesselsSection bh={bh} set={set} />}
@@ -171,8 +170,8 @@ export function BrewhouseEditPage({ id, vorlage, von, snap }: Props) {
         {tab === 'steps' && <StepsSection bh={bh} set={set} />}
         {tab === 'transfers' && <TransfersSection bh={bh} set={set} />}
         {tab === 'measurements' && <MeasurementsSection bh={bh} set={set} snap={snap} />}
-      </div>
-    </PageShell>
+      </PageShell>
+    </div>
   );
 }
 
@@ -267,16 +266,27 @@ function AddButton({ children, onClick }: { children: ComponentChildren; onClick
   );
 }
 
-function Section({ id, title, action, children }: { id: string; title: string; action?: ComponentChildren; children: ComponentChildren }) {
-  return <div id={id} class="scroll-mt-4"><Card title={title} action={action}>{children}</Card></div>;
+// Settings-style group: a small label above the cards it holds.
+function Group({ id, title, action, children }: { id?: string; title: string; action?: ComponentChildren; children: ComponentChildren }) {
+  return (
+    <section id={id} class="mb-6 scroll-mt-4">
+      <div class="mb-1.5 flex items-center justify-between gap-3 px-1">
+        <h2 class="text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
 }
+
+const card = 'scroll-mt-4 rounded-md border border-card-border bg-card p-4 shadow-elev-2';
 
 // ── 1. General ─────────────────────────────────────────────────────────────────
 
 function GeneralSection({ bh, set }: SectionProps) {
   return (
-    <Section id={anchor.general} title="Allgemein">
-      <div class="grid gap-3 sm:grid-cols-2">
+    <Group id={anchor.general} title="Allgemein">
+      <div class={`${card} grid gap-3 sm:grid-cols-2`}>
         <Field label="Name"><TextInput value={bh.name} onChange={(name) => set({ ...bh, name })} /></Field>
         <div class="flex flex-wrap gap-4">
           <Field label="Maische-Effizienz (%)">
@@ -293,7 +303,7 @@ function GeneralSection({ bh, set }: SectionProps) {
           </Field>
         </div>
       </div>
-    </Section>
+    </Group>
   );
 }
 
@@ -304,18 +314,19 @@ function VesselsSection({ bh, set }: SectionProps) {
     set({ ...bh, vessels: [...bh.vessels, { id: uid(), name: `Behälter ${bh.vessels.length + 1}`, volumeL: 50, deadSpaceL: 1 }] });
   }
   return (
-    <Section id={anchor.vessels} title="Behälter" action={<AddButton onClick={addVessel}>Behälter</AddButton>}>
-      {bh.vessels.length === 0 && <p class="text-sm text-muted">Noch keine Behälter. Jeder Behälter übernimmt die Schritte, die du anhakst.</p>}
-      <div class="space-y-3">
+    <Group id={anchor.vessels} title="Behälter" action={<AddButton onClick={addVessel}>Behälter</AddButton>}>
+      {bh.vessels.length === 0 && <p class="px-1 text-sm text-muted">Noch keine Behälter. Jeder Behälter übernimmt die Schritte, die du anhakst.</p>}
+      <div class="space-y-2">
         {bh.vessels.map((v) => <VesselCard key={v.id} bh={bh} set={set} vessel={v} />)}
       </div>
       <datalist id="bh-lauter-methods">{LAUTER_METHODS.map((m) => <option key={m} value={m} />)}</datalist>
-    </Section>
+    </Group>
   );
 }
 
 function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
   const steps = stepsOf(bh, v.id);
+  const preset = vesselPreset(bh, v);
   const patch = (p: Partial<Vessel>) => set({ ...bh, vessels: bh.vessels.map((x) => (x.id === v.id ? { ...x, ...p } : x)) });
 
   // A preset only ticks steps; steps ticked elsewhere move here.
@@ -327,11 +338,10 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
   }
 
   return (
-    <div id={anchor.vessel(v.id)} class="scroll-mt-4 rounded-md border border-border p-3">
+    <div id={anchor.vessel(v.id)} class={card}>
       <div class="mb-3 flex items-start gap-2">
         <div class="min-w-0 flex-1">
           <TextInput value={v.name} onChange={(name) => patch({ name })} />
-          <div class="mt-1 text-xs text-muted">{vesselLabel(bh, v)}</div>
         </div>
         <RemoveButton title="Behälter löschen" onClick={() => set(removeVessel(bh, v.id))} />
       </div>
@@ -350,9 +360,9 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
           </Field>
         )}
         <Field label="Art (hakt die Schritte vor)">
-          <select class={`${inp} w-52`} value=""
+          <select class={`${inp} w-80`} value={preset ? String(VESSEL_PRESETS.indexOf(preset)) : ''}
             onChange={(e) => { const i = parseInt(e.currentTarget.value, 10); if (!Number.isNaN(i)) applyPreset(i); }}>
-            <option value="">— wählen —</option>
+            {!preset && <option value="" disabled>eigene Zusammenstellung</option>}
             {VESSEL_PRESETS.map((p, i) => <option key={p.label} value={i}>{p.heated ? `${p.label} / ${p.heated}` : p.label}</option>)}
           </select>
         </Field>
@@ -386,24 +396,16 @@ function DevicesSection({ bh, set, snap }: SectionProps & { snap: Snapshot | nul
     set(addDevice(bh, newDevice(kind, vesselId)));
   }
   return (
-    <Section id="bh-devices" title="Geräte">
-      <div class="space-y-4">
-        {DEVICE_KINDS.map((k) => {
-          const devices = bh.devices.filter((d) => d.kind === k.kind);
-          return (
-            <div key={k.kind}>
-              <div class="mb-1.5 flex items-center justify-between gap-3">
-                <span class="text-xs font-medium uppercase tracking-wide text-muted">{k.group}</span>
-                <AddButton onClick={() => add(k.kind)}>{k.label}</AddButton>
-              </div>
-              <div class="space-y-2">
-                {devices.map((d) => <DeviceRow key={d.id} bh={bh} set={set} snap={snap} device={d} />)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Section>
+    <div id="bh-devices">
+      {DEVICE_KINDS.map((k) => (
+        <Group key={k.kind} title={k.group} action={<AddButton onClick={() => add(k.kind)}>{k.label}</AddButton>}>
+          <div class="space-y-2">
+            {bh.devices.filter((d) => d.kind === k.kind)
+              .map((d) => <DeviceRow key={d.id} bh={bh} set={set} snap={snap} device={d} />)}
+          </div>
+        </Group>
+      ))}
+    </div>
   );
 }
 
@@ -414,7 +416,7 @@ function DeviceRow({ bh, set, snap, device: d }: SectionProps & { snap: Snapshot
   const controllers: Opt[] = (snap?.controllers ?? []).map((c) => ({ value: c.id, text: itemText(c) }));
 
   return (
-    <div id={anchor.device(d.id)} class="scroll-mt-4 rounded-md border border-border p-3">
+    <div id={anchor.device(d.id)} class={card}>
       <div class="flex flex-wrap items-end gap-3">
         <div class="min-w-40 flex-1">
           <Field label="Name"><TextInput value={d.name} onChange={(name) => patch({ name })} /></Field>
@@ -473,12 +475,12 @@ const withLabel = (name: string, label: string) => (label && label !== name ? `$
 function StepsSection({ bh, set }: SectionProps) {
   const present = STEPS.filter((s) => bh.steps[s.key]);
   return (
-    <Section id="bh-steps" title="Prozessschritte">
-      {present.length === 0 && <p class="text-sm text-muted">Noch kein Schritt. Schritte entstehen, wenn ein Behälter sie übernimmt.</p>}
+    <Group id="bh-steps" title="Prozessschritte">
+      {present.length === 0 && <p class="px-1 text-sm text-muted">Noch kein Schritt. Schritte entstehen, wenn ein Behälter sie übernimmt.</p>}
       <div class="space-y-2">
         {present.map((s) => <StepRow key={s.key} bh={bh} set={set} step={s.key} heated={!!s.heated} />)}
       </div>
-    </Section>
+    </Group>
   );
 }
 
@@ -497,7 +499,7 @@ function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heat
   const h = heatingOf(bh, step);
 
   return (
-    <div id={anchor.step(step)} class="scroll-mt-4 rounded-md border border-border p-3">
+    <div id={anchor.step(step)} class={card}>
       <div class="mb-2 flex flex-wrap items-baseline gap-2">
         <span class="font-medium">{stepLabel(step)}</span>
         <span class="text-xs text-muted">in {vessel ? withLabel(vessel.name, vesselLabel(bh, vessel)) : '?'}</span>
@@ -590,11 +592,11 @@ function TransfersSection({ bh, set }: SectionProps) {
   }
 
   return (
-    <Section id="bh-transfers" title="Transfers" action={<AddButton onClick={add}>Transfer</AddButton>}>
-      {bh.transfers.length === 0 && <p class="text-sm text-muted">Noch keine Transfers. Ein Transfer bewegt Wasser, Maische oder Würze von einem Behälter in den nächsten.</p>}
+    <Group id="bh-transfers" title="Transfers" action={<AddButton onClick={add}>Transfer</AddButton>}>
+      {bh.transfers.length === 0 && <p class="px-1 text-sm text-muted">Noch keine Transfers. Ein Transfer bewegt Wasser, Maische oder Würze von einem Behälter in den nächsten.</p>}
       <div class="space-y-2">
         {bh.transfers.map((t) => (
-          <div key={t.id} id={anchor.transfer(t.id)} class="scroll-mt-4 flex flex-wrap items-end gap-3 rounded-md border border-border p-3">
+          <div key={t.id} id={anchor.transfer(t.id)} class={`${card} flex flex-wrap items-end gap-3`}>
             <Field label="Schritt">
               <Select class="w-44" value={t.step} empty={null}
                 groups={[{ opts: present.map((s) => ({ value: s.key, text: s.label })) }]}
@@ -635,7 +637,7 @@ function TransfersSection({ bh, set }: SectionProps) {
           </div>
         ))}
       </div>
-    </Section>
+    </Group>
   );
 }
 
@@ -653,27 +655,25 @@ function MeasurementsSection({ bh, set, snap }: SectionProps & { snap: Snapshot 
     set({ ...bh, measurements });
   }
   return (
-    <Section id="bh-measurements" title="Messungen">
-      <p class="mb-3 text-xs text-muted">
+    <div id="bh-measurements">
+      <p class="mb-4 px-1 text-xs text-muted">
         Der Prozess gibt die Messungen vor. Bei „von Hand“ fragt der Sud den Wert ab und speichert ihn.
       </p>
-      <div class="space-y-3">
-        {present.map((s) => (
-          <div key={s.key}>
-            <div class="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{s.label}</div>
-            <div class="space-y-1.5">
-              {MEASUREMENTS.filter((m) => m.step === s.key).map((m) => (
-                <div key={m.key} id={anchor.measurement(m.key)} class="scroll-mt-4 flex flex-wrap items-center justify-between gap-2">
-                  <span class="text-sm">{m.label} <span class="text-xs text-muted">({m.unit})</span></span>
-                  <Select class="w-60" value={bh.measurements[m.key] ?? ''} empty="von Hand"
-                    groups={[{ label: 'Sensoren', opts: sensors }]} onChange={(v) => link(m.key, v)} />
-                </div>
-              ))}
-            </div>
+      {present.map((s) => (
+        <Group key={s.key} title={s.label}>
+          <div class="space-y-1">
+            {MEASUREMENTS.filter((m) => m.step === s.key).map((m) => (
+              <div key={m.key} id={anchor.measurement(m.key)}
+                class={`${card} flex flex-wrap items-center justify-between gap-2 py-2.5`}>
+                <span class="text-sm">{m.label} <span class="text-xs text-muted">({m.unit})</span></span>
+                <Select class="w-60" value={bh.measurements[m.key] ?? ''} empty="von Hand"
+                  groups={[{ label: 'Sensoren', opts: sensors }]} onChange={(v) => link(m.key, v)} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-    </Section>
+        </Group>
+      ))}
+    </div>
   );
 }
 
@@ -688,7 +688,7 @@ function CheckSection({ errors, hints, onJump: jump }: { errors: Issue[]; hints:
     </li>
   );
   return (
-    <Section id="bh-check" title="Prüfung">
+    <div id="bh-check" class="scroll-mt-4"><Card title="Prüfung">
       {errors.length === 0 && hints.length === 0 ? (
         <p class="flex items-center gap-2 text-sm text-success"><Check size={16} /> Keine Fehler, keine Hinweise.</p>
       ) : (
@@ -698,6 +698,6 @@ function CheckSection({ errors, hints, onJump: jump }: { errors: Issue[]; hints:
         </ul>
       )}
       {errors.length > 0 && <p class="mt-2 text-xs text-muted">Solange Fehler bestehen, lässt sich nicht speichern.</p>}
-    </Section>
+    </Card></div>
   );
 }

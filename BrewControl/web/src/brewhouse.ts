@@ -180,16 +180,21 @@ export function stepsOf(bh: Brewhouse, vesselId: string): StepKey[] {
 
 const sameSet = (a: StepKey[], b: StepKey[]) => a.length === b.length && a.every((k) => b.includes(k));
 
-// Name from the steps the vessel takes on: the matching preset, else the steps.
-// Heating the strike water and chilling often happen in a vessel that is named
-// for something else, so they are ignored when nothing matches exactly.
-export function vesselLabel(bh: Brewhouse, vessel: Vessel): string {
+// The preset matching the steps the vessel takes on. Heating the strike water
+// and chilling often happen in a vessel that is named for something else, so
+// they are ignored when nothing matches exactly.
+export function vesselPreset(bh: Brewhouse, vessel: Vessel): (typeof VESSEL_PRESETS)[number] | undefined {
   const steps = stepsOf(bh, vessel.id);
   const minor: StepKey[] = ['strike', 'chill'];
   const core = steps.filter((k) => !minor.includes(k));
-  const preset = VESSEL_PRESETS.find((p) => sameSet(p.steps, steps))
+  return VESSEL_PRESETS.find((p) => sameSet(p.steps, steps))
     ?? (core.length > 0 ? VESSEL_PRESETS.find((p) => sameSet(p.steps, core)) : undefined);
-  if (!preset) return steps.map(stepLabel).join(' · ');
+}
+
+// Name from the steps the vessel takes on: the matching preset, else the steps.
+export function vesselLabel(bh: Brewhouse, vessel: Vessel): string {
+  const preset = vesselPreset(bh, vessel);
+  if (!preset) return stepsOf(bh, vessel.id).map(stepLabel).join(' · ');
   return preset.heated && heatingOf(bh, 'mash').direct && bh.steps.mash?.vesselId === vessel.id
     ? preset.heated : preset.label;
 }

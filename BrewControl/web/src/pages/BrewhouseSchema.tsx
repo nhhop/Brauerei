@@ -91,61 +91,66 @@ export function BrewhouseSchema({ bh, errorAt, onJump }: {
   const maxInGap = Math.max(1, ...[...gaps.values()].map((g) => g.length));
 
   return (
-    <div class="overflow-x-auto">
-      {/* flex: keeps the row's margin-top inside (no margin collapsing) */}
-      <div class="relative flex flex-col rounded-md bg-fg/[0.03]" style={{ width, height: rowH ? height : undefined }}>
-        <div ref={rowRef} class="flex items-stretch" style={{ paddingLeft: PAD, gap: GAP, marginTop: top, minHeight: maxInGap * SLOT + 16 }}>
-          {nodes.map((n) => (n === OUT
-            ? <OutCard key={n} onClick={() => onJump(edges.find((e) => e.to === OUT)!.at)} />
-            : <VesselCard key={n} bh={bh} vessel={bh.vessels.find((v) => v.id === n)!} errorAt={errorAt} onJump={onJump} />))}
-        </div>
+    <>
+      {/* Bleeds out of the page column to the window edges (cqw of the page's
+          @container) and starts PAD left of the column, so the cards line up
+          with it and scroll out to the window edge instead of being cut off. */}
+      <div class="ml-[calc(50%_-_50cqw)] mr-[calc(50%_-_50cqw)] overflow-x-auto pl-[calc(50cqw_-_50%_-_16px)]">
+        {/* flex: keeps the row's margin-top inside (no margin collapsing) */}
+        <div class="relative flex flex-col" style={{ width, height: rowH ? height : undefined }}>
+          <div ref={rowRef} class="flex items-stretch" style={{ paddingLeft: PAD, gap: GAP, marginTop: top, minHeight: maxInGap * SLOT + 16 }}>
+            {nodes.map((n) => (n === OUT
+              ? <OutCard key={n} onClick={() => onJump(edges.find((e) => e.to === OUT)!.at)} />
+              : <VesselCard key={n} bh={bh} vessel={bh.vessels.find((v) => v.id === n)!} errorAt={errorAt} onJump={onJump} />))}
+          </div>
 
-        {rowH > 0 && (
-          <>
-            <svg class="pointer-events-none absolute left-0 top-0" width={width} height={height} aria-hidden="true">
-              <defs>
-                <marker id="bh-head" orient="auto-start-reverse" markerWidth="5" markerHeight="5" refX="3.2" refY="2" overflow="visible">
-                  <path d="M0 0 L4 2 L0 4 Z" style={{ fill: 'var(--muted)' }} />
-                </marker>
-                <marker id="bh-head-recirc" orient="auto-start-reverse" markerWidth="5" markerHeight="5" refX="3.2" refY="2" overflow="visible">
-                  <path d="M0 0 L4 2 L0 4 Z" style={{ fill: 'var(--accent)' }} />
-                </marker>
-              </defs>
+          {rowH > 0 && (
+            <>
+              <svg class="pointer-events-none absolute left-0 top-0" width={width} height={height} aria-hidden="true">
+                <defs>
+                  <marker id="bh-head" orient="auto-start-reverse" markerWidth="5" markerHeight="5" refX="3.2" refY="2" overflow="visible">
+                    <path d="M0 0 L4 2 L0 4 Z" style={{ fill: 'var(--muted)' }} />
+                  </marker>
+                  <marker id="bh-head-recirc" orient="auto-start-reverse" markerWidth="5" markerHeight="5" refX="3.2" refY="2" overflow="visible">
+                    <path d="M0 0 L4 2 L0 4 Z" style={{ fill: 'var(--accent)' }} />
+                  </marker>
+                </defs>
+                {[...gaps.entries()].flatMap(([g, list]) => list.map((e, k) => {
+                  const y = Math.round(top + (rowH * (k + 1)) / (list.length + 1));
+                  const x1 = xs[g] + widths[g];
+                  const x2 = xs[g + 1];
+                  const ltr = index.get(e.from)! < index.get(e.to)!;
+                  const d = ltr ? `M ${x1} ${y} L ${x2 - 2} ${y}` : `M ${x2} ${y} L ${x1 + 2} ${y}`;
+                  return <EdgePath key={`${g}-${k}`} edge={e} d={d} />;
+                }))}
+                {lanes.map((l, i) => {
+                  const y = l.side === 'top' ? top - 14 - l.lane * LANE : bottom + 14 + l.lane * LANE;
+                  const yEdge = l.side === 'top' ? top : bottom;
+                  const yEnd = l.side === 'top' ? top - 2 : bottom + 2;
+                  return <EdgePath key={`l${i}`} edge={l.edge} d={`M ${l.xa} ${yEdge} L ${l.xa} ${y} L ${l.xb} ${y} L ${l.xb} ${yEnd}`} />;
+                })}
+              </svg>
+
               {[...gaps.entries()].flatMap(([g, list]) => list.map((e, k) => {
                 const y = Math.round(top + (rowH * (k + 1)) / (list.length + 1));
-                const x1 = xs[g] + widths[g];
-                const x2 = xs[g + 1];
-                const ltr = index.get(e.from)! < index.get(e.to)!;
-                const d = ltr ? `M ${x1} ${y} L ${x2 - 2} ${y}` : `M ${x2} ${y} L ${x1 + 2} ${y}`;
-                return <EdgePath key={`${g}-${k}`} edge={e} d={d} />;
+                return (
+                  <EdgeLabel key={`${g}-${k}`} edge={e} onJump={onJump}
+                    style={{ left: xs[g] + widths[g] + 8, width: GAP - 16, top: y - 6, transform: 'translateY(-100%)' }} />
+                );
               }))}
               {lanes.map((l, i) => {
                 const y = l.side === 'top' ? top - 14 - l.lane * LANE : bottom + 14 + l.lane * LANE;
-                const yEdge = l.side === 'top' ? top : bottom;
-                const yEnd = l.side === 'top' ? top - 2 : bottom + 2;
-                return <EdgePath key={`l${i}`} edge={l.edge} d={`M ${l.xa} ${yEdge} L ${l.xa} ${y} L ${l.xb} ${y} L ${l.xb} ${yEnd}`} />;
+                const mid = (l.xa + l.xb) / 2;
+                return (
+                  <EdgeLabel key={`l${i}`} edge={l.edge} onJump={onJump} inline
+                    style={{ left: mid, top: l.side === 'top' ? y - 4 : y + 4, transform: `translate(-50%, ${l.side === 'top' ? '-100%' : '0'})` }} />
+                );
               })}
-            </svg>
-
-            {[...gaps.entries()].flatMap(([g, list]) => list.map((e, k) => {
-              const y = Math.round(top + (rowH * (k + 1)) / (list.length + 1));
-              return (
-                <EdgeLabel key={`${g}-${k}`} edge={e} onJump={onJump}
-                  style={{ left: xs[g] + widths[g] + 8, width: GAP - 16, top: y - 6, transform: 'translateY(-100%)' }} />
-              );
-            }))}
-            {lanes.map((l, i) => {
-              const y = l.side === 'top' ? top - 14 - l.lane * LANE : bottom + 14 + l.lane * LANE;
-              const mid = (l.xa + l.xb) / 2;
-              return (
-                <EdgeLabel key={`l${i}`} edge={l.edge} onJump={onJump} inline
-                  style={{ left: mid, top: l.side === 'top' ? y - 4 : y + 4, transform: `translate(-50%, ${l.side === 'top' ? '-100%' : '0'})` }} />
-              );
-            })}
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
-      <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted">
+      <div class="mt-1 flex flex-wrap px-1 gap-x-5 gap-y-2 text-xs text-muted">
         <span class="inline-flex items-center gap-1.5">
           <svg width="28" height="8" aria-hidden="true"><path d="M 1 4 L 27 4" stroke-width="2" style={{ stroke: 'var(--muted)' }} /></svg>Transfer
         </span>
@@ -155,7 +160,7 @@ export function BrewhouseSchema({ bh, errorAt, onJump }: {
         <span class="inline-flex items-center gap-1.5"><span class="text-success">●</span>angeschlossen</span>
         <span class="inline-flex items-center gap-1.5"><span>○</span>von Hand</span>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -185,7 +190,7 @@ function EdgeLabel({ edge, onJump, style, inline }: {
 function OutCard({ onClick }: { onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} style={{ width: OUT_W }}
-      class="flex shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-faint bg-surface p-2 text-center text-sm hover:bg-subtle-hover">
+      class="flex shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-faint bg-card p-2 text-center text-sm hover:bg-subtle-hover">
       <span class="font-semibold">Gärkeller</span>
       <span class="text-xs text-muted">Ausschlagen</span>
     </button>
@@ -209,8 +214,8 @@ function VesselCard({ bh, vessel: v, errorAt, onJump }: {
   const devices = bh.devices.filter((d) => d.vesselId === v.id);
 
   return (
-    <div style={{ width: CARD_W }} class={`shrink-0 rounded-lg border bg-surface p-3 text-left text-sm shadow-elev-2 ${
-      errorAt.has(anchor.vessel(v.id)) ? 'border-critical' : 'border-border'}`}>
+    <div style={{ width: CARD_W }} class={`shrink-0 rounded-lg border bg-card p-3 text-left text-sm shadow-elev-2 ${
+      errorAt.has(anchor.vessel(v.id)) ? 'border-critical' : 'border-card-border'}`}>
       <button type="button" onClick={() => onJump(anchor.vessel(v.id))}
         class="block w-full rounded text-left font-semibold hover:underline">
         {v.name || 'Ohne Namen'}

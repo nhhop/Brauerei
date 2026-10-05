@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  OUT, TEMPLATES, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, heatingOf, heatingText,
-  listBrewhouses, newDevice, removeDevice, removeVessel, saveBrewhouse, schemaOf, vesselLabel,
+  OUT, TEMPLATES, VESSEL_PRESETS, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, heatingOf, heatingText,
+  listBrewhouses, newDevice, removeDevice, removeVessel, saveBrewhouse, schemaOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type Vessel,
 } from './brewhouse';
 import type { Snapshot } from './types';
@@ -262,6 +262,12 @@ describe('vesselLabel', () => {
     bh.steps.sparge = { vesselId: 'x' };
     bh.steps.hopback = { vesselId: 'x' };
     expect(vesselLabel(bh, bh.vessels[1])).toBe('Nachguss bereiten · Hop Back');
+    expect(vesselPreset(bh, bh.vessels[1])).toBeUndefined();
+  });
+
+  it('vesselPreset finds the preset for the Art select', () => {
+    const bh = template('pot');
+    expect(vesselPreset(bh, bh.vessels[0])).toBe(VESSEL_PRESETS.find((p) => p.label === 'All-in-One'));
   });
 
   it('a vessel without steps is a Zwischenbehälter', () => {
