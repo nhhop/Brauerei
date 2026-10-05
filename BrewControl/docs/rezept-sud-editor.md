@@ -215,11 +215,14 @@ Liste und Detailansicht.
     - **Einmaischen:** eine Schüttung zugeben (nur Malz, kein Wasser). Folgt es auf Wasser vorlegen, ist die
       Temperatur die Vorgabe; bei jeder weiteren Schüttung ist sie das Ergebnis (Mischtemperatur aus
       Maische und Malztemperatur) und nur lesbar.
-    - **Rast:** Temperatur durch Heizen oder Kühlen erreichen. Liegt das Ziel unter der aktuellen
-      Temperatur und hat das Sudhaus keine aktive Kühlung, wird passiv abgekühlt (Dauer nur geschätzt,
-      am Brautag bestätigt).
-    - **Zubrühen (Infusion):** Wasser zugeben, heiß oder kalt. Menge und Zieltemperatur hängen
-      voneinander ab; was zuletzt geändert wurde, führt (wie Menge/Anteil bei den Zutaten).
+    - **Rast:** Temperatur durch Heizen oder passives Abkühlen erreichen (Dauer des Abkühlens nur
+      geschätzt, am Brautag bestätigt). Aktiv gekühlt wird nur durch Zubrühen, das Sudhaus hat dafür kein
+      Gerät.
+    - **Zubrühen (Infusion):** Wasser zugeben, heiß oder kalt, oder Eis zum Kühlen (mit Schmelzwärme).
+      Menge und Temperatur hängen voneinander ab; was zuletzt geändert wurde, führt (wie Menge/Anteil bei
+      den Zutaten): eine feste Menge ergibt die nötige Wassertemperatur, eine feste Temperatur (z. B.
+      kochend) die nötige Menge. Die Wassertemperatur liegt zwischen Leitungswasser (Brauerei-Ebene) und
+      Siedepunkt; liegt die Lösung außerhalb, gibt es einen Hinweis.
     - **Dekoktion:** vorgemerkt, siehe unten.
     - Strike entspricht dem Einmaischen, Sparge (Fly/Batch) gehört zum Läutern, nicht in den Maischeplan.
       Steeping (Malz einhängen und wieder herausnehmen) ist vor allem beim Extraktbrauen üblich und vorerst
@@ -251,10 +254,11 @@ Liste und Detailansicht.
   Maischeplan: Enthält er einen Schritt Dekoktion, ist es ein Dekoktionsverfahren. Das Sudhaus bestimmt,
   was möglich ist und wie geheizt wird:
   - **Maischeheizung** aus dem Schritt Maischen des Sudhauses: direkt beheizt, HERMS, Kettle-RIMS, RIMS
-    oder Heißwasser-Aufguss.
+    oder Aufguss (`heatingOf` in `web/src/brewhouse.ts`).
     Bei Aufguss rechnet das Rezept Zubrühmengen statt Heizzeiten.
-  - **Dekoktion möglich**, wenn ein zweites beheizbares Gefäß die Teilmaische kochen kann (Schalter an der
-    Würzepfanne). Sonst ist die Schritt-Art Dekoktion im Rezept ausgegraut, mit Hinweis aufs Sudhaus.
+  - **Dekoktion möglich**, wenn es neben dem Maischbehälter einen zweiten Behälter mit eigener Heizquelle
+    gibt, der die Teilmaische kochen kann. Das wird aus dem Sudhaus abgeleitet, einen Schalter gibt es
+    nicht. Sonst ist die Schritt-Art Dekoktion im Rezept ausgegraut, mit Hinweis aufs Sudhaus.
   - Wechselt das Rezept auf ein Sudhaus ohne Dekoktion, warnt es und bietet ein Infusionsprofil an.
 - **Kopfkarte Maischen:** Maische-Effizienz, Malztemperatur, Heizrate (nur lesbar, aus dem Sudhaus).
   Die Einmaischtemperatur steht im Plan beim Schritt Einmaischen, die berechnete Hauptguss-Temperatur
@@ -266,8 +270,8 @@ Liste und Detailansicht.
 - **Offen:** Läutern (noch keine Felder, inkl. Fly/Batch Sparge), Dekoktion als Schritt-Art: Teilmaische
   ziehen (Anteil, dick/dünn), eigene Rasten in der Würzepfanne, kochen, zurückführen mit berechneter
   Mischtemperatur; im Temperaturverlauf als zweite Linie. Teilschüttungen in Maischprofilen.
-  Maischeplan zurückgestellt: Herkunft der Ausgangstemperatur des Hauptgusses (Annahme 14 °C für die
-  Heizzeit; Wasser-Tab, Sudhaus oder am Brautag gemessen).
+- **Ausgangstemperatur des Hauptgusses** für die Heizzeit ist die Leitungswassertemperatur der
+  Brauerei-Ebene (statt der früheren Annahme 14 °C); im Sud gilt der am Brautag gemessene Wert.
 
 ### Gärung
 - Zutaten-Karte mit Anstellen, Hauptgärung, Reifung · Stopfen und Abfüllung · Karbonisierung; sie ersetzt die
@@ -330,8 +334,15 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
   - Ein **Dampfkondensator** am Kochbehälter verlangt eine reduzierte Heizleistung beim Kochen.
 - **Heizung je Schritt:** direkt oder indirekt. Indirekt heißt, die Heizquelle sitzt in einem anderen
   Behälter oder inline: „indirekt über Spirale im HLT“ (HERMS), „indirekt über Würzepfanne“ (Kettle-RIMS)
-  oder „indirekt über RIMS-Rohr“. Jede indirekte Heizung braucht eine Umwälzpumpe. Umwälzen geht auch im
+  oder „indirekt über RIMS-Rohr“. Diese drei brauchen eine Umwälzpumpe. Umwälzen geht auch im
   Ein-Kessel (Malzrohr), statt Umwälzen auch ein Rührwerk.
+  - **Maischen braucht immer eine Heizquelle.** Wer per Aufguss maischt, legt die Wasserquelle als Behälter
+    mit Heizquelle an, notfalls den Wasserkocher (Entscheidung 2026-10-05). Sitzt die Heizquelle beim
+    Maischen in einem anderen Behälter ohne Spirale und ist keine Umwälzpumpe gewählt, ist das Verfahren
+    **Aufguss** („Aufguss aus Wasserkocher“), kein Fehler. In allen anderen Schritten bleibt eine
+    Heizquelle in einem anderen Behälter ohne Pumpe ein Fehler.
+  - Kühlen beim Maischen braucht kein Gerät: Es geschieht durch Zubrühen von kaltem Wasser oder Eis
+    (siehe Maischeplan).
 - **Prozessschritte:** je Schritt Heizquelle, Umwälzpumpe, Rührwerk, Wasserzulauf und Heizrate; Kochen
   zusätzlich Kondensator und Heizleistung in %, Kühlen den Kühler (auch eine Spirale im Kühlbehälter) und
   die angenommene Kühldauer für die spätere IBU-Rechnung. Vorbelegt wird nur einmal, beim Zuordnen eines
@@ -345,7 +356,7 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
   nach dem Kochen, Ausschlagmenge, Anstelltemperatur). Das Sudhaus verknüpft jede mit einem Sensor oder
   lässt sie „von Hand“ (Vorgabe); dann zeigt der Sud ein Eingabefeld und speichert den Wert.
 - **Prüfung:** Fehler sperren das Speichern (leerer Name, Pflichtschritt ohne Behälter, Verweis auf
-  Gelöschtes, Maischen/Kochen ohne Heizquelle, indirekt ohne Pumpe, Pumpentransfer ohne Pumpe,
+  Gelöschtes, Maischen/Kochen ohne Heizquelle, indirekt ohne Pumpe außer Aufguss, Pumpentransfer ohne Pumpe,
   angeschlossen ohne Verknüpfung). Hinweise sperren nicht (Registry-ID fehlt im Snapshot, Kondensator bei
   100 %, Kühlen ohne Kühler, Sensor-Einheit passt nicht zur Messung). Ein gelöschter Behälter nimmt den Ort
   seiner Geräte nicht mit, damit eine Heizquelle nicht stillschweigend zum RIMS-Rohr wird; die Prüfung

@@ -209,12 +209,40 @@ describe('heatingOf', () => {
   it('indirect through another vessel without coil (Kettle-RIMS)', () => {
     const bh = minimal();
     bh.vessels.push(vessel('kettle', 'Würzepfanne'));
-    bh.devices.push(device('kheat', 'heater', 'kettle'));
-    bh.steps.mash = { vesselId: 'pot', heaterId: 'kheat' };
+    bh.devices.push(device('kheat', 'heater', 'kettle'), device('p', 'pump'));
+    bh.steps.mash = { vesselId: 'pot', heaterId: 'kheat', pumpId: 'p' };
     const h = heatingOf(bh, 'mash');
     expect(h).toMatchObject({ direct: false, via: 'vessel' });
     expect(heatingText(h)).toBe('indirekt über Würzepfanne');
     expect(brewhouseSummary(bh)).toBe('2 Behälter · Kettle-RIMS');
+  });
+
+  it('heater in another vessel without coil and pump: infusion (Aufguss)', () => {
+    const bh = minimal();
+    bh.vessels.push(vessel('kettle', 'Wasserkocher'));
+    bh.devices.push(device('kheat', 'heater', 'kettle'));
+    bh.steps.mash = { vesselId: 'pot', heaterId: 'kheat' };
+    const h = heatingOf(bh, 'mash');
+    expect(h).toMatchObject({ direct: false, via: 'infusion' });
+    expect(heatingText(h)).toBe('Aufguss aus Wasserkocher');
+    expect(brewhouseSummary(bh)).toBe('2 Behälter · Aufguss');
+    expect(errorsOf(bh)).toEqual([]);
+  });
+
+  it('infusion is only a mashing method; other steps still need the pump', () => {
+    const bh = minimal();
+    bh.vessels.push(vessel('kettle', 'Wasserkocher'));
+    bh.devices.push(device('kheat', 'heater', 'kettle'));
+    bh.steps.boil = { vesselId: 'pot', heaterId: 'kheat' };
+    expect(heatingOf(bh, 'boil')).toMatchObject({ via: 'vessel' });
+    expect(errorsOf(bh)).toEqual(['Kochen: Die indirekte Heizung (indirekt über Wasserkocher) braucht eine Umwälzpumpe.']);
+  });
+
+  it('HERMS without pump stays an error', () => {
+    const bh = template('herms3');
+    delete bh.steps.mash!.pumpId;
+    expect(heatingOf(bh, 'mash')).toMatchObject({ via: 'coil' });
+    expect(errorsOf(bh)).toEqual(['Maischen: Die indirekte Heizung (indirekt über Spirale im HLT) braucht eine Umwälzpumpe.']);
   });
 
   it('inline (RIMS tube)', () => {

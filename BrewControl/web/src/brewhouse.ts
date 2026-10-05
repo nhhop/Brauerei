@@ -203,10 +203,12 @@ export function vesselLabel(bh: Brewhouse, vessel: Vessel): string {
 export interface Heating {
   heater?: Device;
   direct: boolean;
-  // How an indirect heating reaches the step's vessel; every way needs the
-  // recirculation pump. coil: through a coil in the heater's vessel (HERMS);
-  // vessel: through another vessel without a coil (Kettle-RIMS); inline: RIMS tube.
-  via?: 'coil' | 'vessel' | 'inline';
+  // How an indirect heating reaches the step's vessel. coil: through a coil in
+  // the heater's vessel (HERMS); vessel: through another vessel without a coil
+  // (Kettle-RIMS); inline: RIMS tube. These three need the recirculation pump.
+  // infusion: mashing only, heater in another vessel without coil and no pump,
+  // i.e. hot water from there is added to the mash (Aufguss).
+  via?: 'coil' | 'vessel' | 'inline' | 'infusion';
   coil?: Device;
   viaVessel?: Vessel;
 }
@@ -219,8 +221,13 @@ export function heatingOf(bh: Brewhouse, step: StepKey): Heating {
   if (!heater.vesselId) return { heater, direct: false, via: 'inline' };
   const viaVessel = bh.vessels.find((v) => v.id === heater.vesselId);
   const coil = bh.devices.find((d) => d.kind === 'coil' && d.vesselId === heater.vesselId);
-  return coil ? { heater, direct: false, via: 'coil', coil, viaVessel } : { heater, direct: false, via: 'vessel', viaVessel };
+  if (coil) return { heater, direct: false, via: 'coil', coil, viaVessel };
+  const via = step === 'mash' && !cfg.pumpId ? 'infusion' : 'vessel';
+  return { heater, direct: false, via, viaVessel };
 }
+
+// Whether the heating only works with the recirculation pump of the step.
+export const needsPump = (h: Heating) => !!h.heater && !h.direct && h.via !== 'infusion';
 
 export function heatingText(h: Heating): string {
   if (!h.heater) return '';
@@ -228,6 +235,7 @@ export function heatingText(h: Heating): string {
   const where = h.viaVessel?.name || '?';
   if (h.via === 'coil') return `indirekt über Spirale im ${where}`;
   if (h.via === 'vessel') return `indirekt über ${where}`;
+  if (h.via === 'infusion') return `Aufguss aus ${where}`;
   return 'indirekt über RIMS-Rohr';
 }
 
@@ -235,7 +243,7 @@ export function heatingText(h: Heating): string {
 export function brewhouseSummary(bh: Brewhouse): string {
   const h = heatingOf(bh, 'mash');
   const kind = !h.heater ? '' : h.direct ? 'direkt beheizt'
-    : h.via === 'coil' ? 'HERMS' : h.via === 'vessel' ? 'Kettle-RIMS' : 'RIMS';
+    : h.via === 'coil' ? 'HERMS' : h.via === 'vessel' ? 'Kettle-RIMS' : h.via === 'infusion' ? 'Aufguss' : 'RIMS';
   return [`${bh.vessels.length} Behälter`, kind].filter(Boolean).join(' · ');
 }
 
@@ -394,7 +402,7 @@ export function checkBrewhouse(bh: Brewhouse, snap: Snapshot | null): { errors: 
     if ((s.key === 'mash' || s.key === 'boil') && !h.heater) {
       errors.push({ text: `${s.label} braucht eine Heizquelle.`, at });
     }
-    if (h.heater && !h.direct && !cfg.pumpId) {
+    if (needsPump(h) && !cfg.pumpId) {
       errors.push({ text: `${s.label}: Die indirekte Heizung (${heatingText(h)}) braucht eine Umwälzpumpe.`, at });
     }
     if (s.key === 'boil' && cfg.condenserId && !(cfg.powerPct != null && cfg.powerPct < 100)) {
