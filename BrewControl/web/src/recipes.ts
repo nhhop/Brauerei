@@ -179,7 +179,7 @@ export async function deleteRecipe(id: string): Promise<void> {
 const BUNDLE_TYPE = 'brewcontrol-recipes';
 
 // The firmware's isValidRecipeId (RecipeFiles.h): the id becomes a file name.
-const VALID_ID = /^[0-9a-zA-Z_-]{1,32}$/;
+export const VALID_ID = /^[0-9a-zA-Z_-]{1,32}$/;
 
 export async function exportRecipes(): Promise<string> {
   const recipes: Recipe[] = [];

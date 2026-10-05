@@ -18,10 +18,12 @@
 #include "EnergyManager.h"
 #include "HeapDiag.h"
 #include "Hostname.h"
+#include "JsonDocDir.h"
 #include "RecipeFiles.h"
 #include "RecipeStore.h"
 #include "RegistryLock.h"
 #include "SdLock.h"
+#include "SdText.h"
 #include "version.h"
 
 namespace BrewControl {
@@ -61,6 +63,12 @@ constexpr uint16_t kPairTimeoutMs = 2000;
 // JSON document. Allocated only for bodies that actually span several chunks,
 // and only for as long as the request lives.
 constexpr size_t kMaxBodyBytes = 16384;
+
+#ifndef BREWCTL_USE_LITTLEFS
+// Brewhouse configuration of the recipe package (SD boards only).
+constexpr const char* kBrewhouseDir = "/brewhouses";
+constexpr const char* kBreweryFile = "/brewery.json";
+#endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
 // is the usual reason such an upload fails.
@@ -1801,6 +1809,73 @@ void WebUI::begin(bool serve) {
         String id = req->url().substring(strlen("/api/recipes/"));
         if (!RecipeStore::remove(fs_, id.c_str())) {
           req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // ── Brewhouses ──────────────────────────────────────────────────────────────
+  // One file per brewhouse, /brewhouses/<id>.json, no index (JsonDocDir.h).
+  server_.on(AsyncURIMatcher::exact("/api/brewhouses"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", JsonDocDir::list(fs_, kBrewhouseDir).c_str());
+  });
+
+  // PUT /api/brewhouses/:id — create or replace; the id is chosen by the client
+  server_.addHandler(new PutJsonPrefixHandler("/api/brewhouses/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(strlen("/api/brewhouses/"));
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, kBrewhouseDir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // DELETE /api/brewhouses/:id
+  server_.addHandler(new DeletePrefixHandler("/api/brewhouses/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/brewhouses/"));
+        if (!JsonDocDir::remove(fs_, kBrewhouseDir, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // ── Brewery ─────────────────────────────────────────────────────────────────
+  // Site values shared by all brewhouses, one file; opaque to the firmware.
+  server_.on(AsyncURIMatcher::exact("/api/brewery"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    std::string body;
+    if (!readText(fs_, kBreweryFile, body)) {
+      req->send(404, "text/plain", "not found");
+      return;
+    }
+    req->send(200, "application/json", body.c_str());
+  });
+
+  // PUT /api/brewery — the prefix handler also sees longer paths, hence the check
+  server_.addHandler(new PutJsonPrefixHandler("/api/brewery",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        if (req->url() != "/api/brewery") {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!writeText(fs_, nullptr, kBreweryFile, body)) {
+          req->send(500, "text/plain", "write failed");
           return;
         }
         req->send(204);

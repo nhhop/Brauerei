@@ -10,7 +10,7 @@ import { AlertCenter } from './components/AlertCenter';
 import { EmergencyStopBanner } from './components/EmergencyStopBanner';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
-import { RecipesRoute, RechnerRoute } from './pages/PackageRoutes';
+import { AnlageRoute, RecipesRoute, RechnerRoute } from './pages/PackageRoutes';
 import { SettingsIndex } from './pages/SettingsIndex';
 import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
@@ -186,6 +186,8 @@ export function App() {
         <RechnerRoute path="/rechner" />
         <RechnerRoute path="/rechner/:calc" />
         <SettingsIndex path="/settings" />
+        <AnlageRoute path="/settings/anlage" snap={snap} />
+        <AnlageRoute path="/settings/anlage/sudhaus/:id" snap={snap} />
         <AppearancePage path="/settings/appearance" />
         <DisplayPage path="/settings/display" />
         <EnergyPage path="/settings/energy" snap={snap} />

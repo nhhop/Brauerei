@@ -5,3 +5,5 @@ export { RecipesPage } from '../pages/RecipesPage';
 export { RecipeEditPage } from '../pages/RecipeEditPage';
 export { RechnerIndex } from '../pages/RechnerIndex';
 export { RechnerDetail } from '../pages/RechnerDetail';
+export { BrewhousePage } from '../pages/BrewhousePage';
+export { BrewhouseEditPage } from '../pages/BrewhouseEditPage';

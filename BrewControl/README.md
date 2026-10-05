@@ -629,6 +629,9 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
 | `/api/recipes` | GET | Rezeptliste (Kopfdaten), nur SD-Boards |
 | `/api/recipes/<id>` | GET, PUT, DELETE | Rezept lesen / anlegen oder ersetzen / löschen (`/recipes/<id>.json` auf der SD) |
+| `/api/brewhouses` | GET | alle Sudhäuser, vollständig (`/brewhouses/<id>.json`, kein Index), nur SD-Boards |
+| `/api/brewhouses/<id>` | PUT, DELETE | Sudhaus anlegen oder ersetzen / löschen |
+| `/api/brewery` | GET, PUT | Brauerei-Vorgaben aller Sudhäuser (`/brewery.json`, `404` bis zum ersten Speichern) |
 | `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW, Gerätedisplay |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |
 | `/api/network/scan` | GET | WLAN-Scan (async: erst `202`, dann `200`) |

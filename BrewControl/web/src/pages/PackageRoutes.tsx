@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { PageShell } from '../components/PageShell';
 import { useModule } from '../optionalModules';
+import type { Snapshot } from '../types';
 
 type RecipesModule = typeof import('../modules/recipes');
 
@@ -46,4 +47,16 @@ export function RechnerRoute({ calc }: { path?: string; calc?: string }) {
   const r = usePackage('Rechner', 'Die Rechner sind');
   if ('page' in r) return r.page;
   return calc ? <r.mod.RechnerDetail calc={calc} /> : <r.mod.RechnerIndex />;
+}
+
+// Route for /settings/anlage and /settings/anlage/sudhaus/:id (`vorlage`/`von`
+// come from the query string of a new draft).
+export function AnlageRoute({ id, vorlage, von, snap }: {
+  path?: string; id?: string; vorlage?: string; von?: string; snap: Snapshot | null;
+}) {
+  const r = usePackage('Brauanlage', 'Die Brauanlage ist');
+  if ('page' in r) return r.page;
+  return id
+    ? <r.mod.BrewhouseEditPage id={id} vorlage={vorlage} von={von} snap={snap} />
+    : <r.mod.BrewhousePage />;
 }
