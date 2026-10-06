@@ -30,6 +30,14 @@
   --success:    #0f7b0f;   /* WinUI Success (light) */
   --caution:    #9a5b00;   /* WinUI Caution (light) */
   --critical:   #c42b1c;   /* WinUI Critical (light) */
+
+  /* Categorical series (stacked bars), fixed order; validated with the
+     dataviz palette check per theme. Slots 3 and 4 are below 3:1 on light,
+     so every use carries visible labels. */
+  --series-1:   #2a78d6;
+  --series-2:   #eb6834;
+  --series-3:   #1baf7a;
+  --series-4:   #eda100;
 }
 
 [data-theme="dark"] {
@@ -46,6 +54,10 @@
   --card-border: rgba(0,0,0,0.10);           /* Fluent CardStroke (dark) — darker edge */
   --subtle-hover:   rgba(255,255,255,0.0605);   /* SubtleFillColorSecondary (dark) */
   --subtle-pressed: rgba(255,255,255,0.0419);   /* SubtleFillColorTertiary (dark) */
+  --series-1:   #3987e5;
+  --series-2:   #d95926;
+  --series-3:   #199e70;
+  --series-4:   #c98500;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,6 +75,10 @@
     --card-border: rgba(0,0,0,0.10);
     --subtle-hover:   rgba(255,255,255,0.0605);
     --subtle-pressed: rgba(255,255,255,0.0419);
+    --series-1:   #3987e5;
+    --series-2:   #d95926;
+    --series-3:   #199e70;
+    --series-4:   #c98500;
   }
 }
 

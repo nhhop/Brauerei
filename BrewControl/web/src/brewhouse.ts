@@ -40,6 +40,15 @@ export interface Vessel {
   deadSpaceL: number;
   evaporationLPerH?: number;  // only shown/checked while the vessel boils
   lauterMethod?: string;      // descriptive (false bottom, bag …), only while it lauters
+  grainAbsorptionLPerKg?: number; // wort the spent grain holds back, only while it lauters
+}
+
+// Literature gives 0.8–1.0 l/kg; Brewfather's default.
+export const DEFAULT_GRAIN_ABSORPTION = 0.96;
+
+// Grain absorption of the lauter vessel, or the default.
+export function grainAbsorptionOf(bh: Brewhouse): number {
+  return bh.vessels.find((v) => v.id === bh.steps.lauter?.vesselId)?.grainAbsorptionLPerKg ?? DEFAULT_GRAIN_ABSORPTION;
 }
 
 export type DeviceKind = 'heater' | 'pump' | 'agitator' | 'valve' | 'chiller' | 'condenser' | 'coil';
@@ -129,9 +138,9 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'spargePh', step: 'sparge', label: 'pH Nachguss', unit: 'pH' },
   { key: 'preBoilVolume', step: 'boil', label: 'Pfannevoll', unit: 'l' },
   { key: 'preBoilGravity', step: 'boil', label: 'Stammwürze vor dem Kochen', unit: '°P' },
-  { key: 'postBoilVolume', step: 'boil', label: 'Menge nach dem Kochen', unit: 'l' },
+  { key: 'postBoilVolume', step: 'boil', label: 'Ausschlagmenge', unit: 'l' },
   { key: 'postBoilGravity', step: 'boil', label: 'Stammwürze nach dem Kochen', unit: '°P' },
-  { key: 'batchVolume', step: 'chill', label: 'Ausschlagmenge', unit: 'l' },
+  { key: 'batchVolume', step: 'chill', label: 'Anstellwürze', unit: 'l' },
   { key: 'pitchTemp', step: 'chill', label: 'Anstelltemperatur', unit: '°C' },
 ];
 
@@ -559,7 +568,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
   {
     key: 'pot', label: 'Ein Topf (Sack/Malzkorb)', desc: 'Alles in einem Topf, direkt beheizt',
     build: () => {
-      const pot = vessel('Topf', 50, 1, { evaporationLPerH: 3, lauterMethod: 'Sack' });
+      const pot = vessel('Topf', 50, 1, { evaporationLPerH: 3, lauterMethod: 'Sack', grainAbsorptionLPerKg: 0.6 });
       const bh = build('Ein-Topf', [[pot, ['strike', 'mash', 'lauter', 'boil', 'whirlpool', 'chill']]], [
         dev('heater', 'Heizung', pot.id, { powerW: 3000 }),
         dev('chiller', 'Eintauchkühler', pot.id),
@@ -570,7 +579,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
   {
     key: 'pot-pipe', label: 'Ein Topf mit Malzrohr', desc: 'Umwälzpumpe durch das Malzrohr',
     build: () => {
-      const pot = vessel('Topf', 50, 2, { evaporationLPerH: 3, lauterMethod: 'Malzrohr' });
+      const pot = vessel('Topf', 50, 2, { evaporationLPerH: 3, lauterMethod: 'Malzrohr', grainAbsorptionLPerKg: 0.8 });
       let bh = build('Ein-Topf mit Malzrohr', [[pot, ['strike', 'mash', 'lauter', 'boil', 'whirlpool', 'chill']]], [
         dev('heater', 'Heizung', pot.id, { powerW: 3000 }),
         dev('pump', 'Umwälzpumpe', pot.id),
@@ -584,7 +593,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
     key: 'kettle-lauter', label: 'Maische-/Würzepfanne + Läuterbottich', desc: 'Nachguss im Einkocher',
     build: () => {
       const kettle = vessel('Maische-/Würzepfanne', 50, 1, { evaporationLPerH: 3 });
-      const tun = vessel('Läuterbottich', 40, 1, { lauterMethod: 'Senkboden' });
+      const tun = vessel('Läuterbottich', 40, 1, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.96 });
       const hlt = vessel('Einkocher', 27, 0.5);
       const bh = build('Pfanne + Läuterbottich', [
         [kettle, ['strike', 'mash', 'boil', 'whirlpool', 'chill']], [tun, ['lauter']], [hlt, ['sparge']],
@@ -608,7 +617,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
     key: 'herms2', label: '2-Kessel-HERMS', desc: 'Nachguss und Kochen in einem Kessel',
     build: () => {
       const kettle = vessel('HLT/Würzepfanne', 70, 2, { evaporationLPerH: 4 });
-      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden' });
+      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.96 });
       let bh = build('2-Kessel-HERMS', [
         [kettle, ['strike', 'sparge', 'boil', 'whirlpool', 'chill']], [tun, ['mash', 'lauter']],
       ], [
@@ -635,7 +644,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
     key: 'herms3', label: '3-Kessel-HERMS', desc: 'HLT mit Spirale, Maisch-/Läuterbottich, Würzepfanne',
     build: () => {
       const hlt = vessel('HLT', 70, 2);
-      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden' });
+      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.96 });
       const kettle = vessel('Würzepfanne', 70, 2, { evaporationLPerH: 4 });
       let bh = build('3-Kessel-HERMS', [
         [hlt, ['strike', 'sparge']], [tun, ['mash', 'lauter']], [kettle, ['boil', 'whirlpool', 'chill']],

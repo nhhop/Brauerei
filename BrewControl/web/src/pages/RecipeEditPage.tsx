@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
+import { listBrewhouses, type Brewhouse } from '../brewhouse';
 import { getRecipe, saveRecipe, type Recipe } from '../recipes';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
@@ -8,10 +9,12 @@ import { badgeAccent, badgeSuccess, btnPrimary, btnSecondary } from '../ui';
 import {
   BoilTab, FermentationTab, IngredientsTab, MashTab, OverviewTab, type TabProps,
 } from './recipe/tabs';
+import { WaterTab } from './recipe/WaterTab';
 
 const TABS: { id: string; label: string; view: (p: TabProps) => JSX.Element }[] = [
   { id: 'overview', label: 'Übersicht', view: OverviewTab },
   { id: 'ingredients', label: 'Zutaten', view: IngredientsTab },
+  { id: 'water', label: 'Wasser', view: WaterTab },
   { id: 'mash', label: 'Maischen', view: MashTab },
   { id: 'boil', label: 'Würzekochen', view: BoilTab },
   { id: 'fermentation', label: 'Gärung', view: FermentationTab },
@@ -24,6 +27,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
   const [loadState, setLoadState] = useState<'loading' | 'missing' | 'error'>('loading');
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState('overview');
+  const [brewhouses, setBrewhouses] = useState<Brewhouse[] | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -36,6 +40,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
         setLoadState('missing');
       })
       .catch(() => alive && setLoadState('error'));
+    listBrewhouses().then((list) => alive && setBrewhouses(list)).catch(() => {});
     return () => { alive = false; };
   }, [id]);
 
@@ -92,7 +97,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
         ))}
       </div>
 
-      <View recipe={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} />
+      <View recipe={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} brewhouses={brewhouses} />
     </PageShell>
   );
 }

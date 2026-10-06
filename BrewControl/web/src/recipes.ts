@@ -89,6 +89,8 @@ export interface Recipe {
   styleId?: string; // BJCP 2021 number the style text was picked from; unset = free text
   volumeL: number;
   efficiencyPct?: number; // Sudhausausbeute; unset in old recipes, read via DEFAULT_EFFICIENCY
+  brewhouseId?: string;   // unset = no brewhouse chosen yet
+  water?: RecipeWater;
   status: 'draft' | 'final';
   updatedAt: number;
   ingredients: Ingredient[];
@@ -98,6 +100,18 @@ export interface Recipe {
 }
 
 export const DEFAULT_EFFICIENCY = 75;
+
+// Water tab settings; every field is optional and read via its default.
+export interface RecipeWater {
+  sparge?: boolean;               // "Mit Nachguss"; only takes effect if the brewhouse has the sparge step
+  mashRatioLPerKg?: number;
+  spargeTempC?: number;
+  evaporationLPerH?: number;      // override; unset = the boil vessel's value
+  grainAbsorptionLPerKg?: number; // override; unset = the lauter vessel's value
+}
+
+export const DEFAULT_MASH_RATIO = 3.5;
+export const DEFAULT_SPARGE_TEMP = 78;
 
 // Plain HTTP means no crypto.randomUUID (secure contexts only).
 export function uid(): string {
