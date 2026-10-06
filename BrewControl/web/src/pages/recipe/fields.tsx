@@ -42,3 +42,23 @@ export function NumInput({ value, onChange, class: cls = 'w-24' }: {
       }} />
   );
 }
+
+// Like NumInput, but an empty field means "not set".
+export function OptNum({ value, onChange, placeholder, class: cls = 'w-24' }: {
+  value: number | undefined; onChange: (n: number | undefined) => void; placeholder?: string; class?: string;
+}) {
+  const [text, setText] = useState(value == null ? '' : String(value));
+  useEffect(() => {
+    if ((text === '' ? undefined : parseFloat(text)) !== value) setText(value == null ? '' : String(value));
+  }, [value]);
+  return (
+    <input type="number" inputMode="decimal" class={`${inp} ${cls}`} value={text} placeholder={placeholder}
+      onInput={(e) => {
+        const t = e.currentTarget.value;
+        setText(t);
+        const n = parseFloat(t);
+        if (t.trim() === '') onChange(undefined);
+        else if (!Number.isNaN(n)) onChange(n);
+      }} />
+  );
+}

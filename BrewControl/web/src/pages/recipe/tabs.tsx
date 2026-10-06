@@ -1,3 +1,4 @@
+import type { Brewhouse } from '../../brewhouse';
 import { useCatalog } from '../../ingredientSource';
 import { calcStats } from '../../recipeStats';
 import { DEFAULT_EFFICIENCY, KINDS, SCOPE_TIMINGS, type Recipe, type Scope } from '../../recipes';
@@ -12,20 +13,43 @@ import { STYLE_COMPARISON } from '../../styleSource';
 export interface TabProps {
   recipe: Recipe;
   onChange: (patch: Partial<Recipe>) => void;
+  brewhouses: Brewhouse[] | null;  // null = the list did not load
 }
 
-function Stat({ label, value, unit, digits }: { label: string; value?: number; unit: string; digits: number }) {
+export function Stat({ label, value, unit, digits, sub }: {
+  label: string; value?: number; unit: string; digits: number; sub?: string;
+}) {
   return (
     <div>
       <dt class="text-xs text-muted">{label}</dt>
       <dd class="text-lg font-semibold">
         {value === undefined ? '—' : <>{value.toFixed(digits)} <span class="text-xs font-normal text-muted">{unit}</span></>}
       </dd>
+      {sub && <dd class="text-xs text-muted">{sub}</dd>}
     </div>
   );
 }
 
-export function OverviewTab({ recipe, onChange }: TabProps) {
+// A recipe may point to a brewhouse that was deleted since; it stays selectable as "(fehlt)".
+function BrewhouseSelect({ recipe, onChange, brewhouses }: TabProps) {
+  const id = recipe.brewhouseId;
+  const missing = id && !brewhouses?.some((b) => b.id === id);
+  return (
+    <div class="flex flex-wrap items-center gap-2">
+      <select class={`${inp} min-w-0 flex-1`} value={id ?? ''}
+        onChange={(e) => onChange({ brewhouseId: e.currentTarget.value || undefined })}>
+        <option value="">— keins —</option>
+        {brewhouses?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        {missing && <option value={id}>{id} (fehlt)</option>}
+      </select>
+      {brewhouses?.length === 0 && (
+        <a href="/settings/anlage" class="text-sm text-accent hover:underline">Brauanlage einrichten</a>
+      )}
+    </div>
+  );
+}
+
+export function OverviewTab({ recipe, onChange, brewhouses }: TabProps) {
   const mashMin = recipe.mash.reduce((s, p) => s + p.duration, 0);
   const catalog = useCatalog();
   const stats = catalog ? calcStats(recipe, catalog.ingredients) : null;
@@ -50,6 +74,9 @@ export function OverviewTab({ recipe, onChange }: TabProps) {
           </Field>
           <Field label="Sudhausausbeute (%)">
             <NumInput value={recipe.efficiencyPct ?? DEFAULT_EFFICIENCY} onChange={(n) => onChange({ efficiencyPct: n })} />
+          </Field>
+          <Field label="Sudhaus">
+            <BrewhouseSelect recipe={recipe} onChange={onChange} brewhouses={brewhouses} />
           </Field>
           <div class="md:col-span-2">
             <Field label="Beschreibung">
@@ -104,7 +131,7 @@ export function IngredientsTab({ recipe, onChange }: TabProps) {
   );
 }
 
-function ProcessIngredients({ recipe, onChange, scope, title = 'Zutaten' }: TabProps & { scope: Scope; title?: string }) {
+function ProcessIngredients({ recipe, onChange, scope, title = 'Zutaten' }: Pick<TabProps, 'recipe' | 'onChange'> & { scope: Scope; title?: string }) {
   return (
     <IngredientCard title={title} scope={scope}
       all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}

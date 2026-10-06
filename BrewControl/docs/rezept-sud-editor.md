@@ -189,20 +189,39 @@ Liste und Detailansicht.
   Der Sud schlägt die Menge aus dem gemessenen pH neu vor.
 - **Salze und Säuren** sind dieselben Einträge wie unter Zutaten › Hilfsstoffe und lassen sich **an beiden
   Stellen bearbeiten**.
+- **Stand:** Die Wassermengen sind umgesetzt (Etappe 2a, 2026-10-06, `web/src/recipeWater.ts`, Tab
+  „Wasser“). Die Aufbereitung (Salze, Säuren, Wasserprofil, pH) folgt in Etappe 2b; bis dahin stehen die
+  Wasser-Hilfsstoffe nur unter Zutaten.
+- Das Rezept wählt sein **Sudhaus** in der Übersicht. Ohne Sudhaus, oder wenn das gewählte gelöscht ist,
+  rechnet der Tab nicht und sagt das.
+- **Ausschlagmenge** ist die Würze heiß im Kessel am Kochende, der klassische Bezug der Sudhausausbeute. Was
+  danach verloren geht (Totraum der Pfanne, Hopfenaufnahme, Whirlpool, Hop Back, Kühler, Transfers ab
+  Whirlpool, Kühlschwund), rechnet die Abfüllmenge in der Gärung vorwärts.
 - **Wassermenge** wird **vom Ausschlag zurückgerechnet**, nicht vom Wasser vorwärts:
-  - Ausschlagmenge (Vorgabe aus der Übersicht) + Verdampfung (l/h × Kochdauer aus dem Würzekochen) = Pfannevoll.
-  - Pfannevoll + Totraum Läuterbottich + Treberverlust (l/kg × Schüttung) = Gesamtwasser.
-  - Hauptguss = Hauptguss-Verhältnis × Schüttung, Nachguss = Rest. Die Nachguss-Temperatur steht in der
-    Nachguss-Zeile.
-  - Schalter **„Mit Nachguss“**: Ohne Nachguss (Vollguss) ist der Hauptguss das gesamte Wasser, das
-    Verhältnis wird dann zum Ergebnis.
-- **Darstellung:** Karte „Wassermenge“ mit Kennzahlen (Hauptguss, Nachguss, Gesamtwasser), Schalter und
-  farbigem Balken (Gesamtwasser aufgeteilt in Ausschlag, Verdampfung, Treber, Totraum). Die Rechnung steht in
-  einem Aufklappbereich „Berechnung“, standardmäßig zu.
-- Toträume, Transferverluste und Verdampfung kommen als Vorgabe aus dem Sudhaus; die Verdampfung lässt
-  sich pro Rezept überschreiben.
-- **Prozessverluste rechnet das Rezept**, nicht die Anlage: Treber (l/kg × Schüttung), Hopfenaufnahme
-  (etwa 5 ml/g, je Produkt weniger), Hefetrub (%) und die Aufnahme durch Kalthopfung.
+  1. Verdampfung = l/h × Kochdauer aus dem Würzekochen. Ausschlag + Verdampfung = **Pfannevoll**.
+  2. **Würzeverluste vor dem Kochen** aus den Transfers der Schritte Maischen und Läutern: der
+     Leitungsverlust, wenn eine Pumpe fördert und er nicht zurückkommt, und der Totraum des
+     Quellbehälters, wenn er per Pumpe oder Schwerkraft leerläuft. „Von Hand“ (Schöpfen, Sack heben)
+     hinterlässt keinen Totraum. Ein Topf ohne Transfer hat keine Würzeverluste.
+  3. **Treber** = Schüttung (Vergärbares im Zeitpunkt Maische) × Treberverlust (l/kg).
+  4. Pfannevoll + Würzeverluste + Treber = **Gesamtwasser**, das Wasser in Maische und Läuterbottich.
+  5. **Mit Nachguss:** Hauptguss = Hauptguss-Verhältnis (Vorgabe 3,5 l/kg) × Schüttung, Nachguss = Rest.
+     **Ohne Nachguss** (Vollguss) ist der Hauptguss das gesamte Wasser, das Verhältnis wird zum Ergebnis.
+     Hat das Sudhaus keinen Schritt Nachguss, ist der Schalter gesperrt.
+  6. **Einfüllmenge je Guss:** Kommt ein Guss per Transfer, braucht er zusätzlich den Leitungsverlust (wenn
+     er nicht zurückkommt) und einmal je Quellbehälter dessen Totraum, beim ersten Guss daraus. Liegt der
+     Guss im Maischbehälter selbst, ist die Einfüllmenge gleich dem Guss.
+- **Hinweise** sperren nichts: kein oder gelöschtes Sudhaus, Kochbehälter ohne Verdampfung, keine
+  Schüttung, Nachguss unter 0 (Verhältnis zu hoch), Pfannevoll größer als der Kochbehälter, Maische
+  (Hauptguss + 0,67 l/kg Verdrängung, ungeprüft) größer als der Maischbehälter.
+- **Darstellung:** Karte „Wassermenge“ mit Kennzahlen (Hauptguss, Nachguss, Gesamtwasser, Pfannevoll; darunter
+  „einfüllen x l“, wenn die Einfüllmenge abweicht), Schalter „Mit Nachguss“, Eingaben (Hauptguss-Verhältnis,
+  Nachguss-Temperatur, Verdampfung, Treberverlust) und farbigem Balken (Gesamtwasser aufgeteilt in
+  Ausschlag, Verdampfung, Treber, Totraum/Transfer). Die Rechnung steht mit Herkunft jeder Zahl (Rezept
+  bzw. Sudhaus) in einem Aufklappbereich „Berechnung“, standardmäßig zu.
+- Toträume, Transferverluste, Verdampfung und Treberverlust kommen als Vorgabe aus dem Sudhaus.
+  **Verdampfung und Treberverlust** lassen sich pro Rezept überschreiben; der Platzhalter zeigt den
+  Sudhaus-Wert, „Sudhaus-Wert“ nimmt die Überschreibung zurück.
 
 ### Maischen und Würzekochen
 - **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
@@ -287,6 +306,8 @@ Liste und Detailansicht.
   - Darstellung wie beim Wasser: Kennzahlen (Anstellwürze, Jungbier, Abgefüllt), Balken (Verbleib der
     Ausschlagwürze) und Aufklappbereich „Berechnung“.
   - Die Absorption von Stopfhopfen (0,6 l/100 g im Entwurf) ist ein ungeprüfter Platzhalter.
+  - **Hopfenaufnahme** im Kessel: etwa 5 ml/g, je Produkt weniger. Dafür bekommt die Hopfengabe ein Feld
+    Form (Dolde, T90, T45, Lupulin, Extrakt), die Aufnahme in ml/g ist eine Konstante je Form.
 
 ### Sude (Tab im Rezept)
 - Knopf „Neuer Sud aus diesem Rezept“, bei Entwürfen gesperrt.
@@ -305,7 +326,7 @@ Rezept-Rechnungen und Vorbelegung im Sud; die Werte vom Brautag trägt der Sud a
 
 ### Sudhaus
 Umgesetzt seit 2026-10-04 (Etappe 1, `web/src/brewhouse.ts`, `/api/brewhouses`, `/api/brewery`), nur auf
-SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasser-Tab (Etappe 2).
+SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in der Übersicht.
 
 - **Prozessschritte werden frei auf Behälter verteilt.** Schritte: Hauptguss bereiten · Maischen · Läutern ·
   Nachguss bereiten · Kochen · Whirlpool · Hop Back · Kühlen. Pflicht sind Maischen, Läutern und Kochen. Je
@@ -322,8 +343,10 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
   Zwischenbehälter …) hakt die Schritte nur vor und wird nicht gespeichert; das Auswahlfeld zeigt die Art,
   die zu den angehakten Schritten passt, sonst „eigene Zusammenstellung“. Die Bezeichnung ergibt sich aus
   den Schritten („…pfanne“, wenn der Behälter beim Maischen direkt beheizt ist, sonst „…bottich“).
-  Verdampfung in l/h gibt es nur am Kochbehälter (das Rezept kann sie später überschreiben), die
-  Läutermethode (Senkboden, Sack, Malzkorb …) nur am Läuterbehälter, rein beschreibend.
+  Verdampfung in l/h gibt es nur am Kochbehälter (das Rezept kann sie überschreiben), die
+  Läutermethode (Senkboden, Sack, Malzkorb …) nur am Läuterbehälter, rein beschreibend. Ebenfalls nur am
+  Läuterbehälter steht der **Treberverlust** in l/kg (fehlt er, gilt 0,9; Vorlagen: Sack 0,6, Malzrohr 0,8,
+  Senkboden 0,9), den das Rezept überschreiben kann.
 - **Geräte:** Heizquellen, Pumpen, Rührwerke, Ventile (nur Wasserzulauf), Spiralen, Kühler und
   Kondensatoren. Jedes hat einen Ort (Behälter oder inline) und ist **„von Hand“ oder „angeschlossen“**.
   Angeschlossen braucht es eine Registry-Verknüpfung: Heizquelle → Regler oder Aktor, alle anderen → Aktor.
@@ -371,7 +394,8 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ein Sudhaus erst mit dem Wasse
   nur das Schema reicht rechts bis an den Fensterrand und scrollt links über die Spalte hinaus. Wie in den
   Einstellungen steht eine kleine Gruppenüberschrift über den Karten, jeder Behälter, jedes Gerät, jeder
   Schritt, Transfer und jede Messung ist eine eigene Karte.
-- **Prozessverluste gehören nicht zur Anlage** (Treber, Hopfen, Hefetrub, Kalthopfung), siehe Wasser.
+- **Prozessverluste nach dem Kochen gehören nicht zur Anlage** (Hopfen, Hefetrub, Kalthopfung), siehe
+  Gärung › Abfüllmenge. Der Treberverlust ist eine Vorgabe am Läuterbehälter (siehe Wasser).
 
 ### Gärkeller
 - Gärplätze mit Name, Bauart, Volumen, Trubverlust, druckfest bis, Temperierung und verknüpftem

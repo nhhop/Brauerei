@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  OUT, TEMPLATES, VESSEL_PRESETS, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, heatingOf, heatingText,
+  DEFAULT_GRAIN_ABSORPTION, OUT, TEMPLATES, VESSEL_PRESETS, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, grainAbsorptionOf, heatingOf, heatingText,
   listBrewhouses, newDevice, removeDevice, removeVessel, saveBrewhouse, schemaOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type Vessel,
 } from './brewhouse';
@@ -67,6 +67,14 @@ describe('templates', () => {
 
   it('builds fresh ids each time', () => {
     expect(template('herms3').id).not.toBe(template('herms3').id);
+  });
+});
+
+describe('grainAbsorptionOf', () => {
+  it('takes the lauter vessel\'s value, else the default', () => {
+    expect(grainAbsorptionOf(template('pot'))).toBe(0.6);
+    expect(grainAbsorptionOf(template('pot-pipe'))).toBe(0.8);
+    expect(grainAbsorptionOf(minimal())).toBe(DEFAULT_GRAIN_ABSORPTION);
   });
 });
 

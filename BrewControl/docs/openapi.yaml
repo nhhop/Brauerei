@@ -4621,7 +4621,8 @@ components:
       required: [id]
       description: |
         Owned by the web UI (`web/src/recipes.ts`, type `Recipe`): name, style,
-        volume, status, ingredients, mash, boil and fermentation. The firmware
+        volume, status, brewhouse (`brewhouseId`), water settings, ingredients,
+        mash, boil and fermentation. The firmware
         keeps whatever it is given, so only `id` is fixed here; a recipe larger
         than the 16 KB body limit cannot be saved.
       properties:
@@ -4691,6 +4692,7 @@ components:
         deadSpaceL: { type: number, description: Volume left behind when emptied. }
         evaporationLPerH: { type: number, description: Only for the boil vessel. }
         lauterMethod: { type: string, description: "Descriptive only (false bottom, bag …)." }
+        grainAbsorptionLPerKg: { type: number, description: "Only for the lauter vessel: wort held back by the spent grain, l/kg. Missing = 0.9." }
       additionalProperties: true
 
     BrewhouseDevice:

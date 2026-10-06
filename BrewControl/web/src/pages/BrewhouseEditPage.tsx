@@ -3,7 +3,7 @@ import type { ComponentChildren } from 'preact';
 import { route } from 'preact-router';
 import { Check, Plus, Trash2 } from 'lucide-preact';
 import {
-  CHILLER_TYPES, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
+  CHILLER_TYPES, DEFAULT_GRAIN_ABSORPTION, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
   addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
   newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
@@ -16,7 +16,7 @@ import { TabBtn } from '../components/TabBtn';
 import type { Snapshot } from '../types';
 import { badgeAccent, badgeCaution, badgeCritical, btnPrimary, inp } from '../ui';
 import { BrewhouseSchema } from './BrewhouseSchema';
-import { Card, Field, NumInput } from './recipe/fields';
+import { Card, Field, NumInput, OptNum } from './recipe/fields';
 
 const LIST_URL = '/settings/anlage';
 const LAUTER_METHODS = ['Senkboden', 'Schlitzrohr', 'Malzrohr', 'Malzkorb', 'Sack', 'Ablassen in Zwischenbehälter'];
@@ -209,24 +209,6 @@ function TextInput({ value, onChange, placeholder, list, class: cls = 'w-full' }
   );
 }
 
-// Like NumInput, but an empty field means "not set".
-function OptNum({ value, onChange }: { value: number | undefined; onChange: (n: number | undefined) => void }) {
-  const [text, setText] = useState(value == null ? '' : String(value));
-  useEffect(() => {
-    if ((text === '' ? undefined : parseFloat(text)) !== value) setText(value == null ? '' : String(value));
-  }, [value]);
-  return (
-    <input type="number" inputMode="decimal" class={`${inp} w-24`} value={text}
-      onInput={(e) => {
-        const t = e.currentTarget.value;
-        setText(t);
-        const n = parseFloat(t);
-        if (t.trim() === '') onChange(undefined);
-        else if (!Number.isNaN(n)) onChange(n);
-      }} />
-  );
-}
-
 type Opt = { value: string; text: string };
 
 // A <select> over `groups`; a value that is not among them stays selectable as
@@ -357,6 +339,12 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
           <Field label="Läutermethode">
             <TextInput class="w-44" list="bh-lauter-methods" value={v.lauterMethod ?? ''}
               onChange={(m) => patch({ lauterMethod: m || undefined })} />
+          </Field>
+        )}
+        {steps.includes('lauter') && (
+          <Field label="Treberverlust (l/kg)">
+            <OptNum value={v.grainAbsorptionLPerKg} placeholder={String(DEFAULT_GRAIN_ABSORPTION)}
+              onChange={(grainAbsorptionLPerKg) => patch({ grainAbsorptionLPerKg })} />
           </Field>
         )}
         <Field label="Art (hakt die Schritte vor)">
