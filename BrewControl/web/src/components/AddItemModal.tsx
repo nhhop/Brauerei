@@ -25,7 +25,7 @@ const AUTOTUNE_METHODS = [
 ] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | 'GY521' | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'Voltage' | 'MqttGeneric' | 'Remote';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | ImuType | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'Voltage' | 'MqttGeneric' | 'Remote';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
@@ -34,7 +34,16 @@ type MqttKind = 'Binary' | 'Continuous';
 type RemoteTransport = 'mqtt' | 'webhook' | 'websocket' | 'espnow';
 type Step = 1 | 2 | 3 | 4;
 
-// GY521 channel keys in the firmware's order (the first four are calibratable).
+// The IMU types share the GY521's form and channels; only the chip and its
+// I2C addresses differ (the first one is the default, as in the firmware's
+// ImuTypes.h).
+type ImuType = 'GY521' | 'QMI8658' | 'BMI270' | 'BMI160';
+const IMU_ADDRESSES: Record<ImuType, number[]> = {
+  GY521: [0x68, 0x69], QMI8658: [0x6b, 0x6a], BMI270: [0x68, 0x69], BMI160: [0x68, 0x69],
+};
+const isImu = (t: string): t is ImuType => t in IMU_ADDRESSES;
+
+// IMU channel keys in the firmware's order (the first four are calibratable).
 const GY521_ORDER = ['pitch', 'roll', 'tilt', 'temp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz', 'dir'];
 // The same channels as checkbox rows of the form.
 const GY521_GROUPS: { title: string; items: [string, string][] }[] = [
@@ -133,7 +142,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // sensor sub-type
   const [sensorType, setSensorType] = useState<SensorType>('DS18B20');
 
-  // Bus of a DS18B20 / MAX31865 / BME280 / GY521 ('' = none picked yet, or
+  // Bus of a DS18B20 / MAX31865 / BME280 / IMU ('' = none picked yet, or
   // hardware SPI for a MAX31865) — see effectiveBus().
   const [busId, setBusId] = useState('');
 
@@ -146,7 +155,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // BME280
   const [i2cAddr, setI2cAddr] = useState<number>(0x76);
 
-  // GY521
+  // GY521 and the other IMUs
   const [gy521Addr, setGy521Addr] = useState<number>(0x68);
   const [gy521Channels, setGy521Channels] = useState<string[]>(['pitch']);
 
@@ -323,8 +332,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           setChVolume(!chs || chs.includes('volume'));
         } else if (t === 'BME280') {
           setI2cAddr((editConfig.address ?? 0x76) as number);
-        } else if (t === 'GY521') {
-          setGy521Addr((editConfig.address ?? 0x68) as number);
+        } else if (isImu(t)) {
+          setGy521Addr((editConfig.address ?? IMU_ADDRESSES[t][0]) as number);
           // No "channels": a GY521 from before it had them, i.e. pitch only.
           const chs = editConfig.channels as string[] | undefined;
           setGy521Channels(chs ?? ['pitch']);
@@ -562,8 +571,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const typesInCategory = ITEM_TYPES.filter((t) => t.role === role && t.group === category);
 
   function applyType(e: ItemTypeEntry) {
-    if (e.role === 'sensor') setSensorType(e.type as SensorType);
-    else if (e.role === 'actuator') setActuatorType(e.type as ActuatorType);
+    if (e.role === 'sensor') {
+      setSensorType(e.type as SensorType);
+      if (isImu(e.type)) setGy521Addr(IMU_ADDRESSES[e.type][0]);
+    } else if (e.role === 'actuator') setActuatorType(e.type as ActuatorType);
     else setCtrlType(e.type as ControllerType);
     setTypeChosen(true);
     setErr(null);
@@ -696,7 +707,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           const bus = effectiveBus('i2c');
           if (!bus) throw new Error('Kein I²C-Bus gewählt');
           cfg = { type: sensorType, id: trimId, bus, address: i2cAddr };
-        } else if (sensorType === 'GY521') {
+        } else if (isImu(sensorType)) {
           const bus = effectiveBus('i2c');
           if (!bus) throw new Error('Kein I²C-Bus gewählt');
           // In the firmware's channel order, whatever order they were ticked in.
@@ -1046,7 +1057,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // Channels a dashboard card of this sensor can show: what the form is about to
   // save for types with a channel selection, otherwise what the sensor reports.
   function cardOptions(): string[] {
-    if (sensorType === 'GY521') return GY521_ORDER.filter((k) => gy521Channels.includes(k));
+    if (isImu(sensorType)) return GY521_ORDER.filter((k) => gy521Channels.includes(k));
     if (sensorType === 'YF-S201') return [chRate && 'rate', chVolume && 'volume'].filter(Boolean) as string[];
     if (sensorType === 'HCSR04') return [chDistance && 'distance', showScale && 'derived'].filter(Boolean) as string[];
     const prefix = String(editConfig?.id ?? '') + '.';
@@ -1064,7 +1075,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
       const cur = cardKeys ?? offered;
       setCardKeys(cur.includes(k) ? cur.filter((c) => c !== k) : [...cur, k]);
     };
-    const groups = sensorType === 'GY521'
+    const groups = isImu(sensorType)
       ? GY521_GROUPS
           .map((g) => ({ title: g.title, keys: g.items.map(([k]) => k).filter((k) => offered.includes(k)) }))
           .filter((g) => g.keys.length > 0)
@@ -1087,7 +1098,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
         </div>
         <p class="mt-1.5 text-xs text-faint">
           Gilt nur für diese Karte. Welche Kanäle der Sensor misst, steht oben.
-          {sensorType === 'GY521' && ' Nick und Roll zusammen ergeben die Libelle.'}
+          {isImu(sensorType) && ' Nick und Roll zusammen ergeben die Libelle.'}
         </p>
       </div>
     );
@@ -1539,14 +1550,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             </div>
           )}
 
-          {/* GY521 fields */}
-          {role === 'sensor' && sensorType === 'GY521' && (
+          {/* GY521 / IMU fields */}
+          {role === 'sensor' && isImu(sensorType) && (
             <div class="space-y-3">
               {busField('i2c')}
               <div>
                 <label class={lbl}>I²C Address</label>
                 <div class="flex gap-2">
-                  {[0x68, 0x69].map((a) => (
+                  {IMU_ADDRESSES[sensorType].map((a) => (
                     <button key={a} type="button" onClick={() => setGy521Addr(a)}
                       class={segBtn(gy521Addr === a)}>0x{a.toString(16)}</button>
                   ))}

@@ -1,4 +1,6 @@
-#include "GY521TiltSensor.h"
+#include "ImuTiltSensor.h"
+
+#include <utility>
 
 #include <math.h>
 
@@ -15,19 +17,16 @@ const SensorMeta kDirMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
                           0.0f, 360.0f, 0.1f};
 }  // namespace
 
-GY521TiltSensor::GY521TiltSensor(const char* id, uint8_t i2cAddress)
-    : id_(id), raw_(id, i2cAddress) {}
+ImuTiltSensor::ImuTiltSensor(const char* id, std::unique_ptr<ImuSensor> raw)
+    : id_(id), raw_(std::move(raw)) {}
 
-GY521TiltSensor::GY521TiltSensor(const char* id, TwoWire& bus, uint8_t i2cAddress)
-    : id_(id), raw_(id, bus, i2cAddress) {}
-
-size_t GY521TiltSensor::channelCount() const {
+size_t ImuTiltSensor::channelCount() const {
   size_t n = 0;
   for (uint16_t m = channelMask_; m; m &= m - 1) ++n;
   return n;
 }
 
-Channel GY521TiltSensor::channel(size_t idx) const {
+Channel ImuTiltSensor::channel(size_t idx) const {
   // The idx-th set bit of the mask: bits 0..2 are the angles, bit 3 the raw
   // sensor's temperature (its channel 6), bits 4..9 its axes (channels 0..5),
   // bit 10 the direction.
@@ -41,13 +40,13 @@ Channel GY521TiltSensor::channel(size_t idx) const {
     case 0:  return {"pitch", kLevelMeta, pitch_};
     case 1:  return {"roll",  kLevelMeta, roll_};
     case 2:  return {"tilt",  kTiltMeta,  tilt_};
-    case 3:  return raw_.channel(6);
+    case 3:  return raw_->channel(6);
     case 10: return {"dir",   kDirMeta,   dir_};
-    default: return raw_.channel(bit - 4);
+    default: return raw_->channel(bit - 4);
   }
 }
 
-void GY521TiltSensor::filter(Reading& angle, float& bias, float angleAccelDeg,
+void ImuTiltSensor::filter(Reading& angle, float& bias, float angleAccelDeg,
                              float gyroRateDegPerS, float dt, uint32_t now) {
   const float prev  = angle.valid ? angle.value : angleAccelDeg;
   const float alpha = kTauS / (kTauS + dt);
@@ -58,14 +57,14 @@ void GY521TiltSensor::filter(Reading& angle, float& bias, float angleAccelDeg,
   angle = Reading{next, now, true};
 }
 
-void GY521TiltSensor::tick() {
-  raw_.tick();
+void ImuTiltSensor::tick() {
+  raw_->tick();
 
-  const Reading ax = raw_.channel(0).reading;
-  const Reading ay = raw_.channel(1).reading;
-  const Reading az = raw_.channel(2).reading;
-  const Reading gx = raw_.channel(3).reading;
-  const Reading gy = raw_.channel(4).reading;
+  const Reading ax = raw_->channel(0).reading;
+  const Reading ay = raw_->channel(1).reading;
+  const Reading az = raw_->channel(2).reading;
+  const Reading gx = raw_->channel(3).reading;
+  const Reading gy = raw_->channel(4).reading;
   if (!ax.valid) {
     // Raw sensor lost (module pulled): drop the angles and restart the
     // filters from the accelerometer when it comes back -- maybe a different
@@ -103,7 +102,7 @@ void GY521TiltSensor::tick() {
   hasLastTick_ = true;
 }
 
-float GY521TiltSensor::complementaryStep(float prevAngle, float angleAccelDeg,
+float ImuTiltSensor::complementaryStep(float prevAngle, float angleAccelDeg,
                                           float gyroRateDegPerS,
                                           float dtSeconds, float alpha) {
   const float gyroAngle = prevAngle + gyroRateDegPerS * dtSeconds;

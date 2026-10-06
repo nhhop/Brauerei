@@ -49,6 +49,16 @@
       "version": "^2.2.6"
     },
     {
+      "name": "SensorLib",
+      "owner": "lewisxhe",
+      "version": "^0.5.0"
+    },
+    {
+      "name": "SparkFun BMI270 Arduino Library",
+      "owner": "sparkfun",
+      "version": "^1.0.3"
+    },
+    {
       "name": "AutoTunePID",
       "version": "https://github.com/lily-osp/AutoTunePID.git#34c6f39"
     },

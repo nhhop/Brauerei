@@ -53,7 +53,7 @@ Beispiele:
 Jede Sensor-Instanz kann mehrere **Kanäle** haben (`channelCount()` +
 `channel(idx)`, `Channel`-Struct aus `key`+`SensorMeta`+`Reading`) — z.B.
 liefert `YF_S201Sensor` einen `"rate"`- und einen `"volume"`-Kanal aus
-derselben Instanz. `YF_S201Sensor`, `HCSR04Sensor` und `GY521TiltSensor` lassen per
+derselben Instanz. `YF_S201Sensor`, `HCSR04Sensor` und `ImuTiltSensor` lassen per
 `setChannelMask()` nur einen Teil ihrer Kanäle nach außen zeigen (Messung
 und ISR laufen unverändert; `channelCount()`/`channel()` liefern nur die
 gewählten). Einkanalige Sensoren melden `channelCount()==1` mit
@@ -97,10 +97,13 @@ R1/R2, z. B. Batterie, liest kalibrierte Millivolt per `analogReadMilliVolts`),
 `OneWire&`, den sich mehrere Sensoren teilen — mit ROM-Adresse oder ohne, dann
 erstes Gerät), `BME280Sensor` (I2C, Temp/Feuchte/Druck),
 `MAX31865Sensor` (SPI, PT100/PT1000), `YF_S201Sensor` (Durchfluss +
-Volumen, 2 Kanäle), `HCSR04Sensor` (Ultraschall, 2 Kanäle), `GY521Sensor`
-(I2C, MPU-6050: Beschleunigung `ax`/`ay`/`az`, Drehrate `gx`/`gy`/`gz`,
-Chip-Temperatur `temp`), `GY521TiltSensor` (Winkel aus einem eigenen
-`GY521Sensor`: `pitch` um Y und `roll` um X per Komplementärfilter mit
+Volumen, 2 Kanäle), 6-Achsen-IMUs über I2C mit gemeinsamer Basis `ImuSensor`
+und identischen Kanälen (Beschleunigung `ax`/`ay`/`az` in g, Drehrate
+`gx`/`gy`/`gz` in °/s, Chip-Temperatur `temp`; Retry und Hot-Plug wie beim
+BME280): `GY521Sensor` (MPU-6050, Adafruit MPU6050), `QMI8658Sensor`
+(SensorLib), `BMI270Sensor` (SparkFun BMI270) und `BMI160Sensor` (eigener
+Registertreiber); `ImuTiltSensor` (Winkel aus einem eigenen `ImuSensor`,
+`GY521TiltSensor` als Kurzform für den GY-521: `pitch` um Y und `roll` um X per Komplementärfilter mit
 gelerntem Kreisel-Nullpunkt, `tilt` als Neigung der Z-Achse gegen die
 Senkrechte, `dir` als Richtung der Neigung — Peilung der oberen Seite in
 der X/Y-Ebene, `atan2(roll, pitch)`, 0…360° (0 = −X-Seite oben, 90 = +Y,

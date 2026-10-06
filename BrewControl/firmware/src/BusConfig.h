@@ -14,7 +14,7 @@
 namespace BrewControl {
 
 // Buses as centrally defined objects: a OneWire pin, SPI lines, an I2C pair.
-// Items on a bus (DS18B20, MAX31865, BME280, GY521) reference it by id
+// Items on a bus (DS18B20, MAX31865, BME280, IMUs) reference it by id
 // ("bus": "onewire-4") instead of repeating its pins. Header-only and
 // Arduino-free so validation and the migration of old configs run in the
 // native tests; the drivers live in DynamicItems.cpp.
@@ -48,7 +48,7 @@ inline const BusType* findBusType(const char* type) {
 inline const char* itemBusType(const char* itemType) {
   if (strcmp(itemType, "DS18B20") == 0) return "onewire";
   if (strcmp(itemType, "MAX31865") == 0) return "spi";
-  if (strcmp(itemType, "BME280") == 0 || strcmp(itemType, "GY521") == 0) return "i2c";
+  if (strcmp(itemType, "BME280") == 0 || findImuType(itemType)) return "i2c";
   return nullptr;
 }
 

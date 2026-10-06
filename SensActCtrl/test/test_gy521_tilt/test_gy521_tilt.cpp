@@ -9,12 +9,12 @@ using SensActCtrl::GY521TiltSensor;
 using SensActCtrl::Quantity;
 using SensActCtrl::ValueKind;
 
-// Hooks defined by the native stub in GY521Sensor.cpp.
+// Hooks defined by the native stub in ImuSensor.cpp.
 namespace SensActCtrlTest {
-extern bool     gy521Present;
-extern uint32_t gy521NowMs;
-extern float    gy521AccelG[3];
-extern float    gy521GyroDps[3];
+extern bool     imuPresent;
+extern uint32_t imuNowMs;
+extern float    imuAccelG[3];
+extern float    imuGyroDps[3];
 }  // namespace SensActCtrlTest
 
 using namespace SensActCtrlTest;
@@ -23,14 +23,14 @@ namespace {
 constexpr float kDegToRad = 0.017453292519943295f;
 
 void setAccel(float x, float y, float z) {
-  gy521AccelG[0] = x; gy521AccelG[1] = y; gy521AccelG[2] = z;
+  imuAccelG[0] = x; imuAccelG[1] = y; imuAccelG[2] = z;
 }
 void setGyro(float x, float y, float z) {
-  gy521GyroDps[0] = x; gy521GyroDps[1] = y; gy521GyroDps[2] = z;
+  imuGyroDps[0] = x; imuGyroDps[1] = y; imuGyroDps[2] = z;
 }
 // n ticks, 10 ms apart.
 void run(GY521TiltSensor& s, int n) {
-  for (int i = 0; i < n; ++i) { gy521NowMs += 10; s.tick(); }
+  for (int i = 0; i < n; ++i) { imuNowMs += 10; s.tick(); }
 }
 }  // namespace
 
@@ -286,7 +286,7 @@ void test_caller_bus_delegates_to_raw_sensor() {
 // ── Device absent / hot-plug ────────────────────────────────────────────────
 
 void test_no_device_all_channels_invalid() {
-  gy521Present = false;
+  imuPresent = false;
   GY521TiltSensor s("imu", 0x68);
   s.setChannelMask(GY521TiltSensor::kChannelAll);
   s.begin();
@@ -302,13 +302,13 @@ void test_device_pulled_angles_invalid_then_recover() {
   s.tick();
   TEST_ASSERT_TRUE(s.channel(0).reading.valid);
 
-  gy521Present = false;
-  gy521NowMs += 100;
+  imuPresent = false;
+  imuNowMs += 100;
   s.tick();
   for (size_t i = 0; i < 3; ++i) TEST_ASSERT_FALSE(s.channel(i).reading.valid);
 
-  gy521Present = true;
-  gy521NowMs += 10000;
+  imuPresent = true;
+  imuNowMs += 10000;
   s.tick();
   for (size_t i = 0; i < 3; ++i) {
     TEST_ASSERT_TRUE(s.channel(i).reading.valid);
@@ -317,8 +317,8 @@ void test_device_pulled_angles_invalid_then_recover() {
 }
 
 void setUp() {
-  gy521Present = true;
-  gy521NowMs   = 0;
+  imuPresent = true;
+  imuNowMs   = 0;
   setAccel(0.0f, 0.0f, 1.0f);
   setGyro(0.0f, 0.0f, 0.0f);
 }

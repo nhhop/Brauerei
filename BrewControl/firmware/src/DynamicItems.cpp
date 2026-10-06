@@ -328,16 +328,23 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x76);
     e->bus = acquireBus(*bus);
     e->ptr = std::make_unique<BME280Sensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
-  } else if (strcmp(type, "GY521") == 0) {
-    uint8_t addr = static_cast<uint8_t>(cfg["address"] | 0x68);
+  } else if (const ImuType* imu = findImuType(type)) {
+    uint8_t addr = static_cast<uint8_t>(cfg["address"] | imu->defaultAddress);
     uint16_t    mask;
     const char* err = nullptr;
     // Absent → pitch only, the one angle a GY521 had before it had channels.
     if (!parseChannelMask(cfg, kGy521Channels, kGy521ChannelCount,
-                          GY521TiltSensor::kChannelPitch, mask, err))
+                          ImuTiltSensor::kChannelPitch, mask, err))
       return {false, err};
     e->bus = acquireBus(*bus);
-    auto sensor = std::make_unique<GY521TiltSensor>(e->id.c_str(), e->bus.as<I2cBus>().wire, addr);
+    TwoWire&    wire = e->bus.as<I2cBus>().wire;
+    const char* id   = e->id.c_str();
+    std::unique_ptr<ImuSensor> raw;
+    if (strcmp(type, "QMI8658") == 0)     raw = std::make_unique<QMI8658Sensor>(id, wire, addr);
+    else if (strcmp(type, "BMI270") == 0) raw = std::make_unique<BMI270Sensor>(id, wire, addr);
+    else if (strcmp(type, "BMI160") == 0) raw = std::make_unique<BMI160Sensor>(id, wire, addr);
+    else                                  raw = std::make_unique<GY521Sensor>(id, wire, addr);
+    auto sensor = std::make_unique<ImuTiltSensor>(id, std::move(raw));
     sensor->setChannelMask(mask);
     e->ptr = std::move(sensor);
   } else if (strcmp(type, "YF-S201") == 0) {

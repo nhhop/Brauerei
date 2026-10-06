@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "ImuTypes.h"
+
 namespace BrewControl {
 
 // I2C address bookkeeping for dynamic items: which addresses the board
@@ -47,7 +49,7 @@ inline bool addressReserved(const AddrDef* reserved, size_t count, uint8_t addr,
   return false;
 }
 
-// Appends the I2C address a BME280/GY521 config occupies (default per type
+// Appends the I2C address a BME280/IMU config occupies (default per type
 // if "address" is absent). Other item types add nothing.
 inline void collectAddresses(JsonObjectConst cfg, std::vector<AddressUse>& out) {
   const char* type = cfg["type"] | "";
@@ -55,8 +57,8 @@ inline void collectAddresses(JsonObjectConst cfg, std::vector<AddressUse>& out) 
   const char* bus  = cfg["bus"]  | "";
   if (strcmp(type, "BME280") == 0) {
     out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | 0x76)});
-  } else if (strcmp(type, "GY521") == 0) {
-    out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | 0x68)});
+  } else if (const ImuType* imu = findImuType(type)) {
+    out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | imu->defaultAddress)});
   }
 }
 

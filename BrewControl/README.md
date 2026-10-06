@@ -210,7 +210,7 @@ Die Id ergibt sich aus Typ und Pins:
   MAX31865 treibt die Leitungen weiter selbst per Software-SPI; sein `cs` bleibt ein
   eigener Pin des Items. MAX31865 ohne `bus` (Hardware-SPI mit den Board-Default-Pins)
   hängt an keinem Bus.
-- **`i2c-<sda>-<scl>`**: BME280 und GY521. Der ESP32 hat zwei I2C-Controller, also
+- **`i2c-<sda>-<scl>`**: BME280 und die IMUs (GY521, QMI8658, BMI270, BMI160). Der ESP32 hat zwei I2C-Controller, also
   höchstens zwei I2C-Busse; jeder bekommt beim Anlegen einen fest (`port`: 0 = `Wire`,
   1 = `Wire1`), damit er nie wechselt, solange Items darauf laufen.
 - **Feste Busse** des Boards (`BoardPins.h`, nie gespeichert, nicht änderbar): am LilyGo
