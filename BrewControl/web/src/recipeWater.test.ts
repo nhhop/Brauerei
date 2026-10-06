@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TEMPLATES, type Brewhouse } from './brewhouse';
+import { DEFAULT_GRAIN_ABSORPTION, TEMPLATES, type Brewhouse } from './brewhouse';
 import { calcWater } from './recipeWater';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 
@@ -43,8 +43,8 @@ describe('calcWater per template', () => {
   it('kettle + lauter tun: lautering by gravity, only the dead space counts', () => {
     const { figures, w, notes } = calc(template('kettle-lauter'));
     expect(figures).toEqual({
-      evaporation: 3, preBoil: 23, wortLoss: 1, absorption: 4.5, total: 28.5, sparge: true, ratio: 3.5,
-      strike: 17.5, spargeL: 11, strikeFill: 17.5, spargeFill: 11.5,
+      evaporation: 3, preBoil: 23, wortLoss: 1, absorption: 4.8, total: 28.8, sparge: true, ratio: 3.5,
+      strike: 17.5, spargeL: 11.3, strikeFill: 17.5, spargeFill: 11.8,
     });
     expect(w.wortLosses).toEqual([{ label: 'Totraum Läuterbottich', l: 1 }]);
     expect(w.spargeFill).toEqual([{ label: 'Totraum Einkocher', l: 0.5 }]);
@@ -54,8 +54,8 @@ describe('calcWater per template', () => {
   it('3-vessel HERMS: dead space plus line; the HLT dead space counts once', () => {
     const { figures, w, notes } = calc(template('herms3'));
     expect(figures).toEqual({
-      evaporation: 4, preBoil: 24, wortLoss: 2, absorption: 4.5, total: 30.5, sparge: true, ratio: 3.5,
-      strike: 17.5, spargeL: 13, strikeFill: 20, spargeFill: 13.5,
+      evaporation: 4, preBoil: 24, wortLoss: 2, absorption: 4.8, total: 30.8, sparge: true, ratio: 3.5,
+      strike: 17.5, spargeL: 13.3, strikeFill: 20, spargeFill: 13.8,
     });
     expect(w.wortLosses).toEqual([
       { label: 'Totraum Maisch-/Läuterbottich', l: 1.5 }, { label: 'Leitung Läutern', l: 0.5 },
@@ -84,7 +84,7 @@ describe('calcWater', () => {
   it('falls back to the default grain absorption without a value at the lauter vessel', () => {
     const bh = template('herms3');
     const { w } = calc({ ...bh, vessels: bh.vessels.map((v) => ({ ...v, grainAbsorptionLPerKg: undefined })) });
-    expect(w.absorptionLPerKg).toBe(0.9);
+    expect(w.absorptionLPerKg).toBe(DEFAULT_GRAIN_ABSORPTION);
   });
 
   it('leaves out a line loss that comes back', () => {
@@ -97,12 +97,12 @@ describe('calcWater', () => {
   it('puts all water into the strike without sparge', () => {
     const { figures } = calc(template('herms3'), { water: { sparge: false, mashRatioLPerKg: 3 } });
     expect([figures.strike, figures.spargeL, figures.ratio, figures.strikeFill, figures.spargeFill])
-      .toEqual([30.5, 0, 6.1, 33, 0]);
+      .toEqual([30.8, 0, 6.16, 33.3, 0]);
   });
 
   it('notes a negative sparge when the ratio is too high', () => {
     const { figures, notes } = calc(template('herms3'), { water: { mashRatioLPerKg: 7 } });
-    expect(figures.spargeL).toBe(-4.5);
+    expect(figures.spargeL).toBe(-4.2);
     expect(notes).toEqual(['Der Hauptguss ist größer als das Gesamtwasser: Das Hauptguss-Verhältnis ist zu hoch.']);
   });
 
@@ -113,11 +113,11 @@ describe('calcWater', () => {
       'Der Kochbehälter hat keine Verdampfung, gerechnet wird mit 0 l/h.',
       'Keine Schüttung in der Maische.',
     ]);
-    // 60 l + 3 l evaporation in a 50 l pot; mash 63 l + 6 kg · (0.6 + 0.67) l/kg.
+    // 60 l + 3 l evaporation in a 50 l pot; mash 63 l + 6 kg · (0.6 + 0.75) l/kg.
     const malt: Ingredient = { id: 'm', kind: 'fermentable', name: 'Pilsner', amount: 6, timing: 'mash' };
     expect(calc(bh, { volumeL: 60, ingredients: [malt] }).notes).toEqual([
       'Pfannevoll (63,0 l) passt nicht in Topf (50,0 l).',
-      'Die Maische (70,6 l) passt nicht in Topf (50,0 l).',
+      'Die Maische (71,1 l) passt nicht in Topf (50,0 l).',
     ]);
   });
 });

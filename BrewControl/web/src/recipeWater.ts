@@ -35,8 +35,8 @@ export interface Water {
   mashVolumeL: number;
 }
 
-// TODO(verify): volume the grain adds to the mash.
-export const GRAIN_DISPLACEMENT_L_PER_KG = 0.67;
+// Volume the grain adds to the mash (Braumagazin), for the mash volume only.
+export const GRAIN_DISPLACEMENT_L_PER_KG = 0.75;
 
 export const fmtL = (n: number) => `${n.toFixed(1).replace('.', ',')} l`;
 

@@ -23,7 +23,7 @@ export function Stat({ label, value, unit, digits, sub }: {
     <div>
       <dt class="text-xs text-muted">{label}</dt>
       <dd class="text-lg font-semibold">
-        {value === undefined ? '—' : <>{value.toFixed(digits)} <span class="text-xs font-normal text-muted">{unit}</span></>}
+        {value === undefined ? '—' : <>{value.toFixed(digits).replace('.', ',')} <span class="text-xs font-normal text-muted">{unit}</span></>}
       </dd>
       {sub && <dd class="text-xs text-muted">{sub}</dd>}
     </div>

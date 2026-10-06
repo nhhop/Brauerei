@@ -43,8 +43,8 @@ export interface Vessel {
   grainAbsorptionLPerKg?: number; // wort the spent grain holds back, only while it lauters
 }
 
-// TODO(verify): common literature values are 0.8–1.0 l/kg.
-export const DEFAULT_GRAIN_ABSORPTION = 0.9;
+// Literature gives 0.8–1.0 l/kg; Brewfather's default.
+export const DEFAULT_GRAIN_ABSORPTION = 0.96;
 
 // Grain absorption of the lauter vessel, or the default.
 export function grainAbsorptionOf(bh: Brewhouse): number {
@@ -593,7 +593,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
     key: 'kettle-lauter', label: 'Maische-/Würzepfanne + Läuterbottich', desc: 'Nachguss im Einkocher',
     build: () => {
       const kettle = vessel('Maische-/Würzepfanne', 50, 1, { evaporationLPerH: 3 });
-      const tun = vessel('Läuterbottich', 40, 1, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.9 });
+      const tun = vessel('Läuterbottich', 40, 1, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.96 });
       const hlt = vessel('Einkocher', 27, 0.5);
       const bh = build('Pfanne + Läuterbottich', [
         [kettle, ['strike', 'mash', 'boil', 'whirlpool', 'chill']], [tun, ['lauter']], [hlt, ['sparge']],
@@ -617,7 +617,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
     key: 'herms2', label: '2-Kessel-HERMS', desc: 'Nachguss und Kochen in einem Kessel',
     build: () => {
       const kettle = vessel('HLT/Würzepfanne', 70, 2, { evaporationLPerH: 4 });
-      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.9 });
+      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.96 });
       let bh = build('2-Kessel-HERMS', [
         [kettle, ['strike', 'sparge', 'boil', 'whirlpool', 'chill']], [tun, ['mash', 'lauter']],
       ], [
@@ -644,7 +644,7 @@ export const TEMPLATES: { key: string; label: string; desc: string; build: () =>
     key: 'herms3', label: '3-Kessel-HERMS', desc: 'HLT mit Spirale, Maisch-/Läuterbottich, Würzepfanne',
     build: () => {
       const hlt = vessel('HLT', 70, 2);
-      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.9 });
+      const tun = vessel('Maisch-/Läuterbottich', 70, 1.5, { lauterMethod: 'Senkboden', grainAbsorptionLPerKg: 0.96 });
       const kettle = vessel('Würzepfanne', 70, 2, { evaporationLPerH: 4 });
       let bh = build('3-Kessel-HERMS', [
         [hlt, ['strike', 'sparge']], [tun, ['mash', 'lauter']], [kettle, ['boil', 'whirlpool', 'chill']],

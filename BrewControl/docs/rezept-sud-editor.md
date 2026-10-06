@@ -213,7 +213,7 @@ Liste und Detailansicht.
      Guss im Maischbehälter selbst, ist die Einfüllmenge gleich dem Guss.
 - **Hinweise** sperren nichts: kein oder gelöschtes Sudhaus, Kochbehälter ohne Verdampfung, keine
   Schüttung, Nachguss unter 0 (Verhältnis zu hoch), Pfannevoll größer als der Kochbehälter, Maische
-  (Hauptguss + 0,67 l/kg Verdrängung, ungeprüft) größer als der Maischbehälter.
+  (Hauptguss + 0,75 l/kg Verdrängung, Wert aus dem Braumagazin) größer als der Maischbehälter.
 - **Darstellung:** Karte „Wassermenge“ mit Kennzahlen (Hauptguss, Nachguss, Gesamtwasser, Pfannevoll; darunter
   „einfüllen x l“, wenn die Einfüllmenge abweicht), Schalter „Mit Nachguss“, Eingaben (Hauptguss-Verhältnis,
   Nachguss-Temperatur, Verdampfung, Treberverlust) und farbigem Balken (Gesamtwasser aufgeteilt in
@@ -345,8 +345,8 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in 
   den Schritten („…pfanne“, wenn der Behälter beim Maischen direkt beheizt ist, sonst „…bottich“).
   Verdampfung in l/h gibt es nur am Kochbehälter (das Rezept kann sie überschreiben), die
   Läutermethode (Senkboden, Sack, Malzkorb …) nur am Läuterbehälter, rein beschreibend. Ebenfalls nur am
-  Läuterbehälter steht der **Treberverlust** in l/kg (fehlt er, gilt 0,9; Vorlagen: Sack 0,6, Malzrohr 0,8,
-  Senkboden 0,9), den das Rezept überschreiben kann.
+  Läuterbehälter steht der **Treberverlust** in l/kg (fehlt er, gilt 0,96 wie bei Brewfather, Literatur 0,8–1,0;
+  Vorlagen: Sack 0,6, Malzrohr 0,8, Senkboden 0,96), den das Rezept überschreiben kann.
 - **Geräte:** Heizquellen, Pumpen, Rührwerke, Ventile (nur Wasserzulauf), Spiralen, Kühler und
   Kondensatoren. Jedes hat einen Ort (Behälter oder inline) und ist **„von Hand“ oder „angeschlossen“**.
   Angeschlossen braucht es eine Registry-Verknüpfung: Heizquelle → Regler oder Aktor, alle anderen → Aktor.

@@ -31,7 +31,7 @@ export function WaterTab({ recipe, onChange, brewhouses }: TabProps) {
     onChange({ water: Object.values(next).some((v) => v !== undefined) ? next : undefined });
   };
   const boilEvaporation = bh.vessels.find((v) => v.id === bh.steps.boil?.vesselId)?.evaporationLPerH;
-  const fillSub = (fill: number, water: number) => (fill !== water ? `einfüllen ${fill.toFixed(1)} l` : undefined);
+  const fillSub = (fill: number, water: number) => (fill !== water ? `einfüllen ${fmtL(fill)}` : undefined);
 
   return (
     <Card title="Wassermenge">
