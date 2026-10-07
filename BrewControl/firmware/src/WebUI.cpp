@@ -15,6 +15,7 @@
 
 #include "AssetInstall.h"
 #include "BoardPins.h"
+#include "DisplayOrientation.h"
 #include "EnergyManager.h"
 #include "HeapDiag.h"
 #include "Hostname.h"
@@ -2074,6 +2075,14 @@ void WebUI::begin(bool serve) {
             if (v < 1 || v > 100) {
               req->send(400, "text/plain", String("invalid display ") + key); return;
             }
+          }
+          if (!display["rotation"].isNull() &&
+              !(display["rotation"].is<int>() && isDisplayRotation(display["rotation"].as<int32_t>()))) {
+            req->send(400, "text/plain", "invalid display rotation"); return;
+          }
+          // Like energy.batterySensor: not checked against the registry.
+          if (!display["orientationSensor"].isNull() && !display["orientationSensor"].is<const char*>()) {
+            req->send(400, "text/plain", "invalid display orientationSensor"); return;
           }
         }
         JsonObject energy = obj["energy"].as<JsonObject>();

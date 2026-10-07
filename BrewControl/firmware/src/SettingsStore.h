@@ -77,6 +77,12 @@ class SettingsStore {
   uint8_t displayDimPercent() const { return displayDimPercent_; }  // % of displayBrightness
   uint32_t displayOffAfterSec() const { return displayOffAfterSec_; }
   bool displayPixelShift() const { return displayPixelShift_; }
+  // Orientation (DisplayOrientation.h): without an orientation sensor the
+  // picture is turned by displayRotation() clockwise; with one it follows the
+  // sensor's pitch/roll, and displayRotation() is the mounting offset.
+  uint16_t displayRotation() const { return displayRotation_; }
+  const String& displayOrientationSensor() const { return displayOrientationSensor_; }
+  bool displayOrientationMirror() const { return displayOrientationMirror_; }
 
   // Energy management: id of the sensor item that measures the battery
   // voltage ("" = none). The item itself is a normal sensor, usually of
@@ -149,6 +155,9 @@ class SettingsStore {
   uint8_t  displayDimPercent_  = 20;
   uint32_t displayOffAfterSec_ = 600;
   bool     displayPixelShift_  = false;
+  uint16_t displayRotation_    = 0;
+  String   displayOrientationSensor_ = "";
+  bool     displayOrientationMirror_ = false;
 
   String   energyBatterySensor_ = "";
   bool     energyDeepSleep_ = false;

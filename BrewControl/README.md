@@ -455,6 +455,19 @@ Akzentfarben, baut das Display ohne Neustart neu auf.
 - Ein Aktor wird von einem aktiven Regler oder einem laufenden Programm
   gesteuert. Die Web-UI fragt in diesem Fall nach, das Display sperrt.
 
+**Ausrichtung:** Unter Einstellungen › Gerätedisplay › Ausrichtung lässt sich
+das Bild fest um 90°, 180° oder 270° drehen (`display.rotation`) — oder es folgt
+einem Neigungssensor (`display.orientationSensor`, jedes IMU-Item mit `pitch`
+und `roll`): Es dreht sich in den Quadranten der Seite, die oben ist, mit 15°
+Hysterese hinter jeder Diagonale; liegt das Gerät flacher als 30°, bleibt es,
+wie es ist. Mit Sensor ist `rotation` der Ausgleich der Einbaulage (die Drehung,
+solange die −X-Seite des Sensors oben ist), und `orientationMirror` kehrt die
+Drehrichtung um, falls die IMU das Panel von hinten sieht. Gedreht wird in
+Software: LVGL rendert immer aufrecht, `flush()` dreht jeden Block streifenweise
+durch einen 8-KB-Puffer (intern, DMA-fähig, erst bei der ersten Drehung belegt,
+nicht aus dem LVGL-Pool), der Touch wird zurückgedreht. Die MADCTL-Spiegelung
+des CO5300 kann keine 90° und verschiebt den Spaltenoffset, deshalb nicht.
+
 **Burn-in-Schutz:** Ohne Berührung dimmt das Display und wird später schwarz
 (Helligkeit 0, beim AMOLED sind die Pixel dann aus). Eingestellt wird das unter
 Einstellungen › Gerätedisplay (`display.*` in `/api/settings`, wirkt ohne

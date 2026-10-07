@@ -626,6 +626,11 @@ export interface DisplaySettings {
   dimPercent: number;    // 1..100, share of `brightness` while dimmed
   offAfterSec: number;   // 0..86400
   pixelShift: boolean;   // move the picture a few pixels every minute
+  // Clockwise 0/90/180/270. Without orientationSensor the fixed rotation, with
+  // one the mounting offset (rotation while the IMU's -X side points up).
+  rotation: number;
+  orientationSensor: string;  // tilt sensor id (pitch + roll channels), "" = fixed
+  orientationMirror: boolean; // reverse the sense of rotation (IMU seen from behind)
   supported: boolean;    // read-only, server-computed: this build drives a display
 }
 

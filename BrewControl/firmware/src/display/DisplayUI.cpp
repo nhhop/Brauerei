@@ -9,7 +9,11 @@
 #include <display/Arduino_CO5300.h>
 #include <esp_heap_caps.h>
 #include <lvgl.h>
+#include <SensActCtrl.h>
 
+#include <cstring>
+
+#include "../DisplayOrientation.h"
 #include "../SettingsStore.h"
 
 namespace BrewControl {
@@ -101,6 +105,16 @@ constexpr uint32_t kBufPx = static_cast<uint32_t>(kLcdW) * kBufLines;
 // already started on BREWCTL_I2C_SDA/SCL. Polled from LVGL; the interrupt line
 // stays unused.
 
+// Rotation (DisplayOrientation.h): LVGL always renders upright; flush() turns
+// each block onto the panel through a small strip buffer, readTouch() turns
+// the touch back. The panel's own MADCTL flips are not used: they cannot do
+// 90° on the CO5300, and a flip moves the 6 px column offset to the other
+// side. The strip buffer comes from internal DMA RAM, not the LVGL pool, and
+// only once the picture is first turned.
+constexpr uint32_t kRotBufPx = 4096;
+uint16_t* g_rotBuf = nullptr;
+uint16_t g_rotation = 0;  // clockwise, 0/90/180/270
+
 Arduino_CO5300* g_gfx = nullptr;
 lv_disp_draw_buf_t g_drawBuf;
 lv_disp_drv_t g_dispDrv;
@@ -145,13 +159,41 @@ void rounder(lv_disp_drv_t*, lv_area_t* a) {
   a->y2 |= 1;
 }
 
-void flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
+// Draws a block turned by g_rotation, a few panel rows at a time. Panel rows
+// of a strip start even and end odd like the block itself (465 is odd, so the
+// rounder's even/odd edges survive every rotation), as the CO5300 needs.
+void flushRotated(const lv_area_t* a, const uint16_t* src) {
   const int16_t w = a->x2 - a->x1 + 1;
-  const int16_t h = a->y2 - a->y1 + 1;
+  int16_t ax, ay, bx, by;
+  rotatePoint(g_rotation, kLcdW, a->x1, a->y1, ax, ay);
+  rotatePoint(g_rotation, kLcdW, a->x2, a->y2, bx, by);
+  const int16_t px0 = ax < bx ? ax : bx, py0 = ay < by ? ay : by;
+  const int16_t pw = (ax < bx ? bx - ax : ax - bx) + 1;
+  const int16_t ph = (ay < by ? by - ay : ay - by) + 1;
+  const int16_t rows = static_cast<int16_t>((kRotBufPx / pw) & ~1u);
+  for (int16_t j0 = 0; j0 < ph; j0 += rows) {
+    const int16_t n = ph - j0 < rows ? ph - j0 : rows;
+    uint16_t* out = g_rotBuf;
+    for (int16_t j = j0; j < j0 + n; ++j) {
+      for (int16_t i = 0; i < pw; ++i) {
+        int16_t lx, ly;
+        unrotatePoint(g_rotation, kLcdW, px0 + i, py0 + j, lx, ly);
+        *out++ = src[(ly - a->y1) * w + (lx - a->x1)];
+      }
+    }
+    g_gfx->draw16bitBeRGBBitmap(px0, py0 + j0, g_rotBuf, pw, n);
+  }
+}
+
+void flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
   // LV_COLOR_16_SWAP=1: the buffer already holds big-endian RGB565, which the
   // panel takes byte for byte - no per-pixel conversion on this path.
-  g_gfx->draw16bitBeRGBBitmap(a->x1, a->y1, reinterpret_cast<uint16_t*>(px), w,
-                              h);
+  if (g_rotation && g_rotBuf) {
+    flushRotated(a, reinterpret_cast<uint16_t*>(px));
+  } else {
+    g_gfx->draw16bitBeRGBBitmap(a->x1, a->y1, reinterpret_cast<uint16_t*>(px),
+                                a->x2 - a->x1 + 1, a->y2 - a->y1 + 1);
+  }
   lv_disp_flush_ready(drv);
 }
 
@@ -168,8 +210,10 @@ void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
       x = kLcdW - 1 - x;
       y = kLcdH - 1 - y;
     }
-    data->point.x = x;
-    data->point.y = y;
+    int16_t lx, ly;
+    unrotatePoint(g_rotation, kLcdW, x, y, lx, ly);
+    data->point.x = lx;
+    data->point.y = ly;
     data->state = LV_INDEV_STATE_PRESSED;
   } else {
     data->state = LV_INDEV_STATE_RELEASED;  // LVGL keeps the last point
@@ -178,8 +222,9 @@ void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
 
 }  // namespace
 
-void DisplayUI::begin(const SettingsStore& settings) {
+void DisplayUI::begin(const SettingsStore& settings, SensActCtrl::Registry& registry) {
   settings_ = &settings;
+  registry_ = &registry;
   if (kLcdEn >= 0) {
     pinMode(kLcdEn, OUTPUT);
     digitalWrite(kLcdEn, HIGH);
@@ -227,6 +272,8 @@ void DisplayUI::begin(const SettingsStore& settings) {
   }
 
   ready_ = true;
+  lastOrientMs_ = millis() - kOrientPollMs;  // a fixed rotation applies from the first frame
+  updateRotation_();
   Serial.printf("Display: %dx%d up, draw buffer %u B, touch %s\n", kLcdW,
                 kLcdH, static_cast<unsigned>(kBufPx * sizeof(lv_color_t)),
                 g_touchUp ? g_touch.getModelName() : "MISSING");
@@ -240,8 +287,52 @@ void DisplayUI::off() {
   if (ready_) g_gfx->displayOff();
 }
 
+void DisplayUI::updateRotation_() {
+  if (millis() - lastOrientMs_ < kOrientPollMs) return;
+  lastOrientMs_ = millis();
+  uint16_t want = settings_->displayRotation();
+  const String& id = settings_->displayOrientationSensor();
+  if (id.length()) {
+    // Following a sensor: rotation is its mounting offset. A missing sensor,
+    // or one without valid pitch and roll, leaves the picture as it is.
+    want = g_rotation;
+    if (SensActCtrl::Sensor* s = registry_->findSensor(id.c_str())) {
+      float pitch = 0, roll = 0;
+      bool hasPitch = false, hasRoll = false;
+      for (size_t i = 0; i < s->channelCount(); ++i) {
+        const SensActCtrl::Channel c = s->channel(i);
+        if (!c.reading.valid) continue;
+        if (strcmp(c.key, "pitch") == 0) {
+          pitch = c.reading.value;
+          hasPitch = true;
+        } else if (strcmp(c.key, "roll") == 0) {
+          roll = c.reading.value;
+          hasRoll = true;
+        }
+      }
+      if (hasPitch && hasRoll)
+        want = orientationFromTilt(pitch, roll, settings_->displayRotation(),
+                                   settings_->displayOrientationMirror(), g_rotation);
+    }
+  }
+  if (want == g_rotation) return;
+  if (want && !g_rotBuf) {
+    g_rotBuf = static_cast<uint16_t*>(heap_caps_malloc(
+        kRotBufPx * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    if (!g_rotBuf) {
+      static bool logged = false;
+      if (!logged) Serial.println(F("Display: rotation buffer alloc failed"));
+      logged = true;
+      return;
+    }
+  }
+  g_rotation = want;
+  lv_obj_invalidate(lv_scr_act());  // the whole picture, turned
+}
+
 void DisplayUI::tick(bool holdAwake) {
   if (!ready_) return;
+  updateRotation_();
   if (power_ != Power::Off) {
     lv_timer_handler();
   } else if (g_touchUp && millis() - lastPollMs_ >= kDarkPollMs) {

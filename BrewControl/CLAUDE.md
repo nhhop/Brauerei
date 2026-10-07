@@ -113,6 +113,11 @@ pnpm typecheck
     Nichts, was ohne Display weiterlaufen muss, gehört in einen LVGL-Timer.
   - Den Touch nur über `readTouch()` bzw. `noteTouch()` in `DisplayUI.cpp` lesen. Jeder
     `getTouchPoints()`-Aufruf quittiert den Frame, ein zweiter Leser sieht leere Frames.
+  - **Drehung** (`display.rotation`/`orientationSensor`, seit 2026-10-07) passiert nur in
+    `DisplayUI.cpp`: LVGL kennt sie nicht und rendert aufrecht; `flush()` dreht beim Blit,
+    `readTouch()` dreht zurück (`DisplayOrientation.h`). Seiten-Code muss nichts davon wissen.
+    Der `rounder()` bleibt gültig, weil 465 ungerade ist — bei einem Panel mit gerader
+    Kantenlänge nicht mehr.
 - esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
   Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
   `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
