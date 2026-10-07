@@ -1,24 +1,27 @@
 import { useState } from 'preact/hooks';
 import { Link2 } from 'lucide-preact';
+import type { CatalogIngredient } from '../../ingredientCatalog';
 import type { Ingredient } from '../../recipes';
 import { findIngredients, useCatalog } from '../../ingredientSource';
 import { inp } from '../../ui';
 
 // Name field with catalog suggestions. Picking a suggestion links the row to the
 // catalog entry (ingredientId); typing afterwards makes it free text again.
-export function IngredientPicker({ ingredient, onChange }: {
+// Either way the concentration of the addition falls back to the new entry's.
+export function IngredientPicker({ ingredient, onChange, only }: {
   ingredient: Ingredient;
   onChange: (p: Partial<Ingredient>) => void;
+  only?: (c: CatalogIngredient) => boolean;
 }) {
   const catalog = useCatalog();
   const [open, setOpen] = useState(false);
-  const hits = catalog && open ? findIngredients(catalog.ingredients, ingredient.kind, ingredient.name) : [];
+  const hits = catalog && open ? findIngredients(catalog.ingredients, ingredient.kind, ingredient.name, 8, only) : [];
 
   return (
     <div class="relative min-w-0 flex-1 basis-40">
       <input class={`${inp} w-full ${ingredient.ingredientId ? 'pr-7' : ''}`} placeholder="Name"
         value={ingredient.name}
-        onInput={(e) => { onChange({ name: e.currentTarget.value, ingredientId: undefined }); setOpen(true); }}
+        onInput={(e) => { onChange({ name: e.currentTarget.value, ingredientId: undefined, strengthPct: undefined }); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)} />
       {ingredient.ingredientId && (
@@ -33,7 +36,7 @@ export function IngredientPicker({ ingredient, onChange }: {
               <button type="button" class="block w-full px-3 py-1.5 text-left text-sm hover:bg-fg/10"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  onChange({ name: h.name, ingredientId: h.id });
+                  onChange({ name: h.name, ingredientId: h.id, strengthPct: undefined });
                   setOpen(false);
                 }}>
                 {h.name}

@@ -4638,6 +4638,34 @@ components:
       properties:
         grainTempC: { type: number, description: "Grain temperature, °C." }
         tapWaterTempC: { type: number, description: "Tap water temperature, °C." }
+        waters:
+          type: array
+          description: |
+            Water analyses (`web/src/waterChem.ts`, type `WaterProfile`), the
+            source water of recipes. VE water (`id: ve`) is built into the web
+            UI and never stored.
+          items: { $ref: "#/components/schemas/WaterProfile" }
+        defaultWaterId:
+          type: string
+          description: Source water of recipes that pick none; unset = the first profile, else VE water.
+      additionalProperties: true
+
+    WaterProfile:
+      type: object
+      required: [id, name, ca, mg, na, cl, so4, hco3]
+      description: Ions in mg/l. Without `ph` the web UI cannot compute the water pH after acid.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        ca: { type: number }
+        mg: { type: number }
+        na: { type: number }
+        k: { type: number }
+        cl: { type: number }
+        so4: { type: number }
+        hco3: { type: number }
+        ph: { type: number }
+        note: { type: string, description: "Source, date of the analysis." }
       additionalProperties: true
 
     Brewhouse:

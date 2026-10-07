@@ -2,6 +2,7 @@ import { failed } from './api';
 import { DEFAULT_EFFICIENCY, VALID_ID, uid } from './recipes';
 import { unitOf } from './refs';
 import type { Snapshot } from './types';
+import type { WaterProfile } from './waterChem';
 
 // Brewing system ("Brauanlage"): the brewery (site values shared by all
 // brewhouses) and its brewhouses. Process steps are assigned freely to vessels.
@@ -29,6 +30,8 @@ export const stepLabel = (k: StepKey) => STEPS.find((s) => s.key === k)!.label;
 export interface Brewery {
   grainTempC: number;
   tapWaterTempC: number;
+  waters?: WaterProfile[];  // water analyses; VE water is built in (waterChem.VE_WATER)
+  defaultWaterId?: string;  // the source water of recipes that pick none
 }
 
 export const DEFAULT_BREWERY: Brewery = { grainTempC: 18, tapWaterTempC: 12 };
@@ -121,7 +124,7 @@ export type MeasureKey =
   | 'grainTemp' | 'tapWaterTemp' | 'strikeVolume' | 'strikePh'
   | 'mashTemp' | 'mashPh'
   | 'spargeVolume' | 'spargeTemp' | 'spargePh'
-  | 'preBoilVolume' | 'preBoilGravity' | 'postBoilVolume' | 'postBoilGravity'
+  | 'preBoilVolume' | 'preBoilGravity' | 'preBoilPh' | 'postBoilVolume' | 'postBoilGravity' | 'postBoilPh'
   | 'batchVolume' | 'pitchTemp';
 
 // Set by the brewing process, not by the brewhouse; shown only for steps the
@@ -138,8 +141,10 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'spargePh', step: 'sparge', label: 'pH Nachguss', unit: 'pH' },
   { key: 'preBoilVolume', step: 'boil', label: 'Pfannevoll', unit: 'l' },
   { key: 'preBoilGravity', step: 'boil', label: 'Stammwürze vor dem Kochen', unit: '°P' },
+  { key: 'preBoilPh', step: 'boil', label: 'pH vor dem Kochen', unit: 'pH' },
   { key: 'postBoilVolume', step: 'boil', label: 'Ausschlagmenge', unit: 'l' },
   { key: 'postBoilGravity', step: 'boil', label: 'Stammwürze nach dem Kochen', unit: '°P' },
+  { key: 'postBoilPh', step: 'boil', label: 'pH Ausschlagwürze', unit: 'pH' },
   { key: 'batchVolume', step: 'chill', label: 'Anstellwürze', unit: 'l' },
   { key: 'pitchTemp', step: 'chill', label: 'Anstelltemperatur', unit: '°C' },
 ];
