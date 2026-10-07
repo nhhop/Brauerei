@@ -6402,3 +6402,88 @@ Zweite von vier Phasen (Plan im Eintrag vom 2026-10-06, Reste in PLAN.md „Neue
 - **Prüfung:** Firmware `pio test -e native` 141/141 (neu `test_waveshare_board_pins`, Waveshare-Fall in `test_i2c_address_map`), `pio run` für alle vier Envs; im Waveshare-Image stecken SD_MMC und die Waveshare-Adresstabelle, nicht die des LilyGo; das LilyGo-Image ist byte-gleich groß wie vor der Änderung. Am LilyGo per OTA: bootet (`resetReason sw`), fester Bus mit den LilyGo-Adressen, GY-521 über den umgebauten `ImuTiltSensor` mit plausiblen Werten (az ≈ 0,96 g) — damit ist die Phase-1-Umstellung des GY-521 auch an echter Hardware bestätigt.
 - **Offen:** alles am Waveshare selbst (PLAN.md „Waveshare … am Gerät“).
 
+## 2026-10-07 — Wasser-Tab, Etappe 2b-1: Aufbereitung von Hand, High Gravity (Branch `feat/wasser-aufbereitung`)
+
+Erster von drei PRs der Etappe 2b (Plan `wasserrechner-etappe-2b.md`, danach 2b-2 pH-Modelle, 2b-3 Automatik). Entscheidungen des Nutzers (2026-10-06/07): Zeitpunkt je Gabe statt Schalter („Brauwasser“ oder gezielt), geplanter Verschnitt gehört ins Rezept (Ort je Rezept, zuletzt geändert führt), Wasserprofile auf Brauerei-Ebene. Testfall ist die Analyse des Nutzers (WW Wittkoppenberg, 03.03.2026).
+
+- **Chemie** `web/src/waterChem.ts` (rein): 13 Mittel nach MMuM (Salze in g, Säuren und CaCl₂-Lösung in ml mit Dichtetabelle), Mischung nach Volumen (Ionen, Alkalität, Carbonat), RA nach Troester in mEq/l (Säuren mit dem bei pH 5,4 dissoziierten Anteil, Kreide halb), Wasser-pH aus dem Kalk-Kohlensäure-Gleichgewicht per Bisektion, `acidForPh` invers dazu, Ionenbilanz.
+- **Brauerei:** `Brewery.waters`/`defaultWaterId`; Abschnitt „Wasserprofile“ in der Karte Brauerei (`pages/WaterProfiles.tsx`, Liste plus Dialog mit Umrechnung aus KS4,3, Karbonat-, Calcium- und Magnesiumhärte, Hinweis ab 10 % Ionenbilanz-Abweichung). VE-Wasser ist fest eingebaut. `openapi.yaml` › `Brewery`/`WaterProfile`; Firmware unverändert.
+- **Rezept/Katalog:** Zeitpunkte `water` („Brauwasser“) und `dilution` („Verschnitt“) nur für Hilfsstoffe, Scope `water`; `Ingredient.strengthPct`; `RecipeWater.sources`/`dilution`/`targetPh`. `Auxiliary.waterAgent` ersetzt das ungenutzte `ions`, 13 Katalogeinträge `aux:…` (Milchsäure 80 %, Phosphorsäure 75 %, Salz- und Schwefelsäure 10 %, CaCl₂-Lösung 33 %).
+- **High Gravity** (`recipeWater.resolveDilution`): In der Pfanne kocht Ausschlag − Verschnitt, die Rückrechnung der Wassermengen beginnt dort; Hinweis mit „übernehmen“, wenn Pfannevoll nicht in den Kochbehälter passt. Im Gärbehälter kommt Ausschlag − Kühlschwund − Transferverluste ab Whirlpool an, die Stammwürze folgt aus der Massenbilanz. `calcStats(recipe, catalog, bh?)`: OG nach dem Verschnitt, IBU mit Pfannenmenge und -SG, verdünnt; beim Gärbehälter verdünnt sich auch die Farbe. Neue reine Hilfe `wortExtract`, `brewMath.volumeFromExtract`.
+- **Aufbereitung** `web/src/recipeTreatment.ts` (rein) und Karte `TreatmentCard.tsx`: Spalten Hauptguss · Maische · Nachguss · Verschnitt (leere entfallen, mobil als Reiter), Ausgangswasser mit „+ x %“ Zweitwasser, Gaben mit Zeitpunkt, Menge, Konzentration, Brauwasser-Anteile ausgegraut, Ergebnis mit Vorher-Wert, Säurehilfe je Wasserspalte, „Berechnung“ und Hinweise. Wassermenge mit Abschnitt „Verschnitt“ und Balkensegment. Zutaten › Hilfsstoffe zeigen Katalog-Einheit und Konzentration. Übersicht: Karte „Charakter“ mit der SO₄:Cl-Skala des Hauptgusses.
+- **Nachtrag nach Durchsicht des Nutzers:** Zeitpunkte „Würze vor dem Kochen“ (`preBoil`) und „Ausschlagwürze“ (`knockOut`) für Hilfsstoffe, auch im Tab Würzekochen; Spalten „Vor dem Kochen“ (Pfannevoll, Maische und Nachguss nach Volumen gemischt) und „Ausschlag“ (durch das Kochen konzentriert, mit einem Verschnitt in der Pfanne) nur bei Gaben dort, dazu immer „Gesamt“ (Beitrag von Wasser und Gaben zum Bier, mit einem Verschnitt im Gärbehälter; Malz-Ionen und Ausfällung nicht gerechnet). In diesen Spalten nur Ionen und SO₄ : Cl, der Würze-pH kommt mit 2b-2. Messungen `preBoilPh` und `postBoilPh` im Schritt Kochen.
+- **Abweichungen vom Plan:** `WaterProfile` steht in `waterChem.ts` (die Chemie braucht es), `brewhouse.ts` importiert es. Die Rezept-Rechnung der Aufbereitung hat ein eigenes Modul `recipeTreatment.ts` statt `recipeWater.ts`. Die Gaben werden in ihrer Zeile bearbeitet (Name, Zeitpunkt, Gesamtmenge, Konzentration), die Spalten zeigen nur, was ankommt; der Canvas hatte je Spalte ein Eingabefeld. Phosphorsäure zählt mit allen drei pKa. Die Säurehilfe nimmt die erste gezielte Säure der Spalte. Ein Ortswechsel des Verschnitts behält die Menge, weil die Stammwürze dann eine andere Würze meint. Das Analyse-RA 2,28 mEq/l stimmt mit HCO₃ aus KS4,3 (3,73 × 61,02 = 227,6 mg/l); mit dem ausgewiesenen HCO₃ 224,5 mg/l sind es 2,23.
+- **Prüfung:** `pnpm test` 245/245 (neu `waterChem.test.ts` 10, `recipeTreatment.test.ts` 8, High Gravity in `recipeWater.test.ts` und `recipeStats.test.ts`), `typecheck`, `build`, Redocly-Lint (nur die bekannte `info-license`-Warnung). UI über den Node-Mock im Scratchpad: Profil des Nutzers angelegt (RA 6,4 °dH), Pils mit 70 % VE, Säurehilfe Nachguss auf pH 5,8 legt 1,19 ml Milchsäure 80 % an (pH 5,80); 30 l Ausschlag im 20-l-Topf: Hinweis 13,0 l, 10 l in der Pfanne ↔ 12,3 °P in beide Richtungen, Wechsel auf Gärbehälter (27,8 l kommen an); Spalten Nachguss/Verschnitt ein- und ausgeblendet, 375 px ohne seitliches Scrollen; nach dem Nachtrag alle sieben Spalten bei Desktop-Breite ohne seitliches Scrollen, Calcium von 57 über 80 (2 g CaCl₂ vor dem Kochen) auf 77 mg/l im Ausschlag (× 1,2 Kochen, × 0,8 Verschnitt), die zwei pH-Messungen im Sudhaus-Editor.
+- **Offen:** Dichten der Säuren (CRC aus dem Gedächtnis) und die Grenzen der SO₄:Cl-Skala gegen Quellen prüfen; 2b-2, 2b-3, CaO-Entcarbonisierung, Sud-Vorschläge aus Messwerten (PLAN.md).
+
+## 2026-10-07 — Wasser-Tab, Etappe 2b-2: pH von Maische und Würze (Branch `feat/wasser-ph`)
+
+Zweiter von drei PRs nach dem Plan `wasserrechner-etappe-2b.md`: pH-Schätzung für Maische und Würze mit Malzdaten, umschaltbar zwischen Troester und Kolbach, dazu eine Säure- und Basenhilfe.
+- **Modelle** in `web/src/mashPh.ts` (rein). `Brewery.phModel` (`troester` als Vorgabe, oder `kolbach`) gilt für alle Rezepte, der Select steht in der Karte „Brauerei“, `openapi.yaml` › `Brewery` ist ergänzt. Troester 2009: pH der Schüttung in destilliertem Wasser plus (0,013·R + 0,013)·RA. Kolbach: nur RA mit Palmers Zielbereich nach Bierfarbe, ohne pH.
+- **Entscheidung des Nutzers (Abweichung vom Plan):** Säure, die über die Alkalität des Wassers hinausgeht, läuft nicht linear über die RA. Sie wirkt auf die Pufferung der Schüttung: 38,5 mEq/(kg·pH) aus Troesters Maische-Titration, Literatur ≈ 40.
+  - Grund: Troesters eigene Salzsäure-Reihe (Tabelle 3, Pilsner). Linear liegt sie bis 0,2 pH daneben, mit der Pufferung innerhalb 0,04.
+  - Beispiel Pils (5 kg, 3,5 l/kg, 70 % VE) auf 5,4: 7,9 ml Milchsäure 80 %. Linear wären es 11,2 ml, „wie Malzsäure“ 4,7 ml.
+- **Zweite Entscheidung:** Spezialmalz ohne Daten zählt bis 25 EBC wie Basismalz, darüber wie Karamellmalz. Der Plan sah immer Basismalz vor.
+- **Malzdaten:** `Malt.distilledWaterPh`, `acidityMeqPerKg`, `lacticAcidPct`. Fehlen sie, wird nach Rolle geschätzt (mit Hinweis):
+  - Basismalz 5,82 − 0,02·EBC
+  - Karamellmalz 14 + 0,13·EBC mEq/kg
+  - Röstmalz 40 mEq/kg
+  - Sauermalz aus dem Milchsäuregehalt
+  - Rohfrucht wie Basismalz
+  - Unverknüpfte Malze bleiben außen vor.
+  - Die Weyermann-Datenblätter im Katalog nennen keine dieser Werte, ergänzt wurde deshalb nichts.
+- **Maische-Spalte:** Der pH steht vor und nach der Gabe „Maische nach pH-Messung“. Dafür hat `calcTreatment` den Zwischenzustand `mid`. Die Hilfe „Säure/Base berechnen“ hat Ziel 5,4 als Vorgabe und legt die Gabe mit Zeitpunkt `mashPh` an.
+- **Würze:** Eine grobe Schätzung, die beim Maische-pH startet und die Pufferung je kg Schüttung behält.
+  - Nachguss, Verschnitt und Gaben wirken mit Restalkalität × Menge. Das Kochen senkt um 0,15 (Troester: 0,1–0,2).
+  - Säure- und Basenhilfe gibt es für „Vor dem Kochen“ und „Ausschlag“. Liegt der pH unter dem Ziel, legt sie Natron an (Kveik).
+  - „Gesamt“ zeigt den Anstell-pH.
+- **Weitere Änderungen:**
+  - `RecipeWater.targetPh` hat jetzt den Schlüssel `PhKey` (dazu `mash`, `preBoil`, `knockOut`).
+  - `suggestAcid` wurde zu `suggestAgent`, `waterChem.acidForPh` zur allgemeinen Bisektion `amountForPh`.
+  - Neu ist `recipeStats.beerEbc`, die Farbe für Kolbach.
+  - Der RA-Bezug bleibt bei pH 5,4: Mit dem geschätzten pH ändert sich der Anteil zwischen 5,2 und 5,8 um höchstens 2 %.
+- **Prüfung:**
+  - `pnpm test` 259/259, neu `mashPh.test.ts` 8 Tests.
+  - Troester nachgerechnet:
+    - Tabelle 2: Gerade mittig, Einzelmalze bis 0,3 daneben, R² 0,54.
+    - Tabelle 3 Pils: ±0,05 über −5,6 bis 7,2 mEq/l; Mischungen ±0,1 ab −1,75.
+    - Tabelle 5: ±0,05 mit Schätzung nach Rolle, ±0,065 mit gemessener Säure.
+    - Den im Plan verlangten Rahmen von ±0,05 hält nicht jede Tabelle.
+  - `recipeTreatment.test.ts` hat 6 neue Tests. `typecheck`, `build` und Redocly-Lint laufen (nur die bekannte `info-license`-Warnung).
+  - UI im Node-Mock mit dem Profil des Nutzers:
+    - Pils 70 % VE: Maische ≈ 5,79. Die Hilfe legt 7,88 ml Milchsäure „Maische nach pH-Messung“ an, danach ≈ 5,40.
+    - Ausschlag auf 5,6: 4,91 g Natron (vorher 5,30).
+    - Kolbach: Ziel-RA −4,3 bis −1,0 °dH bei 7 EBC, kein pH.
+    - Ohne verknüpftes Malz nur Hinweise; 375 px ohne seitliches Scrollen.
+- **Offen** (PLAN.md):
+  - Übertragbarkeit der Pufferung auf die Würze (`TODO(verify)`)
+  - Palmer-Geraden gegen das Buch prüfen
+  - Schwächen aus Troesters Tabellen 3 und 6
+  - Malzdaten nur im Katalog-JSON
+  - 2b-3 Automatik
+
+## 2026-10-07 — Wasser-Tab, Etappe 2b-3: Zielprofile und Automatik (Branch `feat/wasser-automatik`)
+
+Dritter und letzter PR nach dem Plan `wasserrechner-etappe-2b.md`: Zielprofile, ein Vergleich des Hauptgusses mit dem Ziel und der Dialog „Automatisch“.
+- **Entscheidungen des Nutzers (2026-10-07):**
+  - Mitgelieferte Zielprofile von Brewer's Friend (Zusammenfassung der Zielprofile ihres Rechners), Dortmund und Burton entcarbonisiert, Wien von Palmer (How to Brew, Tab. 21). Palmers Städte-Tabelle wurde verworfen, weil Palmer selbst schreibt, dass einige Profile chemisch nicht aufgehen.
+  - Die Automatik passt nur Ca, Mg, Na, Cl und SO₄ an und bietet keine Basen an. Die Alkalität regelt die Säure über den Ziel-pH der Maische. Mit HCO₃ in der Anpassung gäbe sie Natron, das die Säure gleich wieder neutralisiert, oder triebe den VE-Anteil hoch, wo die Säure das HCO₃ ohnehin wegnimmt.
+  - Das Ziel wird im Rezept gespeichert (`RecipeWater.target`) und auch ohne Automatik verglichen, als eigene Spalte „Ziel“ mit der Abweichung des Hauptgusses.
+  - Unter Kolbach stellt die Säure die Restalkalität der Maische auf die Mitte des Zielbereichs nach Bierfarbe.
+- **Modul** `web/src/waterSolver.ts` (rein): `TARGET_PROFILES` (12 Profile mit Quelle in `note`), `targetProfiles`, `resolveTarget`, `nnls` (Lawson-Hanson) und `autoTreat`.
+  - Der Löser sucht den VE-Anteil von 0 bis 100 % in 1-%-Schritten und passt je Anteil die Salze per NNLS in mEq/l an. Ist das Ziel über einen Bereich erreichbar, gewinnt der kleinste Anteil (Toleranz 1e-4 (mEq/l)²; ohne sie entschied Rundungsrauschen, z. B. 99 % statt 98 %).
+  - Danach die Säure „Maische nach pH-Messung“ über `amountForPh` auf den Ziel-pH bzw. die Ziel-RA.
+- **Daten:**
+  - `WaterProfile.target?: true` für eigene Zielprofile in `Brewery.waters`. `recipeTreatment.sourceWaters` filtert sie aus Ausgangswasser, Standardwasser und dem Rückfall auf das erste Profil. `openapi.yaml` › `WaterProfile.target` ist ergänzt.
+  - `Ingredient.auto?: true` markiert Gaben der Automatik. Ein erneuter Lauf ersetzt sie, Bearbeiten (Aufbereitung oder Zutaten) nimmt die Markierung weg.
+  - `waterChem` exportiert `MOLAR`/`CHARGE` und hat `agentAmount` (mmol → g/ml) sowie den Typ `TargetIons`.
+- **UI:**
+  - Karte „Aufbereitung“ mit den Knöpfen „Ziel“ und „Automatisch“. Die Spalte „Ziel“ hat einen Select (eigene, mitgelieferte, „Eigene Werte“ mit Eingabe in der Spalte), Zielwerte mit Abweichung (hervorgehoben ab 20 % bzw. 10 mg/l) und ist auf dem Handy ein Reiter.
+  - Der Dialog bietet Ziel, Salze, Säure, Anteil frei/fest und Ziel-pH der Maische. Die Vorschau zeigt Ziel/jetzt/Vorschlag und die Gaben (neu, entfällt, bleibt). Erst „Übernehmen“ schreibt.
+  - Der Brauerei-Editor hat den Haken „Zielprofil“ und ein Abzeichen „Ziel“ in der Liste.
+- **Prüfung:**
+  - `pnpm test` 269/269, neu `waterSolver.test.ts` mit 9 Tests (NNLS, exakt erreichbares Ziel, Pilsen ≥ 85 % VE, keine negativen Mengen bei allen Profilen, Ersetzen der Auto-Gaben, Maische-pH, Kolbach-RA) und ein Test in `recipeTreatment.test.ts` (Zielprofil nie Ausgangswasser).
+  - `typecheck`, `build` und Redocly-Lint laufen (nur die bekannte `info-license`-Warnung).
+  - Löser mit dem Profil des Nutzers (Pils 5 kg, 20 l): Pilsen 93 % VE, „Hell, hopfig“ 98 %, „Ausgewogen“ 55 %, Dortmund 74 %, München 37 %; die Maische danach je ≈ 5,40, ein Lauf etwa 20 ms.
+  - UI im Node-Mock: Ziel-Spalte mit Abweichungen, Dialog mit Vorschau, „Übernehmen“ (98 % VE, Gaben als „Brauwasser“, 5,38 ml Milchsäure nach pH-Messung). Dazu der Reiter „Ziel“ bei 375 px und ein eigenes Zielprofil im Brauerei-Editor (fehlt im Standardwasser).
+- **Offen** (PLAN.md): Der Wasser-Tab ist damit fertig. Weiter offen sind CaO-Entcarbonisierung, im Sud Säure aus dem gemessenen pH und Verschnitt aus der gemessenen Stammwürze, sowie die pH-Punkte aus 2b-2.
