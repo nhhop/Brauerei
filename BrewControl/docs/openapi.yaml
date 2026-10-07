@@ -2399,7 +2399,8 @@ paths:
             `invalid websocket clientId`, `invalid espnow topicPrefix`,
             `invalid espnow clientId`, `invalid display brightness`,
             `invalid display dimAfterSec`, `invalid display dimPercent`,
-            `invalid display offAfterSec`, `invalid energy batterySensor`,
+            `invalid display offAfterSec`, `invalid display rotation`,
+            `invalid display orientationSensor`, `invalid energy batterySensor`,
             `invalid energy sleepIntervalSec`, `invalid energy awakeTimeoutSec`,
             `invalid energy wakePin`, `deep sleep needs a wake pin`, or a wake
             pin error as for items (`GPIO n does not exist on this board`,
@@ -4919,7 +4920,7 @@ components:
         counts from the last touch; touching, a latched emergency stop and a
         new alert wake the display, and the waking touch triggers nothing.
         Stored and validated on every board, used only where `supported`.
-      required: [brightness, dimAfterSec, dimPercent, offAfterSec, pixelShift, supported]
+      required: [brightness, dimAfterSec, dimPercent, offAfterSec, pixelShift, rotation, orientationSensor, orientationMirror, supported]
       properties:
         brightness:
           type: integer
@@ -4945,6 +4946,29 @@ components:
         pixelShift:
           type: boolean
           description: Move the picture a few pixels every minute.
+        rotation:
+          type: integer
+          enum: [0, 90, 180, 270]
+          default: 0
+          description: |
+            Clockwise rotation of the picture. Without `orientationSensor` it is
+            the fixed rotation; with one it is the mounting offset - the
+            rotation shown while the sensor's -X side points up. Anything else
+            than the four values is rejected with 400 `invalid display rotation`.
+        orientationSensor:
+          type: string
+          default: ""
+          description: |
+            Id of a tilt sensor item (one with `pitch` and `roll` channels,
+            i.e. an IMU) the picture follows: it turns to the quadrant of the
+            side that points up, with a 15° hysteresis past each diagonal, and
+            stays as it is while the device lies within 30° of flat or the
+            sensor has no valid reading. "" = fixed `rotation`. Not checked
+            against the registry (like `energy.batterySensor`).
+        orientationMirror:
+          type: boolean
+          default: false
+          description: Reverse the sense of rotation for an IMU that sees the panel from behind.
         supported:
           type: boolean
           readOnly: true

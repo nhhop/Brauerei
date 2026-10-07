@@ -5,7 +5,7 @@
 
 namespace BrewControl {
 
-// Pin tables for the three boards BrewControl builds for (see platformio.ini).
+// Pin tables for the boards BrewControl builds for (see platformio.ini).
 // Chip facts from the Espressif datasheets (ADC channels, pull-ups) and the
 // ESP32 errata (3.11: GPIO 36/39 glitch while the SAR ADC is powered); board
 // wiring from the build flags, main.cpp and display/DisplayUI.cpp — keep them
@@ -147,19 +147,185 @@ inline constexpr FixedBus kLilyGoAmoledBuses[] = {
      kLilyGoAmoledI2cReserved, sizeof(kLilyGoAmoledI2cReserved) / sizeof(AddrDef)},
 };
 
-#if defined(BREWCTL_I2C_SDA) && defined(BREWCTL_HAS_DISPLAY)
+#if defined(BREWCTL_BOARD_LILYGO_AMOLED)
 static_assert(BREWCTL_I2C_SDA == 7 && BREWCTL_I2C_SCL == 6,
               "update kLilyGoAmoledSpecial and kLilyGoAmoledBuses to the new I2C pins");
-#endif
-#if defined(BREWCTL_SD_CS) && defined(BREWCTL_HAS_DISPLAY)
 static_assert(BREWCTL_SD_CS == 38 && BREWCTL_SD_MOSI == 39 &&
                   BREWCTL_SD_MISO == 40 && BREWCTL_SD_SCK == 41,
               "update kLilyGoAmoledSpecial to the new SD pins");
 #endif
 
+// ── waveshare_s3_amoled_175 (ESP32-S3R8, ESP32-S3-Touch-AMOLED-1.75) ────────
+// Same chip as the LilyGo; wiring from Waveshare's HARDWARE_REFERENCE.md and
+// pin_config.h (see platformio.ini). Free for items are only GPIO 13, 17, 18,
+// 47 and 48; 16 and the USB/UART pins work with a warning.
+inline constexpr PinDef kWaveshareAmoled175Special[] = {
+    {0, PinClass::Reserved, "BOOT-Taste"},
+    {1, PinClass::Reserved, "SD-Karte CMD"},
+    {2, PinClass::Reserved, "SD-Karte CLK"},
+    {3, PinClass::Reserved, "SD-Karte D0"},
+    {4, PinClass::Reserved, "Display"},
+    {5, PinClass::Reserved, "Display"},
+    {6, PinClass::Reserved, "Display"},
+    {7, PinClass::Reserved, "Display"},
+    {8, PinClass::Reserved, "Audio (I2S)"},
+    {9, PinClass::Reserved, "Audio (I2S)"},
+    {10, PinClass::Reserved, "Audio (I2S)"},
+    {11, PinClass::Reserved, "Touch-Interrupt"},
+    {12, PinClass::Reserved, "Display"},
+    {14, PinClass::Reserved, "I2C SCL (Touch, IMU, RTC, PMU, Audio)"},
+    {15, PinClass::Reserved, "I2C SDA (Touch, IMU, RTC, PMU, Audio)"},
+    {16, PinClass::Risky, "Audio-MCLK laut Waveshare-Beispiel"},
+    {19, PinClass::Risky, "USB D- (Seriell + Upload)"},
+    {20, PinClass::Risky, "USB D+ (Seriell + Upload)"},
+    {21, PinClass::Reserved, "IMU-Interrupt"},
+    {26, PinClass::Forbidden, "Flash"},
+    {27, PinClass::Forbidden, "Flash"},
+    {28, PinClass::Forbidden, "Flash"},
+    {29, PinClass::Forbidden, "Flash"},
+    {30, PinClass::Forbidden, "Flash"},
+    {31, PinClass::Forbidden, "Flash"},
+    {32, PinClass::Forbidden, "Flash"},
+    {33, PinClass::Forbidden, "Octal-PSRAM"},
+    {34, PinClass::Forbidden, "Octal-PSRAM"},
+    {35, PinClass::Forbidden, "Octal-PSRAM"},
+    {36, PinClass::Forbidden, "Octal-PSRAM"},
+    {37, PinClass::Forbidden, "Octal-PSRAM"},
+    {38, PinClass::Reserved, "Display"},
+    {39, PinClass::Reserved, "Display-Reset"},
+    {40, PinClass::Reserved, "Touch-Reset"},
+    {41, PinClass::Reserved, "SD-Karte D3"},
+    {42, PinClass::Reserved, "Audio (I2S)"},
+    {43, PinClass::Risky, "UART0 TX"},
+    {44, PinClass::Risky, "UART0 RX"},
+    {45, PinClass::Reserved, "Audio (I2S)"},
+    {46, PinClass::Reserved, "Audio-Verstärker"},
+};
+inline constexpr Board kWaveshareAmoled175 = {
+    pinRange(0, 21) | pinRange(26, 48),
+    0,
+    0,
+    kWaveshareAmoled175Special, sizeof(kWaveshareAmoled175Special) / sizeof(PinDef),
+    4,
+    pinRange(1, 10),
+    pinRange(11, 20),
+    0,
+    0,
+    pinRange(0, 21),
+    false,  // ADC2 arbitrated with Wi-Fi
+    15, 14,  // BREWCTL_I2C_SDA/SCL — see static_assert below
+    // No battery divider: the AXP2101 measures the cell (PLAN.md).
+};
+// Onboard devices sharing this board's I2C bus. Not the QMI8658 (0x6B): the
+// IMU is meant to be added as a sensor item on this bus.
+inline constexpr AddrDef kWaveshareAmoled175I2cReserved[] = {
+    {0x18, "Audio-Codec (ES8311)"},
+    {0x20, "Port-Expander (TCA9554)"},
+    {0x34, "PMU (AXP2101)"},
+    {0x40, "Mikrofon-ADC (ES7210)"},
+    {0x51, "RTC (PCF85063)"},
+    {0x5A, "Touch (CST9217)"},
+};
+inline constexpr FixedBus kWaveshareAmoled175Buses[] = {
+    {"i2c-board", "i2c", {15, 14, -1},
+     "Fest verdrahtet mit Touch, IMU, RTC, PMU und Audio",
+     kWaveshareAmoled175I2cReserved, sizeof(kWaveshareAmoled175I2cReserved) / sizeof(AddrDef)},
+};
+
+#if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+static_assert(BREWCTL_I2C_SDA == 15 && BREWCTL_I2C_SCL == 14,
+              "update kWaveshareAmoled175Special and kWaveshareAmoled175Buses to the new I2C pins");
+static_assert(BREWCTL_SD_MMC_CLK == 2 && BREWCTL_SD_MMC_CMD == 1 && BREWCTL_SD_MMC_D0 == 3,
+              "update kWaveshareAmoled175Special to the new SD pins");
+#endif
+
+// ── m5stack_stopwatch (ESP32-S3R8, M5Stack StopWatch) ────────────────────────
+// Wiring from M5GFX's and M5Unified's StopWatch code (the M5 docs page has the
+// display data lines wrong). No SD; display, touch reset and supply partly sit
+// behind the M5IOE1 expander (BoardInit.cpp).
+inline constexpr PinDef kM5StopWatchSpecial[] = {
+    {0, PinClass::Reserved, "BOOT (Strapping, Werksreset beim Start)"},
+    {1, PinClass::Reserved, "Taste B"},
+    {2, PinClass::Reserved, "Taste A"},
+    {3, PinClass::Risky, "Strapping-Pin"},
+    {13, PinClass::Reserved, "Touch-Interrupt"},
+    {15, PinClass::Reserved, "Audio (I2S)"},
+    {16, PinClass::Reserved, "Audio (I2S)"},
+    {17, PinClass::Reserved, "Audio (I2S)"},
+    {18, PinClass::Reserved, "Audio (I2S)"},
+    {19, PinClass::Risky, "USB D- (Seriell + Upload)"},
+    {20, PinClass::Risky, "USB D+ (Seriell + Upload)"},
+    {21, PinClass::Reserved, "Audio (I2S)"},
+    {26, PinClass::Forbidden, "Flash"},
+    {27, PinClass::Forbidden, "Flash"},
+    {28, PinClass::Forbidden, "Flash"},
+    {29, PinClass::Forbidden, "Flash"},
+    {30, PinClass::Forbidden, "Flash"},
+    {31, PinClass::Forbidden, "Flash"},
+    {32, PinClass::Forbidden, "Flash"},
+    {33, PinClass::Forbidden, "Octal-PSRAM"},
+    {34, PinClass::Forbidden, "Octal-PSRAM"},
+    {35, PinClass::Forbidden, "Octal-PSRAM"},
+    {36, PinClass::Forbidden, "Octal-PSRAM"},
+    {37, PinClass::Forbidden, "Octal-PSRAM"},
+    {38, PinClass::Reserved, "Display (TE)"},
+    {39, PinClass::Reserved, "Display"},
+    {40, PinClass::Reserved, "Display"},
+    {41, PinClass::Reserved, "Display"},
+    {42, PinClass::Reserved, "Display"},
+    {43, PinClass::Risky, "UART0 TX"},
+    {44, PinClass::Risky, "UART0 RX"},
+    {45, PinClass::Reserved, "Display"},
+    {46, PinClass::Reserved, "Display"},
+    {47, PinClass::Reserved, "I2C SDA (Touch, IMU, RTC, PMU, Expander, Audio)"},
+    {48, PinClass::Reserved, "I2C SCL (Touch, IMU, RTC, PMU, Expander, Audio)"},
+};
+inline constexpr Board kM5StopWatch = {
+    pinRange(0, 21) | pinRange(26, 48),
+    0,
+    0,
+    kM5StopWatchSpecial, sizeof(kM5StopWatchSpecial) / sizeof(PinDef),
+    4,
+    pinRange(1, 10),
+    pinRange(11, 20),
+    0,
+    0,
+    pinRange(0, 21),
+    false,  // ADC2 arbitrated with Wi-Fi
+    47, 48,  // BREWCTL_I2C_SDA/SCL — see static_assert below
+    // No battery divider: the M5PM1 measures the cell (PLAN.md).
+};
+// Onboard devices sharing this board's I2C bus. Not the BMI270 (0x68): the
+// IMU is meant to be added as a sensor item on this bus.
+inline constexpr AddrDef kM5StopWatchI2cReserved[] = {
+    {0x15, "Touch (CST820)"},
+    {0x18, "Audio-Codec (ES8311)"},
+    {0x32, "RTC (RX8130)"},
+    {0x4F, "Port-Expander (M5IOE1)"},
+    {0x6E, "PMU (M5PM1)"},
+};
+inline constexpr FixedBus kM5StopWatchBuses[] = {
+    {"i2c-board", "i2c", {47, 48, -1},
+     "Fest verdrahtet mit Touch, IMU, RTC, PMU, Port-Expander und Audio",
+     kM5StopWatchI2cReserved, sizeof(kM5StopWatchI2cReserved) / sizeof(AddrDef)},
+};
+
+#if defined(BREWCTL_BOARD_M5_STOPWATCH)
+static_assert(BREWCTL_I2C_SDA == 47 && BREWCTL_I2C_SCL == 48,
+              "update kM5StopWatchSpecial and kM5StopWatchBuses to the new I2C pins");
+#endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BREWCTL_BOARD_LILYGO_AMOLED) &&     !defined(BREWCTL_BOARD_WAVESHARE_AMOLED175) && !defined(BREWCTL_BOARD_M5_STOPWATCH)
+#error "ESP32-S3 build without a BREWCTL_BOARD_* flag: the S3 boards differ in every pin"
+#endif
+
 // The table of the board this firmware is built for.
 inline const Board& currentBoard() {
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(BREWCTL_BOARD_M5_STOPWATCH)
+  return kM5StopWatch;
+#elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+  return kWaveshareAmoled175;
+#elif defined(BREWCTL_BOARD_LILYGO_AMOLED)
   return kLilyGoAmoled;
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
   return kLolinS2Mini;
@@ -172,7 +338,11 @@ inline const Board& currentBoard() {
 // there every bus is user-defined), analogous to currentBoard().
 inline std::vector<BusDef> currentFixedBuses() {
   std::vector<BusDef> out;
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(BREWCTL_BOARD_M5_STOPWATCH)
+  for (const FixedBus& f : kM5StopWatchBuses) out.push_back(busFromFixed(f));
+#elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+  for (const FixedBus& f : kWaveshareAmoled175Buses) out.push_back(busFromFixed(f));
+#elif defined(BREWCTL_BOARD_LILYGO_AMOLED)
   for (const FixedBus& f : kLilyGoAmoledBuses) out.push_back(busFromFixed(f));
 #endif
   return out;

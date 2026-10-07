@@ -1,6 +1,6 @@
 // BrewControl/web/src/pages/DisplayPage.tsx
 import { useState, useEffect } from 'preact/hooks';
-import type { DisplaySettings } from '../types';
+import type { DisplaySettings, Snapshot } from '../types';
 import { getSettings, updateSettings } from '../api';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
@@ -9,7 +9,7 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { Slider } from '../components/Slider';
 import { inp } from '../ui';
-import { Sun, Moon, SunDim, PowerOff, Move } from 'lucide-preact';
+import { Sun, Moon, SunDim, PowerOff, Move, RotateCw, Compass, FlipHorizontal } from 'lucide-preact';
 
 const DIM_AFTER = [0, 30, 60, 120, 300, 600];
 const DIM_PERCENT = [5, 10, 20, 30, 50];
@@ -28,8 +28,28 @@ const DEFAULT: DisplaySettings = {
   dimPercent: 20,
   offAfterSec: 600,
   pixelShift: false,
+  rotation: 0,
+  orientationSensor: '',
+  orientationMirror: false,
   supported: false,
 };
+
+const ROTATIONS = [0, 90, 180, 270];
+
+// Items that can steer the orientation: those with a pitch and a roll channel
+// (the IMU tilt sensors), plus the selected one so the choice stays visible.
+function tiltItems(snap: Snapshot | null | undefined, selected: string): { id: string; label: string }[] {
+  const ids = new Set((snap?.sensors ?? []).map((s) => s.id));
+  const out = [...ids]
+    .filter((id) => id.endsWith('.pitch') && ids.has(id.slice(0, -6) + '.roll'))
+    .map((id) => {
+      const item = id.slice(0, -6);
+      const ch = snap?.sensors.find((s) => s.id === id);
+      return { id: item, label: ch?.label || item };
+    });
+  if (selected && !out.some((o) => o.id === selected)) out.push({ id: selected, label: `${selected} (fehlt)` });
+  return out;
+}
 
 // A preset list; a value set some other way (API) is shown as an extra entry
 // until a preset is picked.
@@ -57,7 +77,7 @@ function ChoiceSelect({ value, choices, format, onChange }: {
   );
 }
 
-export function DisplayPage(_: { path?: string }) {
+export function DisplayPage({ snap }: { path?: string; snap?: Snapshot | null }) {
   const [settings, setSettings] = useState<DisplaySettings>(DEFAULT);
   const [loading, setLoading] = useState(true);
 
@@ -104,6 +124,40 @@ export function DisplayPage(_: { path?: string }) {
               onInput={(v) => setSettings((prev) => ({ ...prev, brightness: v }))}
               onChange={(v) => update({ brightness: v })} />
           </SettingsCard>
+        </SettingsGroup>
+
+        <SettingsGroup title="Ausrichtung">
+          <SettingsCard title="Ausrichtung folgen" icon={Compass}
+            desc={settings.orientationSensor
+              ? 'Das Bild dreht sich mit, wenn das Gerät gekippt wird; liegt es flach, bleibt es, wie es ist'
+              : 'Fest eingestellt – oder einen Neigungssensor (IMU) wählen'}
+            control={
+              <select value={settings.orientationSensor} class={`${inp} w-44`}
+                onChange={(e) => update({ orientationSensor: (e.target as HTMLSelectElement).value })}>
+                <option value="">Fest</option>
+                {tiltItems(snap, settings.orientationSensor).map((o) => (
+                  <option key={o.id} value={o.id}>{o.label}</option>
+                ))}
+              </select>
+            } />
+
+          <SettingsCard title={settings.orientationSensor ? 'Einbaulage ausgleichen' : 'Drehung'} icon={RotateCw}
+            desc={settings.orientationSensor
+              ? 'Drehung, solange die −X-Seite des Sensors nach oben zeigt'
+              : 'Dreht das Bild im Uhrzeigersinn'}
+            control={
+              <ChoiceSelect value={settings.rotation} choices={ROTATIONS} format={(v) => `${v}°`}
+                onChange={(v) => update({ rotation: v })} />
+            } />
+
+          {settings.orientationSensor && (
+            <SettingsCard title="Drehrichtung umkehren" icon={FlipHorizontal}
+              desc="Wenn sich das Bild beim Drehen in die falsche Richtung mitdreht"
+              control={
+                <ToggleSwitch checked={settings.orientationMirror}
+                  onChange={(v) => update({ orientationMirror: v })} />
+              } />
+          )}
         </SettingsGroup>
 
         <SettingsGroup title="Burn-in-Schutz">

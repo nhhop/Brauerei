@@ -18,6 +18,10 @@
 
 #include <cstdint>
 
+namespace SensActCtrl {
+class Registry;
+}
+
 namespace BrewControl {
 
 class SettingsStore;
@@ -27,7 +31,9 @@ class DisplayUI {
   // Powers the panel up and registers the LVGL display driver. Leaves the
   // display dark (and tick() a no-op) if the panel does not answer or the
   // draw buffer cannot be allocated - the rest of the firmware keeps running.
-  void begin(const SettingsStore& settings);
+  // registry: where the orientation sensor (display.orientationSensor) is
+  // looked up, by id on every check - no item pointer is kept.
+  void begin(const SettingsStore& settings, SensActCtrl::Registry& registry);
 
   // holdAwake (the latched emergency stop) keeps full brightness and restarts
   // the idle time on every call.
@@ -49,8 +55,15 @@ class DisplayUI {
  private:
   enum class Power : uint8_t { Awake, Dimmed, Off };
 
+  // Applies display.rotation, or follows the orientation sensor; at most every
+  // kOrientPollMs.
+  void updateRotation_();
+  static constexpr uint32_t kOrientPollMs = 250;
+
   bool ready_ = false;
   const SettingsStore* settings_ = nullptr;
+  SensActCtrl::Registry* registry_ = nullptr;
+  uint32_t lastOrientMs_ = 0;
   Power power_ = Power::Awake;
   uint8_t brightness_ = 0;   // last value written to the panel
   uint32_t lastPollMs_ = 0;  // touch poll while dark
