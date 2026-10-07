@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRAIN_ABSORPTION, TEMPLATES, type Brewhouse } from './brewhouse';
-import { calcWater } from './recipeWater';
+import { platoFromExtract } from './brewMath';
+import { calcWater, resolveDilution } from './recipeWater';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 
 const template = (key: string) => TEMPLATES.find((t) => t.key === key)!.build();
@@ -119,5 +120,55 @@ describe('calcWater', () => {
       'Pfannevoll (63,0 l) passt nicht in Topf (50,0 l).',
       'Die Maische (71,1 l) passt nicht in Topf (50,0 l).',
     ]);
+  });
+});
+
+describe('dilution (high gravity)', () => {
+  const herms = template('herms3');
+  const extractKg = 6;
+  const withDilution = (dilution: NonNullable<Recipe['water']>['dilution'], bh = herms) =>
+    resolveDilution(recipeFor(bh, { volumeL: 30, water: { dilution } }), extractKg, bh);
+
+  it('boils less in the kettle and counts back from there', () => {
+    const d = withDilution({ at: 'kettle', lead: 'volume', volumeL: 10 });
+    expect([d.volumeL, d.kettleL, d.finalL]).toEqual([10, 20, 30]);
+    expect(d.kettlePlato).toBeCloseTo(platoFromExtract(extractKg, 20), 9);
+    expect(d.finalPlato).toBeCloseTo(platoFromExtract(extractKg, 30), 9);
+    const { w } = calc(herms, { volumeL: 30, water: { dilution: { at: 'kettle', lead: 'volume', volumeL: 10 } } });
+    expect(round(w.preBoilL)).toBe(24);   // 20 l + 4 l evaporation
+  });
+
+  it('follows the gravity in the kettle when it leads', () => {
+    const byVolume = withDilution({ at: 'kettle', lead: 'volume', volumeL: 10 });
+    const d = withDilution({ at: 'kettle', lead: 'gravity', plato: byVolume.kettlePlato, volumeL: 3 });
+    expect(d.volumeL).toBeCloseTo(10, 6);
+  });
+
+  it('thins the wort that reaches the fermenter', () => {
+    const d = withDilution({ at: 'fermenter', lead: 'volume', volumeL: 5 });
+    // 30 l · 0.96 − 2 l dead space − 1 l line
+    expect(round(d.restL)).toBe(25.8);
+    expect(round(d.finalL)).toBe(30.8);
+    expect(d.kettleL).toBe(30);
+    expect(d.finalPlato).toBeLessThan(d.kettlePlato!);
+    const back = withDilution({ at: 'fermenter', lead: 'gravity', plato: d.finalPlato });
+    expect(back.volumeL).toBeCloseTo(5, 6);
+  });
+
+  it('refuses a gravity on the wrong side, and one without extract', () => {
+    expect(withDilution({ at: 'kettle', lead: 'gravity', plato: 5 }).notes)
+      .toEqual(['Die Pfannen-Stammwürze liegt unter der Stammwürze, gerechnet wird ohne Verschnitt.']);
+    const noExtract = resolveDilution(recipeFor(herms, { water: { dilution: { at: 'kettle', lead: 'gravity', plato: 18 } } }), undefined, herms);
+    expect(noExtract.volumeL).toBe(0);
+    expect(noExtract.notes).toEqual(['Die Verschnittmenge braucht die Stammwürze (Vergärbares verknüpfen).']);
+  });
+
+  it('names the dilution that makes an overfull kettle fit', () => {
+    // 30 l + 3 l evaporation in a 20 l pot
+    const pot = template('pot');
+    const small = { ...pot, vessels: pot.vessels.map((v) => ({ ...v, volumeL: 20 })) };
+    expect(calc(small, { volumeL: 30 }).w.fitDilutionL).toBe(13);
+    const fitted = calc(small, { volumeL: 30, water: { dilution: { at: 'kettle', lead: 'volume', volumeL: 13 } } }).w;
+    expect([fitted.preBoilL, fitted.fitDilutionL]).toEqual([20, undefined]);
   });
 });

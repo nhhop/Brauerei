@@ -3,6 +3,8 @@ import {
   KINDS, TIMING_LABEL, allowedTimings, defaultTiming, uid, unitOf,
   type Ingredient, type IngredientKind, type Scope,
 } from '../../recipes';
+import { useCatalog } from '../../ingredientSource';
+import { agentOf } from '../../recipeTreatment';
 import { inp } from '../../ui';
 import { Card, NumInput } from './fields';
 import { IngredientPicker } from './IngredientPicker';
@@ -20,10 +22,16 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
   boilMin: number; // the recipe's boil duration, shown as the default for hop minutes
 }) {
   const rows = all.filter(match);
+  const catalog = useCatalog()?.ingredients ?? null;
+  // An auxiliary measures in its catalog unit (acids in ml).
+  const unitFor = (i: Ingredient) => {
+    const c = catalog?.find((x) => x.id === i.ingredientId);
+    return c?.kind === 'auxiliary' ? c.defaultUnit : unitOf(i.kind);
+  };
   const kinds = KINDS.filter((k) => allowedTimings(k.id, scope).length > 0);
 
   function patch(id: string, p: Partial<Ingredient>) {
-    onChange(all.map((i) => (i.id === id ? { ...i, ...p } : i)));
+    onChange(all.map((i) => (i.id === id ? { ...i, ...p, auto: undefined } : i)));
   }
 
   function changeKind(i: Ingredient, k: IngredientKind) {
@@ -69,8 +77,9 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
               )}
               <div class="flex items-center gap-1 text-xs text-muted">
                 <NumInput value={i.amount} onChange={(n) => patch(i.id, { amount: n })} class="w-20" />
-                {unitOf(i.kind)}
+                {unitFor(i)}
               </div>
+              <Strength i={i} agent={agentOf(i, catalog)} onChange={(strengthPct) => patch(i.id, { strengthPct })} />
               <button type="button" title="Entfernen"
                 onClick={() => onChange(all.filter((x) => x.id !== i.id))}
                 class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
@@ -81,5 +90,19 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
         </div>
       )}
     </Card>
+  );
+}
+
+// Concentration of an acid or solution; the catalog gives the default.
+export function Strength({ i, agent, onChange }: {
+  i: Ingredient; agent: ReturnType<typeof agentOf>; onChange: (pct: number | undefined) => void;
+}) {
+  if (agent?.agent.form !== 'liquid') return null;
+  return (
+    <div class="flex items-center gap-1 text-xs text-muted" title={`Konzentration, Vorgabe ${agent.entry.acidStrengthPct ?? 100} %`}>
+      <NumInput value={i.strengthPct ?? agent.strengthPct}
+        onChange={(n) => onChange(n === agent.entry.acidStrengthPct ? undefined : n)} class="w-16" />
+      %
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calcStats, rangeValue } from './recipeStats';
+import { TEMPLATES } from './brewhouse';
+import { calcStats, rangeValue, wortExtract } from './recipeStats';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 import type { CatalogIngredient } from './ingredientCatalog';
 
@@ -98,6 +99,44 @@ describe('calcStats', () => {
       const s = calcStats(recipeWith([hop({})]), catalog);
       expect(s.ibu).toBeUndefined();
       expect(s.notes).toContain('Bittere braucht die Stammwürze (Vergärbares verknüpfen)');
+    });
+  });
+
+  describe('dilution (high gravity)', () => {
+    const hop = row({ kind: 'hop', amount: 20, timing: 'boil', ingredientId: 'hop:motueka' });
+    const herms = TEMPLATES.find((t) => t.key === 'herms3')!.build();
+    const at = (where: 'kettle' | 'fermenter', volumeL: number) =>
+      recipeWith([pils, hop], { volumeL: 30, water: { dilution: { at: where, lead: 'volume', volumeL } } });
+
+    it('keeps the OG and colour in the kettle, the bitterness drops', () => {
+      const plain = calcStats(recipeWith([pils, hop], { volumeL: 30 }), catalog);
+      const s = calcStats(at('kettle', 10), catalog);
+      expect(s.ogPlato).toBeCloseTo(plain.ogPlato!, 9);
+      expect(s.ebc).toBeCloseTo(plain.ebc!, 9);
+      // same alpha per litre, but boiled at 13.5 instead of 9.2 °P (Tinseth: about −15 %)
+      expect(s.ibu).toBeLessThan(plain.ibu!);
+      expect(s.ibu).toBeGreaterThan(plain.ibu! * 0.8);
+    });
+
+    it('thins gravity, colour and bitterness in the fermenter', () => {
+      const plain = calcStats(recipeWith([pils, hop], { volumeL: 30 }), catalog, herms);
+      const s = calcStats(at('fermenter', 5), catalog, herms);
+      // 30 l · 0.96 − 2 l dead space − 1 l line = 25.8 l arrive, then 5 l water
+      const factor = 25.8 / 30.8;
+      expect(s.ogPlato).toBeLessThan(plain.ogPlato! * 0.9);
+      expect(s.ogPlato).toBeGreaterThan(plain.ogPlato! * factor);
+      expect(s.ebc).toBeCloseTo(plain.ebc! * factor, 9);
+      expect(s.ibu).toBeCloseTo(plain.ibu! * factor, 9);
+    });
+
+    it('takes the whole knock-out without a brewhouse, and says so', () => {
+      const s = calcStats(at('fermenter', 5), catalog);
+      expect(s.notes).toContain('Ohne Sudhaus kommt die ganze Ausschlagmenge in den Gärbehälter.');
+      expect(s.ebc).toBeCloseTo(calcStats(recipeWith([pils], { volumeL: 30 }), catalog).ebc! * 30 / 35, 9);
+    });
+
+    it('shares the extract with the water tab', () => {
+      expect(wortExtract(recipeWith([pils]), catalog).extractKg).toBeCloseTo(5 * 0.805 * 0.95 * 0.75, 9);
     });
   });
 });

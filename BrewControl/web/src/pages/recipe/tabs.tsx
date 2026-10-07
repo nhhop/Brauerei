@@ -1,6 +1,8 @@
-import type { Brewhouse } from '../../brewhouse';
+import type { Brewery, Brewhouse } from '../../brewhouse';
 import { useCatalog } from '../../ingredientSource';
-import { calcStats } from '../../recipeStats';
+import { calcStats, wortExtract } from '../../recipeStats';
+import { calcTreatment } from '../../recipeTreatment';
+import { calcWater } from '../../recipeWater';
 import { DEFAULT_EFFICIENCY, KINDS, SCOPE_TIMINGS, type Recipe, type Scope } from '../../recipes';
 import { inp } from '../../ui';
 import { Card, Field, NumInput } from './fields';
@@ -14,6 +16,7 @@ export interface TabProps {
   recipe: Recipe;
   onChange: (patch: Partial<Recipe>) => void;
   brewhouses: Brewhouse[] | null;  // null = the list did not load
+  brewery: Brewery | null;         // null = not loaded (yet)
 }
 
 export function Stat({ label, value, unit, digits, sub }: {
@@ -31,7 +34,7 @@ export function Stat({ label, value, unit, digits, sub }: {
 }
 
 // A recipe may point to a brewhouse that was deleted since; it stays selectable as "(fehlt)".
-function BrewhouseSelect({ recipe, onChange, brewhouses }: TabProps) {
+function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewery'>) {
   const id = recipe.brewhouseId;
   const missing = id && !brewhouses?.some((b) => b.id === id);
   return (
@@ -49,10 +52,13 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: TabProps) {
   );
 }
 
-export function OverviewTab({ recipe, onChange, brewhouses }: TabProps) {
+export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const mashMin = recipe.mash.reduce((s, p) => s + p.duration, 0);
   const catalog = useCatalog();
-  const stats = catalog ? calcStats(recipe, catalog.ingredients) : null;
+  const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
+  const stats = catalog ? calcStats(recipe, catalog.ingredients, bh) : null;
+  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients).extractKg : undefined).water;
+  const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.ingredients ?? null).columns[0].after.so4Cl;
   return (
     <>
       <Card title="Rezept">
@@ -106,6 +112,11 @@ export function OverviewTab({ recipe, onChange, brewhouses }: TabProps) {
           <p class="text-sm text-muted">Katalog nicht geladen, Kennwerte nicht verfügbar.</p>
         )}
       </Card>
+      {so4Cl !== undefined && (
+        <Card title="Charakter">
+          <So4ClScale ratio={so4Cl} />
+        </Card>
+      )}
       {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">
@@ -116,6 +127,31 @@ export function OverviewTab({ recipe, onChange, brewhouses }: TabProps) {
         </ul>
       </Card>
     </>
+  );
+}
+
+// Sulfate : chloride of the strike water on a log scale from 1:4 to 4:1.
+// TODO(verify): the zone limits 0.8 and 1.5 follow common calculators
+// (Brewfather, Bru'n Water) and have no primary source here yet.
+function So4ClScale({ ratio }: { ratio: number }) {
+  const pos = (r: number) => Math.min(Math.max((Math.log(r) / Math.log(4) + 1) / 2, 0), 1) * 100;
+  return (
+    <div>
+      <div class="mb-1 flex items-baseline justify-between text-xs text-muted">
+        <span>Wasserprofil (Hauptguss)</span>
+        <span>SO₄ : Cl <span class="font-medium text-fg">{ratio.toFixed(2).replace('.', ',')}</span></span>
+      </div>
+      <div class="relative h-2 rounded-full bg-fg/10">
+        <div class="absolute inset-y-0 rounded-full bg-accent/25" style={{ left: `${pos(0.8)}%`, width: `${pos(1.5) - pos(0.8)}%` }} />
+        <div class="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-accent"
+          style={{ left: `${pos(ratio)}%` }} />
+      </div>
+      <div class="mt-1 grid grid-cols-3 text-xs text-muted">
+        <span>weich, vollmundig</span>
+        <span class="text-center">ausgewogen</span>
+        <span class="text-right">trocken, knackig</span>
+      </div>
+    </div>
   );
 }
 

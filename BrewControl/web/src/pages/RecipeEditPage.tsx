@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import { listBrewhouses, type Brewhouse } from '../brewhouse';
+import { getBrewery, listBrewhouses, type Brewery, type Brewhouse } from '../brewhouse';
 import { getRecipe, saveRecipe, type Recipe } from '../recipes';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
@@ -28,6 +28,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
   const [saveError, setSaveError] = useState(false);
   const [tab, setTab] = useState('overview');
   const [brewhouses, setBrewhouses] = useState<Brewhouse[] | null>(null);
+  const [brewery, setBrewery] = useState<Brewery | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -41,6 +42,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
       })
       .catch(() => alive && setLoadState('error'));
     listBrewhouses().then((list) => alive && setBrewhouses(list)).catch(() => {});
+    getBrewery().then((b) => alive && setBrewery(b)).catch(() => {});
     return () => { alive = false; };
   }, [id]);
 
@@ -97,7 +99,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
         ))}
       </div>
 
-      <View recipe={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} brewhouses={brewhouses} />
+      <View recipe={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} brewhouses={brewhouses} brewery={brewery} />
     </PageShell>
   );
 }
