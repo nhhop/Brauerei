@@ -106,6 +106,13 @@ void test_reserved_address_is_409() {
                                R"({"type":"BMI160","id":"b","bus":"i2c-board","address":52})").status);  // 0x34
   TEST_ASSERT_TRUE(check(ws.reserved, ws.reservedCount, {},
                          R"({"type":"QMI8658","id":"q","bus":"i2c-board"})").ok);
+
+  // StopWatch: the expander's 0x4F is taken, the onboard BMI270 (0x68) free.
+  const BusDef m5 = busFromFixed(kM5StopWatchBuses[0]);
+  TEST_ASSERT_EQUAL(409, check(m5.reserved, m5.reservedCount, {},
+                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":79})").status);
+  TEST_ASSERT_TRUE(check(m5.reserved, m5.reservedCount, {},
+                         R"({"type":"BMI270","id":"i","bus":"i2c-board"})").ok);
 }
 
 void test_replace_ignores_own_address() {

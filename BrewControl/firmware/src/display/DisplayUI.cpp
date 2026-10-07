@@ -15,7 +15,26 @@
 namespace BrewControl {
 namespace {
 
-#if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+#if defined(BREWCTL_BOARD_M5_STOPWATCH)
+// From M5GFX's StopWatch setup (the M5 docs page lists the data lines wrong).
+// Panel reset and supply are M5IOE1 pins, handled by BoardInit.cpp, so the
+// driver falls back to a software reset.
+constexpr int8_t kLcdCs = 39;
+constexpr int8_t kLcdSck = 40;
+constexpr int8_t kLcdD0 = 41;
+constexpr int8_t kLcdD1 = 42;
+constexpr int8_t kLcdD2 = 46;
+constexpr int8_t kLcdD3 = 45;
+constexpr int8_t kLcdRst = -1;
+constexpr int8_t kLcdEn = -1;
+constexpr int8_t kTouchRst = -1;  // M5IOE1 IO4, reset in BoardInit.cpp
+// CST820 (CST816 register set): reports 0..233, half the panel resolution, in
+// the panel's own orientation (M5GFX: x/y_max 233, offset_rotation 0).
+using TouchChip = TouchDrvCST816;
+constexpr uint8_t kTouchAddr = 0x15;
+constexpr int16_t kTouchScale = 2;
+constexpr bool kTouchMirror = false;
+#elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
 // Waveshare's examples/arduino/libraries/Mylibrary/pin_config.h. No enable
 // pin: the AXP2101 powers the panel by default.
 constexpr int8_t kLcdCs = 12;
@@ -27,6 +46,12 @@ constexpr int8_t kLcdD3 = 7;
 constexpr int8_t kLcdRst = 39;
 constexpr int8_t kLcdEn = -1;
 constexpr int8_t kTouchRst = 40;
+using TouchChip = TouchDrvCST92xx;
+constexpr uint8_t kTouchAddr = 0x5A;
+constexpr int16_t kTouchScale = 1;
+// The touch layer sits rotated 180 deg against the panel (Waveshare's example
+// mirrors both axes, as found on the LilyGo).
+constexpr bool kTouchMirror = true;
 #else
 // LilyGo: pin map as verified on the device 2026-09-22. Authoritative source
 // is LilyGo's libraries/Mylibrary/pin_config.h (H0175Y003AM), not their README.
@@ -39,6 +64,12 @@ constexpr int8_t kLcdD3 = 15;
 constexpr int8_t kLcdRst = 17;
 constexpr int8_t kLcdEn = 16;  // panel power
 constexpr int8_t kTouchRst = -1;
+using TouchChip = TouchDrvCST92xx;
+constexpr uint8_t kTouchAddr = 0x5A;
+constexpr int16_t kTouchScale = 1;
+// The touch layer sits rotated 180 deg against the panel (checked on the
+// device: a tap at the top edge reported the bottom, left reported right).
+constexpr bool kTouchMirror = true;
 #endif
 constexpr int16_t kLcdW = 466;
 constexpr int16_t kLcdH = 466;
@@ -66,14 +97,14 @@ constexpr uint32_t kDarkPollMs = 30;
 constexpr uint16_t kBufLines = 40;
 constexpr uint32_t kBufPx = static_cast<uint32_t>(kLcdW) * kBufLines;
 
-// CST9217 on the board's shared I2C bus, which main.cpp has already started
-// on BREWCTL_I2C_SDA/SCL. Polled from LVGL; the interrupt line stays unused.
-constexpr uint8_t kTouchAddr = 0x5A;
+// Touch (TouchChip above) on the board's shared I2C bus, which main.cpp has
+// already started on BREWCTL_I2C_SDA/SCL. Polled from LVGL; the interrupt line
+// stays unused.
 
 Arduino_CO5300* g_gfx = nullptr;
 lv_disp_draw_buf_t g_drawBuf;
 lv_disp_drv_t g_dispDrv;
-TouchDrvCST92xx g_touch;
+TouchChip g_touch;
 bool g_touchUp = false;
 lv_indev_drv_t g_indevDrv;
 
@@ -129,11 +160,16 @@ void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
   noteTouch(pts.hasPoints());
   if (pts.hasPoints() && !g_swallow) {
     const TouchPoint& p = pts.getPoint(0);
-    // The touch layer sits rotated 180 deg against the panel (checked on the
-    // LilyGo: a tap at the top edge reported the bottom, left reported right;
-    // Waveshare's example mirrors both axes the same way).
-    data->point.x = kLcdW - 1 - p.x;
-    data->point.y = kLcdH - 1 - p.y;
+    int16_t x = static_cast<int16_t>(p.x * kTouchScale);
+    int16_t y = static_cast<int16_t>(p.y * kTouchScale);
+    if (x > kLcdW - 1) x = kLcdW - 1;
+    if (y > kLcdH - 1) y = kLcdH - 1;
+    if (kTouchMirror) {
+      x = kLcdW - 1 - x;
+      y = kLcdH - 1 - y;
+    }
+    data->point.x = x;
+    data->point.y = y;
     data->state = LV_INDEV_STATE_PRESSED;
   } else {
     data->state = LV_INDEV_STATE_RELEASED;  // LVGL keeps the last point

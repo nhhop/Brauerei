@@ -276,8 +276,10 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   }
   // webui-full.tar adds the optional UI packages (/modules, e.g. recipes). The
   // boards with the small data partition have no room for them and take
-  // webui.tar; older releases only have that one.
-#ifdef BREWCTL_ASSETS_IN_PLACE
+  // webui.tar, and so do all LittleFS boards: without SD there is no recipe
+  // API (WebUI.cpp) for the package to talk to. Older releases only have
+  // webui.tar.
+#if defined(BREWCTL_ASSETS_IN_PLACE) || defined(BREWCTL_USE_LITTLEFS)
   tarUrl = slimTar;
 #else
   tarUrl = fullTar.length() > 0 ? fullTar : slimTar;

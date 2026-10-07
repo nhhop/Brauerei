@@ -6402,3 +6402,14 @@ Zweite von vier Phasen (Plan im Eintrag vom 2026-10-06, Reste in PLAN.md „Neue
 - **Prüfung:** Firmware `pio test -e native` 141/141 (neu `test_waveshare_board_pins`, Waveshare-Fall in `test_i2c_address_map`), `pio run` für alle vier Envs; im Waveshare-Image stecken SD_MMC und die Waveshare-Adresstabelle, nicht die des LilyGo; das LilyGo-Image ist byte-gleich groß wie vor der Änderung. Am LilyGo per OTA: bootet (`resetReason sw`), fester Bus mit den LilyGo-Adressen, GY-521 über den umgebauten `ImuTiltSensor` mit plausiblen Werten (az ≈ 0,96 g) — damit ist die Phase-1-Umstellung des GY-521 auch an echter Hardware bestätigt.
 - **Offen:** alles am Waveshare selbst (PLAN.md „Waveshare … am Gerät“).
 
+## 2026-10-07 — Neue Boards, Phase 3: M5Stack StopWatch (Branch `feat/board-m5-stopwatch`)
+
+Dritte von vier Phasen, gestapelt auf Phase 2 (`feat/board-waveshare`). Die Hardware ist noch nicht da.
+
+- **Quellen:** Die Pin-Tabelle auf docs.m5stack.com ist für das Display falsch (sie nennt TE = GPIO 38 als D0). Maßgeblich ist der StopWatch-Zweig der Autodetection in M5GFX (`src/M5GFX.cpp`): QSPI CS 39, SCLK 40, D0–D3 41/42/46/45, TE 38; Panel 480×480 RAM mit Offset 6; Touch CST820 auf 0x15 mit 0…233; M5PM1 auf 0x6E (ID 0x2050), M5IOE1 auf 0x4F. Tasten (A = GPIO 2, B = GPIO 1), I2S (15–18, 21) und Grove (10/11) aus M5Unified.
+- **`src/BoardInit.cpp`** (neu): auf der StopWatch direkt nach dem Start des Board-Busses — M5PM1: I2C-Schlaf aus, Watchdog aus, `PWR_CFG |= 0x17` (3,3-V-LDO/DC-DC, Laden, LED); M5IOE1: I2C-Schlaf aus, IO1/3/4/5/8 als Push-Pull-Ausgänge, IO1/4/5/8 high, Panel- und Touch-Reset (IO5/IO4) pulsen, Lautsprecher-Verstärker (IO10) aus. Die erste Transaktion je Chip wird bis 200 ms wiederholt, weil beide zwischen Transaktionen schlafen. Auf den anderen Boards ein No-op.
+- **Display:** `DisplayUI.cpp` wählt Touch-Chip, Adresse, Skalierung und Spiegelung je Board (`TouchChip`, `kTouchScale`, `kTouchMirror`); StopWatch: `TouchDrvCST816`, Faktor 2, keine Spiegelung, Panel-Reset per Software (Pin am Expander).
+- **Env `m5stack_stopwatch`:** LittleFS auf der 3,4-MB-Datenpartition von `default_16MB.csv`, ohne `BREWCTL_ASSETS_IN_PLACE`. `FirmwareUpdater` nimmt für **alle** LittleFS-Boards `webui.tar`, nicht nur für die mit kleiner Partition — ohne SD gibt es keine Rezept-API, das Rezept-Paket aus `webui-full.tar` liefe ins Leere. Release-Matrix ergänzt. `main.cpp` braucht jetzt `<Wire.h>` selbst (kam vorher nur über SD/SPI mit).
+- **Prüfung:** Firmware `pio test -e native` 142/142 (neu `test_m5_stopwatch_board_pins`, StopWatch-Fall in `test_i2c_address_map`), `pio run` für alle fünf Envs; im StopWatch-Image stecken BoardInit, die M5-Adresstabelle, CST820 und LittleFS. Am LilyGo per OTA, weil sich der Touch-Lesepfad geändert hat (Skalierung und Spiegelung über Konstanten).
+- **Offen:** alles an der StopWatch selbst, dazu der Werksreset (keine BOOT-Taste an GPIO 0) — PLAN.md „M5Stack StopWatch am Gerät“.
+

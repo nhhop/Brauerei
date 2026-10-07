@@ -23,12 +23,14 @@
 #include <SensActCtrl.h>
 #include <Update.h>
 #include <WiFi.h>
+#include <Wire.h>
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
 #include <mbedtls/platform.h>
 #include <memory>
 
 #include "AlarmStore.h"
+#include "BoardInit.h"
 #include "DashboardStore.h"
 #include "DynamicItems.h"
 #include "EnergyManager.h"
@@ -229,6 +231,7 @@ void setup() {
   // bus - but on a fresh one it would pick the defaults, on the AMOLED-1.75
   // SCL 17 = panel reset.
   dynamicItems.acquireBoardI2cBus();
+  BrewControl::boardInit(Wire);  // the fixed board bus is port 0 = Wire
 #endif
 
   if (!wakeCause && resetHeldAtBoot()) {

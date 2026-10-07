@@ -178,6 +178,31 @@ Audio (I2S) belegt GPIO 8–10, 42, 45, 46. Für eigene Items frei bleiben nur
 GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101
 (PLAN.md).
 
+**M5Stack StopWatch (`m5stack_stopwatch`)**
+
+Gleicher Chip (ESP32-S3R8, 16 MB Flash, 8 MB OPI-PSRAM) und gleiches Panel
+(CO5300, 466×466), aber **ohne SD-Slot**: UI und Config liegen auf LittleFS in
+der 3,4-MB-Datenpartition von `default_16MB.csv` (UI per
+`pio run -e m5stack_stopwatch -t uploadfs`, „Installieren“ nimmt `webui.tar`).
+Quelle ist der StopWatch-Code von M5GFX und M5Unified — die Pin-Tabelle auf
+docs.m5stack.com nennt die Display-Datenleitungen falsch.
+
+| Pin        | Funktion                                                   | Build-Flag           |
+|------------|------------------------------------------------------------|----------------------|
+| GPIO 47    | I²C SDA (Touch, IMU, RTC, PMU, Port-Expander, Audio)       | `BREWCTL_I2C_SDA=47` |
+| GPIO 48    | I²C SCL                                                    | `BREWCTL_I2C_SCL=48` |
+| GPIO 2 / 1 | Taste A / B                                                | —                    |
+
+Display: QSPI CS 39, SCLK 40, D0 41, D1 42, D2 46, D3 45, TE 38. Panel-Reset,
+Panel-Versorgung und Touch-Reset sind Pins des Port-Expanders **M5IOE1** (0x4F);
+der Power-Manager **M5PM1** (0x6E) hat einen Watchdog und schaltet die
+3,3-V-Schienen. Beides richtet `src/BoardInit.cpp` direkt nach dem Start des
+Board-Busses ein, vor dem Display. Touch CST820 auf 0x15 (INT 13) meldet halbe
+Auflösung (0…233) und wird verdoppelt. Reserviert auf `i2c-board`: 0x15, 0x18
+(ES8311), 0x32 (RX8130), 0x4F, 0x6E — **nicht** 0x68: Der BMI270 wird als normaler
+Sensor `BMI270` angelegt. Audio (I2S) belegt GPIO 15–18 und 21, der
+Grove-Port liegt auf GPIO 10/11 (frei, z. B. für einen eigenen I²C-Bus).
+
 ### Pin-Prüfung
 
 `src/BoardPins.h` beschreibt je Board jeden GPIO: **frei**, **bedenklich**
@@ -405,10 +430,10 @@ pnpm dev
 `.env.local` ist gitignored — jeder Entwickler trägt seine ESP32-IP
 selbst ein, kein Branch-Drift.
 
-## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`)
+## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`, `m5stack_stopwatch`)
 
 Das 466×466-AMOLED des LilyGo T-Display-S3-AMOLED-1.75 (und des Waveshare
-ESP32-S3-Touch-AMOLED-1.75, gleiches Panel) zeigt die Items eines
+ESP32-S3-Touch-AMOLED-1.75 und der M5Stack StopWatch, gleiches Panel) zeigt die Items eines
 Dashboards als Seiten: zuerst Regler, dann Sensoren, dann Aktoren, maximal 16.
 Links/rechts wischen blättert die Seiten, hoch/runter wechselt das Dashboard.
 Das Grid-Layout der Web-UI wird nicht nachgebildet. Ids, zu denen es kein Item

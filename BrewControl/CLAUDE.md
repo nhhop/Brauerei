@@ -80,8 +80,15 @@ pnpm typecheck
   I²C SDA 15 / SCL 14 mit QMI8658 0x6B (normales Item), PCF85063 0x51, AXP2101 0x34, ES8311
   0x18, ES7210 0x40, TCA9554 0x20; SD per **SDMMC 1-Bit** (CLK 2, CMD 1, D0 3,
   `BREWCTL_SD_MMC_*`). Quelle: Waveshares `pin_config.h`/`HARDWARE_REFERENCE.md`.
-- **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED` bzw.
-  `BREWCTL_BOARD_WAVESHARE_AMOLED175` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
+- **M5Stack StopWatch** (`m5stack_stopwatch`, seit 2026-10-07, am Gerät noch nicht geprüft):
+  gleicher Chip und gleiches Panel, **kein SD** (LittleFS, 3,4 MB). Maßgeblich ist der
+  StopWatch-Code in **M5GFX** (`src/M5GFX.cpp`) und M5Unified, **nicht** docs.m5stack.com — die
+  Doku nennt GPIO 38 (TE) als D0. QSPI CS 39, SCLK 40, D0–D3 41/42/46/45; Panel-Reset,
+  -Versorgung und Touch-Reset hängen am Expander **M5IOE1** (0x4F), Watchdog und 3,3-V-Rails am
+  **M5PM1** (0x6E) — beides in `src/BoardInit.cpp`, vor dem Display. Touch CST820 (0x15,
+  `TouchDrvCST816`) mit halber Auflösung. I²C SDA 47 / SCL 48, BMI270 0x68 als normales Item.
+- **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED`,
+  `BREWCTL_BOARD_WAVESHARE_AMOLED175` bzw. `BREWCTL_BOARD_M5_STOPWATCH` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
   Display-Pins (`DisplayUI.cpp`). Ein S3-Build ohne Flag bricht mit `#error` ab — vorher galt
   jedes S3-Board als LilyGo.
 - Das Display wird seit 2026-09-24 angesteuert, Code in `src/display/`: `DisplayUI` übernimmt
