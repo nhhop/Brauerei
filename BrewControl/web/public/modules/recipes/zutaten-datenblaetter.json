@@ -1,5 +1,5 @@
 {
-  "_comment": "Einträge nach dem Schema in web/src/ingredientCatalog.ts, abgeschrieben aus Herstellerdatenblättern (Weyermann, NZ Hops/Yakima Chief, Lallemand). Aromaintensitäten stehen nur in den Aromarad-Grafiken und fehlen deshalb. Die Zuordnung der Biotransformationswerte (Pomona, NovaLager) beruht auf einem Abgleich der Tabellenwerte in der IPA-Broschüre. Nicht aufgenommen: überlebende Verbindungen und Timing-Empfehlungen (siehe PLAN.md).",
+  "_comment": "Einträge nach dem Schema in web/src/ingredientCatalog.ts, abgeschrieben aus Herstellerdatenblättern (Weyermann, NZ Hops/Yakima Chief, Lallemand). Aromaintensitäten stehen nur in den Aromarad-Grafiken und fehlen deshalb. Die Zuordnung der Biotransformationswerte (Pomona, NovaLager) beruht auf einem Abgleich der Tabellenwerte in der IPA-Broschüre. Nicht aufgenommen: überlebende Verbindungen und Timing-Empfehlungen (siehe PLAN.md). Die Wassermittel (aux:…) stammen aus keinem Datenblatt; Formel, Ionen und Dichte stehen in web/src/waterChem.ts.",
 
   "vocab": {
     "styles": [
@@ -366,6 +366,20 @@
       "notes": "Viel Milchsäure, wenig Essigsäure. In ungehopfte Würze bei 30 bis 40 °C und einem Start-pH über 3,4 geben. Zur besseren Verteilung optional mit dem zehnfachen Gewicht aus Würze und Wasser (1:1) bei 30 ± 5 °C anrühren.",
       "source": { "name": "Lallemand Technical Data Sheet WildBrew Sour Pitch" }
     }
+,
+    { "id": "aux:gypsum", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Calciumsulfat (Braugips)", "category": "water-salt", "defaultUnit": "g", "waterAgent": "gypsum" },
+    { "id": "aux:cacl2", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Calciumchlorid-Dihydrat", "category": "water-salt", "defaultUnit": "g", "waterAgent": "cacl2" },
+    { "id": "aux:cacl2-solution", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Calciumchlorid-Lösung", "category": "water-salt", "defaultUnit": "ml", "waterAgent": "cacl2-solution", "acidStrengthPct": 33 },
+    { "id": "aux:epsom", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Magnesiumsulfat (Bittersalz)", "category": "water-salt", "defaultUnit": "g", "waterAgent": "epsom" },
+    { "id": "aux:mgcl2", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Magnesiumchlorid-Hexahydrat", "category": "water-salt", "defaultUnit": "g", "waterAgent": "mgcl2" },
+    { "id": "aux:nacl", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Natriumchlorid (Kochsalz)", "category": "water-salt", "defaultUnit": "g", "waterAgent": "nacl" },
+    { "id": "aux:nahco3", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Natriumhydrogencarbonat (Natron)", "category": "water-salt", "defaultUnit": "g", "waterAgent": "nahco3" },
+    { "id": "aux:chalk", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Calciumcarbonat (Kreide)", "category": "water-salt", "defaultUnit": "g", "waterAgent": "chalk" },
+    { "id": "aux:lime", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Calciumhydroxid (Kalkhydrat)", "category": "water-salt", "defaultUnit": "g", "waterAgent": "lime" },
+    { "id": "aux:lactic", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Milchsäure", "category": "acid", "defaultUnit": "ml", "waterAgent": "lactic", "acidStrengthPct": 80 },
+    { "id": "aux:phosphoric", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Phosphorsäure", "category": "acid", "defaultUnit": "ml", "waterAgent": "phosphoric", "acidStrengthPct": 75 },
+    { "id": "aux:hydrochloric", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Salzsäure", "category": "acid", "defaultUnit": "ml", "waterAgent": "hydrochloric", "acidStrengthPct": 10 },
+    { "id": "aux:sulfuric", "kind": "auxiliary", "owner": "catalog", "catalogVersion": "2026.10-datenblaetter", "name": "Schwefelsäure", "category": "acid", "defaultUnit": "ml", "waterAgent": "sulfuric", "acidStrengthPct": 10 }
   ],
 
   "userIngredients": [],

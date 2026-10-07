@@ -240,6 +240,11 @@ export function platoFromExtract(extractKg: number, volumeL: number): number {
   return (lo + hi) / 2;
 }
 
+// The other way round: the wort volume (l) in which `extractKg` gives `plato`.
+export function volumeFromExtract(extractKg: number, plato: number): number {
+  return plato > 0 ? extractKg / (platoToSg(plato) * (plato / 100)) : 0;
+}
+
 export const EBC_PER_SRM = 1.97;
 
 // Beer colour (EBC) after Morey. Sources: Morey's equation SRM = 1.4922 × MCU^0.6859

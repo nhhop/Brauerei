@@ -28,11 +28,13 @@ function readUserIngredients(): CatalogIngredient[] {
 }
 
 // Case-insensitive match on name or manufacturer, prefix matches first.
+// `only` narrows the kind further (water agents among the auxiliaries).
 export function findIngredients(
   all: CatalogIngredient[], kind: IngredientKind, query: string, limit = 8,
+  only?: (c: CatalogIngredient) => boolean,
 ): CatalogIngredient[] {
   const q = query.trim().toLowerCase();
-  const ofKind = all.filter((i) => i.kind === CATALOG_KIND[kind]);
+  const ofKind = all.filter((i) => i.kind === CATALOG_KIND[kind] && (!only || only(i)));
   if (!q) return ofKind.slice(0, limit);
   const hits = ofKind.filter((i) => `${i.name} ${i.manufacturer ?? ''}`.toLowerCase().includes(q));
   const starts = (i: CatalogIngredient) => (i.name.toLowerCase().startsWith(q) ? 0 : 1);
