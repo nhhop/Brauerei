@@ -88,6 +88,9 @@ export interface Column {
 // The grist as the model troester sees it.
 export interface Grist { parts: GristPart[]; diPh: number; ratio: number; bufferMeq: number }
 
+// The brewery's profiles a water can come from; target profiles are none.
+export const sourceWaters = (brewery: Brewery | null): WaterProfile[] => (brewery?.waters ?? []).filter((w) => !w.target);
+
 export function waterById(brewery: Brewery | null, id: string | undefined): WaterProfile | undefined {
   return id === VE_WATER.id ? VE_WATER : brewery?.waters?.find((w) => w.id === id);
 }
@@ -113,14 +116,14 @@ export function calcTreatment(recipe: Recipe, w: Water, brewery: Brewery | null,
   if (unlinked > 0) notes.push(`${unlinked} von ${rows.length} Gaben ohne Wassermittel aus dem Katalog, nicht eingerechnet.`);
 
   const defaultId = brewery?.defaultWaterId;
-  if (!brewery?.waters?.length) notes.push('Noch kein Wasserprofil angelegt (Einstellungen › Brauanlage), gerechnet wird mit VE-Wasser.');
+  if (sourceWaters(brewery).length === 0) notes.push('Noch kein Wasserprofil angelegt (Einstellungen › Brauanlage), gerechnet wird mit VE-Wasser.');
   const sourceOf = (key: WaterKey): Source => {
     const s = recipe.water?.sources?.[key];
     const id = s?.waterId ?? defaultId;
     let water = waterById(brewery, id);
     if (!water) {
       if (id) notes.push(`Das Wasserprofil „${id}“ gibt es nicht mehr, gerechnet wird mit VE-Wasser.`);
-      water = (id ? undefined : brewery?.waters?.[0]) ?? VE_WATER;
+      water = (id ? undefined : sourceWaters(brewery)[0]) ?? VE_WATER;
     }
     return { water, blendWith: waterById(brewery, s?.blendId) ?? VE_WATER, blendPct: s?.blendPct ?? 0 };
   };
@@ -230,7 +233,7 @@ export function suggestAgent(col: Column, targetPh: number, catalog: CatalogIngr
   return amount === undefined ? undefined : { ingredient: own?.ingredient, entry: agent.entry, amount };
 }
 
-function catalogAgent(catalog: CatalogIngredient[] | null, id: WaterAgentId): Agent | undefined {
+export function catalogAgent(catalog: CatalogIngredient[] | null, id: WaterAgentId): Agent | undefined {
   const entry = catalog?.find((c) => c.kind === 'auxiliary' && c.waterAgent === id);
   return entry ? agentOf({ id: '', kind: 'auxiliary', name: '', amount: 0, timing: 'water', ingredientId: entry.id }, catalog) : undefined;
 }

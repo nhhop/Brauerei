@@ -11,10 +11,10 @@
 export type Ion = 'ca' | 'mg' | 'na' | 'k' | 'cl' | 'so4' | 'lactate' | 'phosphate';
 
 // mg per mmol
-const MOLAR: Record<Ion, number> = {
+export const MOLAR: Record<Ion, number> = {
   ca: 40.078, mg: 24.305, na: 22.99, k: 39.098, cl: 35.453, so4: 96.06, lactate: 89.07, phosphate: 94.97,
 };
-const CHARGE: Record<Ion, number> = { ca: 2, mg: 2, na: 1, k: 1, cl: 1, so4: 2, lactate: 1, phosphate: 3 };
+export const CHARGE: Record<Ion, number> = { ca: 2, mg: 2, na: 1, k: 1, cl: 1, so4: 2, lactate: 1, phosphate: 3 };
 export const HCO3_MG_PER_MEQ = 61.017;
 export const DH_PER_MEQ = 2.8;   // 1 mEq/l = 2.8 °dH
 
@@ -28,7 +28,11 @@ export interface WaterProfile {
   ca: number; mg: number; na: number; k?: number; cl: number; so4: number; hco3: number;
   ph?: number;
   note?: string;
+  target?: true;   // a target to compare with and to treat towards, never a source water
 }
+
+// The ions a target profile sets, mg/l.
+export type TargetIons = Pick<WaterProfile, 'ca' | 'mg' | 'na' | 'cl' | 'so4' | 'hco3'>;
 
 // Demineralised water from a mixed-bed deioniser; fixed, never stored.
 export const VE_WATER: WaterProfile = { id: 've', name: 'VE-Wasser', ca: 0, mg: 0, na: 0, k: 0, cl: 0, so4: 0, hco3: 0, ph: 7 };
@@ -118,6 +122,11 @@ export function densityAt(table: [number, number][], pct: number): number {
 export function agentMmol(agent: WaterAgent, amount: number, strengthPct = 100): number {
   if (agent.form === 'solid') return (amount * 1000) / agent.molarMass;
   return (amount * densityAt(agent.density!, strengthPct) * (strengthPct / 100) * 1000) / agent.molarMass;
+}
+
+// mmol of the active substance → amount (g, or ml at `strengthPct`); inverse of agentMmol.
+export function agentAmount(agent: WaterAgent, mmol: number, strengthPct = 100): number {
+  return mmol / agentMmol(agent, 1, strengthPct);
 }
 
 // Mean number of protons an acid has given off at `ph` (Henderson-Hasselbalch

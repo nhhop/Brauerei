@@ -4642,8 +4642,9 @@ components:
           type: array
           description: |
             Water analyses (`web/src/waterChem.ts`, type `WaterProfile`), the
-            source water of recipes. VE water (`id: ve`) is built into the web
-            UI and never stored.
+            source water of recipes, and own target profiles (`target: true`).
+            VE water (`id: ve`) and the built-in target profiles live in the
+            web UI and are never stored.
           items: { $ref: "#/components/schemas/WaterProfile" }
         defaultWaterId:
           type: string
@@ -4673,6 +4674,12 @@ components:
         hco3: { type: number }
         ph: { type: number }
         note: { type: string, description: "Source, date of the analysis." }
+        target:
+          type: boolean
+          enum: [true]
+          description: |
+            A target profile: compared with and treated towards in the recipe's
+            water tab, never a source water. Unset = an analysis.
       additionalProperties: true
 
     Brewhouse:

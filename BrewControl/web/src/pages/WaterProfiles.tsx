@@ -5,7 +5,7 @@ import { uid } from '../recipes';
 import {
   CA_PER_DH, HCO3_PER_DH, HCO3_PER_KS43, MG_PER_DH, VE_WATER, figuresOf, ionBalance, stateOf, type WaterProfile,
 } from '../waterChem';
-import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
+import { badgeAccent, btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 import { Field, NumInput, OptNum } from './recipe/fields';
 
 export const fmtNum = (n: number, digits = 0) => n.toFixed(digits).replace('.', ',');
@@ -16,15 +16,20 @@ export function profileSummary(p: WaterProfile): string {
     + `HCO₃ ${fmtNum(p.hco3)} mg/l · RA ${fmtNum(f.raDh, 1)} °dH${p.ph === undefined ? '' : ` · pH ${fmtNum(p.ph, 2)}`}`;
 }
 
-// Section "Wasserprofile" of the brewery card: the analyses and the default
-// water of new recipes. Edits go into the card's draft.
+// Section "Wasserprofile" of the brewery card: the analyses, own target profiles
+// and the default water of new recipes. Edits go into the card's draft.
 export function WaterProfilesSection({ brewery, onChange }: { brewery: Brewery; onChange: (b: Brewery) => void }) {
   const [editing, setEditing] = useState<WaterProfile | null>(null);
   const waters = brewery.waters ?? [];
+  const sources = waters.filter((w) => !w.target);
 
   function commit(p: WaterProfile) {
     const exists = waters.some((w) => w.id === p.id);
-    onChange({ ...brewery, waters: exists ? waters.map((w) => (w.id === p.id ? p : w)) : [...waters, p] });
+    onChange({
+      ...brewery, waters: exists ? waters.map((w) => (w.id === p.id ? p : w)) : [...waters, p],
+      // a target is no source water
+      defaultWaterId: p.target && brewery.defaultWaterId === p.id ? undefined : brewery.defaultWaterId,
+    });
     setEditing(null);
   }
 
@@ -49,7 +54,11 @@ export function WaterProfilesSection({ brewery, onChange }: { brewery: Brewery; 
         {waters.map((p) => (
           <div key={p.id} class="flex items-center gap-3 rounded-md border border-border px-3 py-2">
             <div class="min-w-0 flex-1">
-              <div class="truncate text-sm">{p.name || 'Ohne Namen'}{p.note && <span class="ml-2 text-xs text-muted">{p.note}</span>}</div>
+              <div class="truncate text-sm">
+                {p.name || 'Ohne Namen'}
+                {p.target && <span class={`ml-2 ${badgeAccent}`}>Ziel</span>}
+                {p.note && <span class="ml-2 text-xs text-muted">{p.note}</span>}
+              </div>
               <div class="text-xs text-muted">{profileSummary(p)}</div>
             </div>
             <button type="button" title="Profil bearbeiten" onClick={() => setEditing(p)}
@@ -68,8 +77,8 @@ export function WaterProfilesSection({ brewery, onChange }: { brewery: Brewery; 
         <Field label="Standardwasser neuer Rezepte">
           <select class={`${inp} w-full sm:w-72`} value={brewery.defaultWaterId ?? ''}
             onChange={(e) => onChange({ ...brewery, defaultWaterId: e.currentTarget.value || undefined })}>
-            <option value="">{waters.length > 0 ? `— erstes Profil (${waters[0].name || 'Ohne Namen'}) —` : `— ${VE_WATER.name} —`}</option>
-            {waters.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
+            <option value="">{sources.length > 0 ? `— erstes Profil (${sources[0].name || 'Ohne Namen'}) —` : `— ${VE_WATER.name} —`}</option>
+            {sources.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
             <option value={VE_WATER.id}>{VE_WATER.name}</option>
           </select>
         </Field>
@@ -145,6 +154,16 @@ function ProfileDialog({ profile, onSave, onClose }: {
               HCO₃ = KS4,3 × 61,02 bzw. Karbonathärte × 21,8; Ca = Calciumhärte × 7,14; Mg = Magnesiumhärte × 4,34.
             </p>
           </details>
+          <label class="mt-4 flex items-start gap-2 text-sm">
+            <input type="checkbox" class="mt-0.5 accent-accent" checked={!!p.target}
+              onChange={(e) => set({ target: e.currentTarget.checked || undefined })} />
+            <span>
+              Zielprofil
+              <span class="block text-xs text-muted">
+                Kein Ausgangswasser, sondern ein Ziel für den Vergleich und die Automatik im Wasser-Tab.
+              </span>
+            </span>
+          </label>
           <p class="mt-3 text-xs text-muted">Ohne pH lässt sich der Wasser-pH nach Säure nicht berechnen.</p>
         </div>
         <div class={dialogFooter}>

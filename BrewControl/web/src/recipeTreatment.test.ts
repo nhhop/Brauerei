@@ -59,6 +59,12 @@ describe('calcTreatment', () => {
     expect(notes).toEqual(['1 von 2 Gaben ohne Wassermittel aus dem Katalog, nicht eingerechnet.']);
   });
 
+  it('never takes a target profile as source water', () => {
+    const goal = { id: 'goal', name: 'Ziel', ca: 1, mg: 0, na: 0, cl: 0, so4: 0, hco3: 0, target: true as const };
+    const { columns } = treat([], {}, { ...DEFAULT_BREWERY, waters: [goal, ...brewery.waters!] });
+    expect(columns[0].source!.water.id).toBe('tap');
+  });
+
   it('blends the source water and drops the sparge column without sparge', () => {
     const { columns } = treat([], { water: { sparge: false, sources: { strike: { blendPct: 70 } } } });
     expect(columns.map((c) => c.key)).toEqual(['strike', 'mash', 'total']);
