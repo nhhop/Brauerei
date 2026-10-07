@@ -12,6 +12,7 @@ import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet } from '../ui';
 import { Field, NumInput } from './recipe/fields';
+import { WaterProfilesSection } from './WaterProfiles';
 
 const editUrl = (id: string) => `/settings/anlage/sudhaus/${encodeURIComponent(id)}`;
 
@@ -142,6 +143,7 @@ function BreweryCard() {
           <NumInput value={draft.tapWaterTempC} onChange={(n) => setDraft({ ...draft, tapWaterTempC: n })} />
         </Field>
       </div>
+      <WaterProfilesSection brewery={draft} onChange={setDraft} />
       {state === 'error' && <p class="mt-2 text-sm text-critical">Speichern fehlgeschlagen.</p>}
       {state === 'loadError' && <p class="mt-2 text-sm text-critical">Brauerei konnte nicht geladen werden.</p>}
     </section>

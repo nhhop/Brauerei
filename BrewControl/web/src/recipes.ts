@@ -6,7 +6,7 @@ import { failed } from './api';
 export type IngredientKind = 'fermentable' | 'hop' | 'yeast' | 'aroma' | 'auxiliary';
 
 export type Timing =
-  | 'mainWater' | 'mash' | 'mashPh' | 'sparge'
+  | 'water' | 'mainWater' | 'mash' | 'mashPh' | 'sparge' | 'preBoil' | 'knockOut' | 'dilution'
   | 'firstWort' | 'boil' | 'whirlpool' | 'hopBack' | 'kettleSour'
   | 'pitch' | 'dip' | 'primary' | 'maturation' | 'bottling';
 
@@ -19,7 +19,8 @@ export const KINDS: { id: IngredientKind; label: string; unit: string }[] = [
 ];
 
 export const TIMING_LABEL: Record<Timing, string> = {
-  mainWater: 'Hauptguss', mash: 'Maische', mashPh: 'Maische nach pH-Messung', sparge: 'Nachguss',
+  water: 'Brauwasser', mainWater: 'Hauptguss', mash: 'Maische', mashPh: 'Maische nach pH-Messung', sparge: 'Nachguss',
+  preBoil: 'Würze vor dem Kochen', knockOut: 'Ausschlagwürze', dilution: 'Verschnitt',
   firstWort: 'Vorderwürze', boil: 'Kochen', whirlpool: 'Whirlpool', hopBack: 'Hop Back',
   kettleSour: 'Kettle Sour', pitch: 'Anstellen', dip: 'Dip', primary: 'Hauptgärung',
   maturation: 'Reifung', bottling: 'Abfüllung',
@@ -31,15 +32,17 @@ const TIMINGS: Record<IngredientKind, Timing[]> = {
   hop: ['mash', 'firstWort', 'boil', 'whirlpool', 'hopBack', 'dip', 'primary', 'maturation'],
   yeast: ['pitch', 'maturation', 'bottling', 'kettleSour'],
   aroma: ['boil', 'whirlpool', 'primary', 'maturation'],
-  auxiliary: ['mainWater', 'mash', 'mashPh', 'sparge', 'boil', 'pitch', 'maturation'],
+  auxiliary: ['water', 'mainWater', 'mash', 'mashPh', 'sparge', 'preBoil', 'boil', 'knockOut', 'dilution', 'pitch', 'maturation'],
 };
 
-// The process tabs show the same ingredient list, filtered by moment. Water
-// (Hauptguss/Nachguss) has no tab yet and only appears under "Zutaten".
-export type Scope = 'mash' | 'boil' | 'fermentation';
+// The process tabs show the same ingredient list, filtered by moment. "Brauwasser"
+// is shared out over strike and sparge water by volume; the mash and wort
+// moments are in both the water and the mash or boil scope.
+export type Scope = 'water' | 'mash' | 'boil' | 'fermentation';
 export const SCOPE_TIMINGS: Record<Scope, Timing[]> = {
+  water: ['water', 'mainWater', 'mash', 'mashPh', 'sparge', 'preBoil', 'knockOut', 'dilution'],
   mash: ['mash', 'mashPh'],
-  boil: ['firstWort', 'boil', 'whirlpool', 'hopBack', 'kettleSour'],
+  boil: ['preBoil', 'firstWort', 'boil', 'whirlpool', 'hopBack', 'knockOut', 'kettleSour'],
   fermentation: ['pitch', 'dip', 'primary', 'maturation', 'bottling'],
 };
 
@@ -71,6 +74,7 @@ export interface Ingredient {
   amount: number;
   timing: Timing;
   timeMin?: number; // hops at "Kochen": minutes before the end of the boil; unset = whole boil
+  strengthPct?: number; // acid or solution: concentration of this addition; unset = the catalog's
 }
 
 // Mash rest (duration in minutes) and fermentation phase (duration in days).
@@ -108,6 +112,25 @@ export interface RecipeWater {
   spargeTempC?: number;
   evaporationLPerH?: number;      // override; unset = the boil vessel's value
   grainAbsorptionLPerKg?: number; // override; unset = the lauter vessel's value
+  // Source water per water; unset waterId = the brewery's default water, blended
+  // with blendPct % of blendId (unset = VE water).
+  sources?: Partial<Record<WaterKey, WaterSource>>;
+  dilution?: Dilution;
+  targetPh?: Partial<Record<WaterKey, number>>;  // target of the acid helper
+}
+
+export type WaterKey = 'strike' | 'sparge' | 'dilution';
+export interface WaterSource { waterId?: string; blendId?: string; blendPct?: number }
+
+// Planned dilution (high gravity), at the end of the boil or in the fermenter.
+// Volume and gravity depend on each other; `lead` names the one last edited,
+// the other is computed. `plato` is the gravity the grist does not fix: in the
+// kettle before the dilution, or the pitched wort after it.
+export interface Dilution {
+  at: 'kettle' | 'fermenter';
+  lead: 'volume' | 'gravity';
+  volumeL?: number;
+  plato?: number;
 }
 
 export const DEFAULT_MASH_RATIO = 3.5;
