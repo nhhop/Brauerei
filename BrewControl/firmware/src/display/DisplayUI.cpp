@@ -15,8 +15,21 @@
 namespace BrewControl {
 namespace {
 
-// Pin map as verified on the device 2026-09-22. Authoritative source is
-// LilyGo's libraries/Mylibrary/pin_config.h (H0175Y003AM), not their README.
+#if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+// Waveshare's examples/arduino/libraries/Mylibrary/pin_config.h. No enable
+// pin: the AXP2101 powers the panel by default.
+constexpr int8_t kLcdCs = 12;
+constexpr int8_t kLcdSck = 38;
+constexpr int8_t kLcdD0 = 4;
+constexpr int8_t kLcdD1 = 5;
+constexpr int8_t kLcdD2 = 6;
+constexpr int8_t kLcdD3 = 7;
+constexpr int8_t kLcdRst = 39;
+constexpr int8_t kLcdEn = -1;
+constexpr int8_t kTouchRst = 40;
+#else
+// LilyGo: pin map as verified on the device 2026-09-22. Authoritative source
+// is LilyGo's libraries/Mylibrary/pin_config.h (H0175Y003AM), not their README.
 constexpr int8_t kLcdCs = 10;
 constexpr int8_t kLcdSck = 12;
 constexpr int8_t kLcdD0 = 11;
@@ -25,6 +38,8 @@ constexpr int8_t kLcdD2 = 14;
 constexpr int8_t kLcdD3 = 15;
 constexpr int8_t kLcdRst = 17;
 constexpr int8_t kLcdEn = 16;  // panel power
+constexpr int8_t kTouchRst = -1;
+#endif
 constexpr int16_t kLcdW = 466;
 constexpr int16_t kLcdH = 466;
 constexpr uint8_t kColOffset = 6;  // RAM is 480 wide, glass is 466, centred
@@ -51,9 +66,8 @@ constexpr uint32_t kDarkPollMs = 30;
 constexpr uint16_t kBufLines = 40;
 constexpr uint32_t kBufPx = static_cast<uint32_t>(kLcdW) * kBufLines;
 
-// CST9217 on the shared I2C bus (RTC 0x51, PMU 0x6A), which main.cpp has
-// already started on SDA 7 / SCL 6. Polled from LVGL; the interrupt line
-// (GPIO 9, shared with the RTC) stays unused.
+// CST9217 on the board's shared I2C bus, which main.cpp has already started
+// on BREWCTL_I2C_SDA/SCL. Polled from LVGL; the interrupt line stays unused.
 constexpr uint8_t kTouchAddr = 0x5A;
 
 Arduino_CO5300* g_gfx = nullptr;
@@ -116,7 +130,8 @@ void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
   if (pts.hasPoints() && !g_swallow) {
     const TouchPoint& p = pts.getPoint(0);
     // The touch layer sits rotated 180 deg against the panel (checked on the
-    // device: a tap at the top edge reported the bottom, left reported right).
+    // LilyGo: a tap at the top edge reported the bottom, left reported right;
+    // Waveshare's example mirrors both axes the same way).
     data->point.x = kLcdW - 1 - p.x;
     data->point.y = kLcdH - 1 - p.y;
     data->state = LV_INDEV_STATE_PRESSED;
@@ -129,8 +144,10 @@ void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
 
 void DisplayUI::begin(const SettingsStore& settings) {
   settings_ = &settings;
-  pinMode(kLcdEn, OUTPUT);
-  digitalWrite(kLcdEn, HIGH);
+  if (kLcdEn >= 0) {
+    pinMode(kLcdEn, OUTPUT);
+    digitalWrite(kLcdEn, HIGH);
+  }
 
   auto* bus = new Arduino_ESP32QSPI(kLcdCs, kLcdSck, kLcdD0, kLcdD1, kLcdD2,
                                     kLcdD3);
@@ -164,6 +181,7 @@ void DisplayUI::begin(const SettingsStore& settings) {
   lv_disp_trig_activity(nullptr);  // idle time counts from here, not from boot
 
   // A missing touch leaves a read-only display, not a dead one.
+  if (kTouchRst >= 0) g_touch.setPins(kTouchRst, -1);  // begin() pulses it
   g_touchUp = g_touch.begin(Wire, kTouchAddr);
   if (g_touchUp) {
     lv_indev_drv_init(&g_indevDrv);

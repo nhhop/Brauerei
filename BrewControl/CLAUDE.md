@@ -74,6 +74,16 @@ pnpm typecheck
   README-Tabelle — die beschreibt nur die 1.43 (SH8601 + FT3168). ⚠ `Wire` steht auf diesem
   Variant per Default auf SDA 18 / SCL 17, und GPIO 17 ist der Panel-Reset. Deshalb startet
   `main.cpp` `Wire` als Allererstes auf `BREWCTL_I2C_SDA/SCL`.
+- **Waveshare ESP32-S3-Touch-AMOLED-1.75** (`waveshare_s3_amoled_175`, seit 2026-10-07, am
+  Gerät noch nicht geprüft): gleicher Chip und gleiches Panel wie das LilyGo, andere Pins —
+  QSPI CS 12, SCLK 38, D0–D3 4–7, RST 39, **kein** EN-Pin; Touch CST9217 0x5A (INT 11, RST 40);
+  I²C SDA 15 / SCL 14 mit QMI8658 0x6B (normales Item), PCF85063 0x51, AXP2101 0x34, ES8311
+  0x18, ES7210 0x40, TCA9554 0x20; SD per **SDMMC 1-Bit** (CLK 2, CMD 1, D0 3,
+  `BREWCTL_SD_MMC_*`). Quelle: Waveshares `pin_config.h`/`HARDWARE_REFERENCE.md`.
+- **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED` bzw.
+  `BREWCTL_BOARD_WAVESHARE_AMOLED175` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
+  Display-Pins (`DisplayUI.cpp`). Ein S3-Build ohne Flag bricht mit `#error` ab — vorher galt
+  jedes S3-Board als LilyGo.
 - Das Display wird seit 2026-09-24 angesteuert, Code in `src/display/`: `DisplayUI` übernimmt
   Panel, Touch und LVGL, `DisplayPages` die Inhalte. Alles steht hinter `BREWCTL_HAS_DISPLAY`.
   Einen Überblick gibt `README.md` → „Rundes Touch-Display“. Regeln:

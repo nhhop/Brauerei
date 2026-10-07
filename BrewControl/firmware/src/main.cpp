@@ -14,6 +14,8 @@
 #include <Preferences.h>
 #ifdef BREWCTL_USE_LITTLEFS
 #include <LittleFS.h>
+#elif defined(BREWCTL_SD_MMC_CLK)
+#include <SD_MMC.h>
 #else
 #include <SD.h>
 #endif
@@ -74,6 +76,8 @@ constexpr char kHostname[] = "brewcontrol";
 // setup()) differ between boards with an SD reader and boards without one.
 #ifdef BREWCTL_USE_LITTLEFS
 fs::FS& deviceFs = LittleFS;
+#elif defined(BREWCTL_SD_MMC_CLK)
+fs::FS& deviceFs = SD_MMC;
 #else
 fs::FS& deviceFs = SD;
 #endif
@@ -262,7 +266,12 @@ void setup() {
   // log charts fetches several in parallel. With 5, further opens failed —
   // UI uploads died with "open failed", assets got the fallback page.
   constexpr uint8_t kSdMaxOpenFiles = 16;
-#ifdef BREWCTL_SD_SCK
+#if defined(BREWCTL_SD_MMC_CLK)
+  // SD slot on the SDMMC host in 1-bit mode (Waveshare AMOLED-1.75).
+  SD_MMC.setPins(BREWCTL_SD_MMC_CLK, BREWCTL_SD_MMC_CMD, BREWCTL_SD_MMC_D0);
+  const bool fsOk = SD_MMC.begin("/sd", true /* 1-bit */, false /* no format */,
+                                 SDMMC_FREQ_DEFAULT, kSdMaxOpenFiles);
+#elif defined(BREWCTL_SD_SCK)
   static SPIClass sdSpi(HSPI);
   sdSpi.begin(BREWCTL_SD_SCK, BREWCTL_SD_MISO, BREWCTL_SD_MOSI, kSdCsPin);
   const bool fsOk = SD.begin(kSdCsPin, sdSpi, 4000000, "/sd", kSdMaxOpenFiles);

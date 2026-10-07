@@ -136,6 +136,22 @@ void test_user_bus_cannot_take_fixed_bus_pins() {
   TEST_ASSERT_TRUE(checkBus(kLilyGoAmoled, {}, R"({"type":"i2c","sda":1,"scl":2})").ok);
 }
 
+void test_waveshare_board_pins() {
+  // Board I2C (15/14), SD (1-3, 41) and display (38) are taken by the board.
+  TEST_ASSERT_EQUAL(409, checkBus(kWaveshareAmoled175, {}, R"({"type":"i2c","sda":15,"scl":14})").status);
+  TEST_ASSERT_EQUAL(409, check(kWaveshareAmoled175, {}, R"({"type":"DigitalOutput","id":"a","pin":2})").status);
+  TEST_ASSERT_EQUAL(409, check(kWaveshareAmoled175, {}, R"({"type":"DigitalOutput","id":"a","pin":41})").status);
+  TEST_ASSERT_EQUAL(409, check(kWaveshareAmoled175, {}, R"({"type":"DigitalOutput","id":"a","pin":38})").status);
+  // The header pins are free.
+  for (int pin : {13, 17, 18, 47, 48}) {
+    const std::string cfg = R"({"type":"DigitalOutput","id":"a","pin":)" + std::to_string(pin) + "}";
+    auto r = check(kWaveshareAmoled175, {}, cfg.c_str());
+    TEST_ASSERT_TRUE(r.ok);
+    TEST_ASSERT_TRUE(r.warnings.empty());
+  }
+  TEST_ASSERT_EQUAL(-1, kWaveshareAmoled175.batteryPin);
+}
+
 void test_forbidden_and_missing_pins_are_400() {
   auto r = check(kEsp32Dev, {}, R"({"type":"DigitalOutput","id":"a","pin":6})");
   TEST_ASSERT_EQUAL(400, r.status);
@@ -380,5 +396,6 @@ int main(int, char**) {
   RUN_TEST(test_adc_conflicts_in_stored_config);
   RUN_TEST(test_pins_json_capabilities);
   RUN_TEST(test_wake_pin);
+  RUN_TEST(test_waveshare_board_pins);
   return UNITY_END();
 }

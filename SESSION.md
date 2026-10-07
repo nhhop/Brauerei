@@ -6393,3 +6393,12 @@ Der Nutzer hat ein Waveshare ESP32-S3-Touch-AMOLED-1.75 (QMI8658), eine M5Stack 
 - **Kosten:** rund 35 KB Flash; esp32dev 95,0 → 96,9 % (PLAN.md).
 - **Offen:** alles am Gerät — die Hardware ist noch nicht da (PLAN.md „Neue IMUs … am Gerät“).
 
+## 2026-10-07 — Neue Boards, Phase 2: Board-Auswahl per Flag und Waveshare ESP32-S3-Touch-AMOLED-1.75 (Branch `feat/board-waveshare`)
+
+Zweite von vier Phasen (Plan im Eintrag vom 2026-10-06, Reste in PLAN.md „Neue Boards“). Baut auf Phase 1 (`feat/imu-treiber`) auf, weil der QMI8658 des Boards ein normales IMU-Item wird.
+
+- **Board-Auswahl:** `BoardPins.h` wählte das Board über `CONFIG_IDF_TARGET_ESP32S3` — jedes S3-Board wäre als LilyGo behandelt worden. Jetzt wählen `BREWCTL_BOARD_LILYGO_AMOLED` bzw. `BREWCTL_BOARD_WAVESHARE_AMOLED175` Pin-Tabelle, festen Bus und die `static_assert`s; ein S3-Build ohne Flag bricht mit `#error` ab. `DisplayUI.cpp` hat die Panel-/Touch-Pins je Board, `kLcdEn = -1` (Waveshare ohne Enable-Pin) und optional einen Touch-Reset-Pin, den SensorLib in `begin()` pulst.
+- **Env `waveshare_s3_amoled_175`:** `esp32-s3-devkitc-1` mit den Speichereinstellungen des LilyGo-Boards (16 MB QIO, OPI-PSRAM, `default_16MB.csv`, USB-CDC). Pins aus Waveshares `pin_config.h` und `HARDWARE_REFERENCE.md`; die Display-Initialisierung von Waveshares LVGL-Beispiel passt zu unserem Stack (gleicher CO5300-Konstruktor mit Spaltenoffset 6, Touch auf beiden Achsen gespiegelt, keine PMU-Initialisierung nötig) — das im Plan genannte AXP2101-Risiko ist damit kleiner geworden. SD läuft im **SDMMC-1-Bit-Modus** (`BREWCTL_SD_MMC_*`, neuer Zweig in `main.cpp`, `deviceFs = SD_MMC`); sonst nutzt nichts den `SD`-Global direkt. Fester Bus `i2c-board` (15/14) reserviert PCF85063, AXP2101, ES8311, ES7210, TCA9554 und Touch, **nicht** den QMI8658 (0x6B). Release-Matrix um das Env ergänzt; es bekommt `webui-full.tar` (kein `BREWCTL_ASSETS_IN_PLACE`).
+- **Prüfung:** Firmware `pio test -e native` 141/141 (neu `test_waveshare_board_pins`, Waveshare-Fall in `test_i2c_address_map`), `pio run` für alle vier Envs; im Waveshare-Image stecken SD_MMC und die Waveshare-Adresstabelle, nicht die des LilyGo; das LilyGo-Image ist byte-gleich groß wie vor der Änderung. Am LilyGo per OTA: bootet (`resetReason sw`), fester Bus mit den LilyGo-Adressen, GY-521 über den umgebauten `ImuTiltSensor` mit plausiblen Werten (az ≈ 0,96 g) — damit ist die Phase-1-Umstellung des GY-521 auch an echter Hardware bestätigt.
+- **Offen:** alles am Waveshare selbst (PLAN.md „Waveshare … am Gerät“).
+

@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled]
+        env: [esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled, waveshare_s3_amoled_175]
     steps:
       - uses: actions/checkout@v4
         with:

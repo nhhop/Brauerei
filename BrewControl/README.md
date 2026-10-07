@@ -84,7 +84,8 @@ Browser einen vollständigen Snapshot.
 
 **Hardware:**
 - ESP32 Dev-Board
-- SD-Karten-Slot (SPI) — nur für `lilygo_t_display_s3_amoled` (onboard-Slot). `esp32dev`
+- SD-Karten-Slot — nur für `lilygo_t_display_s3_amoled` (onboard, SPI) und
+  `waveshare_s3_amoled_175` (onboard, SDMMC 1-Bit). `esp32dev`
   und `lolin_s2_mini` brauchen **keine** SD-Karte mehr — UI und Config liegen bei denen
   auf einer internen LittleFS-Partition, siehe „Web-UI bauen + auf LittleFS deployen" unten.
 - Optional: DS18B20 (1-Wire-Temp), SSR auf GPIO 16 für das Demo-Setup
@@ -153,6 +154,29 @@ Bereich meiden — sonst hängt `SD.begin()` und der Task-Watchdog feuert.
 **Pin-Quellen variieren zwischen AMOLED-Sub-Varianten** (1.43, 1.64,
 1.75, 1.91, Plus, Touch) — vor einer neuen Variante Silkscreen am Board
 ablesen, nicht Web-Snippets vertrauen.
+
+**Waveshare ESP32-S3-Touch-AMOLED-1.75 (`waveshare_s3_amoled_175`)**
+
+Gleicher Chip (ESP32-S3R8, 16 MB Flash, 8 MB OPI-PSRAM) und gleiches Panel
+(CO5300, 466×466) wie das LilyGo, aber anders verdrahtet. Quelle: Waveshares
+`HARDWARE_REFERENCE.md` und `examples/arduino/libraries/Mylibrary/pin_config.h`
+im Repo `waveshareteam/ESP32-S3-Touch-AMOLED-1.75`.
+
+| Pin            | Funktion                                   | Build-Flag                 |
+|----------------|--------------------------------------------|----------------------------|
+| GPIO 2 / 1 / 3 | SD-Karte CLK / CMD / D0 (SDMMC 1-Bit)      | `BREWCTL_SD_MMC_CLK/CMD/D0` |
+| GPIO 15        | I²C SDA (Touch, IMU, RTC, PMU, Audio)      | `BREWCTL_I2C_SDA=15`       |
+| GPIO 14        | I²C SCL                                    | `BREWCTL_I2C_SCL=14`       |
+
+Display: QSPI CS 12, SCLK 38, D0–D3 4–7, Reset 39, kein Enable-Pin (der
+AXP2101 versorgt das Panel ab Werk). Touch CST9217 auf 0x5A (INT 11, Reset 40),
+wie beim LilyGo um 180° gedreht. Am festen Bus `i2c-board` hängen außerdem
+PCF85063 (0x51), AXP2101 (0x34), ES8311 (0x18), ES7210 (0x40) und TCA9554 (0x20)
+— diese Adressen sind reserviert. Die IMU **QMI8658 (0x6B)** ist bewusst nicht
+reserviert: Sie wird als normaler Sensor `QMI8658` auf `i2c-board` angelegt.
+Audio (I2S) belegt GPIO 8–10, 42, 45, 46. Für eigene Items frei bleiben nur
+GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101
+(PLAN.md).
 
 ### Pin-Prüfung
 
@@ -381,9 +405,10 @@ pnpm dev
 `.env.local` ist gitignored — jeder Entwickler trägt seine ESP32-IP
 selbst ein, kein Branch-Drift.
 
-## Rundes Touch-Display (nur `lilygo_t_display_s3_amoled`)
+## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`)
 
-Das 466×466-AMOLED des LilyGo T-Display-S3-AMOLED-1.75 zeigt die Items eines
+Das 466×466-AMOLED des LilyGo T-Display-S3-AMOLED-1.75 (und des Waveshare
+ESP32-S3-Touch-AMOLED-1.75, gleiches Panel) zeigt die Items eines
 Dashboards als Seiten: zuerst Regler, dann Sensoren, dann Aktoren, maximal 16.
 Links/rechts wischen blättert die Seiten, hoch/runter wechselt das Dashboard.
 Das Grid-Layout der Web-UI wird nicht nachgebildet. Ids, zu denen es kein Item
@@ -856,7 +881,8 @@ Vier Wege:
   **SD-Root** kopieren → beim nächsten Boot wird sie geflasht, danach gelöscht und
   das Gerät rebootet. Funktioniert vor der WiFi-Verbindung, also auch ohne Netz /
   bei fehlenden WiFi-Creds. Keine Versions-/Varianten-Prüfung — passende `.bin` für
-  das Board selbst wählen. **Nur `lilygo_t_display_s3_amoled` (SD):** auf `esp32dev`/
+  das Board selbst wählen. **Nur SD-Boards (`lilygo_t_display_s3_amoled`,
+  `waveshare_s3_amoled_175`):** auf `esp32dev`/
   `lolin_s2_mini` passt eine reguläre `firmware.bin` (>1,3 MB) nicht auf die 256-KB-
   LittleFS-Partition — dort bleibt nur Netzwerk-OTA oder USB als Recovery-Weg.
 - **USB (Brick-Rettung):** Bootet das Gerät nach einem fehlerhaften Flash nicht mehr,
