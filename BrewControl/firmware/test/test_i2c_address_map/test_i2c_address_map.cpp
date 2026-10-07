@@ -52,6 +52,13 @@ void test_collect_keys_per_type() {
   u = usesOf({R"({"type":"GY521","id":"g","bus":"i2c-4-5"})"});
   TEST_ASSERT_EQUAL_STRING("i2c-4-5", u[0].bus.c_str());
 
+  u = usesOf({R"({"type":"QMI8658","id":"q"})", R"({"type":"BMI270","id":"b"})",
+              R"({"type":"BMI160","id":"c","address":105})"});
+  TEST_ASSERT_EQUAL(3, u.size());
+  TEST_ASSERT_EQUAL(0x6B, u[0].addr);
+  TEST_ASSERT_EQUAL(0x68, u[1].addr);
+  TEST_ASSERT_EQUAL(0x69, u[2].addr);
+
   u = usesOf({R"({"type":"DS18B20","id":"t","bus":"onewire-4"})",
               R"({"type":"Remote","id":"r","device":"d","remote_id":"x"})"});
   TEST_ASSERT_EQUAL(0, u.size());

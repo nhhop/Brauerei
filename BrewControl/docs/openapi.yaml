@@ -87,7 +87,7 @@ tags:
   - name: Bus Discovery
     description: |
       Bus definitions (OneWire, SPI, I2C) and scanning them for attached
-      devices. Items on a bus (DS18B20, MAX31865, BME280, GY521) reference it
+      devices. Items on a bus (DS18B20, MAX31865, BME280, the IMUs GY521/QMI8658/BMI270/BMI160) reference it
       by id (`bus`) instead of carrying the bus pins themselves.
   - name: Remote Discovery
     description: |
@@ -3242,7 +3242,7 @@ components:
         share bus lines by referencing the bus (`bus`), see `GET /api/pins` and
         `/api/buses`.
 
-        For BME280/GY521 only, a separate 409 covers the I2C *address* (not a
+        For BME280 and the IMUs only, a separate 409 covers the I2C *address* (not a
         pin), per bus: `0x51 is reserved on bus i2c-board (RTC (PCF8563))`, or
         `0x76 already used by amb`. The same address on two different buses is
         fine. Unlike pins, this is never surfaced by `GET /api/pins` — only
@@ -3544,7 +3544,7 @@ components:
       properties:
         type:
           type: string
-          enum: [DS18B20, MAX31865, BME280, GY521, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
+          enum: [DS18B20, MAX31865, BME280, GY521, QMI8658, BMI270, BMI160, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin: { type: integer }
@@ -3552,9 +3552,10 @@ components:
           type: string
           description: >-
             Id of the bus the item sits on (`GET /api/buses`): required for
-            DS18B20 (`onewire`), BME280 and GY521 (`i2c`); optional for
+            DS18B20 (`onewire`), BME280 and the IMUs GY521, QMI8658, BMI270,
+            BMI160 (`i2c`); optional for
             MAX31865 (`spi` — without it, the chip's hardware SPI is used).
-        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280/GY521 (default 0x76 / 0x68). BME280/GY521 are rejected with 409 if the address is already used on their bus or reserved there by an onboard device (see `PinConflict`)." }
+        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280 and the IMUs (default BME280 0x76, GY521/BMI270/BMI160 0x68, QMI8658 0x6B). BME280 and the IMUs are rejected with 409 if the address is already used on their bus or reserved there by an onboard device (see `PinConflict`)." }
         cs: { type: integer, description: MAX31865 chip select — the only pin of its own; the SPI lines come from its bus. }
         wires: { type: integer, enum: [2, 3, 4], description: MAX31865 wiring. }
         rtd: { type: string, enum: [PT100, PT1000], default: PT100, description: MAX31865 RTD type. }
@@ -3574,13 +3575,14 @@ components:
           minItems: 1
           description: |
             Channels to expose, for the multi-channel types `YF-S201`
-            (`rate`, `volume`), `HCSR04` (`distance`, `derived`) and `GY521`
+            (`rate`, `volume`), `HCSR04` (`distance`, `derived`) and the IMUs
+            `GY521`, `QMI8658`, `BMI270`, `BMI160`, all alike
             (`pitch` rotation about Y and `roll` about X in °, −90…90; `tilt`
             angle of the Z axis against the vertical in °, 0…180; `temp` chip
             temperature in °C; `ax`/`ay`/`az` acceleration in g; `gx`/`gy`/`gz`
             rotation rate in °/s; `dir` direction of the lean in °, 0…360,
             `atan2(roll, pitch)` — the side that is up, 0 = the −X side,
-            90 = +Y, 180 = +X, 270 = −Y; invalid below 0.5° of tilt). Absent → all channels; for `GY521` only
+            90 = +Y, 180 = +X, 270 = −Y; invalid below 0.5° of tilt). Absent → all channels; for the IMUs only
             `pitch`. The measurement itself always
             runs; the array only decides which channels appear in the snapshot
             (as `<id>.<channel>`, in the order listed here). `derived` requires

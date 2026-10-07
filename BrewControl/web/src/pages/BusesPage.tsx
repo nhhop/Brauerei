@@ -26,7 +26,7 @@ const lbl = 'block text-xs text-muted mb-1';
 const TYPE_HINT: Record<BusType, string> = {
   onewire: 'DS18B20-Temperaturfühler; mehrere teilen sich eine Leitung (4,7 kΩ Pull-up).',
   spi: 'MAX31865 mit eigenen SPI-Leitungen (Software-SPI); jeder Fühler hat zusätzlich seinen CS-Pin.',
-  i2c: 'BME280, GY-521; Geräte werden über ihre Adresse unterschieden.',
+  i2c: 'BME280, IMUs (GY-521, QMI8658, BMI270, BMI160); Geräte werden über ihre Adresse unterschieden.',
 };
 
 // Which way each line is driven, for the pin hints (mirrors outputMask in BusConfig.h).

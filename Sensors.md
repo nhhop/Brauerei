@@ -8,14 +8,12 @@ In der Liste sind mögliche Sensoren, aber auch Peripherie-Geräte enthalten, di
 * DS18B20
 
 ### Gyroskope
+Umgesetzt: MPU6050 (GY-521), QMI8658, BMI270, BMI160 (`ImuSensor` in SensActCtrl).
 * MPU6000
-* MPU6050
 * MPU6500
-* QMI8658
 * ICM20602
 * ICM20689
 * ICM42670-P
-* BMI270
 * OSR4
 
 ### Druck
