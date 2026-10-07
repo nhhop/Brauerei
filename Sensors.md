@@ -22,6 +22,8 @@ Umgesetzt: MPU6050 (GY-521), QMI8658, BMI270, BMI160 (`ImuSensor` in SensActCtrl
 ## Peripherie
 
 ### Port-Expander
+Vorhanden (2026-10-08): PCF8575 (16 Pins, I²C 0x20–0x27, quasi-bidirektional) — siehe PLAN.md, Peripherie-Abstraktion Etappe 3.
+
 Funktionieren mit der ESP32_IO_Expander Library
 * TCA95xx
 * HT8574
