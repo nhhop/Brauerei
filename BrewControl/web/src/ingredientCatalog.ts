@@ -6,6 +6,8 @@
 // Everything not marked required is optional on purpose: many suppliers do not
 // publish it, and a missing value means "unknown", never "no" or 0.
 
+import type { WaterAgentId } from './waterChem';
+
 // [min, max]. A single value is [x, x]; a data sheet with only a limit is
 // [min, null] ("min. 80.5") or [null, max] ("max. 5"). At least one end is set.
 // Calculations use the midpoint, or the one end that is set.
@@ -71,6 +73,11 @@ export interface Malt extends FermentableBase {
   smokedWith?: string;                            // wood, e.g. "beech"
   kolbachPct?: Range;
   proteinPct?: Range;
+  // Mash pH (mashPh.ts, Troester 2009); without them it is estimated from role
+  // and colour. Base malts state the first, specialty malts the second.
+  distilledWaterPh?: Range;                       // pH of a distilled water mash
+  acidityMeqPerKg?: Range;                        // titratable acidity to pH 5.7
+  lacticAcidPct?: Range;                          // acidulated malt
   // Further data-sheet values, informational (not used by the calculations).
   colorBoiledEbc?: Range;                         // colour of the wort after boiling
   saccharificationMin?: Range;                    // min
@@ -198,11 +205,14 @@ export interface Aroma extends IngredientBase {
   defaultUnit: 'g' | 'kg' | 'l';
 }
 
+// A water agent's chemistry (formula, ions, density) lives in waterChem.ts;
+// the entry only points there. `acidStrengthPct` is the default concentration
+// of an acid or solution, changeable per addition.
 export interface Auxiliary extends IngredientBase {
   kind: 'auxiliary';
   category: 'water-salt' | 'acid' | 'fining' | 'yeast-nutrient' | 'enzyme' | 'other';
   defaultUnit: 'g' | 'ml';
-  ions?: { ca?: number; mg?: number; na?: number; so4?: number; cl?: number; hco3?: number };
+  waterAgent?: WaterAgentId;
   acidStrengthPct?: number;
 }
 
@@ -239,6 +249,9 @@ export const FIELD_UNITS: Record<string, string> = {
   'malt.viscosityMpas': 'mPa·s',
   'malt.friabilityPct': '%',
   'malt.glassyKernelsPct': '%',
+  'malt.distilledWaterPh': 'pH',
+  'malt.acidityMeqPerKg': 'mEq/kg',
+  'malt.lacticAcidPct': '%',
   'hop.alphaPct': '%',
   'hop.betaPct': '%',
   'hop.oilMlPer100g': 'ml/100 g',

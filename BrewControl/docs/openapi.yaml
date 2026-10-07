@@ -4641,6 +4641,48 @@ components:
       properties:
         grainTempC: { type: number, description: "Grain temperature, °C." }
         tapWaterTempC: { type: number, description: "Tap water temperature, °C." }
+        waters:
+          type: array
+          description: |
+            Water analyses (`web/src/waterChem.ts`, type `WaterProfile`), the
+            source water of recipes, and own target profiles (`target: true`).
+            VE water (`id: ve`) and the built-in target profiles live in the
+            web UI and are never stored.
+          items: { $ref: "#/components/schemas/WaterProfile" }
+        defaultWaterId:
+          type: string
+          description: Source water of recipes that pick none; unset = the first profile, else VE water.
+        phModel:
+          type: string
+          enum: [troester, kolbach]
+          description: |
+            Mash and wort pH model of all recipes (`web/src/mashPh.ts`): `troester`
+            estimates the pH from malt data, `kolbach` shows the residual alkalinity
+            against a range for the beer colour, without a pH. Unset = `troester`.
+      additionalProperties: true
+
+    WaterProfile:
+      type: object
+      required: [id, name, ca, mg, na, cl, so4, hco3]
+      description: Ions in mg/l. Without `ph` the web UI cannot compute the water pH after acid.
+      properties:
+        id: { type: string }
+        name: { type: string }
+        ca: { type: number }
+        mg: { type: number }
+        na: { type: number }
+        k: { type: number }
+        cl: { type: number }
+        so4: { type: number }
+        hco3: { type: number }
+        ph: { type: number }
+        note: { type: string, description: "Source, date of the analysis." }
+        target:
+          type: boolean
+          enum: [true]
+          description: |
+            A target profile: compared with and treated towards in the recipe's
+            water tab, never a source water. Unset = an analysis.
       additionalProperties: true
 
     Brewhouse:
