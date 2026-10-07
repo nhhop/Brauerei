@@ -135,6 +135,7 @@ export function NotificationsPage(_: { path?: string }) {
 
   const trail = [
     { label: 'Einstellungen', href: '/settings' },
+    { label: 'Alarme & Benachrichtigungen', href: '/settings/meldungen' },
     { label: 'Benachrichtigungen' },
   ];
 

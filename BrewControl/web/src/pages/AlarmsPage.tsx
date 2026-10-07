@@ -80,7 +80,11 @@ export function AlarmsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   return (
     <PageShell>
       <header class="mb-6 flex items-center gap-3">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Alarme' }]} />
+        <Breadcrumb trail={[
+          { label: 'Einstellungen', href: '/settings' },
+          { label: 'Alarme & Benachrichtigungen', href: '/settings/meldungen' },
+          { label: 'Alarme' },
+        ]} />
         <span class="flex-1" />
         <button type="button" class={`${btnPrimary} hidden md:inline-flex`}
           onClick={() => { setEditing(null); setEditorOpen(true); }}>

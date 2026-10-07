@@ -1546,3 +1546,26 @@ Alle 107 Einträge vom 2026-09-01 bis 2026-09-30 sind unverändert nach
 mit Verweis. Die Einträge ab 2026-10-01 bleiben voll. `SESSION.md` schrumpfte
 von 6510 auf rund 1550 Zeilen (472 KB auf 150 KB), das Archiv wuchs auf rund
 9300 Zeilen.
+
+## 2026-10-08 — Einstellungsseite gegliedert, Logs in die Hauptnavigation
+
+Die Einstellungsseite war eine flache Liste mit 17 Einträgen. Jetzt ist sie mit
+dem vorhandenen `SettingsGroup` gegliedert und bleibt bewusst einspaltig:
+
+- **Gruppen:** Brauanlage ohne Überschrift (nur mit Rezept-Paket), Hardware
+  (Geräte, Bus-Schnittstellen, Gerätedisplay, Energiemanagement), Verbindungen
+  (Netzwerk, Konnektivität), Oberfläche (Darstellung, Zeit & Formate), System
+  (Systemstatus, Firmware-Update, Alarme & Benachrichtigungen, Backup & Restore,
+  Dateiverwaltung, Zugriffsschutz). Gruppen ohne sichtbaren Eintrag entfallen.
+- **Logs & Charts** steht in der Hauptnavigation unter `/logs` bzw.
+  `/logs/:id/archive`. `/settings/logs…` leitet für alte Lesezeichen per
+  `route(…, true)` um.
+- **Alarme & Benachrichtigungen** (`/settings/meldungen`, `AlertsHubPage`) ist
+  ein Hub wie Konnektivität. Die Karten zeigen die Zahl der Regeln, aktive Alarme
+  und den Push-Status. Die Seiten selbst und ihre Routen bleiben getrennt, weil
+  die Alarmliste (was) und die Push-Einrichtung (wohin) unterschiedlich gebaut
+  sind. Sie bekommen nur einen dreistufigen Breadcrumb.
+- **Prüfung:** `typecheck` und `build` laufen. Im Node-Mock geprüft:
+  Einstellungsseite, Hub mit „1 aktiv“ und „inaktiv“, Umleitung von
+  `/settings/logs` auf `/logs` mit aktivem Nav-Eintrag, Alarmseite bei 375 px.
+  Konsole ohne Fehler.

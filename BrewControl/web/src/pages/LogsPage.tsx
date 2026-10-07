@@ -8,7 +8,6 @@ import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { LogEditorModal } from '../components/LogEditorModal';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { Breadcrumb } from '../components/Breadcrumb';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { Fab } from '../components/Fab';
 import { btnPrimary } from '../ui';
@@ -66,7 +65,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
   return (
     <PageShell wide>
       <header class="mb-6 flex items-center justify-between gap-3">
-        <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Logs & Charts' }]} />
+        <h1 class="text-2xl font-semibold tracking-tight">Logs & Charts</h1>
         <button type="button" onClick={() => { setEditing(null); setEditorOpen(true); }}
           class={`${btnPrimary} hidden md:inline-flex`}>
           + Neues Log
@@ -107,7 +106,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                       <span class={log.enabled ? 'text-fg' : 'text-muted'}>Aktiv</span>
                     </span>
                   )}
-                  <a href={`/settings/logs/${log.id}/archive`}
+                  <a href={`/logs/${log.id}/archive`}
                     class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">
                     Archiv
                   </a>
