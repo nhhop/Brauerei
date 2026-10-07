@@ -254,22 +254,24 @@ export function waterPh(w: WaterState): number | undefined {
   return (lo + hi) / 2;
 }
 
-// Amount of `agent` (g or ml at `strengthPct`) that brings `volumeL` of `w`
-// to `targetPh`; 0 if it is already there, undefined without a known pH.
-export function acidForPh(w: WaterState, volumeL: number, agent: WaterAgent, strengthPct: number, targetPh: number): number | undefined {
-  const phWith = (amount: number) => waterPh(applyAgents(w, volumeL, [{ agent, mmol: agentMmol(agent, amount, strengthPct) }]));
+// Amount of an agent that brings the pH to `targetPh`, where `phWith(amount)`
+// falls (acid) or rises (base) with the amount; 0 if the agent cannot get
+// there, undefined without a known pH.
+export function amountForPh(phWith: (amount: number) => number | undefined, targetPh: number): number | undefined {
   const start = phWith(0);
-  if (start === undefined || volumeL <= 0) return undefined;
-  if (start <= targetPh) return 0;
+  if (start === undefined) return undefined;
+  const dir = Math.sign(phWith(1)! - start);
+  if (dir === 0 || (targetPh - start) * dir <= 0) return 0;
+  const short = (amount: number) => (phWith(amount)! - targetPh) * dir < 0;
   let hi = 1;
-  while (phWith(hi)! > targetPh) {
+  while (short(hi)) {
     hi *= 2;
     if (hi > 1e5) return undefined;
   }
   let lo = 0;
   for (let i = 0; i < 50; i++) {
     const mid = (lo + hi) / 2;
-    if (phWith(mid)! > targetPh) lo = mid; else hi = mid;
+    if (short(mid)) lo = mid; else hi = mid;
   }
   return (lo + hi) / 2;
 }

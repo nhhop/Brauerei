@@ -1,8 +1,8 @@
 # Rezept- und Sud-Editor — Konzept
 
 Stand: 2026-10-07. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
-Brauanlage (Etappe 1), die Wassermengen (Etappe 2a) und die Aufbereitung von Hand mit High Gravity (Etappe
-2b-1); pH-Modelle (2b-2), Automatik (2b-3), Maischen, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
+2b-1) und die pH-Modelle (2b-2); Automatik (2b-3), Maischen, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -186,8 +186,9 @@ Liste und Detailansicht.
 
 ### Wasser
 - **Stand:** Wassermengen seit Etappe 2a (2026-10-06, `web/src/recipeWater.ts`), Aufbereitung von Hand und
-  High Gravity seit Etappe 2b-1 (2026-10-07, `web/src/waterChem.ts`, `web/src/recipeTreatment.ts`). Es folgen
-  die pH-Schätzung der Maische mit Malzdaten (2b-2) und die Automatik mit Zielprofilen (2b-3).
+  High Gravity seit Etappe 2b-1 (2026-10-07, `web/src/waterChem.ts`, `web/src/recipeTreatment.ts`), pH von
+  Maische und Würze seit Etappe 2b-2 (2026-10-07, `web/src/mashPh.ts`). Es folgt die Automatik mit
+  Zielprofilen (2b-3).
 - **Säure für die Maische** wird nach dem Einmaischen und der pH-Messung gegeben, nicht in den Hauptguss.
   Der Sud schlägt die Menge aus dem gemessenen pH neu vor (später).
 - **Salze und Säuren** sind dieselben Einträge wie unter Zutaten › Hilfsstoffe und lassen sich **an beiden
@@ -201,8 +202,8 @@ Liste und Detailansicht.
 - **Zeitpunkt je Gabe** statt Schalter: „Brauwasser“ verteilt sich nach Einfüllmenge auf Haupt- und
   Nachguss, beide bekommen also dieselbe Konzentration. Gezielt gehen Hauptguss, Maische, Maische nach
   pH-Messung, Nachguss, Würze vor dem Kochen, Ausschlagwürze und Verschnitt. „Maische nach pH-Messung“ ist
-  die Korrekturgabe nach dem Einmaischen; sie zählt wie „Maische“, die pH-Schätzung vor und nach ihr kommt
-  mit 2b-2. Gaben in die Würze steuern den pH beim Kochen (Maillard) oder in der Ausschlagwürze (etwa höher
+  die Korrekturgabe nach dem Einmaischen; sie zählt in die Maische-Spalte, der geschätzte pH steht vor und
+  nach ihr. Gaben in die Würze steuern den pH beim Kochen (Maillard) oder in der Ausschlagwürze (etwa höher
   für Kveik, gegen den pH-Abfall); Zeitpunkt „Kochen“ bleibt für Irish Moss und Ähnliches. Die Spalten zeigen, was von jeder Gabe dort ankommt; der Anteil einer
   Brauwasser-Gabe ist ausgegraut. Bearbeitet wird die Gabe in ihrer Zeile (Name, Zeitpunkt, Menge,
   Konzentration). „+ Salz/Säure“ legt eine Zeile an, die Suche bietet nur Wassermittel an.
@@ -214,12 +215,49 @@ Liste und Detailansicht.
   allem Calcium) fehlen.
 - **Ausgangswasser** je Wasser: ein Profil der Brauerei, ohne Wahl das Standardwasser, dazu „+ x %“ eines
   Zweitwassers (Vorgabe VE-Wasser). Ionen, Alkalität und Carbonat mischen sich nach Volumen.
-- **Ergebnis** je Spalte: Ca, Mg, Na, Cl, SO₄, HCO₃ in mg/l, Restalkalität in °dH, SO₄ : Cl und der pH nach
-  Säure (nur Wasserspalten, nur wenn das Profil einen pH hat). In den Würzespalten und Gesamt stehen nur die
-  Ionen und SO₄ : Cl, weil Alkalität und pH dort nicht mehr dem Wassermodell folgen; ihr pH kommt mit 2b-2.
-  In Klammern steht der Wert vor den Gaben.
+- **Ergebnis** je Spalte: Ca, Mg, Na, Cl, SO₄, HCO₃ in mg/l, Restalkalität in °dH, SO₄ : Cl und der pH. In den
+  Wasserspalten ist das der pH nach Säure (nur wenn das Profil einen pH hat), in Maische, Würzespalten und
+  Gesamt die Schätzung des pH-Modells („≈“). In den Würzespalten und Gesamt stehen keine Alkalität und RA,
+  weil sie dort nicht mehr dem Wassermodell folgen. In Klammern steht der Wert vor den Gaben, beim pH der
+  Maische der Wert vor der Gabe nach pH-Messung.
 - **Säurehilfe** je Wasserspalte: Ziel-pH, dann „Säure berechnen“. Das setzt die Menge der ersten Säure, die
   gezielt in diese Spalte geht, oder legt Milchsäure an.
+- **Säure- und Basenhilfe** für Maische, Würze vor dem Kochen und Ausschlagwürze (nur mit pH-Schätzung):
+  Ziel-pH (Maische ohne Eingabe 5,4), dann „Säure/Base berechnen“. Liegt der pH ohne die Säuren und Basen der
+  Spalte über dem Ziel, setzt sie die erste Säure der Spalte oder legt Milchsäure an, sonst die erste Base
+  oder Natron (für Kveik). In der Maische nimmt sie nur Gaben „Maische nach pH-Messung“ und legt auch dort an.
+- **pH-Schätzung**, Modell auf Brauerei-Ebene (Anlage), der Tab nennt es in der pH-Zeile:
+  - **Troester** (Vorgabe; Troester 2009, „The effect of brewing water and grist composition on the pH of the
+    mash“, braukaiser.com): Die Schüttung hat in destilliertem Wasser den pH Σ pHb·gb + 5,7·Σ gs −
+    0,14·Σ(as·gs)/R, Basismalze nach ihrem pH, Spezialmalze nach ihrer Säure (mEq/kg bis pH 5,7), R = Hauptguss
+    je kg Schüttung. Das Wasser verschiebt ihn um s·RA mit s = 0,013·R + 0,013. Säure, die über die
+    Alkalität des Wassers hinausgeht, wirkt auf die **Pufferung der Schüttung**: 38,5 mEq/(kg·pH) aus Troesters
+    Maische-Titration (0,104 pH·l/mEq bei 4 l/kg), die Literatur nennt etwa 40 (deLange). Entscheidung
+    2026-10-07: Rein linear über die RA rechnet Troesters eigene Salzsäure-Reihe (Tabelle 3, Pilsner) bis
+    0,2 zu hoch und die Säurehilfe schlägt deutlich zu viel Säure vor; mit der Pufferung trifft sie auf
+    ± 0,04. Dunklere Schüttungen reagieren schwächer auf viel Säure, als die Pufferung sagt (Tabelle 3, bis
+    −0,18 bei −5,6 mEq/l); die Hilfe schlägt dann zu wenig vor, nach der Messung lässt sich nachsäuern.
+    Sauermalz zählt nach Troesters Malzformel und wirkt dort etwa 1,5-mal stärker als dieselbe Milchsäure
+    flüssig, das steht als Hinweis da. Genauigkeit der Maische etwa ± 0,1–0,2.
+  - **Malzdaten** am Katalog-Malz: `distilledWaterPh`, `acidityMeqPerKg`, `lacticAcidPct` (Sauermalz,
+    Milchsäure-% × 10 000 / 90,08). Ohne sie nach Rolle und Farbe, mit Hinweis: Basismalz 5,82 − 0,02·EBC
+    (Troester, R² 0,54), Karamellmalz 14 + 0,13·EBC mEq/kg, Röstmalz 40 mEq/kg, Spezialmalz bis 25 EBC wie
+    Basismalz, darüber wie Karamellmalz (Entscheidung 2026-10-07; die Basismalz-Gerade stützt sich auf Malze
+    bis 25 EBC, Troesters Biscuit hatte 20,2 mEq/kg, die Karamell-Gerade gibt 21,8), Rohfrucht wie Basismalz.
+    Malze ohne Katalogverknüpfung bleiben außen vor; ohne verknüpftes Malz gibt es nur Hinweise. Die
+    Weyermann-Datenblätter im Katalog nennen keine dieser Werte.
+  - **Würze**, grobe Schätzung: Sie startet beim Maische-pH nach allen Gaben und behält die Pufferung je kg
+    Schüttung (Mischen und Einkochen ändern Säure und Puffer gleich). Nachguss, Verschnitt und Gaben wirken
+    mit ihrer Restalkalität × Menge, Hydrogencarbonat voll, weil das CO₂ beim Kochen entweicht. Das Kochen
+    senkt um 0,15 (Troester, braukaiser.com, „How pH affects brewing“: 0,1–0,2). Ob Troesters
+    Maische-Pufferung so auf die Würze übertragbar ist, ist nicht belegt (TODO(verify)).
+  - **Kolbach:** nur die Restalkalität, ohne pH-Zahl, wie man klassisch mit RA arbeitet. Die Maische-Spalte
+    zeigt den Zielbereich nach Bierfarbe von Palmer (How to Brew): RA in ppm CaCO₃ von 12,2·SRM − 122,4
+    (Farbe aus Basis- und Karamellmalz) bis 12,2·(SRM − 5,2) (Farbe aus Röstmalz); TODO(verify), aus einem
+    Forenzitat des Buchs. Säure- und Basenhilfe gibt es dann nur für die Wasserspalten.
+  - Säuren zählen in RA und Schätzung weiter mit ihrem Anteil bei pH 5,4. Mit dem geschätzten Maische-pH
+    statt 5,4 änderte sich der Anteil zwischen pH 5,2 und 5,8 um höchstens etwa 2 % (Milch- und
+    Phosphorsäure), bei 8 ml Milchsäure weniger als 0,01 pH; deshalb bleibt es.
 - **Modelle und Quellen:** Restalkalität = Alkalität − Ca/3,5 − Mg/7 in mEq/l (Troester 2009; 1 mEq/l =
   2,8 °dH). Säuren zählen dabei mit dem Anteil, den sie bei pH 5,4 abgeben (Henderson-Hasselbalch;
   Milchsäure pKa 3,86, Phosphorsäure 2,15/7,20/12,35, Schwefelsäure 2 Protonen), Kreide nur zur Hälfte
@@ -387,6 +425,9 @@ weicht die Ionenbilanz um mehr als 10 % ab, erscheint ein Hinweis. VE-Wasser ist
 nicht gespeichert. Das **Standardwasser** ist das Ausgangswasser von Rezepten, die keines wählen; ohne Wahl
 gilt das erste Profil, ohne Profil VE-Wasser. Rezepte lesen es beim Rechnen, ändert es sich, rechnen auch
 bestehende Rezepte ohne eigene Wahl damit.
+
+Ebenfalls dort steht das **pH-Modell** (seit 2b-2), eines für alle Rezepte: Troester (pH aus Malzdaten,
+Vorgabe) oder Kolbach (Restalkalität nach Bierfarbe, ohne pH). Siehe Wasser › Aufbereitung.
 
 ### Sudhaus
 Umgesetzt seit 2026-10-04 (Etappe 1, `web/src/brewhouse.ts`, `/api/brewhouses`, `/api/brewery`), nur auf

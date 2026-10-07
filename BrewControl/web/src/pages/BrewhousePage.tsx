@@ -10,7 +10,8 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { Fab } from '../components/Fab';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
-import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet } from '../ui';
+import { DEFAULT_PH_MODEL, type PhModel } from '../mashPh';
+import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 import { Field, NumInput } from './recipe/fields';
 import { WaterProfilesSection } from './WaterProfiles';
 
@@ -141,6 +142,16 @@ function BreweryCard() {
         </Field>
         <Field label="Leitungswassertemperatur (°C)">
           <NumInput value={draft.tapWaterTempC} onChange={(n) => setDraft({ ...draft, tapWaterTempC: n })} />
+        </Field>
+        <Field label="pH-Modell (alle Rezepte)">
+          <select class={inp} value={draft.phModel ?? DEFAULT_PH_MODEL}
+            onChange={(e) => {
+              const v = e.currentTarget.value as PhModel;
+              setDraft({ ...draft, phModel: v === DEFAULT_PH_MODEL ? undefined : v });
+            }}>
+            <option value="troester">Troester: pH aus Malzdaten</option>
+            <option value="kolbach">Kolbach: Restalkalität nach Bierfarbe</option>
+          </select>
         </Field>
       </div>
       <WaterProfilesSection brewery={draft} onChange={setDraft} />

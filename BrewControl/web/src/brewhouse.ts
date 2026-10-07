@@ -1,6 +1,7 @@
 import { failed } from './api';
 import { DEFAULT_EFFICIENCY, VALID_ID, uid } from './recipes';
 import { unitOf } from './refs';
+import type { PhModel } from './mashPh';
 import type { Snapshot } from './types';
 import type { WaterProfile } from './waterChem';
 
@@ -32,6 +33,7 @@ export interface Brewery {
   tapWaterTempC: number;
   waters?: WaterProfile[];  // water analyses; VE water is built in (waterChem.VE_WATER)
   defaultWaterId?: string;  // the source water of recipes that pick none
+  phModel?: PhModel;        // mash and wort pH of all recipes; unset = DEFAULT_PH_MODEL
 }
 
 export const DEFAULT_BREWERY: Brewery = { grainTempC: 18, tapWaterTempC: 12 };

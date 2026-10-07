@@ -6395,3 +6395,49 @@ Erster von drei PRs der Etappe 2b (Plan `wasserrechner-etappe-2b.md`, danach 2b-
 - **Abweichungen vom Plan:** `WaterProfile` steht in `waterChem.ts` (die Chemie braucht es), `brewhouse.ts` importiert es. Die Rezept-Rechnung der Aufbereitung hat ein eigenes Modul `recipeTreatment.ts` statt `recipeWater.ts`. Die Gaben werden in ihrer Zeile bearbeitet (Name, Zeitpunkt, Gesamtmenge, Konzentration), die Spalten zeigen nur, was ankommt; der Canvas hatte je Spalte ein Eingabefeld. Phosphorsäure zählt mit allen drei pKa. Die Säurehilfe nimmt die erste gezielte Säure der Spalte. Ein Ortswechsel des Verschnitts behält die Menge, weil die Stammwürze dann eine andere Würze meint. Das Analyse-RA 2,28 mEq/l stimmt mit HCO₃ aus KS4,3 (3,73 × 61,02 = 227,6 mg/l); mit dem ausgewiesenen HCO₃ 224,5 mg/l sind es 2,23.
 - **Prüfung:** `pnpm test` 245/245 (neu `waterChem.test.ts` 10, `recipeTreatment.test.ts` 8, High Gravity in `recipeWater.test.ts` und `recipeStats.test.ts`), `typecheck`, `build`, Redocly-Lint (nur die bekannte `info-license`-Warnung). UI über den Node-Mock im Scratchpad: Profil des Nutzers angelegt (RA 6,4 °dH), Pils mit 70 % VE, Säurehilfe Nachguss auf pH 5,8 legt 1,19 ml Milchsäure 80 % an (pH 5,80); 30 l Ausschlag im 20-l-Topf: Hinweis 13,0 l, 10 l in der Pfanne ↔ 12,3 °P in beide Richtungen, Wechsel auf Gärbehälter (27,8 l kommen an); Spalten Nachguss/Verschnitt ein- und ausgeblendet, 375 px ohne seitliches Scrollen; nach dem Nachtrag alle sieben Spalten bei Desktop-Breite ohne seitliches Scrollen, Calcium von 57 über 80 (2 g CaCl₂ vor dem Kochen) auf 77 mg/l im Ausschlag (× 1,2 Kochen, × 0,8 Verschnitt), die zwei pH-Messungen im Sudhaus-Editor.
 - **Offen:** Dichten der Säuren (CRC aus dem Gedächtnis) und die Grenzen der SO₄:Cl-Skala gegen Quellen prüfen; 2b-2, 2b-3, CaO-Entcarbonisierung, Sud-Vorschläge aus Messwerten (PLAN.md).
+
+## 2026-10-07 — Wasser-Tab, Etappe 2b-2: pH von Maische und Würze (Branch `feat/wasser-ph`)
+
+Zweiter von drei PRs nach dem Plan `wasserrechner-etappe-2b.md`: pH-Schätzung für Maische und Würze mit Malzdaten, umschaltbar zwischen Troester und Kolbach, dazu eine Säure- und Basenhilfe.
+- **Modelle** in `web/src/mashPh.ts` (rein). `Brewery.phModel` (`troester` als Vorgabe, oder `kolbach`) gilt für alle Rezepte, der Select steht in der Karte „Brauerei“, `openapi.yaml` › `Brewery` ist ergänzt. Troester 2009: pH der Schüttung in destilliertem Wasser plus (0,013·R + 0,013)·RA. Kolbach: nur RA mit Palmers Zielbereich nach Bierfarbe, ohne pH.
+- **Entscheidung des Nutzers (Abweichung vom Plan):** Säure, die über die Alkalität des Wassers hinausgeht, läuft nicht linear über die RA. Sie wirkt auf die Pufferung der Schüttung: 38,5 mEq/(kg·pH) aus Troesters Maische-Titration, Literatur ≈ 40.
+  - Grund: Troesters eigene Salzsäure-Reihe (Tabelle 3, Pilsner). Linear liegt sie bis 0,2 pH daneben, mit der Pufferung innerhalb 0,04.
+  - Beispiel Pils (5 kg, 3,5 l/kg, 70 % VE) auf 5,4: 7,9 ml Milchsäure 80 %. Linear wären es 11,2 ml, „wie Malzsäure“ 4,7 ml.
+- **Zweite Entscheidung:** Spezialmalz ohne Daten zählt bis 25 EBC wie Basismalz, darüber wie Karamellmalz. Der Plan sah immer Basismalz vor.
+- **Malzdaten:** `Malt.distilledWaterPh`, `acidityMeqPerKg`, `lacticAcidPct`. Fehlen sie, wird nach Rolle geschätzt (mit Hinweis):
+  - Basismalz 5,82 − 0,02·EBC
+  - Karamellmalz 14 + 0,13·EBC mEq/kg
+  - Röstmalz 40 mEq/kg
+  - Sauermalz aus dem Milchsäuregehalt
+  - Rohfrucht wie Basismalz
+  - Unverknüpfte Malze bleiben außen vor.
+  - Die Weyermann-Datenblätter im Katalog nennen keine dieser Werte, ergänzt wurde deshalb nichts.
+- **Maische-Spalte:** Der pH steht vor und nach der Gabe „Maische nach pH-Messung“. Dafür hat `calcTreatment` den Zwischenzustand `mid`. Die Hilfe „Säure/Base berechnen“ hat Ziel 5,4 als Vorgabe und legt die Gabe mit Zeitpunkt `mashPh` an.
+- **Würze:** Eine grobe Schätzung, die beim Maische-pH startet und die Pufferung je kg Schüttung behält.
+  - Nachguss, Verschnitt und Gaben wirken mit Restalkalität × Menge. Das Kochen senkt um 0,15 (Troester: 0,1–0,2).
+  - Säure- und Basenhilfe gibt es für „Vor dem Kochen“ und „Ausschlag“. Liegt der pH unter dem Ziel, legt sie Natron an (Kveik).
+  - „Gesamt“ zeigt den Anstell-pH.
+- **Weitere Änderungen:**
+  - `RecipeWater.targetPh` hat jetzt den Schlüssel `PhKey` (dazu `mash`, `preBoil`, `knockOut`).
+  - `suggestAcid` wurde zu `suggestAgent`, `waterChem.acidForPh` zur allgemeinen Bisektion `amountForPh`.
+  - Neu ist `recipeStats.beerEbc`, die Farbe für Kolbach.
+  - Der RA-Bezug bleibt bei pH 5,4: Mit dem geschätzten pH ändert sich der Anteil zwischen 5,2 und 5,8 um höchstens 2 %.
+- **Prüfung:**
+  - `pnpm test` 259/259, neu `mashPh.test.ts` 8 Tests.
+  - Troester nachgerechnet:
+    - Tabelle 2: Gerade mittig, Einzelmalze bis 0,3 daneben, R² 0,54.
+    - Tabelle 3 Pils: ±0,05 über −5,6 bis 7,2 mEq/l; Mischungen ±0,1 ab −1,75.
+    - Tabelle 5: ±0,05 mit Schätzung nach Rolle, ±0,065 mit gemessener Säure.
+    - Den im Plan verlangten Rahmen von ±0,05 hält nicht jede Tabelle.
+  - `recipeTreatment.test.ts` hat 6 neue Tests. `typecheck`, `build` und Redocly-Lint laufen (nur die bekannte `info-license`-Warnung).
+  - UI im Node-Mock mit dem Profil des Nutzers:
+    - Pils 70 % VE: Maische ≈ 5,79. Die Hilfe legt 7,88 ml Milchsäure „Maische nach pH-Messung“ an, danach ≈ 5,40.
+    - Ausschlag auf 5,6: 4,91 g Natron (vorher 5,30).
+    - Kolbach: Ziel-RA −4,3 bis −1,0 °dH bei 7 EBC, kein pH.
+    - Ohne verknüpftes Malz nur Hinweise; 375 px ohne seitliches Scrollen.
+- **Offen** (PLAN.md):
+  - Übertragbarkeit der Pufferung auf die Würze (`TODO(verify)`)
+  - Palmer-Geraden gegen das Buch prüfen
+  - Schwächen aus Troesters Tabellen 3 und 6
+  - Malzdaten nur im Katalog-JSON
+  - 2b-3 Automatik

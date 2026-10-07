@@ -73,6 +73,11 @@ export interface Malt extends FermentableBase {
   smokedWith?: string;                            // wood, e.g. "beech"
   kolbachPct?: Range;
   proteinPct?: Range;
+  // Mash pH (mashPh.ts, Troester 2009); without them it is estimated from role
+  // and colour. Base malts state the first, specialty malts the second.
+  distilledWaterPh?: Range;                       // pH of a distilled water mash
+  acidityMeqPerKg?: Range;                        // titratable acidity to pH 5.7
+  lacticAcidPct?: Range;                          // acidulated malt
   // Further data-sheet values, informational (not used by the calculations).
   colorBoiledEbc?: Range;                         // colour of the wort after boiling
   saccharificationMin?: Range;                    // min
@@ -244,6 +249,9 @@ export const FIELD_UNITS: Record<string, string> = {
   'malt.viscosityMpas': 'mPa·s',
   'malt.friabilityPct': '%',
   'malt.glassyKernelsPct': '%',
+  'malt.distilledWaterPh': 'pH',
+  'malt.acidityMeqPerKg': 'mEq/kg',
+  'malt.lacticAcidPct': '%',
   'hop.alphaPct': '%',
   'hop.betaPct': '%',
   'hop.oilMlPer100g': 'ml/100 g',

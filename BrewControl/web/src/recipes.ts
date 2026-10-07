@@ -116,10 +116,11 @@ export interface RecipeWater {
   // with blendPct % of blendId (unset = VE water).
   sources?: Partial<Record<WaterKey, WaterSource>>;
   dilution?: Dilution;
-  targetPh?: Partial<Record<WaterKey, number>>;  // target of the acid helper
+  targetPh?: Partial<Record<PhKey, number>>;  // target of the acid and base helper
 }
 
 export type WaterKey = 'strike' | 'sparge' | 'dilution';
+export type PhKey = WaterKey | 'mash' | 'preBoil' | 'knockOut';
 export interface WaterSource { waterId?: string; blendId?: string; blendPct?: number }
 
 // Planned dilution (high gravity), at the end of the boil or in the fermenter.
