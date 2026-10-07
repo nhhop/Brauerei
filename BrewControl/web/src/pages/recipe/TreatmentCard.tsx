@@ -1,24 +1,27 @@
 import { useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { Plus, Trash2 } from 'lucide-preact';
+import { Plus, Target, Trash2, Wand2, X } from 'lucide-preact';
 import type { Brewery } from '../../brewhouse';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { BOIL_PH_DROP, DEFAULT_MASH_PH, MALT_BUFFER, PH_MODEL_LABEL, alkalinitySlope, type PhModel } from '../../mashPh';
 import {
-  COLUMN_LABEL, TIMING_OF, agentOf, calcTreatment, isTreatmentRow, suggestAgent, waterById,
+  COLUMN_LABEL, TIMING_OF, agentOf, calcTreatment, isTreatmentRow, sourceWaters, suggestAgent, waterById,
   type Column, type ColumnKey, type Grist,
 } from '../../recipeTreatment';
 import { fmtL, type Water } from '../../recipeWater';
 import {
   TIMING_LABEL, allowedTimings, uid, type Ingredient, type PhKey, type Recipe, type RecipeWater, type WaterKey, type WaterSource,
+  type WaterTarget,
 } from '../../recipes';
 import { TabBtn } from '../../components/TabBtn';
-import { DH_PER_MEQ, RA_REFERENCE_PH, VE_WATER, type WaterFigures } from '../../waterChem';
+import { DH_PER_MEQ, RA_REFERENCE_PH, VE_WATER, figuresOf, stateOf, type TargetIons, type WaterFigures } from '../../waterChem';
+import { OWN_TARGET, TARGET_PROFILES, resolveTarget, targetProfiles } from '../../waterSolver';
 import { btnSecondary, inp } from '../../ui';
 import { fmtNum } from '../WaterProfiles';
 import { Card, NumInput, OptNum } from './fields';
 import { IngredientPicker } from './IngredientPicker';
 import { Strength } from './IngredientCard';
+import { AutoTreatDialog } from './AutoTreatDialog';
 
 const VOLUME_BASIS: Record<ColumnKey, string> = {
   strike: 'Hauptguss einfüllen', mash: 'Hauptguss in der Maische', sparge: 'Nachguss einfüllen',
@@ -40,24 +43,29 @@ const isWaterKey = (k: ColumnKey): k is WaterKey => k === 'strike' || k === 'spa
 const isPhKey = (k: ColumnKey): k is PhKey => k !== 'total';
 
 // Card "Aufbereitung": one column per water, the mash, the wort before and after
-// the boil (only with additions there) and the total. Rows are the source water,
-// the additions (the same entries as under Zutaten › Hilfsstoffe) and the result.
-// On narrow screens the columns become tabs.
+// the boil (only with additions there), the total and, once picked, the target
+// the strike water is compared with. Rows are the source water, the additions
+// (the same entries as under Zutaten › Hilfsstoffe) and the result. On narrow
+// screens the columns become tabs.
 export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
   recipe: Recipe; onChange: (patch: Partial<Recipe>) => void; w: Water;
   brewery: Brewery | null; catalog: CatalogIngredient[] | null;
 }) {
-  const [tab, setTab] = useState<ColumnKey>('strike');
+  const [tab, setTab] = useState<ColumnKey | 'target'>('strike');
+  const [auto, setAuto] = useState(false);
   const { columns, notes, model, grist } = calcTreatment(recipe, w, brewery, catalog);
-  const active = columns.some((c) => c.key === tab) ? tab : 'strike';
   const rows = recipe.ingredients.filter((i) => isTreatmentRow(i, catalog));
   const settings = recipe.water ?? {};
   const setWater = (p: Partial<RecipeWater>) => onChange({ water: { ...settings, ...p } });
+  const target = settings.target;
+  const resolved = resolveTarget(target, brewery);
+  const strike = columns.find((c) => c.key === 'strike')!;
+  const active = columns.some((c) => c.key === tab) || (tab === 'target' && target) ? tab : 'strike';
   const targetOf = (k: PhKey) => settings.targetPh?.[k] ?? (k === 'mash' ? DEFAULT_MASH_PH : undefined);
 
   const setIngredients = (ingredients: Ingredient[]) => onChange({ ingredients });
   const patch = (id: string, p: Partial<Ingredient>) =>
-    setIngredients(recipe.ingredients.map((i) => (i.id === id ? { ...i, ...p } : i)));
+    setIngredients(recipe.ingredients.map((i) => (i.id === id ? { ...i, ...p, auto: undefined } : i)));
   const add = () => setIngredients([...recipe.ingredients, { id: uid(), kind: 'auxiliary', name: '', amount: 0, timing: 'water' }]);
 
   function computeAgent(col: Column) {
@@ -75,14 +83,36 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
     }
   }
 
-  const hide = (k: ColumnKey) => (k === active ? '' : 'hidden md:block');
+  const hide = (k: ColumnKey | 'target') => (k === active ? '' : 'hidden md:block');
   const line = 'border-t border-border py-1.5';
-  const row = (label: ComponentChildren, cell: (c: Column) => ComponentChildren, cls = line) => (
+  const row = (label: ComponentChildren, cell: (c: Column) => ComponentChildren, cls = line, targetCell?: ComponentChildren) => (
     <>
       <div class={`${cls} min-w-0 text-sm`}>{label}</div>
       {columns.map((c) => <div key={c.key} class={`${cls} ${hide(c.key)} min-w-0 text-sm`}>{cell(c)}</div>)}
+      {target && <div class={`${cls} ${hide('target')} min-w-0 text-sm`}>{targetCell}</div>}
     </>
   );
+  // The target's value with the strike water's deviation; own values are typed in.
+  const targetIon = (ion: keyof TargetIons, compare = true) => {
+    if (target?.ions) {
+      return <NumInput value={target.ions[ion]} class="w-full" onChange={(n) => setWater({ target: { ions: { ...target.ions!, [ion]: n } } })} />;
+    }
+    if (!resolved) return null;
+    const t = resolved.ions[ion];
+    const off = compare && ion !== 'hco3' ? strike.after.ions[ion] - t : 0;
+    return (
+      <span class="tabular-nums" title={compare ? `Hauptguss ${fmtNum(t + off)} mg/l` : 'Regelt die Säure über den Ziel-pH'}>
+        {fmtNum(t)}
+        {Math.abs(off) >= 0.5 && (
+          <span class={`ml-1 text-xs ${Math.abs(off) > Math.max(10, 0.2 * t) ? 'text-caution' : 'text-muted'}`}>
+            ({off > 0 ? '+' : '−'}{fmtNum(Math.abs(off))})
+          </span>
+        )}
+      </span>
+    );
+  };
+  const targetFigures = resolved && figuresOf(stateOf({ id: '', name: '', ...resolved.ions }));
+  const headerBtn = 'flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10';
   // A value with the one before in brackets, when it differs.
   const pair = (after: number | undefined, before: number | undefined, digits: number, title?: string, prefix = '') => {
     if (after === undefined) return <span class="text-muted">—</span>;
@@ -116,28 +146,51 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
   return (
     <Card title="Aufbereitung"
       action={
-        <button type="button" onClick={add}
-          class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
-          <Plus size={12} /> Salz/Säure
-        </button>
+        <div class="flex flex-wrap justify-end gap-1">
+          {!target && (
+            <button type="button" class={headerBtn} title="Hauptguss mit einem Zielprofil vergleichen"
+              onClick={() => { setWater({ target: {} }); setTab('target'); }}>
+              <Target size={12} /> Ziel
+            </button>
+          )}
+          <button type="button" class={headerBtn} title="VE-Anteil, Salze und Säure auf ein Zielprofil rechnen" onClick={() => setAuto(true)}>
+            <Wand2 size={12} /> Automatisch
+          </button>
+          <button type="button" onClick={add} class={headerBtn}>
+            <Plus size={12} /> Salz/Säure
+          </button>
+        </div>
       }>
       <div class="-mt-1 mb-2 flex overflow-x-auto border-b border-border md:hidden">
         {columns.map((c) => (
           <TabBtn key={c.key} active={c.key === active} onClick={() => setTab(c.key)}>{COLUMN_LABEL[c.key]}</TabBtn>
         ))}
+        {target && <TabBtn active={active === 'target'} onClick={() => setTab('target')}>Ziel</TabBtn>}
       </div>
-      <div style={{ '--n': columns.length }}
+      <div style={{ '--n': columns.length + (target ? 1 : 0) }}
         class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 md:grid-cols-[minmax(13rem,1.6fr)_repeat(var(--n),minmax(0,1fr))]">
         {row(<span class="text-xs text-muted">Volumenbasis</span>, (c) => (
           <div>
             <div class="hidden font-medium md:block">{COLUMN_LABEL[c.key]}</div>
             <div class="text-xs text-muted" title={VOLUME_BASIS[c.key]}>{fmtL(c.volumeL)}</div>
           </div>
-        ), 'pb-1.5')}
+        ), 'pb-1.5', (
+          <div class="flex items-start justify-between gap-1">
+            <div>
+              <div class="hidden font-medium md:block">Ziel</div>
+              <div class="text-xs text-muted">für den Hauptguss</div>
+            </div>
+            <button type="button" title="Vergleich entfernen" onClick={() => setWater({ target: undefined })}
+              class="rounded-md p-0.5 text-muted hover:bg-fg/10">
+              <X size={14} />
+            </button>
+          </div>
+        ))}
         {row('Ausgangswasser', (c) => (c.source && isWaterKey(c.key)
           ? <SourcePicker brewery={brewery} value={settings.sources?.[c.key]} source={c.source}
               onChange={(v) => setWater({ sources: { ...settings.sources, [c.key]: v } })} />
-          : <span class="text-xs text-muted">{{ mash: 'Hauptguss', preBoil: 'Maische + Nachguss', knockOut: 'Würze', total: 'alles' }[c.key as string]}</span>))}
+          : <span class="text-xs text-muted">{{ mash: 'Hauptguss', preBoil: 'Maische + Nachguss', knockOut: 'Würze', total: 'alles' }[c.key as string]}</span>),
+        line, <TargetSelect brewery={brewery} value={target ?? {}} onChange={(t) => setWater({ target: t })} />)}
 
         {rows.length === 0 && row(<span class="text-xs text-muted">Noch keine Salze oder Säuren.</span>, () => null)}
         {rows.map((i) => row(
@@ -156,17 +209,19 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
         ))}
 
         {row(<span class="text-xs font-medium text-muted">Ergebnis (mg/l)</span>, () => null, `${line} pt-3`)}
-        {row('Calcium', fig((f) => f.ions.ca), 'py-0.5')}
-        {row('Magnesium', fig((f) => f.ions.mg), 'py-0.5')}
-        {row('Natrium', fig((f) => f.ions.na), 'py-0.5')}
-        {row('Chlorid', fig((f) => f.ions.cl), 'py-0.5')}
-        {row('Sulfat', fig((f) => f.ions.so4), 'py-0.5')}
-        {row('Hydrogencarbonat', fig((f) => f.hco3, 0, true), 'py-0.5')}
-        {row('Restalkalität (°dH)', fig((f) => f.raDh, 1, true), 'py-0.5')}
+        {row('Calcium', fig((f) => f.ions.ca), 'py-0.5', targetIon('ca'))}
+        {row('Magnesium', fig((f) => f.ions.mg), 'py-0.5', targetIon('mg'))}
+        {row('Natrium', fig((f) => f.ions.na), 'py-0.5', targetIon('na'))}
+        {row('Chlorid', fig((f) => f.ions.cl), 'py-0.5', targetIon('cl'))}
+        {row('Sulfat', fig((f) => f.ions.so4), 'py-0.5', targetIon('so4'))}
+        {row('Hydrogencarbonat', fig((f) => f.hco3, 0, true), 'py-0.5', targetIon('hco3', false))}
+        {row('Restalkalität (°dH)', fig((f) => f.raDh, 1, true), 'py-0.5',
+          targetFigures && <span class="tabular-nums text-muted">{fmtNum(targetFigures.raDh, 1)}</span>)}
         {model === 'kolbach' && row(<span title="Palmer, nach Bierfarbe">Ziel-RA (°dH)</span>, (c) => c.raTarget && (
           <span class="tabular-nums">{fmtNum(c.raTarget[0] * DH_PER_MEQ, 1)} bis {fmtNum(c.raTarget[1] * DH_PER_MEQ, 1)}</span>
         ), 'py-0.5')}
-        {row('SO₄ : Cl', fig((f) => f.so4Cl, 2), 'py-0.5')}
+        {row('SO₄ : Cl', fig((f) => f.so4Cl, 2), 'py-0.5',
+          targetFigures?.so4Cl !== undefined && <span class="tabular-nums text-muted">{fmtNum(targetFigures.so4Cl, 2)}</span>)}
         {row(<>pH <span class="text-xs text-muted">· Maische/Würze nach {PH_MODEL_LABEL[model]}</span></>, ph, 'py-0.5')}
 
         {row('Ziel-pH', (c) => {
@@ -190,13 +245,43 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
         })}
       </div>
 
-      <Calculation columns={columns} model={model} grist={grist} />
+      <Calculation columns={columns} model={model} grist={grist} target={target && resolved} />
       {notes.length > 0 && (
         <ul class="mt-3 space-y-1 text-xs text-muted">
           {notes.map((n) => <li key={n}>{n}</li>)}
         </ul>
       )}
+      {auto && <AutoTreatDialog recipe={recipe} w={w} brewery={brewery} catalog={catalog} onChange={onChange} onClose={() => setAuto(false)} />}
     </Card>
+  );
+}
+
+// Target profiles: the brewery's own, the built-in ones, or own values.
+export function TargetSelect({ brewery, value, onChange }: {
+  brewery: Brewery | null; value: WaterTarget; onChange: (t: WaterTarget) => void;
+}) {
+  const own = (brewery?.waters ?? []).filter((p) => p.target);
+  const missing = value.id && !value.ions && !targetProfiles(brewery).some((p) => p.id === value.id);
+  const OWN = '__own';
+  return (
+    <select class={`${inp} w-full`} value={value.ions ? OWN : value.id ?? ''}
+      onChange={(e) => {
+        const v = e.currentTarget.value;
+        if (v === OWN) onChange({ ions: resolveTarget(value, brewery)?.ions ?? { ca: 0, mg: 0, na: 0, cl: 0, so4: 0, hco3: 0 } });
+        else onChange(v ? { id: v } : {});
+      }}>
+      <option value="">— Zielprofil wählen —</option>
+      {own.length > 0 && (
+        <optgroup label="Eigene Zielprofile">
+          {own.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
+        </optgroup>
+      )}
+      <optgroup label="Mitgeliefert">
+        {TARGET_PROFILES.map((p) => <option key={p.id} value={p.id} title={p.note}>{p.name}</option>)}
+      </optgroup>
+      <option value={OWN}>{OWN_TARGET}</option>
+      {missing && <option value={value.id}>{value.id} (fehlt)</option>}
+    </select>
   );
 }
 
@@ -206,7 +291,7 @@ function SourcePicker({ brewery, value, source, onChange }: {
   source: NonNullable<Column['source']>;
   onChange: (v: WaterSource | undefined) => void;
 }) {
-  const waters = [...(brewery?.waters ?? []), VE_WATER];
+  const waters = [...sourceWaters(brewery), VE_WATER];
   const set = (p: WaterSource) => {
     const next = { ...value, ...p };
     onChange(Object.values(next).some((v) => v !== undefined) ? next : undefined);
@@ -263,7 +348,9 @@ function DoseEditor({ i, catalog, onPatch, onRemove }: {
   );
 }
 
-function Calculation({ columns, model, grist }: { columns: Column[]; model: PhModel; grist?: Grist }) {
+function Calculation({ columns, model, grist, target }: {
+  columns: Column[]; model: PhModel; grist?: Grist; target?: { name: string; note?: string };
+}) {
   return (
     <details class="mt-4">
       <summary class="cursor-pointer text-sm">Berechnung</summary>
@@ -315,6 +402,13 @@ function Calculation({ columns, model, grist }: { columns: Column[]; model: PhMo
           Beitrag von Wasser und Gaben zum Bier. Ionen aus dem Malz und was beim Maischen und Kochen ausfällt (vor
           allem Calcium als Phosphat und Oxalat) sind nicht berücksichtigt. In Klammern: vor den Gaben.
         </p>
+        {target && (
+          <p class="text-xs text-muted">
+            Ziel „{target.name}“{target.note && ` (${target.note})`}: In Klammern steht die Abweichung des
+            Hauptgusses, hervorgehoben ab 20 % bzw. 10 mg/l. HCO₃ und Restalkalität des Ziels dienen nur zur
+            Information. Die Alkalität regelt die Säure über den Ziel-pH der Maische.
+          </p>
+        )}
         {model === 'troester' ? (
           <p class="text-xs text-muted">
             pH-Modell Troester (2009): Die Schüttung hat in destilliertem Wasser den pH Σ pHb·gb + 5,7·Σ gs −

@@ -2,7 +2,7 @@
 
 Stand: 2026-10-07. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
-2b-1) und die pH-Modelle (2b-2); Automatik (2b-3), Maischen, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+2b-1), die pH-Modelle (2b-2) und die Automatik mit Zielprofilen (2b-3); Maischen, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -187,8 +187,8 @@ Liste und Detailansicht.
 ### Wasser
 - **Stand:** Wassermengen seit Etappe 2a (2026-10-06, `web/src/recipeWater.ts`), Aufbereitung von Hand und
   High Gravity seit Etappe 2b-1 (2026-10-07, `web/src/waterChem.ts`, `web/src/recipeTreatment.ts`), pH von
-  Maische und Würze seit Etappe 2b-2 (2026-10-07, `web/src/mashPh.ts`). Es folgt die Automatik mit
-  Zielprofilen (2b-3).
+  Maische und Würze seit Etappe 2b-2 (2026-10-07, `web/src/mashPh.ts`), Zielprofile und Automatik seit
+  Etappe 2b-3 (2026-10-07, `web/src/waterSolver.ts`).
 - **Säure für die Maische** wird nach dem Einmaischen und der pH-Messung gegeben, nicht in den Hauptguss.
   Der Sud schlägt die Menge aus dem gemessenen pH neu vor (später).
 - **Salze und Säuren** sind dieselben Einträge wie unter Zutaten › Hilfsstoffe und lassen sich **an beiden
@@ -268,6 +268,54 @@ Liste und Detailansicht.
   1,206 g/ml (MMuM), sonst CRC-Tabelle (20 °C), noch nicht gegen die Tabelle geprüft.
 - **Hinweise:** Gaben ohne Wassermittel aus dem Katalog, Gaben in einen Nachguss oder Verschnitt, den es
   nicht gibt, fehlendes oder gelöschtes Wasserprofil (gerechnet wird dann mit VE-Wasser).
+- **Ziel** (seit 2b-3): Der Knopf „Ziel“ blendet eine Spalte am Ende ein, die den **Hauptguss** mit einem
+  Zielprofil vergleicht, auch ohne Automatik. Das Ziel steht im Rezept (`RecipeWater.target`): ein
+  mitgeliefertes oder eigenes Zielprofil der Brauerei, oder „Eigene Werte“, die sich direkt in der Spalte
+  eingeben lassen. Je Ion stehen der Zielwert und in Klammern die Abweichung des Hauptgusses, hervorgehoben
+  ab 20 % bzw. 10 mg/l. HCO₃, Restalkalität und SO₄ : Cl des Ziels dienen nur zur Information, denn die
+  Alkalität regelt die Säure über den Ziel-pH der Maische. Verglichen wird der Hauptguss, weil Zielprofile
+  Wasserprofile sind; „Gesamt“ enthält Konzentrierung, Würzegaben und Verschnitt, aber keine Malz-Ionen.
+- **Mitgelieferte Zielprofile** (mg/l, Ca/Mg/Na/Cl/SO₄/HCO₃), aus der Zusammenfassung der Zielprofile von
+  Brewer's Friend (brewersfriend.com/brewing-water-target-profiles), Wien aus Palmer, How to Brew, Tab. 21
+  (dort fehlt es bei Brewer's Friend). Dortmund und Burton in der entcarbonisierten Fassung, mit der dort
+  tatsächlich gebraut wurde (Entscheidung 2026-10-07):
+
+  | Profil | Ca | Mg | Na | Cl | SO₄ | HCO₃ | Quelle |
+  |---|---|---|---|---|---|---|---|
+  | Ausgewogen | 80 | 5 | 25 | 75 | 80 | 100 | BF Balanced Profile (goldgelb bis bernstein) |
+  | Hell, malzig | 60 | 5 | 10 | 95 | 55 | 0 | BF Light colored and malty |
+  | Hell, hopfig | 75 | 5 | 10 | 50 | 150 | 0 | BF Light colored and hoppy |
+  | Pilsen | 7 | 3 | 2 | 5 | 5 | 25 | BF |
+  | Dortmund | 155 | 23 | 10 | 100 | 300 | 53 | BF, entcarbonisiert (nach Kolbach 1953) |
+  | München | 82 | 20 | 4 | 2 | 16 | 320 | BF, Wasserbericht 2013 (Dunkel, Bock) |
+  | Wien | 200 | 60 | 8 | 12 | 125 | 120 | Palmer, How to Brew, Tab. 21 |
+  | Düsseldorf | 90 | 12 | 45 | 82 | 65 | 223 | BF, Wasserbericht 2013 (Alt) |
+  | Burton | 187 | 41 | 113 | 85 | 720 | 20 | BF, entcarbonisiert |
+  | London | 100 | 5 | 35 | 60 | 50 | 265 | BF |
+  | Dublin | 110 | 4 | 12 | 19 | 53 | 280 | BF |
+  | Edinburgh | 100 | 18 | 20 | 45 | 105 | 235 | BF |
+
+  Eigene Zielprofile legt man in Anlage › Wasserprofile mit dem Haken „Zielprofil“ an.
+- **Automatisch** (Dialog, seit 2b-3): Zielprofil (oder eigene Werte), erlaubte Salze, eine Säure, Anteil des
+  Zweitwassers (meist VE) frei oder fest, Ziel-pH der Maische. Der Löser sucht den Anteil von 0 bis 100 % in
+  1-%-Schritten. Je Anteil passt er die Salze per NNLS (Lawson-Hanson) auf Ca, Mg, Na, Cl und SO₄ des
+  Hauptgusses an, gewichtet in mEq/l. Der beste Anteil gewinnt; ist das Ziel über einen Bereich erreichbar,
+  der kleinste. Danach stellt die Säure die Maische auf den Ziel-pH, unter Kolbach die Restalkalität der
+  Maische auf die Mitte des Zielbereichs nach Bierfarbe. Bewusst ohne HCO₃ in der Anpassung und ohne
+  Basen (Entscheidung 2026-10-07): Sonst gäbe die Anpassung Natron für ein alkalisches Ziel, das die Säure
+  für den Ziel-pH gleich wieder neutralisiert, oder sie triebe den VE-Anteil hoch, wo die Säure das HCO₃
+  ohnehin wegnimmt. Liegt die Maische schon ohne Säure darunter, gibt es einen Hinweis auf die Basenhilfe.
+  Angeboten werden nur neutrale Salze (Gips, Calciumchlorid fest und als Lösung, Bittersalz,
+  Magnesiumchlorid, Kochsalz).
+  - Die Vorschau zeigt Ziel, jetzt und Vorschlag für den Hauptguss und den Maische-pH (bzw. die RA), dazu
+    die Gaben: neue, entfallende (aus einem früheren Lauf) und bleibende (von Hand, auch in Würze und
+    Verschnitt; die fasst die Automatik nicht an).
+  - Erst „Übernehmen“ schreibt: Salze mit Zeitpunkt „Brauwasser“, die Säure „Maische nach pH-Messung“,
+    denselben Anteil in Haupt- und Nachguss (`sources.strike/sparge.blendPct`) und das Ziel. Die Gaben
+    tragen `auto: true`; ein erneuter Lauf ersetzt sie, wer eine von Hand ändert, nimmt ihr die Markierung.
+  - Beispiel mit dem Leitungswasser des Nutzers (Pils, 5 kg, 20 l): Pilsen 93 % VE, „Hell, hopfig“ 98 %
+    (Gips für 150 mg/l SO₄ bringt schon 63 mg/l Ca), „Ausgewogen“ 55 %, München 37 % (nur VE senkt das
+    Chlorid).
 - Die Übersicht zeigt SO₄ : Cl des Hauptgusses auf der Skala weich, vollmundig – ausgewogen – trocken,
   knackig (Grenzen 0,8 und 1,5, wie gängige Rechner; noch ohne Primärquelle).
 
@@ -428,6 +476,10 @@ bestehende Rezepte ohne eigene Wahl damit.
 
 Ebenfalls dort steht das **pH-Modell** (seit 2b-2), eines für alle Rezepte: Troester (pH aus Malzdaten,
 Vorgabe) oder Kolbach (Restalkalität nach Bierfarbe, ohne pH). Siehe Wasser › Aufbereitung.
+
+Ein Wasserprofil mit dem Haken **Zielprofil** (seit 2b-3, `target: true`) ist kein Ausgangswasser: Es fehlt in
+der Auswahl der Ausgangswässer und des Standardwassers und dient nur dem Vergleich und der Automatik im
+Wasser-Tab (siehe Wasser › Aufbereitung, „Ziel“). Die mitgelieferten Zielprofile sind fest eingebaut.
 
 ### Sudhaus
 Umgesetzt seit 2026-10-04 (Etappe 1, `web/src/brewhouse.ts`, `/api/brewhouses`, `/api/brewery`), nur auf

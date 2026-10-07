@@ -6441,3 +6441,29 @@ Zweiter von drei PRs nach dem Plan `wasserrechner-etappe-2b.md`: pH-Schätzung f
   - Schwächen aus Troesters Tabellen 3 und 6
   - Malzdaten nur im Katalog-JSON
   - 2b-3 Automatik
+
+## 2026-10-07 — Wasser-Tab, Etappe 2b-3: Zielprofile und Automatik (Branch `feat/wasser-automatik`)
+
+Dritter und letzter PR nach dem Plan `wasserrechner-etappe-2b.md`: Zielprofile, ein Vergleich des Hauptgusses mit dem Ziel und der Dialog „Automatisch“.
+- **Entscheidungen des Nutzers (2026-10-07):**
+  - Mitgelieferte Zielprofile von Brewer's Friend (Zusammenfassung der Zielprofile ihres Rechners), Dortmund und Burton entcarbonisiert, Wien von Palmer (How to Brew, Tab. 21). Palmers Städte-Tabelle wurde verworfen, weil Palmer selbst schreibt, dass einige Profile chemisch nicht aufgehen.
+  - Die Automatik passt nur Ca, Mg, Na, Cl und SO₄ an und bietet keine Basen an. Die Alkalität regelt die Säure über den Ziel-pH der Maische. Mit HCO₃ in der Anpassung gäbe sie Natron, das die Säure gleich wieder neutralisiert, oder triebe den VE-Anteil hoch, wo die Säure das HCO₃ ohnehin wegnimmt.
+  - Das Ziel wird im Rezept gespeichert (`RecipeWater.target`) und auch ohne Automatik verglichen, als eigene Spalte „Ziel“ mit der Abweichung des Hauptgusses.
+  - Unter Kolbach stellt die Säure die Restalkalität der Maische auf die Mitte des Zielbereichs nach Bierfarbe.
+- **Modul** `web/src/waterSolver.ts` (rein): `TARGET_PROFILES` (12 Profile mit Quelle in `note`), `targetProfiles`, `resolveTarget`, `nnls` (Lawson-Hanson) und `autoTreat`.
+  - Der Löser sucht den VE-Anteil von 0 bis 100 % in 1-%-Schritten und passt je Anteil die Salze per NNLS in mEq/l an. Ist das Ziel über einen Bereich erreichbar, gewinnt der kleinste Anteil (Toleranz 1e-4 (mEq/l)²; ohne sie entschied Rundungsrauschen, z. B. 99 % statt 98 %).
+  - Danach die Säure „Maische nach pH-Messung“ über `amountForPh` auf den Ziel-pH bzw. die Ziel-RA.
+- **Daten:**
+  - `WaterProfile.target?: true` für eigene Zielprofile in `Brewery.waters`. `recipeTreatment.sourceWaters` filtert sie aus Ausgangswasser, Standardwasser und dem Rückfall auf das erste Profil. `openapi.yaml` › `WaterProfile.target` ist ergänzt.
+  - `Ingredient.auto?: true` markiert Gaben der Automatik. Ein erneuter Lauf ersetzt sie, Bearbeiten (Aufbereitung oder Zutaten) nimmt die Markierung weg.
+  - `waterChem` exportiert `MOLAR`/`CHARGE` und hat `agentAmount` (mmol → g/ml) sowie den Typ `TargetIons`.
+- **UI:**
+  - Karte „Aufbereitung“ mit den Knöpfen „Ziel“ und „Automatisch“. Die Spalte „Ziel“ hat einen Select (eigene, mitgelieferte, „Eigene Werte“ mit Eingabe in der Spalte), Zielwerte mit Abweichung (hervorgehoben ab 20 % bzw. 10 mg/l) und ist auf dem Handy ein Reiter.
+  - Der Dialog bietet Ziel, Salze, Säure, Anteil frei/fest und Ziel-pH der Maische. Die Vorschau zeigt Ziel/jetzt/Vorschlag und die Gaben (neu, entfällt, bleibt). Erst „Übernehmen“ schreibt.
+  - Der Brauerei-Editor hat den Haken „Zielprofil“ und ein Abzeichen „Ziel“ in der Liste.
+- **Prüfung:**
+  - `pnpm test` 269/269, neu `waterSolver.test.ts` mit 9 Tests (NNLS, exakt erreichbares Ziel, Pilsen ≥ 85 % VE, keine negativen Mengen bei allen Profilen, Ersetzen der Auto-Gaben, Maische-pH, Kolbach-RA) und ein Test in `recipeTreatment.test.ts` (Zielprofil nie Ausgangswasser).
+  - `typecheck`, `build` und Redocly-Lint laufen (nur die bekannte `info-license`-Warnung).
+  - Löser mit dem Profil des Nutzers (Pils 5 kg, 20 l): Pilsen 93 % VE, „Hell, hopfig“ 98 %, „Ausgewogen“ 55 %, Dortmund 74 %, München 37 %; die Maische danach je ≈ 5,40, ein Lauf etwa 20 ms.
+  - UI im Node-Mock: Ziel-Spalte mit Abweichungen, Dialog mit Vorschau, „Übernehmen“ (98 % VE, Gaben als „Brauwasser“, 5,38 ml Milchsäure nach pH-Messung). Dazu der Reiter „Ziel“ bei 375 px und ein eigenes Zielprofil im Brauerei-Editor (fehlt im Standardwasser).
+- **Offen** (PLAN.md): Der Wasser-Tab ist damit fertig. Weiter offen sind CaO-Entcarbonisierung, im Sud Säure aus dem gemessenen pH und Verschnitt aus der gemessenen Stammwürze, sowie die pH-Punkte aus 2b-2.

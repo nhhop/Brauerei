@@ -31,7 +31,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
   const kinds = KINDS.filter((k) => allowedTimings(k.id, scope).length > 0);
 
   function patch(id: string, p: Partial<Ingredient>) {
-    onChange(all.map((i) => (i.id === id ? { ...i, ...p } : i)));
+    onChange(all.map((i) => (i.id === id ? { ...i, ...p, auto: undefined } : i)));
   }
 
   function changeKind(i: Ingredient, k: IngredientKind) {

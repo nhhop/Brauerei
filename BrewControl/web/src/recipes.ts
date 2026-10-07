@@ -2,6 +2,7 @@
 // (SD boards only); the functions at the bottom are the only persistence surface.
 
 import { failed } from './api';
+import type { TargetIons } from './waterChem';
 
 export type IngredientKind = 'fermentable' | 'hop' | 'yeast' | 'aroma' | 'auxiliary';
 
@@ -75,6 +76,7 @@ export interface Ingredient {
   timing: Timing;
   timeMin?: number; // hops at "Kochen": minutes before the end of the boil; unset = whole boil
   strengthPct?: number; // acid or solution: concentration of this addition; unset = the catalog's
+  auto?: true;          // laid out by the water automation; a run replaces it, editing by hand drops the mark
 }
 
 // Mash rest (duration in minutes) and fermentation phase (duration in days).
@@ -117,7 +119,12 @@ export interface RecipeWater {
   sources?: Partial<Record<WaterKey, WaterSource>>;
   dilution?: Dilution;
   targetPh?: Partial<Record<PhKey, number>>;  // target of the acid and base helper
+  target?: WaterTarget;           // water profile the strike water is compared with
 }
+
+// A target profile by id (built in or the brewery's), or own ions; {} shows the
+// comparison before one is picked.
+export interface WaterTarget { id?: string; ions?: TargetIons }
 
 export type WaterKey = 'strike' | 'sparge' | 'dilution';
 export type PhKey = WaterKey | 'mash' | 'preBoil' | 'knockOut';
