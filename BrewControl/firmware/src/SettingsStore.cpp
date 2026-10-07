@@ -1,6 +1,7 @@
 // BrewControl/firmware/src/SettingsStore.cpp
 #include "SettingsStore.h"
 
+#include "DisplayOrientation.h"
 #include "SdLock.h"
 
 namespace BrewControl {
@@ -75,6 +76,11 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (display["dimPercent"].is<int>())  displayDimPercent_  = display["dimPercent"].as<uint8_t>();
     if (display["offAfterSec"].is<int>()) displayOffAfterSec_ = display["offAfterSec"].as<uint32_t>();
     if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
+    if (display["rotation"].is<int>() && isDisplayRotation(display["rotation"].as<int32_t>()))
+      displayRotation_ = display["rotation"].as<uint16_t>();
+    if (const char* s = display["orientationSensor"]) displayOrientationSensor_ = s;
+    if (display["orientationMirror"].is<bool>())
+      displayOrientationMirror_ = display["orientationMirror"].as<bool>();
   }
   JsonObject energy = doc["energy"].as<JsonObject>();
   if (!energy.isNull()) readEnergy_(energy);
@@ -174,6 +180,9 @@ String SettingsStore::serialize() const {
   display["dimPercent"]  = displayDimPercent_;
   display["offAfterSec"] = displayOffAfterSec_;
   display["pixelShift"]  = displayPixelShift_;
+  display["rotation"]    = displayRotation_;
+  display["orientationSensor"] = displayOrientationSensor_.c_str();
+  display["orientationMirror"] = displayOrientationMirror_;
 #ifdef BREWCTL_HAS_DISPLAY
   display["supported"] = true;
 #else
@@ -264,6 +273,11 @@ void SettingsStore::update(const JsonObject& patch) {
     if (display["dimPercent"].is<int>())  displayDimPercent_  = display["dimPercent"].as<uint8_t>();
     if (display["offAfterSec"].is<int>()) displayOffAfterSec_ = display["offAfterSec"].as<uint32_t>();
     if (display["pixelShift"].is<bool>()) displayPixelShift_  = display["pixelShift"].as<bool>();
+    if (display["rotation"].is<int>() && isDisplayRotation(display["rotation"].as<int32_t>()))
+      displayRotation_ = display["rotation"].as<uint16_t>();
+    if (const char* s = display["orientationSensor"]) displayOrientationSensor_ = s;
+    if (display["orientationMirror"].is<bool>())
+      displayOrientationMirror_ = display["orientationMirror"].as<bool>();
     // "supported" is read-only (server-computed) — never read from a patch.
   }
   JsonObject energy = patch["energy"].as<JsonObject>();

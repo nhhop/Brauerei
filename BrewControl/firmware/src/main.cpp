@@ -444,7 +444,7 @@ void setup() {
     firmwareUpdater.begin();
     BrewControl::HeapDiag::mark("webui");
 #ifdef BREWCTL_HAS_DISPLAY
-    displayUI.begin(settingsStore);
+    displayUI.begin(settingsStore, registry);
     if (displayUI.ready())
       displayPages.begin(registry, dashboardStore, programRunner, settingsStore,
                          webUI);

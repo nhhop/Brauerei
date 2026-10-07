@@ -189,7 +189,7 @@ export function App() {
         <AnlageRoute path="/settings/anlage" snap={snap} />
         <AnlageRoute path="/settings/anlage/sudhaus/:id" snap={snap} />
         <AppearancePage path="/settings/appearance" />
-        <DisplayPage path="/settings/display" />
+        <DisplayPage path="/settings/display" snap={snap} />
         <EnergyPage path="/settings/energy" snap={snap} />
         <DevicesPage path="/settings/devices" snap={snap} />
         <BusesPage path="/settings/buses" />
