@@ -46,8 +46,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
     <PageShell wide>
       <header class="mb-6">
         <Breadcrumb trail={[
-          { label: 'Einstellungen', href: '/settings' },
-          { label: 'Logs & Charts', href: '/settings/logs' },
+          { label: 'Logs & Charts', href: '/logs' },
           { label: `Archiv${log ? ` · ${log.name}` : ''}` },
         ]} />
       </header>

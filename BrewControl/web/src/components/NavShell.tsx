@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { route, useRouter } from 'preact-router';
 import { useModule } from '../optionalModules';
-import { LayoutDashboard, ListChecks, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, ChartLine, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -28,10 +28,11 @@ interface NavItem {
   module?: string; // shown only when this optional package is installed (optionalModules.ts)
 }
 
-// Weitere Einträge (z.B. einzelne Dashboards, Logs) folgen in einer späteren Session.
+// Weitere Einträge (z.B. einzelne Dashboards) folgen in einer späteren Session.
 const mainItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p) => p === '/' },
   { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
+  { href: '/logs', label: 'Logs & Charts', icon: ChartLine, match: (p) => p.startsWith('/logs') },
   { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes' },
   { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner'), module: 'recipes' },
 ];

@@ -790,7 +790,8 @@ bleiben sie aus `GET /api/backup` heraus. Eine Endpoint-URL ist das Einzige, was
 zwischen einem Fremden und den eigenen Benachrichtigungen steht. Folge: Nach einem
 Restore auf ein anderes Gerät müssen Benachrichtigungen neu eingerichtet werden.
 
-Einrichten: Einstellungen → Benachrichtigungen → „Auf diesem Gerät aktivieren".
+Einrichten: Einstellungen → Alarme & Benachrichtigungen → Push-Benachrichtigungen →
+„Auf diesem Gerät aktivieren".
 Danach prüft „Testmeldung senden", ob es wirklich ankommt.
 
 Grenzen:

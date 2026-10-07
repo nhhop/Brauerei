@@ -1,6 +1,6 @@
 // BrewControl/web/src/app.tsx
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Router } from 'preact-router';
+import { Router, route } from 'preact-router';
 import type { Alert, AlarmConfig, AuthStatus, Severity, Snapshot } from './types';
 import { getSnapshot, subscribeEvents, getSettings, getAlarms, getAlerts, clearAlerts, getAuthStatus, logout, emergencyStop } from './api';
 import { applyTheme, loadCachedTheme } from './theme';
@@ -30,11 +30,18 @@ import { EspNowPage } from './pages/EspNowPage';
 import { LogsPage } from './pages/LogsPage';
 import { ArchivePage } from './pages/ArchivePage';
 import { AlarmsPage } from './pages/AlarmsPage';
+import { AlertsHubPage } from './pages/AlertsHubPage';
 import { FilesPage } from './pages/FilesPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 
 const MAX_HISTORY = 60;
+
+// Logs moved out of the settings into the main nav; keeps old bookmarks working.
+function LegacyLogsRedirect(_: { path?: string }) {
+  useEffect(() => { route(window.location.pathname.replace(/^\/settings/, ''), true); }, []);
+  return null;
+}
 
 // Snapshot plus the alert stream: both ride the same EventSource, because each
 // connection costs the device an SSE client slot.
@@ -203,8 +210,10 @@ export function App() {
         <WebhookPage path="/settings/connectivity/webhook" />
         <WebSocketPage path="/settings/connectivity/websocket" />
         <EspNowPage path="/settings/connectivity/espnow" />
-        <LogsPage path="/settings/logs" snap={snap} />
-        <ArchivePage path="/settings/logs/:id/archive" />
+        <LogsPage path="/logs" snap={snap} />
+        <ArchivePage path="/logs/:id/archive" />
+        <LegacyLogsRedirect path="/settings/logs/:rest*" />
+        <AlertsHubPage path="/settings/meldungen" />
         <AlarmsPage path="/settings/alarms" snap={snap} />
         <FilesPage path="/settings/files" />
         <SecurityPage path="/settings/security" />
