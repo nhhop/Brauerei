@@ -6,7 +6,7 @@ import type { Brewhouse } from './brewhouse';
 import { ballingBeerAnalysis, hopIbu, moreyEbc } from './brewMath';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient, Range } from './ingredientCatalog';
-import { resolveDilution } from './recipeWater';
+import { resolveDilution, type DilutionResult } from './recipeWater';
 import { DEFAULT_EFFICIENCY, type Recipe } from './recipes';
 
 export interface RecipeStats {
@@ -52,6 +52,12 @@ export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[]): {
   return { extractKg, colors: fermentables.map(({ kg, c }) => ({ kg, ebc: rangeValue(c.colorEbc) })), note };
 }
 
+// Beer colour after a planned dilution: in the kettle the knock-out already
+// includes it, in the fermenter it thins the wort that arrives.
+export function beerEbc(colors: { kg: number; ebc: number }[], volumeL: number, dilution: DilutionResult): number {
+  return moreyEbc(colors, volumeL) * (dilution.at === 'fermenter' ? dilution.factor : 1);
+}
+
 // `bh` is the recipe's brewhouse; it only matters for a dilution in the fermenter.
 export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse): RecipeStats {
   const byId = new Map(catalog.map((c) => [c.id, c]));
@@ -68,7 +74,7 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
   notes.push(...dilution.notes);
   if (extractKg !== undefined && volumeL > 0) {
     stats.ogPlato = dilution.finalPlato;
-    stats.ebc = moreyEbc(colors, volumeL) * (dilution.at === 'fermenter' ? dilution.factor : 1);
+    stats.ebc = beerEbc(colors, volumeL, dilution);
   }
 
   // Alcohol: first yeast with a catalog link that states an attenuation.

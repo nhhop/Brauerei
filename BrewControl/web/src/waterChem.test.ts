@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  HCO3_PER_KS43, VE_WATER, WATER_AGENTS, acidForPh, agentMmol, applyAgents, blend, densityAt, dissociated,
+  HCO3_PER_KS43, VE_WATER, WATER_AGENTS, agentMmol, amountForPh, applyAgents, blend, densityAt, dissociated,
   figuresOf, ionBalance, stateOf, waterPh, type WaterProfile,
 } from './waterChem';
 
@@ -66,13 +66,16 @@ describe('waterChem', () => {
     for (let i = 1; i < phs.length; i++) expect(phs[i]).toBeLessThan(phs[i - 1]);
   });
 
-  it('finds the acid for a target pH, and nothing above the start pH', () => {
-    const ml = acidForPh(stateOf(tap), 15, lactic, 80, 5.8)!;
+  it('finds the acid or base for a target pH, and nothing in the wrong direction', () => {
+    const withAgent = (p: WaterProfile, agent: typeof lactic, pct = 100) => (amount: number) =>
+      waterPh(applyAgents(stateOf(p), 15, [{ agent, mmol: agentMmol(agent, amount, pct) }]));
+    const ml = amountForPh(withAgent(tap, lactic, 80), 5.8)!;
     expect(ml).toBeGreaterThan(0);
-    const ph = waterPh(applyAgents(stateOf(tap), 15, [{ agent: lactic, mmol: agentMmol(lactic, ml, 80) }]))!;
-    expect(ph).toBeCloseTo(5.8, 3);
-    expect(acidForPh(stateOf(tap), 15, lactic, 80, 7.8)).toBe(0);
-    expect(acidForPh(stateOf({ ...tap, ph: undefined }), 15, lactic, 80, 5.8)).toBeUndefined();
+    expect(withAgent(tap, lactic, 80)(ml)).toBeCloseTo(5.8, 3);
+    expect(amountForPh(withAgent(tap, lactic, 80), 7.8)).toBe(0);
+    expect(amountForPh(withAgent({ ...tap, ph: undefined }, lactic, 80), 5.8)).toBeUndefined();
+    const g = amountForPh(withAgent(tap, WATER_AGENTS.nahco3), 7.8)!;
+    expect(withAgent(tap, WATER_AGENTS.nahco3)(g)).toBeCloseTo(7.8, 3);
   });
 
   it('interpolates densities and dissociation', () => {

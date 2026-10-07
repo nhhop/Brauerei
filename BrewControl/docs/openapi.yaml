@@ -4648,6 +4648,13 @@ components:
         defaultWaterId:
           type: string
           description: Source water of recipes that pick none; unset = the first profile, else VE water.
+        phModel:
+          type: string
+          enum: [troester, kolbach]
+          description: |
+            Mash and wort pH model of all recipes (`web/src/mashPh.ts`): `troester`
+            estimates the pH from malt data, `kolbach` shows the residual alkalinity
+            against a range for the beer colour, without a pH. Unset = `troester`.
       additionalProperties: true
 
     WaterProfile:
