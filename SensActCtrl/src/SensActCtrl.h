@@ -10,6 +10,7 @@
 #include "core/Sensor.h"
 #include "core/Actuator.h"
 #include "core/Controller.h"
+#include "core/DacOutput.h"
 #include "core/Registry.h"
 #include "core/RegistrySnapshot.h"
 
@@ -27,6 +28,8 @@
 #ifdef ARDUINO
 #include "actuators/IdsActuator.h"
 #endif
+
+#include "devices/MCP4728.h"
 
 #include "sensors/DigitalInputSensor.h"
 #include "sensors/AnalogInputSensor.h"

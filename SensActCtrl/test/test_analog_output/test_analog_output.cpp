@@ -140,6 +140,100 @@ void test_write_while_disabled_updates_target_without_touching_peripheral() {
     TEST_ASSERT_EQUAL_UINT32(3071, analogOutputActuatorLastRawForTest());  // 0.75*4095
 }
 
+// --- external DAC (DacOutput) ------------------------------------------------
+
+namespace {
+struct FakeDac : DacOutput {
+    uint16_t last   = 0xFFFF;
+    int      writes = 0;
+    bool     ok     = true;
+    uint16_t rawMax() const override { return 4095; }
+    bool write(uint16_t raw) override { last = raw; ++writes; return ok; }
+};
+}  // namespace
+
+void test_ext_dac_levels() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    TEST_ASSERT_EQUAL_UINT16(0, d.last);
+    a.write(0.0f);    TEST_ASSERT_EQUAL_UINT16(0,    d.last);
+    a.write(0.5f);    TEST_ASSERT_EQUAL_UINT16(2047, d.last);
+    a.write(1.0f);    TEST_ASSERT_EQUAL_UINT16(4095, d.last);
+}
+
+void test_ext_dac_uses_converter_raw_max() {
+    struct Dac8 : DacOutput {
+        uint16_t last = 0;
+        uint16_t rawMax() const override { return 255; }
+        bool write(uint16_t raw) override { last = raw; return true; }
+    } d;
+    AnalogOutputActuator a("a", d);
+    a.write(1.0f);
+    TEST_ASSERT_EQUAL_UINT16(255, d.last);
+    TEST_ASSERT_EQUAL_UINT32(255, a.rawMax());
+}
+
+void test_ext_dac_set_range() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.setRange(Quantity::Temperature, "C", 0.0f, 100.0f, 0.1f);
+    a.write(50.0f);
+    TEST_ASSERT_EQUAL_UINT16(2047, d.last);
+    a.write(200.0f);
+    TEST_ASSERT_EQUAL_UINT16(4095, d.last);
+}
+
+void test_ext_dac_disabled_writes_minimum_and_resumes() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    a.write(0.5f);
+    a.setEnabled(false);
+    TEST_ASSERT_EQUAL_UINT16(0, d.last);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.5f, a.target());
+    a.setEnabled(true);
+    TEST_ASSERT_EQUAL_UINT16(2047, d.last);
+}
+
+void test_ext_dac_end_writes_minimum() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    a.write(1.0f);
+    a.end();
+    TEST_ASSERT_EQUAL_UINT16(0, d.last);
+}
+
+void test_ext_dac_does_not_touch_ledc() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    uint8_t before = analogOutputActuatorLedcDetachCallCountForTest();
+    a.begin();
+    a.end();
+    TEST_ASSERT_EQUAL_UINT8(before, analogOutputActuatorLedcDetachCallCountForTest());
+}
+
+void test_ext_dac_fault_follows_write_result() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    TEST_ASSERT_NULL(a.fault());
+    d.ok = false;
+    a.write(0.5f);
+    TEST_ASSERT_NOT_NULL(a.fault());
+    d.ok = true;
+    a.write(0.5f);
+    TEST_ASSERT_NULL(a.fault());
+}
+
+void test_gpio_actuator_has_no_fault() {
+    AnalogOutputActuator a("a", 1);
+    a.begin();
+    a.write(0.5f);
+    TEST_ASSERT_NULL(a.fault());
+}
+
 void setUp()    {}
 void tearDown() {}
 
@@ -163,5 +257,13 @@ int main(int, char**) {
     RUN_TEST(test_end_does_not_detach_ledc_pin_in_dac_mode);
     RUN_TEST(test_disabled_drives_peripheral_to_min_but_keeps_target);
     RUN_TEST(test_write_while_disabled_updates_target_without_touching_peripheral);
+    RUN_TEST(test_ext_dac_levels);
+    RUN_TEST(test_ext_dac_uses_converter_raw_max);
+    RUN_TEST(test_ext_dac_set_range);
+    RUN_TEST(test_ext_dac_disabled_writes_minimum_and_resumes);
+    RUN_TEST(test_ext_dac_end_writes_minimum);
+    RUN_TEST(test_ext_dac_does_not_touch_ledc);
+    RUN_TEST(test_ext_dac_fault_follows_write_result);
+    RUN_TEST(test_gpio_actuator_has_no_fault);
     return UNITY_END();
 }

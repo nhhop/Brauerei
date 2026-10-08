@@ -28,6 +28,9 @@ uint8_t AnalogOutputActuator::nextChannel_ = 0;
 AnalogOutputActuator::AnalogOutputActuator(const char* id, int pin, Mode mode)
     : id_(id), pin_(pin), mode_(mode) {}
 
+AnalogOutputActuator::AnalogOutputActuator(const char* id, DacOutput& out)
+    : id_(id), pin_(-1), mode_(Mode::Dac), ext_(&out) {}
+
 void AnalogOutputActuator::setRange(Quantity q, const char* unit,
                                      float min, float max, float resolution) {
     quantity_   = q;
@@ -47,6 +50,7 @@ ActuatorMeta AnalogOutputActuator::meta() const {
 }
 
 uint32_t AnalogOutputActuator::rawMax() const {
+    if (ext_) return ext_->rawMax();
     return (mode_ == Mode::Dac) ? 255u : ((1u << resBits_) - 1u);
 }
 
@@ -74,6 +78,10 @@ void AnalogOutputActuator::applyOutput() {
     // Single choke point: while disabled the peripheral is driven to the
     // range minimum, but state_ keeps the commanded value for the re-enable.
     const uint32_t raw = valueToRaw(enabled_ ? state_ : valueMin_);
+    if (ext_) {
+        dacFault_ = !ext_->write(static_cast<uint16_t>(raw));
+        return;
+    }
     if (mode_ == Mode::Dac) {
 #if defined(SENSACTCTRL_HAS_DAC)
         dacWrite(static_cast<uint8_t>(pin_), static_cast<uint8_t>(raw));
@@ -86,6 +94,10 @@ void AnalogOutputActuator::applyOutput() {
 }
 
 void AnalogOutputActuator::begin() {
+    if (ext_) {
+        write(valueMin_);
+        return;
+    }
 #if !defined(SENSACTCTRL_HAS_DAC)
     if (mode_ == Mode::Dac) mode_ = Mode::Pwm;
 #endif
@@ -99,6 +111,7 @@ void AnalogOutputActuator::begin() {
 
 void AnalogOutputActuator::end() {
     write(valueMin_);
+    if (ext_) return;
     // Dac mode drives the pin via the DAC peripheral directly (no GPIO
     // matrix routing), so there's nothing to detach there.
     if (mode_ == Mode::Pwm) {

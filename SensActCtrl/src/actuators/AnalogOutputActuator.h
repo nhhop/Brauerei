@@ -1,6 +1,7 @@
 #pragma once
 #include "../core/Actuator.h"
 #include "../core/ActuatorMeta.h"
+#include "../core/DacOutput.h"
 #include "../core/Quantity.h"
 #include "../core/ValueKind.h"
 #include <stdint.h>
@@ -13,6 +14,12 @@ public:
 
     AnalogOutputActuator(const char* id, int pin, Mode mode = Mode::Pwm);
 
+    // Drives a channel of an external DAC (e.g. MCP4728) instead of a GPIO.
+    // `out` must outlive the actuator. A failed write() shows up in fault()
+    // and clears itself with the next successful one — every write sends the
+    // whole frame, so re-plugging the chip heals without a restart.
+    AnalogOutputActuator(const char* id, DacOutput& out);
+
     const char*  id()    const override { return id_; }
     ActuatorMeta meta()  const override;
     void         begin()       override;
@@ -20,6 +27,7 @@ public:
     void         tick()        override {}
     void         write(float value) override;
     float        target() const override { return state_; }
+    const char*  fault()  const override { return dacFault_ ? "DAC antwortet nicht" : nullptr; }
 
     // Ties advertised meta AND value→duty range together. Call before begin().
     // Default: Quantity::DutyCycle, "", 0..1, res 0.01.
@@ -42,6 +50,8 @@ private:
     const char* id_;
     int         pin_;
     Mode        mode_;
+    DacOutput*  ext_         = nullptr;  // external DAC channel; pin_/mode_ unused then
+    bool        dacFault_    = false;
 
     uint32_t freq_       = 5000;
     uint8_t  resBits_    = 12;

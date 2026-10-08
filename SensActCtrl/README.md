@@ -128,10 +128,31 @@ werden unverändert durchgereicht).
 
 **Aktoren** (`src/actuators/`): `DigitalOutputActuator` (binär oder
 Time-Proportional/SSR), `PulseOutputActuator` (nicht-blockierende
-Puls-Queue), `AnalogOutputActuator` (PWM/DAC), `IdsActuator` (IDS1/IDS2
+Puls-Queue), `AnalogOutputActuator` (PWM, On-Chip-DAC oder externer DAC über `DacOutput`), `IdsActuator` (IDS1/IDS2
 Induktionskochfeld, Arduino-only; sendet per RMT, `fault()` meldet neben Plattenfehlern
 auch einen fehlenden RMT-Kanal, dann blockiert das Software-Timing `loop()` ~139 ms je Frame), `MqttGenericActuator` (frei
 konfigurierbarer Topic + Payload-Template, für Fremdgeräte).
+
+**Externe DACs** (`src/devices/`): `MCP4728` (4 × 12 Bit, I²C 0x60–0x67) ist
+ein reiner Treiber, kein Sensor/Aktor. `channel(0..3)` liefert ein
+`DacOutput` (`rawMax()`, `write(raw)`), das `AnalogOutputActuator(id, DacOutput&)`
+statt eines GPIO bekommt — so geht ein Analogausgang auch auf Boards ohne
+eigenen DAC:
+
+```cpp
+MCP4728 dac(Wire, 0x60);
+AnalogOutputActuator boiler("boiler", dac.channel(0));
+boiler.setRange(Quantity::Power, "%", 0, 100, 1);
+```
+
+Der Treiber nutzt nur den Multi-Write-Befehl: Referenz VDD, Gain ×1, Ausgang
+folgt sofort der Bestätigung (UDAC = 0, der LDAC-Pin ist egal). Das EEPROM
+wird nie beschrieben; nach dem Einschalten liegt der Ausgang auf dem dort
+gespeicherten Wert (ab Werk 0 V) — den Chip daher nicht anderswo mit einem
+Startwert ≠ 0 programmieren. Antwortet der Chip nicht, meldet der Aktor
+`fault()`; der nächste erfolgreiche Write löscht den Fehler, weil jeder Write
+den kompletten Frame sendet. Eine neue I²C-Adresse programmiert die Library
+nicht.
 
 **Controller** (`src/controllers/`): `TwoPointController` (Bang-Bang mit
 Hysterese), `PIDController` (AutoTunePID-Wrapper, 5 Tuning-Algorithmen),
