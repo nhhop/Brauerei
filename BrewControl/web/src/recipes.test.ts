@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  deleteRecipe, exportRecipes, getRecipe, importLocalRecipes, importRecipes, listRecipes, newRecipe, saveRecipe,
-  type Recipe,
+  addCharge, chargeIdOf, chargesOf, deleteRecipe, exportRecipes, getRecipe, importLocalRecipes, importRecipes, listRecipes,
+  newRecipe, normalizeMash, removeCharge, saveRecipe,
+  type Ingredient, type MashStep, type Recipe,
 } from './recipes';
 
 // A tiny stand-in for /api/recipes: ids → stored recipes.
@@ -138,5 +139,57 @@ describe('importLocalRecipes', () => {
     const { calls } = mockDevice();
     await importLocalRecipes();
     expect(calls).toEqual([]);
+  });
+});
+
+describe('mash plan', () => {
+  it('drops the old rest list and starts with strike water and doughIn', () => {
+    const steps = normalizeMash([{ id: 'p', name: 'Maltoserast', tempC: 63, duration: 40 }]);
+    expect(steps.map((s) => s.kind)).toEqual(['strike', 'doughIn']);
+  });
+
+  it('puts the fixed steps in front and keeps the rest in order', () => {
+    const rest: MashStep = { id: 'r', kind: 'rest', name: 'Rast', tempC: 72, durationMin: 20 };
+    const doughIn: MashStep = { id: 'd', kind: 'doughIn', name: 'Einmaischen', tempC: 63, chargeId: 'x' };
+    const steps = normalizeMash([rest, doughIn]);
+    expect(steps.map((s) => s.id)).toEqual([steps[0].id, 'd', 'r']);
+    expect(steps[0].kind).toBe('strike');
+    expect(steps[1].chargeId).toBeUndefined();
+  });
+
+  it('loads a recipe with a normalized plan', async () => {
+    mockDevice([{ ...recipe('a1'), mash: [] as MashStep[] }]);
+    expect((await getRecipe('a1'))!.mash.map((s) => s.kind)).toEqual(['strike', 'doughIn']);
+  });
+});
+
+describe('charges', () => {
+  const grain = (id: string, amount: number, p: Partial<Ingredient> = {}): Ingredient =>
+    ({ id, kind: 'fermentable', name: id, amount, timing: 'mash', ...p });
+  const hop: Ingredient = { id: 'h', kind: 'hop', name: 'Hallertau', amount: 20, timing: 'boil' };
+  const base = recipe('w', { ingredients: [grain('weizen', 2.6), grain('pils', 1.8), hop] });
+  const kgOf = (r: Recipe, name: string) =>
+    r.ingredients.filter((i) => i.name === name).reduce((s, i) => s + i.amount, 0);
+
+  it('splits a share into a new charge with its own doughIn and keeps the kg per malt', () => {
+    const split = { ...base, ...addCharge(base, { fromId: 'c1', pct: 50, afterStepId: base.mash[1].id }) };
+    const charges = chargesOf(split);
+    expect(charges.map((c) => c.name)).toEqual(['Schüttung 1', 'Schüttung 2']);
+    expect(kgOf(split, 'weizen')).toBeCloseTo(2.6, 9);
+    expect(kgOf(split, 'pils')).toBeCloseTo(1.8, 9);
+    const second = split.ingredients.filter((i) => chargeIdOf(i, charges) === charges[1].id);
+    expect(second.map((i) => [i.name, i.amount])).toEqual([['weizen', 1.3], ['pils', 0.9]]);
+    expect(split.mash[2]).toMatchObject({ kind: 'doughIn', chargeId: charges[1].id });
+  });
+
+  it('removing a charge merges its grain back and drops its doughIn', () => {
+    const split = { ...base, ...addCharge(base, { fromId: 'c1', pct: 30 }) };
+    const merged = { ...split, ...removeCharge(split, chargesOf(split)[1].id) };
+    expect(merged.charges).toBeUndefined();
+    expect(merged.ingredients.map((i) => [i.name, i.amount, i.chargeId])).toEqual(
+      [['weizen', 2.6, undefined], ['pils', 1.8, undefined], ['Hallertau', 20, undefined]]);
+    expect(merged.mash.map((s) => s.kind)).toEqual(['strike', 'doughIn']);
+    // The split recipe itself is untouched.
+    expect(kgOf(split, 'weizen')).toBeCloseTo(2.6, 9);
   });
 });

@@ -421,14 +421,49 @@ Liste und Detailansicht.
     gibt, der die Teilmaische kochen kann. Das wird aus dem Sudhaus abgeleitet, einen Schalter gibt es
     nicht. Sonst ist die Schritt-Art Dekoktion im Rezept ausgegraut, mit Hinweis aufs Sudhaus.
   - Wechselt das Rezept auf ein Sudhaus ohne Dekoktion, warnt es und bietet ein Infusionsprofil an.
-- **Kopfkarte Maischen:** Maische-Effizienz, Malztemperatur, Heizrate (nur lesbar, aus dem Sudhaus).
+- **Kopfkarte Maischen:** Maische-Effizienz (Sudhaus), Malztemperatur (Brauerei), Siedepunkt, Heizung,
+  Heizrate (Sudhaus oder aus der Heizleistung geschätzt) und Gesamtdauer, alles nur lesbar.
   Die Einmaischtemperatur steht im Plan beim Schritt Einmaischen, die berechnete Hauptguss-Temperatur
   beim Schritt Wasser vorlegen.
+- **Stand 3a (2026-10-08, `web/src/mashPlan.ts`, `pages/recipe/MashTab.tsx`):** Maischeplan,
+  Wärmerechnung, Teilschüttungen, Temperaturverlauf und Siedepunkt sind umgesetzt. Maischprofile (3c) und
+  Dekoktion (3d) fehlen noch; die Schritt-Art Dekoktion ist ausgegraut.
+  - **Schritt-Modell:** Jeder Schritt hat eine Zieltemperatur und eine Haltedauer; die Art bestimmt nur den
+    Übergang (Heizen, Abkühlen, Mischen, Zubrühen). Das hält das Modell flach für die Programmschritte des
+    Suds. „Wasser vorlegen“ und das erste „Einmaischen“ lassen sich weder löschen noch verschieben.
+  - **Alte Rezepte** (Rasten ohne Art) verlieren ihren Plan beim Laden, eine Migration gibt es nicht
+    (Entscheidung 2026-10-08). Der Plan beginnt dann mit Wasser vorlegen und Einmaischen (67 °C, 60 min).
+  - **Wärmeäquivalent:** M = Wasser [kg] + 0,41 × Malz [kg]; die 0,41 teilt sich die Rechnung mit der
+    Einmaischtemperatur (`GRAIN_HEAT_RATIO`). Die Wärmekapazität des Behälters bleibt wie bei Palmer
+    unberücksichtigt.
+  - **Wasser vorlegen:** Menge = Hauptguss − alle Zubrühmengen. Zubrühmengen, die nach Temperatur
+    geführt werden, wachsen mit der Maische; die Menge wird deshalb per Bisektion gelöst. Sind die
+    Zubrühmengen größer als der Hauptguss, gibt es einen Hinweis und das Zubrühwasser kommt hinzu.
+    Temperatur über die Einmaischformel mit der ersten Schüttung, Heizzeit ab Leitungswasser.
+  - **Weitere Schüttung:** Mischtemperatur (M·T + 0,41·kg·T_Malz) / (M + 0,41·kg), nur lesbar.
+  - **Zubrühen:** (M·T_alt + V·T_w) / (M + V) = T_ziel. Was zuletzt geändert wurde, führt (Menge oder
+    Wassertemperatur); ohne Wassertemperatur gilt der Siedepunkt. Eis zählt als Wasser von
+    −334/4,186 ≈ −79,8 °C. Liegt die nötige Wassertemperatur außerhalb von Leitungswasser bis Siedepunkt,
+    gibt es einen Hinweis. Zubrühwasser ist Teil des Hauptgusses und wird mit ihm aufbereitet.
+  - **Rast:** Heizen ΔT / Heizrate des Sudhauses; fehlt sie, P · 0,85 / (M · 4186) · 60 K/min aus der
+    Heizleistung, mit Hinweis. Abkühlen passiv mit 0,2 K/min, mit Hinweis „kalt zubrühen?“. Beide
+    Konstanten sind Annahmen (`TODO(verify)`).
+  - **Aufguss-Sudhaus:** Eine wärmere Rast wird durch Zubrühen mit Wasser am Siedepunkt erreicht und
+    zählt zum Hauptguss.
+  - **Teilschüttungen:** `Recipe.charges` (ohne Eintrag genau eine), `Ingredient.chargeId` und
+    `MashStep.chargeId`. „Schüttung aufteilen“ teilt jedes Malz der gewählten Schüttung im Verhältnis
+    auf, die kg je Malz bleiben gleich. Entfernen einer Schüttung legt ihr Malz mit gleichen Zeilen der
+    ersten zusammen. Der Zutaten-Tab markiert die Schüttung. Die Summen je Schüttung (°P, EBC) sind ihr
+    Anteil am Extrakt bzw. an den MCU.
+  - **Temperaturverlauf** mit uPlot: Rampen und Haltestufen ab dem Aufheizen des Hauptgusses, Punkte
+    und Namen bei den Zugaben.
+  - Der Maische-pH (2b-2) rechnet weiter mit der ganzen Schüttung und dem ganzen Hauptguss.
 - **Würzekochen** (Tab): Karte „Kochen & Whirlpool“ mit Kochdauer, Nachisomerisierung, Whirlpool-Temperatur
   und -Dauer, darunter eine Zeitleiste der Gaben (Läutern/Vorderwürze · Kochen · Nachisomerisierung ·
   Whirlpool). Danach die Zutaten (Vorderwürze, Kochen, Whirlpool) und der Hinweis, wenn das Sudhaus keinen
   Hop Back hat.
-- **Offen:** Läutern (noch keine Felder, inkl. Fly/Batch Sparge), Dekoktion als Schritt-Art: Teilmaische
+- **Offen:** Effizienz-Kette (3b), Maischprofile (3c), Läutern (noch keine Felder, inkl. Fly/Batch
+  Sparge), Dekoktion als Schritt-Art (3d): Teilmaische
   ziehen (Anteil, dick/dünn), eigene Rasten in der Würzepfanne, kochen, zurückführen mit berechneter
   Mischtemperatur; im Temperaturverlauf als zweite Linie. Teilschüttungen in Maischprofilen.
 - **Ausgangstemperatur des Hauptgusses** für die Heizzeit ist die Leitungswassertemperatur der
@@ -473,6 +508,13 @@ weicht die Ionenbilanz um mehr als 10 % ab, erscheint ein Hinweis. VE-Wasser ist
 nicht gespeichert. Das **Standardwasser** ist das Ausgangswasser von Rezepten, die keines wählen; ohne Wahl
 gilt das erste Profil, ohne Profil VE-Wasser. Rezepte lesen es beim Rechnen, ändert es sich, rechnen auch
 bestehende Rezepte ohne eigene Wahl damit.
+
+Ebenfalls dort steht die **Höhe** (seit 3a, m ü. NN). Daraus folgt der Siedepunkt nach der
+Normatmosphäre: p = 1013,25 · (1 − 2,25577·10⁻⁵ · h)^5,25588 hPa, Siedepunkt nach Clausius-Clapeyron mit
+ΔH = 40 660 J/mol (500 m ≈ 98,3 °C), ohne Erhöhung durch den Extrakt. Er begrenzt Hauptguss und Zubrühen
+und geht in die Bittere ein: Die Kochausnutzung (Tinseth) wird mit der Isomerisierungsrate nach Malowicki
+relativ zu 100 °C skaliert. Der Sud nutzt später die Messung **Luftdruck** (Schritt Kochen, hPa), die das
+Sudhaus mit einem Drucksensor verknüpfen kann.
 
 Ebenfalls dort steht das **pH-Modell** (seit 2b-2), eines für alle Rezepte: Troester (pH aus Malzdaten,
 Vorgabe) oder Kolbach (Restalkalität nach Bierfarbe, ohne pH). Siehe Wasser › Aufbereitung.
@@ -533,7 +575,7 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in 
   eingebracht wird.
 - **Messungen gibt der Prozess vor**, nicht das Sudhaus: eine feste Liste je Schritt (Malz- und
   Leitungswassertemperatur, Haupt- und Nachgussmenge, Temperaturen, pH, Pfannevoll, Stammwürze und pH vor
-  und nach dem Kochen, Ausschlagmenge, Anstelltemperatur). Das Sudhaus verknüpft jede mit einem Sensor oder
+  und nach dem Kochen, Luftdruck, Ausschlagmenge, Anstelltemperatur). Das Sudhaus verknüpft jede mit einem Sensor oder
   lässt sie „von Hand“ (Vorgabe); dann zeigt der Sud ein Eingabefeld und speichert den Wert.
 - **Prüfung:** Fehler sperren das Speichern (leerer Name, Pflichtschritt ohne Behälter, Verweis auf
   Gelöschtes, Maischen/Kochen ohne Heizquelle, indirekt ohne Pumpe außer Aufguss, Pumpentransfer ohne Pumpe,
