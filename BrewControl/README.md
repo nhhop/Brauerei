@@ -299,8 +299,8 @@ einspielen.
 ### Peripheriegeräte (externer DAC)
 
 Chips an einem definierten Bus, die Items Fähigkeiten anbieten (`src/DeviceConfig.h`),
-gepflegt unter `/api/peripherals` und gespeichert als Array `devices` in
-`/config/registry.json` (geladen nach den Bussen, vor den Items). Einziger Typ bisher ist
+gepflegt unter **Einstellungen → Peripheriegeräte** bzw. `/api/peripherals` und gespeichert
+als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den Items). Einziger Typ bisher ist
 der **MCP4728** (4 × 12-Bit-DAC, I²C 0x60–0x67, ab Werk 0x60). Damit bekommen Boards ohne
 eigenen DAC (LilyGo, Waveshare, StopWatch) einen echten Analogausgang.
 
