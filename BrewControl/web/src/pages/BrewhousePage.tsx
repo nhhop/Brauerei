@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { route } from 'preact-router';
 import { Copy, Factory, Pencil, Plus, Trash2 } from 'lucide-preact';
 import {
-  DEFAULT_BREWERY, TEMPLATES, brewhouseSummary, deleteBrewhouse, getBrewery, listBrewhouses, saveBrewery,
+  DEFAULT_BREWERY, TEMPLATES, breweryBoilC, brewhouseSummary, deleteBrewhouse, getBrewery, listBrewhouses, saveBrewery,
   type Brewery, type Brewhouse,
 } from '../brewhouse';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -143,6 +143,14 @@ function BreweryCard() {
         <Field label="Leitungswassertemperatur (°C)">
           <NumInput value={draft.tapWaterTempC} onChange={(n) => setDraft({ ...draft, tapWaterTempC: n })} />
         </Field>
+        <div class="flex items-end gap-2">
+          <Field label="Höhe (m ü. NN)">
+            <NumInput value={draft.altitudeM ?? 0} onChange={(n) => setDraft({ ...draft, altitudeM: n || undefined })} />
+          </Field>
+          <span class="pb-2 text-xs text-muted" title="Normatmosphäre, ohne Erhöhung durch den Extrakt">
+            Siedepunkt {breweryBoilC(draft).toFixed(1).replace('.', ',')} °C
+          </span>
+        </div>
         <Field label="pH-Modell (alle Rezepte)">
           <select class={inp} value={draft.phModel ?? DEFAULT_PH_MODEL}
             onChange={(e) => {

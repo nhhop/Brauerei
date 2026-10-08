@@ -2,8 +2,11 @@ import type { Brewery, Brewhouse } from '../../brewhouse';
 import { useCatalog } from '../../ingredientSource';
 import { calcStats, wortExtract } from '../../recipeStats';
 import { calcTreatment } from '../../recipeTreatment';
+import { calcMash, fmtClock } from '../../mashPlan';
 import { calcWater } from '../../recipeWater';
-import { DEFAULT_EFFICIENCY, KINDS, SCOPE_TIMINGS, type Recipe, type Scope } from '../../recipes';
+import {
+  DEFAULT_EFFICIENCY, KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, type Ingredient, type Recipe, type Scope,
+} from '../../recipes';
 import { inp } from '../../ui';
 import { Card, Field, NumInput } from './fields';
 import { IngredientCard } from './IngredientCard';
@@ -53,11 +56,11 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewe
 }
 
 export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
-  const mashMin = recipe.mash.reduce((s, p) => s + p.duration, 0);
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
-  const stats = catalog ? calcStats(recipe, catalog.ingredients, bh) : null;
+  const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : null;
   const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients).extractKg : undefined).water;
+  const mash = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.ingredients ?? null).columns[0].after.so4Cl;
   return (
     <>
@@ -121,7 +124,7 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">
           <li>{recipe.ingredients.length} Zutat{recipe.ingredients.length === 1 ? '' : 'en'}</li>
-          <li>Maischen: {recipe.mash.length} Rast{recipe.mash.length === 1 ? '' : 'en'}, {mashMin} min</li>
+          <li>Maischen: {recipe.mash.length} Schritte{mash ? `, ${fmtClock(mash.totalMin)} h` : ''}</li>
           <li>Würzekochen: {recipe.boil.durationMin} min</li>
           <li>Gärung: {recipe.fermentation.length} Phase{recipe.fermentation.length === 1 ? '' : 'n'}</li>
         </ul>
@@ -156,33 +159,27 @@ function So4ClScale({ ratio }: { ratio: number }) {
 }
 
 export function IngredientsTab({ recipe, onChange }: TabProps) {
+  // With more than one charge, a mash grain shows the one it belongs to.
+  const charges = chargesOf(recipe);
+  const mark = charges.length > 1
+    ? (i: Ingredient) => (isMashGrain(i) ? charges.find((c) => c.id === chargeIdOf(i, charges))!.name : undefined)
+    : undefined;
   return (
     <>
       {KINDS.map((k) => (
         <IngredientCard key={k.id} title={k.label} kind={k.id}
           all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}
-          match={(i) => i.kind === k.id} boilMin={recipe.boil.durationMin} />
+          match={(i) => i.kind === k.id} boilMin={recipe.boil.durationMin} mark={mark} />
       ))}
     </>
   );
 }
 
-function ProcessIngredients({ recipe, onChange, scope, title = 'Zutaten' }: Pick<TabProps, 'recipe' | 'onChange'> & { scope: Scope; title?: string }) {
+function ProcessIngredients({ recipe, onChange, scope }: Pick<TabProps, 'recipe' | 'onChange'> & { scope: Scope }) {
   return (
-    <IngredientCard title={title} scope={scope}
+    <IngredientCard title="Zutaten" scope={scope}
       all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}
       match={(i) => SCOPE_TIMINGS[scope].includes(i.timing)} boilMin={recipe.boil.durationMin} />
-  );
-}
-
-export function MashTab({ recipe, onChange }: TabProps) {
-  return (
-    <>
-      <PhaseList title="Maischeplan" addLabel="Rast" namePlaceholder="z.B. Maltoserast"
-        durationUnit="min" empty="Noch keine Rasten."
-        items={recipe.mash} onChange={(mash) => onChange({ mash })} />
-      <ProcessIngredients recipe={recipe} onChange={onChange} scope="mash" title="Zutaten (Maische)" />
-    </>
   );
 }
 

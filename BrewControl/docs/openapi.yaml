@@ -4897,6 +4897,12 @@ components:
             Mash and wort pH model of all recipes (`web/src/mashPh.ts`): `troester`
             estimates the pH from malt data, `kolbach` shows the residual alkalinity
             against a range for the beer colour, without a pH. Unset = `troester`.
+        altitudeM:
+          type: number
+          description: |
+            Site altitude in metres. Recipes plan with the boiling point of the
+            standard atmosphere at this altitude (strike and infusion limits,
+            IBU). Unset = sea level.
       additionalProperties: true
 
     WaterProfile:

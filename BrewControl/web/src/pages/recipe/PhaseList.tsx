@@ -3,7 +3,7 @@ import { uid, type Phase } from '../../recipes';
 import { inp } from '../../ui';
 import { Card, NumInput } from './fields';
 
-// Ordered list of mash rests / fermentation phases: name, temperature,
+// Ordered list of fermentation phases: name, temperature,
 // duration. Order is the sequence, changed with the arrow buttons.
 export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empty, items, onChange }: {
   title: string;

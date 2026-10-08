@@ -1569,3 +1569,44 @@ dem vorhandenen `SettingsGroup` gegliedert und bleibt bewusst einspaltig:
   Einstellungsseite, Hub mit „1 aktiv“ und „inaktiv“, Umleitung von
   `/settings/logs` auf `/logs` mit aktivem Nav-Eintrag, Alarmseite bei 375 px.
   Konsole ohne Fehler.
+
+## 2026-10-08 — Maischen-Tab Etappe 3a: Maischeplan, Wärmerechnung, Siedepunkt
+
+Erster von vier PRs zum Maischen-Tab (Plan „Maischen-Tab Etappe 3“: 3a Plan und
+Wärmerechnung, 3b Effizienz-Kette, 3c Maischprofile, 3d Dekoktion). Der Tab war eine
+reine Rastenliste.
+
+- **Modell** (`web/src/recipes.ts`): `MashStep` mit Art (`strike`, `doughIn`, `rest`,
+  `infusion`, `decoction` erst in 3d), Zieltemperatur, Haltedauer, Schüttung und
+  Zubrühen (`lead` Menge oder Temperatur, Eis). `Recipe.charges` und
+  `Ingredient.chargeId` für Teilschüttungen. `normalizeMash` beim Laden: Einträge
+  ohne Art fallen weg (keine Migration, Nutzerentscheidung), Wasser vorlegen und das
+  erste Einmaischen stehen fest vorn. `addCharge`/`removeCharge` teilen bzw. führen
+  Malz zusammen, die kg je Malz bleiben gleich.
+- **Rechnung** (`web/src/mashPlan.ts`, rein): Wärmeäquivalent Wasser + 0,41 × Malz
+  (Konstante jetzt `GRAIN_HEAT_RATIO` in `brewMath.ts`), Hauptguss-Temperatur,
+  Mischtemperatur weiterer Schüttungen, Zubrühen in beide Richtungen und mit Eis,
+  Grenzen Leitungswasser bis Siedepunkt, Heizzeit aus Heizrate oder geschätzt aus der
+  Heizleistung (85 %), passives Abkühlen 0,2 K/min. Die Wassermenge zum Vorlegen
+  (Hauptguss − Zubrühmengen) wird per Bisektion gelöst, weil nach Temperatur geführte
+  Zubrühmengen mit der Maische wachsen. Im Aufguss-Sudhaus werden wärmere Rasten durch
+  Zubrühen mit Siedepunkt-Wasser erreicht.
+- **Siedepunkt:** `Brewery.altitudeM` (Karte „Brauerei“ mit berechnetem Siedepunkt),
+  `pressureAtAltitudeHpa`/`boilingPointC` in `brewMath.ts`, neue Messung `airPressure`
+  (Kochen, hPa/mbar). `hopIbu` skaliert die Kochausnutzung relativ zu 100 °C, Whirlpool
+  wie bisher; `calcStats` bekommt die Brauerei. 500 m: 98,3 °C, im Mock 24 → 21 IBU.
+- **UI:** `pages/recipe/MashTab.tsx` mit Kopfkarte, „Zutaten (Maische)“ mit
+  Zwischenzeile je Schüttung (Name, Zeitpunkt, kg, %, EBC, °P), Split-Button
+  „+ Schüttung“ mit Dialog „Schüttung aufteilen“, Maischeplan als Tabelle (Ziehgriff,
+  mobil Pfeile, Split-Button „+ Rast“ mit Zubrühen, Einmaischen und sechs Rasten),
+  `MashCurve.tsx` (uPlot, Rampen, Haltestufen, Zugaben). `IngredientCard` kann Gruppen
+  und eine Markierung; der Zutaten-Tab zeigt die Schüttung. Die Übersicht zeigt die
+  Gesamtdauer.
+- **Doku:** Konzept-Doc (Maischen › Stand 3a, Brauerei-Höhe, Luftdruck), `openapi.yaml`
+  (`Brewery.altitudeM`), PLAN.md (Näherungen des Maischeplans als offener Punkt).
+- **Prüfung:** `pnpm test` (Siedepunkt, IBU bei 98 °C, `mashPlan.test.ts` mit Vorlegen,
+  zweiter Schüttung, Zubrühen in beide Richtungen, Eis, Grenze nach Höhe, Heizzeit aus
+  Rate und Leistung, Abkühlen, Aufguss, Überschuss; `normalizeMash` und Aufteilen),
+  `typecheck`, `build`. Im Node-Mock: Weizen mit zwei Schüttungen und kaltem Zubrühen,
+  Aufguss-Sudhaus (4,3 l kochend), altes Rezept ohne Plan, 500 m, Aufteilen 30 %,
+  Ziehen samt Sperre über den festen Schritten, 375 px ohne Querscrollen.

@@ -69,13 +69,35 @@ export function blendGravitySg(v1L: number, sg1: number, v2L: number, sg2: numbe
   return fromGravityPoints(blendWeighted(v1L, gravityPoints(sg1), v2L, gravityPoints(sg2)));
 }
 
-// Strike water temperature (Einmaischtemperatur) — Palmer-style formula,
-// metric variant (R = water in L per grain in kg). The 0.41 specific-heat
-// ratio constant is the commonly published metric value.
+// Heat capacity of grain relative to water: 1 kg of grain warms like 0.41 kg
+// of water. The commonly published metric value; the mash plan uses it too.
 // TODO(verify): cross-check 0.41 against a primary source.
+export const GRAIN_HEAT_RATIO = 0.41;
+
+// Strike water temperature (Einmaischtemperatur) — Palmer-style formula,
+// metric variant (R = water in L per grain in kg).
 export function strikeWaterTempC(waterL: number, grainKg: number, grainTempC: number, targetMashTempC: number): number {
   const ratio = waterL / grainKg;
-  return (0.41 / ratio) * (targetMashTempC - grainTempC) + targetMashTempC;
+  return (GRAIN_HEAT_RATIO / ratio) * (targetMashTempC - grainTempC) + targetMashTempC;
+}
+
+// ── Siedepunkt ───────────────────────────────────────────────────────────
+
+export const STANDARD_PRESSURE_HPA = 1013.25;
+
+// Air pressure of the standard atmosphere (ICAO barometric formula) at an
+// altitude in metres.
+export function pressureAtAltitudeHpa(altitudeM: number): number {
+  return STANDARD_PRESSURE_HPA * Math.pow(1 - 2.25577e-5 * altitudeM, 5.25588);
+}
+
+// Boiling point of water (°C) at an air pressure, from Clausius-Clapeyron with
+// a constant heat of vaporisation (40 660 J/mol) around 100 °C at 1013.25 hPa.
+// The rise from the dissolved extract is left out.
+export function boilingPointC(pressureHpa: number): number {
+  const R = 8.314;
+  const dH = 40660;
+  return 1 / (1 / 373.15 - (R * Math.log(pressureHpa / STANDARD_PRESSURE_HPA)) / dH) - 273.15;
 }
 
 // ── Effizienz ────────────────────────────────────────────────────────────
@@ -251,14 +273,13 @@ export const EBC_PER_SRM = 1.97;
 // and EBC = 1.97 × SRM (beerandbrewing.com, Brewfather docs); the EBC→°L step
 // inverts Daniels' SRM = 1.3546 × °L − 0.76. TODO(verify): that last conversion
 // has no primary source here yet.
+export const lovibond = (ebc: number) => (ebc / EBC_PER_SRM + 0.76) / 1.3546;
+
 export function moreyEbc(rows: { kg: number; ebc: number }[], volumeL: number): number {
   if (volumeL <= 0) return 0;
   const LB_PER_KG = 2.20462;
   const L_PER_GAL = 3.78541;
-  const mcu = rows.reduce((sum, r) => {
-    const lovibond = (r.ebc / EBC_PER_SRM + 0.76) / 1.3546;
-    return sum + (lovibond * r.kg * LB_PER_KG) / (volumeL / L_PER_GAL);
-  }, 0);
+  const mcu = rows.reduce((sum, r) => sum + (lovibond(r.ebc) * r.kg * LB_PER_KG) / (volumeL / L_PER_GAL), 0);
   return EBC_PER_SRM * 1.4922 * Math.pow(mcu, 0.6859);
 }
 
@@ -279,13 +300,16 @@ export function relativeUtilization(tempC: number): number {
 // `whirlpoolMin` after flameout. A whirlpool hop has boilMin = 0. Simplified
 // against the source: no cooling curve, and its "first five minutes count
 // fully" rule is left out, because the recipe only knows one whirlpool temperature.
+// Below 100 °C (boiling at altitude) the boil utilisation shrinks by the same
+// Arrhenius rate, relative to 100 °C so that Tinseth stays as calibrated.
 export function hopIbu(p: {
   alphaPct: number; grams: number; volumeL: number; sg: number; boilMin: number;
-  whirlpoolTempC: number; whirlpoolMin: number;
+  whirlpoolTempC: number; whirlpoolMin: number; boilTempC?: number;
 }): number {
   const alphaMgPerL = (p.alphaPct / 100) * p.grams * 1000 / p.volumeL;
   const boil = tinsethUtilization(p.sg, p.boilMin);
+  const boilFactor = p.boilTempC === undefined ? 1 : relativeUtilization(p.boilTempC) / relativeUtilization(100);
   const afterFlameout = relativeUtilization(p.whirlpoolTempC)
     * (tinsethUtilization(p.sg, p.boilMin + p.whirlpoolMin) - boil);
-  return alphaMgPerL * (boil + afterFlameout);
+  return alphaMgPerL * (boil * boilFactor + afterFlameout);
 }
