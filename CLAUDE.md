@@ -21,7 +21,7 @@ Brauerei/
 ```powershell
 # SensActCtrl — Unit-Tests (native, kein Hardware nötig)
 cd SensActCtrl
-pio test -e native               # 333 Tests
+pio test -e native               # 337 Tests
 
 # BrewControl — Firmware
 cd BrewControl/firmware

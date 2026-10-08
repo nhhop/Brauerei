@@ -150,9 +150,11 @@ folgt sofort der Bestätigung (UDAC = 0, der LDAC-Pin ist egal). Das EEPROM
 wird nie beschrieben; nach dem Einschalten liegt der Ausgang auf dem dort
 gespeicherten Wert (ab Werk 0 V) — den Chip daher nicht anderswo mit einem
 Startwert ≠ 0 programmieren. Antwortet der Chip nicht, meldet der Aktor
-`fault()`; der nächste erfolgreiche Write löscht den Fehler, weil jeder Write
-den kompletten Frame sendet. Eine neue I²C-Adresse programmiert die Library
-nicht.
+`fault()`; der nächste erfolgreiche Write löscht den Fehler. `tick()` sendet
+den Ausgangswert jede Sekunde erneut (`kRefreshMs`): Ein abgezogener und
+wieder angesteckter Chip startet mit seinen EEPROM-Werten, bekommt so binnen
+einer Sekunde die richtigen zurück, und ein fehlender Chip fällt auch ohne
+Wertänderung auf. Eine neue I²C-Adresse programmiert die Library nicht.
 
 **Controller** (`src/controllers/`): `TwoPointController` (Bang-Bang mit
 Hysterese), `PIDController` (AutoTunePID-Wrapper, 5 Tuning-Algorithmen),

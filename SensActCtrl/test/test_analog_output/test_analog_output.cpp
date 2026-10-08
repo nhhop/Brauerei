@@ -227,6 +227,65 @@ void test_ext_dac_fault_follows_write_result() {
     TEST_ASSERT_NULL(a.fault());
 }
 
+void test_ext_dac_tick_refreshes_every_second() {
+    analogOutputActuatorSetMillisForTest(10000);
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    a.write(0.5f);
+    const int writes = d.writes;
+    analogOutputActuatorSetMillisForTest(10999);
+    a.tick();
+    TEST_ASSERT_EQUAL(writes, d.writes);
+    // Re-plugged chip came back at 0 V: the refresh restores the value.
+    d.last = 0;
+    analogOutputActuatorSetMillisForTest(11000);
+    a.tick();
+    TEST_ASSERT_EQUAL(writes + 1, d.writes);
+    TEST_ASSERT_EQUAL_UINT16(2047, d.last);
+    a.tick();
+    TEST_ASSERT_EQUAL(writes + 1, d.writes);
+}
+
+void test_ext_dac_refresh_detects_missing_chip_without_value_change() {
+    analogOutputActuatorSetMillisForTest(20000);
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    a.write(0.5f);
+    d.ok = false;
+    analogOutputActuatorSetMillisForTest(21000);
+    a.tick();
+    TEST_ASSERT_NOT_NULL(a.fault());
+    d.ok = true;
+    analogOutputActuatorSetMillisForTest(22000);
+    a.tick();
+    TEST_ASSERT_NULL(a.fault());
+}
+
+void test_ext_dac_refresh_keeps_disabled_minimum() {
+    analogOutputActuatorSetMillisForTest(30000);
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    a.write(0.5f);
+    a.setEnabled(false);
+    d.last = 0xFFFF;
+    analogOutputActuatorSetMillisForTest(31000);
+    a.tick();
+    TEST_ASSERT_EQUAL_UINT16(0, d.last);
+}
+
+void test_gpio_actuator_tick_writes_nothing() {
+    AnalogOutputActuator a("a", 1);
+    a.begin();
+    a.write(0.5f);
+    const uint32_t raw = analogOutputActuatorLastRawForTest();
+    analogOutputActuatorSetMillisForTest(1000000);
+    a.tick();
+    TEST_ASSERT_EQUAL_UINT32(raw, analogOutputActuatorLastRawForTest());
+}
+
 void test_gpio_actuator_has_no_fault() {
     AnalogOutputActuator a("a", 1);
     a.begin();
@@ -264,6 +323,10 @@ int main(int, char**) {
     RUN_TEST(test_ext_dac_end_writes_minimum);
     RUN_TEST(test_ext_dac_does_not_touch_ledc);
     RUN_TEST(test_ext_dac_fault_follows_write_result);
+    RUN_TEST(test_ext_dac_tick_refreshes_every_second);
+    RUN_TEST(test_ext_dac_refresh_detects_missing_chip_without_value_change);
+    RUN_TEST(test_ext_dac_refresh_keeps_disabled_minimum);
+    RUN_TEST(test_gpio_actuator_tick_writes_nothing);
     RUN_TEST(test_gpio_actuator_has_no_fault);
     return UNITY_END();
 }

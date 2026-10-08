@@ -319,8 +319,11 @@ eigenen DAC (LilyGo, Waveshare, StopWatch) einen echten Analogausgang.
 - **Laufzeit**: Der Treiber (`Mcp4728Device` in `DynamicItems.cpp`, Library-Klasse `MCP4728`)
   entsteht mit dem ersten Aktor auf einem seiner Kanäle in der `PeripheralRegistry` und hält
   selbst eine `Ref` auf seinen Bus; der Aktor-Eintrag hält die `Ref` aufs Gerät, `PUT` hält
-  sie über den Tausch. Ein I²C-Write ohne Antwort setzt `fault` am Aktor (Alarm greift), der
-  nächste erfolgreiche Write löscht ihn — Wiederanstecken heilt sich selbst. „Antwortet das
+  sie über den Tausch. Jeder Aktor schreibt seinen Kanal jede Sekunde neu; ein Write ohne
+  Antwort setzt `fault` am Aktor (Alarm greift), der nächste erfolgreiche löscht ihn. Ein
+  abgezogener Chip fällt so binnen einer Sekunde auf, und nach dem Wiederanstecken (der Chip
+  startet dann mit seinen EEPROM-Werten) stehen alle Kanäle binnen einer Sekunde wieder auf
+  ihrem Wert — am LilyGo geprüft. „Antwortet das
   Gerät?" beantwortet `GET /api/bus/scan?bus=<id>`; einen eigenen Status-Endpoint gibt es nicht.
 - **Startwert**: Der MCP4728 lädt beim Einschalten seine EEPROM-Werte (ab Werk 0 V) und behält
   sie bis zum ersten Write; die Firmware beschreibt das EEPROM nie. Den Chip also nicht anderswo

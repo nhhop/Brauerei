@@ -15,16 +15,19 @@ public:
     AnalogOutputActuator(const char* id, int pin, Mode mode = Mode::Pwm);
 
     // Drives a channel of an external DAC (e.g. MCP4728) instead of a GPIO.
-    // `out` must outlive the actuator. A failed write() shows up in fault()
-    // and clears itself with the next successful one — every write sends the
-    // whole frame, so re-plugging the chip heals without a restart.
+    // `out` must outlive the actuator. tick() re-sends the output every
+    // kRefreshMs: an unplugged chip comes back with its power-on values, and
+    // without a write nobody would notice. A failed write() shows up in
+    // fault() and clears itself with the next successful one.
     AnalogOutputActuator(const char* id, DacOutput& out);
+
+    static constexpr uint32_t kRefreshMs = 1000;
 
     const char*  id()    const override { return id_; }
     ActuatorMeta meta()  const override;
     void         begin()       override;
     void         end()         override;
-    void         tick()        override {}
+    void         tick()        override;
     void         write(float value) override;
     float        target() const override { return state_; }
     const char*  fault()  const override { return dacFault_ ? "DAC antwortet nicht" : nullptr; }
@@ -52,6 +55,7 @@ private:
     Mode        mode_;
     DacOutput*  ext_         = nullptr;  // external DAC channel; pin_/mode_ unused then
     bool        dacFault_    = false;
+    uint32_t    lastWriteMs_ = 0;        // last write to ext_, for the refresh
 
     uint32_t freq_       = 5000;
     uint8_t  resBits_    = 12;
@@ -72,6 +76,8 @@ private:
 // Test hooks: native builds have no real LEDC peripheral to inspect.
 uint8_t analogOutputActuatorLedcDetachCallCountForTest();
 uint32_t analogOutputActuatorLastRawForTest();
+// Native builds have no wall clock — set the value millis() returns.
+void analogOutputActuatorSetMillisForTest(uint32_t ms);
 #endif
 
 }  // namespace SensActCtrl

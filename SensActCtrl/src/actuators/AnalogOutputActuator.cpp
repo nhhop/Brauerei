@@ -18,6 +18,8 @@
   static uint32_t lastRawWritten_ = 0;
   static void   ledcWrite(uint8_t, uint32_t raw) { lastRawWritten_ = raw; }
   static void   dacWrite(uint8_t, uint8_t raw)   { lastRawWritten_ = raw; }
+  static uint32_t mockMillis_ = 0;
+  static uint32_t millis() { return mockMillis_; }
   #define SENSACTCTRL_HAS_DAC 1  // stubs cover it in native builds
 #endif
 
@@ -80,6 +82,7 @@ void AnalogOutputActuator::applyOutput() {
     const uint32_t raw = valueToRaw(enabled_ ? state_ : valueMin_);
     if (ext_) {
         dacFault_ = !ext_->write(static_cast<uint16_t>(raw));
+        lastWriteMs_ = millis();
         return;
     }
     if (mode_ == Mode::Dac) {
@@ -91,6 +94,10 @@ void AnalogOutputActuator::applyOutput() {
     } else {
         ledcWrite(channel_, raw);
     }
+}
+
+void AnalogOutputActuator::tick() {
+    if (ext_ && millis() - lastWriteMs_ >= kRefreshMs) applyOutput();
 }
 
 void AnalogOutputActuator::begin() {
@@ -126,6 +133,10 @@ uint8_t analogOutputActuatorLedcDetachCallCountForTest() {
 
 uint32_t analogOutputActuatorLastRawForTest() {
     return lastRawWritten_;
+}
+
+void analogOutputActuatorSetMillisForTest(uint32_t ms) {
+    mockMillis_ = ms;
 }
 #endif
 
