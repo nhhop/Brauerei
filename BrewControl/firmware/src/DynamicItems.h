@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "BusConfig.h"
+#include "DeviceConfig.h"
 #include "I2cAddressMap.h"
 #include "PeripheralRegistry.h"
 #include "PinMap.h"
@@ -90,6 +91,19 @@ class DynamicItems {
   const BusDef* findBus(const char* id) const;
   // {buses: [definition + fixed/note/reserved/users], types: [...]}.
   void writeBuses(JsonObject out) const;
+
+  // Peripheral devices (DeviceConfig.h), GET/POST/PUT/DELETE
+  // /api/peripherals. A device sits on a defined bus at an address; items
+  // reference its channels as "<id>:<channel>" in a pin field. The label may
+  // always change; bus and address (and with them the id) only while no item
+  // uses the device, which may only go then too (conflict). The address is
+  // checked against the bus like an item's. Errors point into busError_.
+  Result addDevice(const JsonObject& def, std::string& newId);
+  Result updateDevice(const char* id, const JsonObject& def, std::string& newId);
+  Result removeDevice(const char* id);
+  const std::vector<DeviceDef>& devices() const { return devices_; }
+  // {devices: [definition + cap/channels with their users], types: [...]}.
+  void writeDevices(JsonObject out) const;
 
   // Unregister and free a dynamic item. Returns {false, reason} if the id is
   // not found in dynamic items (caller should send 405) or if a sensor /
@@ -213,6 +227,10 @@ class DynamicItems {
   struct ActuatorEntry {
     std::string id;
     std::string cfgJson;
+    // The peripheral device whose channel the actuator drives (AnalogOutput
+    // on an MCP4728), empty otherwise. Declared before the actuator so the
+    // device outlives it, as SensorEntry::bus does.
+    PeripheralRegistry::Ref dev;
     // innerPtr holds the concrete actuator when wrapped by IntervalActuator
     // (interval_period_sec set); ptr is always what's registered with the
     // Registry. Mirrors CtrlEntry below.
@@ -231,9 +249,10 @@ class DynamicItems {
     std::unique_ptr<SensActCtrl::Controller> ptr;
   };
 
-  // Shared buses, created by the first sensor on them and torn down with the
-  // last (PeripheralRegistry.h). Declared before sensors_ so that C++ destroys
-  // sensors first (reverse declaration order), then buses.
+  // Shared buses and peripheral devices, created by their first user and
+  // torn down with the last (PeripheralRegistry.h); a device is a user of its
+  // bus. Declared before sensors_/actuators_ so that C++ destroys the items
+  // first (reverse declaration order), then devices and buses.
   PeripheralRegistry peripherals_;
   // The board's fixed I2C bus, held for as long as acquireBoardI2cBus() has
   // been called (LilyGo: forever, from main.cpp) — see acquireBoardI2cBus().
@@ -246,11 +265,24 @@ class DynamicItems {
 
   // The running driver of a defined bus, created on its first user.
   PeripheralRegistry::Ref acquireBus(const BusDef& d);
-  // Ids of the items referencing bus id.
+  // Ids of the items and devices referencing bus id.
   std::vector<std::string> busUsers(const std::string& id) const;
   // The user-defined buses as the JSON array stored in registry.json.
   std::string storedBusesJson() const;
+  // Bus and device errors (the message lives in busError_).
   Result busFail(const std::string& msg, bool conflict);
+
+  // In the order they were added; never more than one per bus address.
+  std::vector<DeviceDef> devices_;
+  // The running driver of a device, created on its first user; it holds its
+  // bus. Empty if the device's bus is gone (cannot happen after a check).
+  PeripheralRegistry::Ref acquireDevice(const DeviceDef& d);
+  // Ids of the items using a channel of device id.
+  std::vector<std::string> deviceUsers(const std::string& id) const;
+  // The device's bus exists and has the right type, its address is free
+  // there; replaceId's own address counts as free.
+  Result checkDevice(const DeviceDef& d, const char* replaceId);
+  std::string storedDevicesJson() const;
 
   // Entries are heap-allocated so that vector reallocation doesn't
   // invalidate id.c_str() pointers held by the library objects.
@@ -290,8 +322,8 @@ class DynamicItems {
   int wakePin_ = -1;
   bool wakePullup_ = false;
 
-  // I2C address occupied by the current sensors (GET /api/pins does not
-  // expose this — only create/replace check against it).
+  // I2C addresses occupied by the current sensors and devices (GET /api/pins
+  // does not expose this — only create/replace check against it).
   std::vector<AddressUse> addressUses() const;
 
   // I2C address check against the reserved addresses of the item's bus and

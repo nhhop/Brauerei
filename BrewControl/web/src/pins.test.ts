@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pinStatus, riskyPins, suggestPins } from './pins';
+import { availableCaps, dacOutputs, pinStatus, riskyPins, suggestPins } from './pins';
 import type { PinsInfo } from './types';
 
 const info: PinsInfo = {
@@ -147,5 +147,54 @@ describe('suggestPins', () => {
 
   it('is empty without pin data', () => {
     expect(suggestPins(null)).toEqual([]);
+  });
+});
+
+describe('DAC outputs', () => {
+  const dacBoard: PinsInfo = {
+    ...info,
+    caps: { ...info.caps, dac: true },
+    pins: [
+      { gpio: 25, class: 'free', dac: true, users: [{ id: 'valve', key: 'pin' }] },
+      { gpio: 26, class: 'free', dac: true, users: [] },
+      { gpio: 27, class: 'free', users: [] },
+    ],
+  };
+  const device = (users: { id: string; key: string }[][]): PinsInfo => ({
+    ...info,
+    virtual: users.map((u, i) => ({
+      ref: `mcp4728-i2c-board-60:${i}`, device: 'mcp4728-i2c-board-60', deviceLabel: 'DAC Kessel',
+      index: i, label: 'ABCD'[i], dac: true, users: u,
+    })),
+  });
+
+  it('offers DAC from the board or from a device channel', () => {
+    expect(availableCaps(null).has('dac')).toBe(false);
+    expect(availableCaps(info).has('dac')).toBe(false);
+    expect(availableCaps(dacBoard).has('dac')).toBe(true);
+    expect(availableCaps(device([[]])).has('dac')).toBe(true);
+    expect(availableCaps({ ...info, virtual: [] }).has('dac')).toBe(false);
+  });
+
+  it('lists board DAC pins, then device channels, taken ones with their owner', () => {
+    expect(dacOutputs(dacBoard)).toEqual([
+      { value: '25', label: 'GPIO 25 (Board-DAC)', taken: 'belegt von valve (pin)' },
+      { value: '26', label: 'GPIO 26 (Board-DAC)', taken: undefined },
+    ]);
+    expect(dacOutputs(device([[], [{ id: 'pump', key: 'pin' }]]))).toEqual([
+      { value: 'mcp4728-i2c-board-60:0', label: 'DAC Kessel · Kanal A', taken: undefined },
+      { value: 'mcp4728-i2c-board-60:1', label: 'DAC Kessel · Kanal B', taken: 'belegt von pump (pin)' },
+    ]);
+  });
+
+  it('treats the edited item\'s own output as free', () => {
+    expect(dacOutputs(dacBoard, 'valve')[0].taken).toBeUndefined();
+    expect(dacOutputs(device([[{ id: 'pump', key: 'pin' }]]), 'pump')[0].taken).toBeUndefined();
+  });
+
+  it('falls back to the device id without a label', () => {
+    const v = device([[]]);
+    delete v.virtual![0].deviceLabel;
+    expect(dacOutputs(v)[0].label).toBe('mcp4728-i2c-board-60 · Kanal A');
   });
 });
