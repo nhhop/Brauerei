@@ -1,4 +1,5 @@
 import { failed } from './api';
+import { boilingPointC, pressureAtAltitudeHpa } from './brewMath';
 import { DEFAULT_EFFICIENCY, VALID_ID, uid } from './recipes';
 import { unitOf } from './refs';
 import type { PhModel } from './mashPh';
@@ -34,9 +35,16 @@ export interface Brewery {
   waters?: WaterProfile[];  // water analyses; VE water is built in (waterChem.VE_WATER)
   defaultWaterId?: string;  // the source water of recipes that pick none
   phModel?: PhModel;        // mash and wort pH of all recipes; unset = DEFAULT_PH_MODEL
+  altitudeM?: number;       // site altitude; unset = sea level
 }
 
 export const DEFAULT_BREWERY: Brewery = { grainTempC: 18, tapWaterTempC: 12 };
+
+// Boiling point the recipes plan with, from the altitude (standard atmosphere).
+// The brew day uses the air pressure measurement instead.
+export function breweryBoilC(b: Brewery | null | undefined): number {
+  return boilingPointC(pressureAtAltitudeHpa(b?.altitudeM ?? 0));
+}
 
 export interface Vessel {
   id: string;
@@ -127,7 +135,7 @@ export type MeasureKey =
   | 'mashTemp' | 'mashPh'
   | 'spargeVolume' | 'spargeTemp' | 'spargePh'
   | 'preBoilVolume' | 'preBoilGravity' | 'preBoilPh' | 'postBoilVolume' | 'postBoilGravity' | 'postBoilPh'
-  | 'batchVolume' | 'pitchTemp';
+  | 'airPressure' | 'batchVolume' | 'pitchTemp';
 
 // Set by the brewing process, not by the brewhouse; shown only for steps the
 // brewhouse has. A brewhouse links each to a sensor or leaves it "von Hand".
@@ -147,6 +155,7 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'postBoilVolume', step: 'boil', label: 'Ausschlagmenge', unit: 'l' },
   { key: 'postBoilGravity', step: 'boil', label: 'Stammwürze nach dem Kochen', unit: '°P' },
   { key: 'postBoilPh', step: 'boil', label: 'pH Ausschlagwürze', unit: 'pH' },
+  { key: 'airPressure', step: 'boil', label: 'Luftdruck', unit: 'hPa' },
   { key: 'batchVolume', step: 'chill', label: 'Anstellwürze', unit: 'l' },
   { key: 'pitchTemp', step: 'chill', label: 'Anstelltemperatur', unit: '°C' },
 ];
@@ -157,6 +166,7 @@ const UNIT_FITS: Record<string, string[]> = {
   l: ['l'],
   '°P': ['°p', 'sg', '°bx', 'brix'],
   pH: ['ph'],
+  hPa: ['hpa', 'mbar'],
 };
 
 export interface Brewhouse {

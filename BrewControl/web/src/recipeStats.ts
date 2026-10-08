@@ -2,7 +2,7 @@
 // it can later run unchanged on a server. Rows without a catalog link (free
 // text) are left out and reported in `notes`; a value that cannot be computed
 // stays undefined.
-import type { Brewhouse } from './brewhouse';
+import { breweryBoilC, type Brewery, type Brewhouse } from './brewhouse';
 import { ballingBeerAnalysis, hopIbu, moreyEbc } from './brewMath';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient, Range } from './ingredientCatalog';
@@ -24,11 +24,15 @@ export function rangeValue(r: Range): number {
   return lo !== null && hi !== null ? (lo + hi) / 2 : (lo ?? hi)!;
 }
 
+// One linked fermentable that counts towards the OG: its colour row and the
+// extract it brings (kg, after the efficiency).
+export interface WortPart { id: string; kg: number; ebc: number; extractKg: number }
+
 // Extract (kg) of the fermentables that go into the mash or the kettle, and
 // their colour rows. Priming sugar and the like (primary, bottling) do not
 // count towards the OG. Unset without a linked fermentable.
 export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[]): {
-  extractKg?: number; colors: { kg: number; ebc: number }[]; note?: string;
+  extractKg?: number; colors: WortPart[]; note?: string;
 } {
   const byId = new Map(catalog.map((c) => [c.id, c]));
   const efficiency = (recipe.efficiencyPct ?? DEFAULT_EFFICIENCY) / 100;
@@ -36,20 +40,20 @@ export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[]): {
     (i) => i.kind === 'fermentable' && (i.timing === 'mash' || i.timing === 'boil'));
   const fermentables = worts.flatMap((i) => {
     const c = i.ingredientId ? byId.get(i.ingredientId) : undefined;
-    return c?.kind === 'fermentable' ? [{ kg: i.amount, c }] : [];
+    return c?.kind === 'fermentable' ? [{ id: i.id, kg: i.amount, c }] : [];
   });
   const note = fermentables.length < worts.length
     ? `${worts.length - fermentables.length} von ${worts.length} Vergärbaren ohne Katalogverknüpfung, nicht eingerechnet`
     : undefined;
   if (fermentables.length === 0) return { colors: [], note };
-  const extractKg = fermentables.reduce((sum, { kg, c }) => {
+  const colors = fermentables.map(({ id, kg, c }) => {
     const moisture = c.moisturePct ? rangeValue(c.moisturePct) : 0;
     const asIs = (rangeValue(c.extractDryPct) / 100) * (1 - moisture / 100);
     // Only mashed grain is held back by the brewhouse efficiency.
     const mashed = c.type === 'malt' || c.type === 'raw-grain';
-    return sum + kg * asIs * (mashed ? efficiency : 1);
-  }, 0);
-  return { extractKg, colors: fermentables.map(({ kg, c }) => ({ kg, ebc: rangeValue(c.colorEbc) })), note };
+    return { id, kg, ebc: rangeValue(c.colorEbc), extractKg: kg * asIs * (mashed ? efficiency : 1) };
+  });
+  return { extractKg: colors.reduce((sum, p) => sum + p.extractKg, 0), colors, note };
 }
 
 // Beer colour after a planned dilution: in the kettle the knock-out already
@@ -59,7 +63,8 @@ export function beerEbc(colors: { kg: number; ebc: number }[], volumeL: number, 
 }
 
 // `bh` is the recipe's brewhouse; it only matters for a dilution in the fermenter.
-export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse): RecipeStats {
+// The brewery's altitude sets the boiling point for the bitterness.
+export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse, brewery?: Brewery | null): RecipeStats {
   const byId = new Map(catalog.map((c) => [c.id, c]));
   const find = (ingredientId?: string) => (ingredientId ? byId.get(ingredientId) : undefined);
   const volumeL = recipe.volumeL;
@@ -112,11 +117,12 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
     } else {
       const { durationMin, whirlpoolTempC, whirlpoolMin } = recipe.boil;
       const sg = platoToSg(dilution.kettlePlato!);
+      const boilTempC = breweryBoilC(brewery);
       stats.ibu = dilution.factor * bitter.reduce((sum, { i, c }) => {
         const boilMin = i.timing === 'whirlpool' ? 0 : i.timing === 'firstWort' ? durationMin : (i.timeMin ?? durationMin);
         return sum + hopIbu({
           alphaPct: rangeValue(c.alphaPct), grams: i.amount, volumeL: dilution.kettleL, sg,
-          boilMin, whirlpoolTempC, whirlpoolMin,
+          boilMin, whirlpoolTempC, whirlpoolMin, boilTempC,
         });
       }, 0);
     }
