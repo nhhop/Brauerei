@@ -212,6 +212,60 @@ void test_ref_copy_move_and_reset_count() {
   TEST_ASSERT_EQUAL(1, c.ended);
 }
 
+// A device on a bus (Mcp4728Device in DynamicItems.cpp): it holds a Ref on
+// its bus, items hold Refs on the device.
+class FakeDevice : public Peripheral {
+ public:
+  FakeDevice(Counts& c, PeripheralRegistry::Ref bus) : bus(std::move(bus)), c_(c) { ++c_.created; }
+  ~FakeDevice() override { ++c_.ended; }
+  const char* type() const override { return "mcp4728"; }
+  PeripheralRegistry::Ref bus;
+
+ private:
+  Counts& c_;
+};
+
+void test_device_keeps_its_bus_until_last_user_goes() {
+  Counts dev;
+  PeripheralRegistry::Ref a = reg->acquire<FakeDevice>(
+      "mcp4728-onewire:4-60", dev, reg->acquire<FakeBus>(busId(4), c, 4));
+  PeripheralRegistry::Ref b = reg->acquire<FakeDevice>(
+      "mcp4728-onewire:4-60", dev, reg->acquire<FakeBus>(busId(4), c, 4));
+  TEST_ASSERT_EQUAL(1, dev.created);
+  TEST_ASSERT_EQUAL(1u, reg->users(busId(4)));  // the device, not its items
+  TEST_ASSERT_EQUAL(2u, reg->users("mcp4728-onewire:4-60"));
+
+  a.reset();
+  TEST_ASSERT_EQUAL(0, dev.ended);
+  TEST_ASSERT_EQUAL(0, c.ended);
+
+  // The device goes, and with it the last user of the bus: a nested release
+  // from the device's destructor.
+  b.reset();
+  TEST_ASSERT_EQUAL(1, dev.ended);
+  TEST_ASSERT_EQUAL(1, c.ended);
+  TEST_ASSERT_EQUAL(0u, reg->size());
+}
+
+void test_bus_used_by_item_survives_device() {
+  Items items;
+  addDs18b20(items, "HLT", 4);
+  {
+    Counts dev;
+    PeripheralRegistry::Ref d = reg->acquire<FakeDevice>(
+        "mcp4728-onewire:4-60", dev, reg->acquire<FakeBus>(busId(4), c, 4));
+    TEST_ASSERT_EQUAL(2u, reg->users(busId(4)));
+  }
+  TEST_ASSERT_EQUAL(0, c.ended);
+  TEST_ASSERT_EQUAL(1u, reg->users(busId(4)));
+  TEST_ASSERT_EQUAL(1u, reg->size());
+}
+
+void test_dac_is_null_by_default() {
+  PeripheralRegistry::Ref a = reg->acquire<FakeBus>(busId(4), c, 4);
+  TEST_ASSERT_NULL(a.get()->dac(0));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_two_sensors_share_one_bus);
@@ -224,5 +278,8 @@ int main(int, char**) {
   RUN_TEST(test_replace_to_other_pin_moves_bus);
   RUN_TEST(test_replace_shared_sensor_keeps_bus);
   RUN_TEST(test_ref_copy_move_and_reset_count);
+  RUN_TEST(test_device_keeps_its_bus_until_last_user_goes);
+  RUN_TEST(test_bus_used_by_item_survives_device);
+  RUN_TEST(test_dac_is_null_by_default);
   return UNITY_END();
 }

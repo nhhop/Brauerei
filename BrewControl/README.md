@@ -296,6 +296,39 @@ BME280/GY521 landen am LilyGo auf `i2c-board`, sonst auf `i2c-21-22` (esp32dev) 
 versteht die umgestellten Items nicht mehr — vor einem Downgrade das Backup von vorher
 einspielen.
 
+### Peripheriegeräte (externer DAC)
+
+Chips an einem definierten Bus, die Items Fähigkeiten anbieten (`src/DeviceConfig.h`),
+gepflegt unter `/api/peripherals` und gespeichert als Array `devices` in
+`/config/registry.json` (geladen nach den Bussen, vor den Items). Einziger Typ bisher ist
+der **MCP4728** (4 × 12-Bit-DAC, I²C 0x60–0x67, ab Werk 0x60). Damit bekommen Boards ohne
+eigenen DAC (LilyGo, Waveshare, StopWatch) einen echten Analogausgang.
+
+- **Id** aus Typ, Bus und Adresse, z. B. `mcp4728-i2c-board-60`; optional ein `label`.
+- **Kanal-Referenz im `pin`-Feld**: `AnalogOutput` mit `mode: "dac"` nimmt statt einer
+  GPIO-Zahl `"<Geräte-Id>:<Kanal>"`, z. B. `{"mode":"dac","pin":"mcp4728-i2c-board-60:0"}`.
+  Eine Zahl bedeutet wie bisher den board-eigenen DAC-Pin — bestehende Configs bleiben
+  unverändert gültig. PWM und alle anderen Typen lehnen eine Kanal-Referenz ab (400);
+  unbekanntes Gerät, fehlender Kanal oder fehlende Fähigkeit sind 400, ein belegter Kanal
+  409. Gerätekanäle sind keine GPIOs: `GET /api/pins` führt sie getrennt unter `virtual`
+  (`caps.dac` bleibt der board-eigene DAC), Deep-Sleep-Hold und Pin-Konflikte lassen sie aus.
+- **Adresse** wie bei Sensoren je Bus geprüft (`I2cAddressMap.h`): ein Gerät auf der Adresse
+  eines BME280/IMU am selben Bus ist ein 409 und umgekehrt. Das Gerät zählt als Nutzer
+  seines Busses — der Bus lässt sich dann weder löschen noch umpinnen. Bus und Adresse eines
+  Geräts ändern sich nur ohne Nutzer, das Label immer; löschen nur ohne Nutzer (409).
+- **Laufzeit**: Der Treiber (`Mcp4728Device` in `DynamicItems.cpp`, Library-Klasse `MCP4728`)
+  entsteht mit dem ersten Aktor auf einem seiner Kanäle in der `PeripheralRegistry` und hält
+  selbst eine `Ref` auf seinen Bus; der Aktor-Eintrag hält die `Ref` aufs Gerät, `PUT` hält
+  sie über den Tausch. Ein I²C-Write ohne Antwort setzt `fault` am Aktor (Alarm greift), der
+  nächste erfolgreiche Write löscht ihn — Wiederanstecken heilt sich selbst. „Antwortet das
+  Gerät?" beantwortet `GET /api/bus/scan?bus=<id>`; einen eigenen Status-Endpoint gibt es nicht.
+- **Startwert**: Der MCP4728 lädt beim Einschalten seine EEPROM-Werte (ab Werk 0 V) und behält
+  sie bis zum ersten Write; die Firmware beschreibt das EEPROM nie. Den Chip also nicht anderswo
+  mit einem Startwert ≠ 0 programmieren. Eine andere Adresse als die ab Werk (EEPROM + LDAC-Puls)
+  programmiert die Firmware nicht — sie wird nur eingetragen.
+- **Downgrade**: Ältere Firmware liest einen String-`pin` als GPIO 0 (Strapping-Pin). Vor einem
+  Downgrade Aktoren mit Kanal-Referenz löschen oder das Backup von vorher einspielen.
+
 ## Web-UI bauen + auf SD deployen (`lilygo_t_display_s3_amoled`)
 
 ```powershell
@@ -655,11 +688,13 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/buses` | GET, POST | Busse (OneWire, SPI, I2C) inkl. fester Board-Busse auflisten / anlegen |
 | `/api/buses/<id>` | PUT, DELETE | Bus ändern (Pins nur ohne Nutzer) / löschen |
 | `/api/bus/scan` | GET | Definierten Bus (`?bus=<id>`) nach Geräten scannen |
+| `/api/peripherals` | GET, POST | Peripheriegeräte (MCP4728) mit Kanälen und Nutzern auflisten / anlegen |
+| `/api/peripherals/<id>` | PUT, DELETE | Gerät ändern (Bus/Adresse nur ohne Nutzer) / löschen |
 | `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |
 | `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |
 | `/api/remote/pair` | GET, POST | Kopplungsergebnis lesen / ein Board an den eigenen Hub koppeln |
-| `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items und Busse |
-| `/api/pins` | GET | GPIO-Tabelle des Boards: frei / bedenklich / reserviert / verboten, Nutzer je Pin, Konflikte |
+| `/api/config` | GET | Gespeicherte Anlege-Configs aller dynamischen Items, Busse und Peripheriegeräte |
+| `/api/pins` | GET | GPIO-Tabelle des Boards: frei / bedenklich / reserviert / verboten, Nutzer je Pin, Konflikte, Gerätekanäle (`virtual`) |
 | `/api/dashboards` | GET, POST | Dashboards auflisten / anlegen |
 | `/api/dashboards/<id>` | POST, DELETE | Dashboard ändern / löschen |
 | `/api/dashboards/<id>/move` | POST | Dashboard eine Position nach links/rechts verschieben |

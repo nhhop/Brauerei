@@ -57,6 +57,24 @@ class I2cBus : public Peripheral {
   const bool keepRunning_;
 };
 
+// An MCP4728 (DeviceConfig.h) on an I2C bus. Holds a Ref on the bus so the
+// bus outlives the chip's driver; its four channels are handed to
+// AnalogOutputActuators via dac(). begin() writes nothing: until the first
+// actuator write the chip holds its EEPROM values (0 V from the factory).
+class Mcp4728Device : public Peripheral {
+ public:
+  Mcp4728Device(PeripheralRegistry::Ref bus, uint8_t address)
+      : bus_(std::move(bus)), dac_(bus_.as<I2cBus>().wire, address) {}
+  const char* type() const override { return "mcp4728"; }
+  DacOutput* dac(int ch) override {
+    return ch >= 0 && ch < MCP4728::kChannels ? &dac_.channel(ch) : nullptr;
+  }
+
+ private:
+  PeripheralRegistry::Ref bus_;  // before dac_: constructed first, destroyed last
+  MCP4728 dac_;
+};
+
 }  // namespace
 
 DynamicItems::DynamicItems() : buses_(currentFixedBuses()) {}
@@ -84,6 +102,7 @@ std::vector<std::string> DynamicItems::busUsers(const std::string& id) const {
         id == (doc["bus"] | ""))
       out.push_back(e->id);
   }
+  for (const std::string& d : devicesOnBus(devices_, id)) out.push_back(d);
   return out;
 }
 
@@ -220,6 +239,111 @@ DynamicItems::Result DynamicItems::scanBus(const char* id, JsonObject out) {
     }
   }
   return {true};
+}
+
+// ── Peripheral devices (DeviceConfig.h) ──────────────────────────────────
+
+PeripheralRegistry::Ref DynamicItems::acquireDevice(const DeviceDef& d) {
+  const BusDef* bus = findBus(d.bus.c_str());
+  if (!bus) return {};
+  // The bus Ref is only a temporary if the device already runs: it holds
+  // its own.
+  return peripherals_.acquire<Mcp4728Device>(d.id, acquireBus(*bus), d.address);
+}
+
+std::vector<std::string> DynamicItems::deviceUsers(const std::string& id) const {
+  std::vector<std::string> out;
+  for (const PinUse& u : pinUses())
+    if (u.device == id && std::find(out.begin(), out.end(), u.item) == out.end())
+      out.push_back(u.item);
+  return out;
+}
+
+DynamicItems::Result DynamicItems::checkDevice(const DeviceDef& d, const char* replaceId) {
+  const BusDef* bus = findBus(d.bus.c_str());
+  if (!bus) return busFail("unknown bus " + d.bus, false);
+  if (strcmp(bus->type->type, d.type->bus) != 0) return busFail("bus has the wrong type", false);
+  const AddressCheck c = checkAddressUse(bus->reserved, bus->reservedCount, addressUses(),
+                                         {d.id, d.bus, d.address}, replaceId);
+  if (!c.ok) return busFail(c.error, true);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::addDevice(const JsonObject& def, std::string& newId) {
+  DeviceDef d;
+  std::string err;
+  if (!parseDeviceDef(def, d, err)) return busFail(err, false);
+  if (findDeviceDef(devices_, d.id)) return busFail("device " + d.id + " already exists", true);
+  const Result c = checkDevice(d, "");
+  if (!c.ok) return c;
+  newId = d.id;
+  devices_.push_back(d);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::updateDevice(const char* id, const JsonObject& def,
+                                                std::string& newId) {
+  DeviceDef* old = nullptr;
+  for (DeviceDef& d : devices_) if (d.id == id) old = &d;
+  if (!old) return busFail("device not found", false);
+  DeviceDef d;
+  std::string err;
+  if (!parseDeviceDef(def, d, err)) return busFail(err, false);
+  if (d.type != old->type) return busFail("device type cannot change", false);
+  // Same id = same bus and address: only the label changes.
+  if (d.id != old->id) {
+    const std::vector<std::string> users = deviceUsers(old->id);
+    if (!users.empty()) return busFail("device " + old->id + " is used by " + joined(users), true);
+    if (findDeviceDef(devices_, d.id)) return busFail("device " + d.id + " already exists", true);
+    const Result c = checkDevice(d, old->id.c_str());
+    if (!c.ok) return c;
+  }
+  *old = d;
+  newId = d.id;
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::removeDevice(const char* id) {
+  for (auto it = devices_.begin(); it != devices_.end(); ++it) {
+    if (it->id != id) continue;
+    const std::vector<std::string> users = deviceUsers(it->id);
+    if (!users.empty()) return busFail("device " + it->id + " is used by " + joined(users), true);
+    devices_.erase(it);
+    return {true};
+  }
+  return busFail("device not found", false);
+}
+
+void DynamicItems::writeDevices(JsonObject out) const {
+  const std::vector<PinUse> uses = pinUses();
+  JsonArray arr = out["devices"].to<JsonArray>();
+  for (const DeviceDef& d : devices_) {
+    JsonObject o = arr.add<JsonObject>();
+    writeDeviceDef(d, o);
+    const DeviceCap& cap = d.type->provides;
+    o["cap"] = cap.cap;
+    JsonArray chs = o["channels"].to<JsonArray>();
+    for (int i = 0; i < cap.count; ++i) {
+      JsonObject ch = chs.add<JsonObject>();
+      ch["index"] = i;
+      ch["name"] = std::string(1, cap.channelNames[i]);
+      JsonArray users = ch["users"].to<JsonArray>();
+      for (const PinUse& u : uses)
+        if (u.device == d.id && u.gpio == i) users.add(u.item);
+    }
+  }
+  JsonArray types = out["types"].to<JsonArray>();
+  for (const DeviceType& t : kDeviceTypes) {
+    JsonObject o = types.add<JsonObject>();
+    o["type"] = t.type;
+    o["bus"] = t.bus;
+    o["addrFirst"] = t.addrFirst;
+    o["addrLast"] = t.addrLast;
+    o["addrDefault"] = t.addrDefault;
+    o["cap"] = t.provides.cap;
+    o["count"] = t.provides.count;
+    o["channels"] = t.provides.channelNames;
+  }
 }
 
 // ── Remote transport resolution ──────────────────────────────────────────
@@ -779,13 +903,25 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
         static_cast<uint8_t>(pinY),
         static_cast<uint8_t>(pinI));
   } else if (strcmp(type, "AnalogOutput") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
+    const PinRef pin = parsePinRef(cfg["pin"]);
+    if (pin.index < 0) return {false, "missing pin"};
     const char* modeStr = cfg["mode"] | "pwm";
     auto mode = strcmp(modeStr, "dac") == 0
                     ? AnalogOutputActuator::Mode::Dac
                     : AnalogOutputActuator::Mode::Pwm;
-    auto* a = new AnalogOutputActuator(e->id.c_str(), pin, mode);
+    AnalogOutputActuator* a = nullptr;
+    if (!pin.device.empty()) {
+      // "<device>:<channel>": a DAC channel of a peripheral device.
+      if (mode != AnalogOutputActuator::Mode::Dac) return {false, "device channel needs mode dac"};
+      const DeviceDef* d = findDeviceDef(devices_, pin.device);
+      if (!d) return {false, "unknown device"};
+      e->dev = acquireDevice(*d);
+      DacOutput* out = e->dev ? e->dev.get()->dac(pin.index) : nullptr;
+      if (!out) return {false, "device has no such DAC channel"};
+      a = new AnalogOutputActuator(e->id.c_str(), *out);
+    } else {
+      a = new AnalogOutputActuator(e->id.c_str(), pin.index, mode);
+    }
     if (!cfg["freq"].isNull())
       a->setFrequency(cfg["freq"] | 5000u);
     if (!cfg["resolution_bits"].isNull())
@@ -1205,11 +1341,14 @@ DynamicItems::Result DynamicItems::replaceActuator(const char* oldId,
                                                    const JsonObject& cfg,
                                                    Registry& reg) {
   const std::string id = oldId;
-  bool found = false;
-  for (auto& e : actuators_) found |= (e->id == id);
-  if (!found) return {false, "not a dynamic item"};
+  const ActuatorEntry* old = nullptr;
+  for (auto& e : actuators_) if (e->id == id) old = e.get();
+  if (!old) return {false, "not a dynamic item"};
   Result pins = checkPins(cfg, id.c_str());
   if (!pins.ok) return pins;
+  // Like the bus in replaceSensor: the old actuator's device survives the
+  // swap instead of being torn down and rebuilt.
+  const PeripheralRegistry::Ref held = old->dev;
   return replaceEntry(
       actuators_, id, cfg, reg,
       [&](const char* i) { return removeActuator(i, reg); },
@@ -1243,7 +1382,7 @@ std::vector<PinUse> DynamicItems::pinUses() const {
 
 DynamicItems::Result DynamicItems::checkPins(const JsonObject& cfg,
                                              const char* replaceId) {
-  const PinCheck c = checkItemPins(currentBoard(), pinUses(), cfg, replaceId);
+  const PinCheck c = checkItemPins(currentBoard(), pinUses(), cfg, replaceId, devices_);
   if (c.ok) return {true};
   pinError_ = c.error;
   return {false, pinError_.c_str(), c.status == 409};
@@ -1258,6 +1397,7 @@ std::vector<AddressUse> DynamicItems::addressUses() const {
     if (deserializeJson(doc, e->cfgJson) == DeserializationError::Ok)
       collectAddresses(doc.as<JsonObjectConst>(), uses);
   }
+  collectDeviceAddresses(devices_, uses);
   return uses;
 }
 
@@ -1398,6 +1538,24 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
     buses_.push_back(d);
   }
 
+  // Devices after the buses they sit on, before the items using them.
+  for (JsonObject def : doc["devices"].as<JsonArray>()) {
+    DeviceDef d;
+    std::string err;
+    if (parseDeviceDef(def, d, err)) {
+      const BusDef* bus = findBus(d.bus.c_str());
+      if (findDeviceDef(devices_, d.id)) {
+        err = "duplicate";
+      } else if (!bus || strcmp(bus->type->type, d.type->bus) != 0) {
+        err = "unknown bus " + d.bus;
+      } else {
+        devices_.push_back(d);
+        continue;
+      }
+    }
+    Serial.printf("[devices] skipping device %s (%s)\n", (const char*)(def["id"] | "?"), err.c_str());
+  }
+
   bool migrated = false;
   std::vector<std::string> gy521Migrated;
   for (JsonObject cfg : doc["sensors"].as<JsonArray>()) {
@@ -1430,6 +1588,15 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   if (migrated || !gy521Migrated.empty()) saveToSD(sd);
 }
 
+std::string DynamicItems::storedDevicesJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (const DeviceDef& d : devices_) writeDeviceDef(d, arr.add<JsonObject>());
+  std::string out;
+  serializeJson(doc, out);
+  return out;
+}
+
 std::string DynamicItems::storedBusesJson() const {
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
@@ -1448,6 +1615,8 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
 
   f.print("{\"buses\":");
   f.print(storedBusesJson().c_str());
+  f.print(",\"devices\":");
+  f.print(storedDevicesJson().c_str());
   f.print(",\"sensors\":[");
   for (size_t i = 0; i < sensors_.size(); ++i) {
     if (i) f.print(",");
@@ -1472,6 +1641,8 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
 String DynamicItems::serializeConfig() const {
   String out = "{\"buses\":";
   out += storedBusesJson().c_str();
+  out += ",\"devices\":";
+  out += storedDevicesJson().c_str();
   out += ",\"sensors\":[";
   for (size_t i = 0; i < sensors_.size(); ++i) {
     if (i) out += ',';

@@ -20,7 +20,7 @@ const char* EnergyManager::wakeCause() {
 void EnergyManager::releaseOutputs(const std::vector<PinUse>& uses) {
   gpio_deep_sleep_hold_dis();
   for (const PinUse& u : uses)
-    if (u.output) gpio_hold_dis(static_cast<gpio_num_t>(u.gpio));
+    if (u.output && u.device.empty()) gpio_hold_dis(static_cast<gpio_num_t>(u.gpio));
 }
 
 bool EnergyManager::pinActive(const SettingsStore& s) {
@@ -40,8 +40,9 @@ bool EnergyManager::pinActive(const SettingsStore& s) {
 void EnergyManager::sleep(const SettingsStore& s, uint64_t ms, const std::vector<PinUse>& uses) {
   // Without the hold the outputs float in deep sleep, and a relay module
   // that switches on a high level may pull in. Costs a few µA at most.
+  // Device channels are not GPIOs (an MCP4728 keeps its outputs by itself).
   for (const PinUse& u : uses)
-    if (u.output) gpio_hold_en(static_cast<gpio_num_t>(u.gpio));
+    if (u.output && u.device.empty()) gpio_hold_en(static_cast<gpio_num_t>(u.gpio));
   gpio_deep_sleep_hold_en();
 
   esp_sleep_enable_timer_wakeup(ms * 1000ULL);
