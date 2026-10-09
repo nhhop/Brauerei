@@ -229,6 +229,11 @@ ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `sr
   `pullup` warnen auf Pins ohne internen Pull-up (ESP32 34–39, S2 46). Interrupts
   (YF-S201, HC-SR04-Echo, IDS) warnen am ESP32 auf GPIO 36/39 (Errata 3.11,
   Fehlauslöser). Serielle Schnittstellen nutzt noch kein Item-Typ.
+- Kanäle von Peripheriegeräten (`"<Geräte-Id>:<n>"`, siehe „Peripheriegeräte“) sind
+  keine GPIOs. Welches Feld sie nimmt, entscheidet die Fähigkeit, die es braucht:
+  `dac` für `AnalogOutput` im DAC-Modus, `gpio` für `DigitalOutput` (Binary/TPO) und
+  `DigitalInput`. Alle anderen Felder (PWM, IDS/RMT, ADC, Interrupt-Zähler, HC-SR04,
+  HX711, PulseOutput, MAX31865-CS) lehnen einen Gerätekanal mit **400** ab.
 - Bedenkliche Pins und Fähigkeits-Warnungen lässt die Firmware zu; die Web-UI
   fragt vor dem Speichern nach.
 - Das Item-Formular und die Bus-Seite schlagen je Pin-Feld passende GPIOs vor
@@ -296,19 +301,26 @@ BME280/GY521 landen am LilyGo auf `i2c-board`, sonst auf `i2c-21-22` (esp32dev) 
 versteht die umgestellten Items nicht mehr — vor einem Downgrade das Backup von vorher
 einspielen.
 
-### Peripheriegeräte (externer DAC)
+### Peripheriegeräte (externer DAC, Port-Expander)
 
 Chips an einem definierten Bus, die Items Fähigkeiten anbieten (`src/DeviceConfig.h`),
 gepflegt unter **Einstellungen → Peripheriegeräte** bzw. `/api/peripherals` und gespeichert
-als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den Items). Einziger Typ bisher ist
-der **MCP4728** (4 × 12-Bit-DAC, I²C 0x60–0x67, ab Werk 0x60). Damit bekommen Boards ohne
-eigenen DAC (LilyGo, Waveshare, StopWatch) einen echten Analogausgang.
+als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den Items). Typen:
+
+- **MCP4728** (4 × 12-Bit-DAC, I²C 0x60–0x67, ab Werk 0x60, Kanäle A–D): Boards ohne
+  eigenen DAC (LilyGo, Waveshare, StopWatch) bekommen einen echten Analogausgang.
+- **PCF8575** (16 digitale Pins, I²C 0x20–0x27 über die Lötbrücken A0–A2, ab Werk 0x20,
+  Kanäle P00–P07 und P10–P17): zusätzliche Schaltausgänge und Eingänge, siehe unten.
+  Auf dem Waveshare liegt der Onboard-Expander TCA9554 auf 0x20 (reservierte Adresse des
+  Board-Busses) — dort den PCF8575 auf 0x21–0x27 jumpern.
 
 - **Id** aus Typ, Bus und Adresse, z. B. `mcp4728-i2c-board-60`; optional ein `label`.
 - **Kanal-Referenz im `pin`-Feld**: `AnalogOutput` mit `mode: "dac"` nimmt statt einer
-  GPIO-Zahl `"<Geräte-Id>:<Kanal>"`, z. B. `{"mode":"dac","pin":"mcp4728-i2c-board-60:0"}`.
-  Eine Zahl bedeutet wie bisher den board-eigenen DAC-Pin — bestehende Configs bleiben
-  unverändert gültig. PWM und alle anderen Typen lehnen eine Kanal-Referenz ab (400);
+  GPIO-Zahl `"<Geräte-Id>:<Kanal>"`, z. B. `{"mode":"dac","pin":"mcp4728-i2c-board-60:0"}`;
+  `DigitalOutput` und `DigitalInput` nehmen so einen Expander-Pin, z. B.
+  `{"type":"DigitalOutput","pin":"pcf8575-i2c-board-20:0","invert":true}`. Eine Zahl
+  bedeutet wie bisher einen GPIO (bzw. den board-eigenen DAC-Pin) — bestehende Configs
+  bleiben unverändert gültig. Alle anderen Typen lehnen eine Kanal-Referenz ab (400);
   unbekanntes Gerät, fehlender Kanal oder fehlende Fähigkeit sind 400, ein belegter Kanal
   409. Gerätekanäle sind keine GPIOs: `GET /api/pins` führt sie getrennt unter `virtual`
   (`caps.dac` bleibt der board-eigene DAC), Deep-Sleep-Hold und Pin-Konflikte lassen sie aus.
@@ -316,8 +328,8 @@ eigenen DAC (LilyGo, Waveshare, StopWatch) einen echten Analogausgang.
   eines BME280/IMU am selben Bus ist ein 409 und umgekehrt. Das Gerät zählt als Nutzer
   seines Busses — der Bus lässt sich dann weder löschen noch umpinnen. Bus und Adresse eines
   Geräts ändern sich nur ohne Nutzer, das Label immer; löschen nur ohne Nutzer (409).
-- **Laufzeit**: Der Treiber (`Mcp4728Device` in `DynamicItems.cpp`, Library-Klasse `MCP4728`)
-  entsteht mit dem ersten Aktor auf einem seiner Kanäle in der `PeripheralRegistry` und hält
+- **Laufzeit**: Der Treiber (`Mcp4728Device`/`Pcf8575Device` in `DynamicItems.cpp`,
+  Library-Klassen `MCP4728`/`PCF8575`) entsteht mit dem ersten Item auf einem seiner Kanäle in der `PeripheralRegistry` und hält
   selbst eine `Ref` auf seinen Bus; der Aktor-Eintrag hält die `Ref` aufs Gerät, `PUT` hält
   sie über den Tausch. Jeder Aktor schreibt seinen Kanal jede Sekunde neu; ein Write ohne
   Antwort setzt `fault` am Aktor (Alarm greift), der nächste erfolgreiche löscht ihn. Ein
@@ -330,7 +342,32 @@ eigenen DAC (LilyGo, Waveshare, StopWatch) einen echten Analogausgang.
   mit einem Startwert ≠ 0 programmieren. Eine andere Adresse als die ab Werk (EEPROM + LDAC-Puls)
   programmiert die Firmware nicht — sie wird nur eingetragen.
 - **Downgrade**: Ältere Firmware liest einen String-`pin` als GPIO 0 (Strapping-Pin). Vor einem
-  Downgrade Aktoren mit Kanal-Referenz löschen oder das Backup von vorher einspielen.
+  Downgrade Items mit Kanal-Referenz löschen oder das Backup von vorher einspielen.
+
+**PCF8575 (Port-Expander):** nur für langsame Digitalpfade — `DigitalOutput` binär oder
+taktend (TPO mit Perioden im Sekundenbereich) und gepollte `DigitalInput`s.
+
+- **Quasi-bidirektional**: 0 zieht hart nach Masse (~25 mA), 1 ist nur ein schwacher
+  Pull-up (~100 µA) und zugleich Eingang. Lasten gehören zwischen Pin und VCC (aktiv-low,
+  „Invertieren“ setzen) oder hinter einen Transistor; direkt aktiv-high treibt der Pin
+  praktisch nichts. Eingänge haben immer diesen Pull-up — ein `DigitalInput` ohne
+  `pullup: true` ist dort 400, die UI setzt das Häkchen selbst. Taster/Schalter nach Masse.
+- **Treiber** (`SensActCtrl/src/devices/PCF8575`): ein Schattenregister für alle 16 Ausgänge,
+  jeder Write schickt beide Bytes, Eingänge immer als 1. Eingänge werden höchstens alle 20 ms
+  gelesen (ein Transfer für alle), kein INT-Pin. Ausgänge schreibt der Aktor bei Pegelwechsel
+  und jede Sekunde neu — ein abgezogener Chip fällt binnen einer Sekunde als `fault`
+  („Port-Expander antwortet nicht“, Alarm) auf, Eingänge melden ihn sofort und liefern
+  ungültige Werte; nach dem Wiederanstecken stehen die Ausgänge binnen einer Sekunde wieder.
+  Schatten und Transfer liegen unter einer Mutex im Treiber, weil nicht jeder Schreiber den
+  `RegistryLock` hält (ESP-NOW-Befehle kommen aus dem WiFi-Task).
+- ⚠ **Einschaltzustand**: Nach dem Einschalten stehen alle Pins auf High. Ein Neustart oder
+  Absturz des ESP32 lässt sie dagegen, wo sie waren — der Chip hat keinen Reset —, bis die
+  Firmware ihr Item wieder anlegt (einige Sekunden; in einer Boot-Schleife gar nicht). Beim
+  Start übernimmt der Treiber die Latches des Chips, damit das Anlegen eines Items die anderen
+  Pins nicht umschaltet. **Sicher „aus“ ist deshalb nur aktiv-low verdrahtet** (Relaismodul mit
+  Optokoppler zwischen Pin und VCC). Im Deep-Sleep hält der Chip seine Latches nur, solange er
+  Strom hat; vor dem Schlafen schaltet BrewControl ohnehin alle Aktoren ab.
+- **Not-Aus** schaltet Expander-Ausgänge wie GPIOs sofort ab (Write im Not-Aus-Handler).
 
 ## Web-UI bauen + auf SD deployen (`lilygo_t_display_s3_amoled`)
 
@@ -572,7 +609,10 @@ zurück (`src/RuntimeState.h`, Datei `/config/state.json`):
   schreibt ihn, sobald er sich 2 s lang nicht mehr geändert hat. Das deckt
   alle Wege ab: REST, Display, Timer, Programme, Not-Aus.
 - Ein eingerasteter **Not-Aus gewinnt**: `WebUI::begin()` wendet ihn nach der
-  Wiederherstellung an. Laufende Programme spielen ihren Zustand ohnehin neu
+  Wiederherstellung an. `POST /api/estop` und das Setzen eines Aktors
+  (`POST /api/actuators/<id>`) laufen unter dem `RegistryLock`, damit kein `tick()` in
+  `loop()` einen gerade geschalteten Ausgang danach noch einmal überschreibt; bekommt der
+  Not-Aus den Lock nicht binnen 3 s, schaltet er trotzdem ab. Laufende Programme spielen ihren Zustand ohnehin neu
   ab.
 - ⚠ Ein Relais, das vor einem Stromausfall an war, schaltet danach wieder
   ein. Die Library selbst startet jeden Ausgang aus; das Wiederherstellen
@@ -691,7 +731,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/buses` | GET, POST | Busse (OneWire, SPI, I2C) inkl. fester Board-Busse auflisten / anlegen |
 | `/api/buses/<id>` | PUT, DELETE | Bus ändern (Pins nur ohne Nutzer) / löschen |
 | `/api/bus/scan` | GET | Definierten Bus (`?bus=<id>`) nach Geräten scannen |
-| `/api/peripherals` | GET, POST | Peripheriegeräte (MCP4728) mit Kanälen und Nutzern auflisten / anlegen |
+| `/api/peripherals` | GET, POST | Peripheriegeräte (MCP4728, PCF8575) mit Kanälen und Nutzern auflisten / anlegen |
 | `/api/peripherals/<id>` | PUT, DELETE | Gerät ändern (Bus/Adresse nur ohne Nutzer) / löschen |
 | `/api/remote/discover` | GET | Remote-Items per MQTT/ESP-NOW/WebSocket suchen (async: erst `202`, dann `200`) |
 | `/api/remote/peers` | GET | Andere Boards im LAN per mDNS suchen (async: erst `202`, dann `200`) |
