@@ -1898,3 +1898,20 @@ Code geprüft, keine Widersprüche, aber Lücken):
   98,3 °C, 0,8 l verdampft), Profil speichern mit Dekoktion und Schüttung, 3 K/h Wärmeverlust (Anteile
   32,8 → 36,3 %), 375 px ohne Querscrollen. Kein Gerätetest nötig, das Profil-JSON ist für die Firmware
   opak.
+
+## 2026-10-10 — Maischprofil Weizen nach Herrmann (Maltaserast)
+
+Kleiner Nachtrag zu Etappe 3d (Branch `feat/maische-herrmann`): ein weiteres mitgeliefertes Profil, ohne
+Dekoktion, damit es auch ohne zweiten beheizten Behälter läuft. Das Modell trug es schon (Aufbau wie Earls
+Kochmaische), es ist nur ein Eintrag in `BUILTIN_MASH_PROFILES`.
+
+- **Ablauf:** erste Hälfte der Schüttung 62 °C 30 min, 72 °C 20 min; kaltes Wasser (12 °C) auf 46 °C; zweite
+  Hälfte (50 %) dazu; Maltaserast 45 °C 40 min; 72 °C 20 min; 76 °C 5 min.
+- **Quellen:** Die Quellen widersprechen sich in den Einzelwerten (Einmaischen bei 38, 43 oder 62 °C, mit
+  oder ohne zwei Dekoktionen). Ablauf nach brewingforward.com „Maltase mash“ (Kunze, Esslinger),
+  Aufteilung 50:50 nach edelstoffquest.wordpress.com. Herrmanns Dissertation (TU München, mediaTUM) wurde
+  bewusst nicht gelesen (Nutzer-Entscheidung, zu umfangreich); Richtwerte mit `TODO(verify)`, PLAN.md.
+- **Probelauf:** 5 kg (3 kg Weizen, 2 kg Pils), Pfanne + Läuterbottich: 9,5 l Wasser vorlegen, 8,0 l kaltes
+  Wasser, nach der zweiten Schüttung 44,5 °C, Maltaserast heizt 0,5 K nach, 2:24 h; Ein-Topf (Vollguss):
+  11,7 l kaltes Wasser, 45,0 °C. Keine Abkühl-Hinweise.
+- **Prüfung:** `pnpm test` (350, neu: Aufbau des Herrmann-Profils, Round-Trip), `typecheck`, `build`.

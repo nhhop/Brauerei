@@ -49,7 +49,10 @@ const NOTE = 'Richtwerte, an Malz und Sudhaus anpassen.';
 // 45 °C, maltose rest 63 °C, dextrinization 72 °C; decoctions after the
 // classic German one-, two- and three-mash methods, e.g. mashcamp.shop
 // "Maischverfahren im Vergleich"; Earl's Kochmaische: hobbybrauer.de forum,
-// topic 461) — TODO(verify) against a brewing textbook.
+// topic 461; Herrmann's maltase rest (TU München, Weihenstephan): sequence
+// after brewingforward.com "Maltase mash" citing Kunze and Esslinger, the
+// 50:50 split after edelstoffquest.wordpress.com) — TODO(verify) against a
+// brewing textbook.
 export const BUILTIN_MASH_PROFILES: MashProfile[] = [
   {
     id: 'std-hochkurz', name: 'Hochkurz', method: 'Infusion, Stufen', updatedAt: 0,
@@ -68,6 +71,18 @@ export const BUILTIN_MASH_PROFILES: MashProfile[] = [
     description: `Ferulasäurerast bei 45 °C für das Nelkenaroma (4-Vinylguajakol), dann Maltose- und Verzuckerungsrast. ${NOTE}`,
     doughIn: { tempC: 45, durationMin: 20 },
     steps: [rest('Maltoserast', 63, 45), rest('Verzuckerungsrast', 72, 20), rest('Abmaischen', 78, 5)],
+  },
+  {
+    id: 'std-herrmann', name: 'Weizen nach Herrmann (Maltaserast)', method: 'Infusion, zwei Schüttungen', updatedAt: 0,
+    description: `Die erste Hälfte der Schüttung wird verzuckert, kaltes Wasser kühlt auf etwa 45 °C, dann kommt die zweite Hälfte dazu. Deren Maltase spaltet Maltose zu Glucose, das gibt mehr Bananenester (Isoamylacetat). ${NOTE}`,
+    doughIn: { tempC: 62, durationMin: 30 },
+    steps: [
+      rest('Verzuckerungsrast', 72, 20),
+      { kind: 'infusion', name: 'Kaltes Wasser zugeben', tempC: 46, durationMin: 0, waterTempC: 12 },
+      { kind: 'doughIn', name: 'Schüttung 2 zugeben', durationMin: 0, sharePct: 50 },
+      rest('Maltaserast', 45, 40),
+      rest('Verzuckerungsrast', 72, 20), rest('Abmaischen', 76, 5),
+    ],
   },
   {
     id: 'std-eiweiss', name: 'Klassisch mit Eiweißrast', method: 'Infusion, Stufen', updatedAt: 0,

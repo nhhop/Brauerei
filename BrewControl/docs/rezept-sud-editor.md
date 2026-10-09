@@ -426,7 +426,8 @@ Liste und Detailansicht.
   - **Mitgelieferte Profile** sind schreibgeschützte Vorlagen; geändert wird eine Kopie (Duplizieren).
     Umgesetzt (3c): Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit Eiweißrast und
     Kombirast 66 °C; seit 3d außerdem Einmaisch-, Zweimaisch- und Dreimaischverfahren und Earls
-    Kochmaische. Alles Richtwerte (`TODO(verify)` in `web/src/mashProfiles.ts`).
+    Kochmaische, seit 2026-10-10 Weizen nach Herrmann (Maltaserast). Alles Richtwerte (`TODO(verify)` in
+    `web/src/mashProfiles.ts`).
 - **Verfahren (Infusion/Dekoktion)** hat keinen eigenen Schalter mehr. Es ergibt sich aus den Schritten im
   Maischeplan: Enthält er einen Schritt Dekoktion, ist es ein Dekoktionsverfahren. Das Sudhaus bestimmt,
   was möglich ist und wie geheizt wird:
@@ -551,6 +552,13 @@ Liste und Detailansicht.
     dick, Läutermaische dünn auf 76 °C) und Earls Kochmaische (hobbybrauer.de, Thema 461: 80 % der
     Schüttung bei 62 und 72 °C verzuckern, kochen, mit kaltem Wasser auf 62 °C, die übrigen 20 %
     einmaischen, dann 63/72/78 °C).
+  - **Weizen nach Herrmann (Maltaserast)** (2026-10-10, ohne Dekoktion): Markus Herrmann (TU München,
+    Weihenstephan) erhöht die Glucose in der Würze und damit die Bananenester (Isoamylacetat). Die erste
+    Hälfte der Schüttung rastet bei 62 und 72 °C, kaltes Wasser kühlt auf 46 °C, die zweite Hälfte kommt
+    dazu (Mischung um 45 °C), ihre Maltase spaltet in 40 min bei 45 °C Maltose zu Glucose; danach 72 und
+    76 °C. Ablauf nach brewingforward.com „Maltase mash“ (beruft sich auf Kunze und Esslinger), Aufteilung
+    50:50 nach edelstoffquest.wordpress.com; die Dissertation selbst ist nicht gelesen. Die Variante mit
+    zwei Dekoktionen (Edelstoffquest) ist nicht mitgeliefert.
 - **Offen:** Läutern als eigener Schritt (Läuterruhe, Nachguss in Portionen; das
   Verfahren Batch oder Fly Sparge steht seit 3b im Wasser-Tab).
 - **Ausgangstemperatur des Hauptgusses** für die Heizzeit ist die Leitungswassertemperatur der

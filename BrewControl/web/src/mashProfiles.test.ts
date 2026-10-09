@@ -22,12 +22,13 @@ const kgOf = (r: Pick<Recipe, 'ingredients' | 'charges'>, chargeId: string) => r
   .reduce((s, i) => s + i.amount, 0);
 
 describe('shipped profiles', () => {
-  it('are the nine of the plan, with valid unique ids', () => {
+  it('are the ten of the plan, with valid unique ids', () => {
     expect(BUILTIN_MASH_PROFILES.map((p) => p.name)).toEqual([
-      'Hochkurz', 'Einrast-Infusion', 'Weizen mit Ferulasäurerast', 'Klassisch mit Eiweißrast', 'Kombirast 66 °C',
+      'Hochkurz', 'Einrast-Infusion', 'Weizen mit Ferulasäurerast', 'Weizen nach Herrmann (Maltaserast)',
+      'Klassisch mit Eiweißrast', 'Kombirast 66 °C',
       'Einmaischverfahren', 'Zweimaischverfahren', 'Dreimaischverfahren', 'Earls Kochmaische',
     ]);
-    expect(new Set(BUILTIN_MASH_PROFILES.map((p) => p.id)).size).toBe(9);
+    expect(new Set(BUILTIN_MASH_PROFILES.map((p) => p.id)).size).toBe(10);
     for (const p of BUILTIN_MASH_PROFILES) {
       expect(VALID_ID.test(p.id)).toBe(true);
       expect(isBuiltinProfile(p)).toBe(true);
@@ -36,8 +37,8 @@ describe('shipped profiles', () => {
     }
   });
 
-  it('rise in temperature, but Earl boils and cools', () => {
-    for (const p of BUILTIN_MASH_PROFILES.filter((x) => x.id !== 'std-earl')) {
+  it('rise in temperature, but where cold water cools for a further charge (Earl, Herrmann)', () => {
+    for (const p of BUILTIN_MASH_PROFILES.filter((x) => !x.steps.some((s) => s.kind === 'doughIn'))) {
       const temps = [p.doughIn.tempC, ...p.steps.map((s) => s.tempC!)];
       expect(temps).toEqual([...temps].sort((a, b) => a - b));
     }
@@ -48,6 +49,15 @@ describe('shipped profiles', () => {
     expect(decoctions('std-einmaisch')).toHaveLength(1);
     expect(decoctions('std-zweimaisch')).toHaveLength(2);
     expect(decoctions('std-dreimaisch').map((s) => !!s.decoction!.thin)).toEqual([false, false, true]);
+  });
+
+  it('Herrmann adds the second half of the grist after cooling to the maltase rest', () => {
+    const steps = byId('std-herrmann').steps;
+    const at = steps.findIndex((s) => s.kind === 'doughIn');
+    expect(steps[at]).toMatchObject({ sharePct: 50 });
+    expect(steps[at - 1]).toMatchObject({ kind: 'infusion', waterTempC: 12 });
+    expect(steps[at + 1]).toMatchObject({ kind: 'rest', name: 'Maltaserast', tempC: 45 });
+    expect(steps.some((s) => s.kind === 'decoction')).toBe(false);
   });
 });
 
@@ -156,7 +166,7 @@ describe('profileOfPlan', () => {
   });
 
   it('round-trips through apply', () => {
-    for (const id of ['std-eiweiss', 'std-dreimaisch', 'std-earl']) {
+    for (const id of ['std-eiweiss', 'std-dreimaisch', 'std-earl', 'std-herrmann']) {
       const p: MashProfile = byId(id);
       const again = profileOfPlan(applyMashProfile(recipeOf(), p));
       expect(again).toEqual({ doughIn: p.doughIn, steps: p.steps });
