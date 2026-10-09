@@ -637,6 +637,10 @@ paths:
         the last change): after a restart the actuator comes back on/off with
         its value and interval. Not kept: the value of an actuator a controller
         drives, and a pulse actuator's value. A latched emergency stop wins.
+
+        Applied under the registry lock, so a `tick()` already running in
+        `loop()` cannot overwrite the new value afterwards (an external DAC's
+        refresh, a port expander's shared output register).
       requestBody:
         required: true
         content:
@@ -659,6 +663,7 @@ paths:
             text/plain: { schema: { type: string } }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
     delete:
       tags: [Dynamic Items]
       operationId: deleteActuator
@@ -725,6 +730,10 @@ paths:
 
         Deliberately unauthenticated even when a password is configured:
         stopping must work from a locked UI. Releasing does require auth.
+
+        Switches off under the registry lock, so no `tick()` of `loop()` drives
+        an output again afterwards. Never answers 503: if the lock cannot be
+        taken in time, it switches off without it.
       responses:
         "204": { $ref: "#/components/responses/NoContent" }
     delete:
