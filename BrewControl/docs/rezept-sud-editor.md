@@ -3,7 +3,7 @@
 Stand: 2026-10-09. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a) und die
-Effizienz-Kette (3b); Maischprofile und Dekoktion, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+Effizienz-Kette (3b) und die Maischprofile (3c); Dekoktion, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -420,6 +420,8 @@ Liste und Detailansicht.
     und Rasten (Temperatur, Dauer). Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
     Heizrate des Sudhauses.
   - **Mitgelieferte Profile** sind schreibgeschützte Vorlagen; geändert wird eine Kopie (Duplizieren).
+    Umgesetzt (3c): Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit Eiweißrast und
+    Kombirast 66 °C; Richtwerte (`TODO(verify)` in `web/src/mashProfiles.ts`).
 - **Verfahren (Infusion/Dekoktion)** hat keinen eigenen Schalter mehr. Es ergibt sich aus den Schritten im
   Maischeplan: Enthält er einen Schritt Dekoktion, ist es ein Dekoktionsverfahren. Das Sudhaus bestimmt,
   was möglich ist und wie geheizt wird:
@@ -435,8 +437,8 @@ Liste und Detailansicht.
   Die Einmaischtemperatur steht im Plan beim Schritt Einmaischen, die berechnete Hauptguss-Temperatur
   beim Schritt Wasser vorlegen.
 - **Stand 3a (2026-10-08, `web/src/mashPlan.ts`, `pages/recipe/MashTab.tsx`):** Maischeplan,
-  Wärmerechnung, Teilschüttungen, Temperaturverlauf und Siedepunkt sind umgesetzt. Maischprofile (3c) und
-  Dekoktion (3d) fehlen noch; die Schritt-Art Dekoktion ist ausgegraut.
+  Wärmerechnung, Teilschüttungen, Temperaturverlauf und Siedepunkt sind umgesetzt. Maischprofile sind seit
+  3c da (unten), Dekoktion (3d) fehlt noch; die Schritt-Art Dekoktion ist ausgegraut.
   - **Schritt-Modell:** Jeder Schritt hat eine Zieltemperatur und eine Haltedauer; die Art bestimmt nur den
     Übergang (Heizen, Abkühlen, Mischen, Zubrühen). Das hält das Modell flach für die Programmschritte des
     Suds. „Wasser vorlegen“ und das erste „Einmaischen“ lassen sich weder löschen noch verschieben.
@@ -471,10 +473,27 @@ Liste und Detailansicht.
   und -Dauer, darunter eine Zeitleiste der Gaben (Läutern/Vorderwürze · Kochen · Nachisomerisierung ·
   Whirlpool). Danach die Zutaten (Vorderwürze, Kochen, Whirlpool) und der Hinweis, wenn das Sudhaus keinen
   Hop Back hat.
-- **Offen:** Maischprofile (3c), Läutern als eigener Schritt (Läuterruhe, Nachguss in Portionen; das
+- **Stand 3c (2026-10-09, `web/src/mashProfiles.ts`, `pages/recipe/MashProfileDialog.tsx`):** Maischprofile.
+  - **Ablage:** `/mashprofiles/<id>.json` auf der SD (`JsonDocDir`, Routen `GET /api/mash-profiles`,
+    `PUT`/`DELETE /api/mash-profiles/:id`, nur SD-Boards, kein Index). Die Firmware prüft nur die `id`. Im
+    Code heißt das `mashProfile`; die Reglerprogramme unter `/api/profiles` sind etwas anderes. Die fünf
+    mitgelieferten Profile stehen im Web-UI und nicht auf der SD, sie sind schreibgeschützt.
+  - **Inhalt:** Name, Verfahren (freier Text), Beschreibung, `doughIn` (Temperatur und Dauer) und `steps`
+    (nur Rast und Zubrühen, je Name, Temperatur, Dauer). **Abweichung vom ersten Entwurf:** Das feste
+    Einmaischen gehört nicht als Schritt ins Profil, aber seine Temperatur und Dauer sind die erste Rast
+    der Folge (Weizen: 45 °C zuerst), also stehen sie im Profil.
+  - **Laden** („Profile ▾“, nach Bestätigung): behält die beiden festen Schritte, setzt Temperatur und Dauer
+    des Einmaischens aus `doughIn` und ersetzt alle weiteren Schritte durch `steps`. Zubrühen kommt als
+    Wasser am Siedepunkt, die Menge rechnet der Plan. Die Einmaisch-Schritte weiterer Schüttungen entfallen
+    (die Bestätigung nennt sie), die Schüttungen bleiben und lassen sich wieder einfügen.
+  - **Speichern** („Plan als Profil speichern“): übernimmt Einmaischen und alle Rasten und Zubrühschritte;
+    Mengen und Wassertemperaturen des Zubrühens, weitere Schüttungen und Heizzeiten bleiben draußen.
+  - **Backup:** `/mashprofiles` liegt wie `/brewhouses` außerhalb von `/config` und ist nicht im Backup.
+- **Offen:** Läutern als eigener Schritt (Läuterruhe, Nachguss in Portionen; das
   Verfahren Batch oder Fly Sparge steht seit 3b im Wasser-Tab), Dekoktion als Schritt-Art (3d): Teilmaische
   ziehen (Anteil, dick/dünn), eigene Rasten in der Würzepfanne, kochen, zurückführen mit berechneter
-  Mischtemperatur; im Temperaturverlauf als zweite Linie. Teilschüttungen in Maischprofilen.
+  Mischtemperatur; im Temperaturverlauf als zweite Linie. Teilschüttungen in Maischprofilen (3c lässt sie
+  bewusst weg).
 - **Ausgangstemperatur des Hauptgusses** für die Heizzeit ist die Leitungswassertemperatur der
   Brauerei-Ebene (statt der früheren Annahme 14 °C); im Sud gilt der am Brautag gemessene Wert.
 

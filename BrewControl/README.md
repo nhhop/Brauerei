@@ -779,6 +779,8 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/recipes/<id>` | GET, PUT, DELETE | Rezept lesen / anlegen oder ersetzen / löschen (`/recipes/<id>.json` auf der SD) |
 | `/api/brewhouses` | GET | alle Sudhäuser, vollständig (`/brewhouses/<id>.json`, kein Index), nur SD-Boards |
 | `/api/brewhouses/<id>` | PUT, DELETE | Sudhaus anlegen oder ersetzen / löschen |
+| `/api/mash-profiles` | GET | alle eigenen Maischprofile, vollständig (`/mashprofiles/<id>.json`, kein Index), nur SD-Boards; die mitgelieferten stehen im Web-UI |
+| `/api/mash-profiles/<id>` | PUT, DELETE | Maischprofil anlegen oder ersetzen / löschen (nicht die Reglerprogramme unter `/api/profiles`) |
 | `/api/brewery` | GET, PUT | Brauerei-Vorgaben aller Sudhäuser (`/brewery.json`, `404` bis zum ersten Speichern) |
 | `/api/settings` | GET, POST | Theme, Zeit, Update-Kanal, MQTT/Webhook/WebSocket/ESP-NOW, Gerätedisplay |
 | `/api/network` | GET, POST | WLAN-Status abfragen; Credentials/Hostname setzen (rebootet) |

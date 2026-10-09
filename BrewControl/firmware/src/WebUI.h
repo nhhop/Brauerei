@@ -107,6 +107,9 @@ namespace BrewControl {
 //   GET  /api/brewhouses                   — all brewhouses, full objects (SD boards only)
 //   PUT  /api/brewhouses/<id>              — create or replace a brewhouse
 //   DELETE /api/brewhouses/<id>            — remove a brewhouse
+//   GET  /api/mash-profiles                — all mash profiles, full objects (SD boards only)
+//   PUT  /api/mash-profiles/<id>           — create or replace a mash profile
+//   DELETE /api/mash-profiles/<id>         — remove a mash profile
 //   GET  /api/brewery                      — brewery site values (404 until saved)
 //   PUT  /api/brewery                      — replace the brewery site values
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
