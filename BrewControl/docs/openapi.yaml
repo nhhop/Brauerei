@@ -1001,9 +1001,12 @@ paths:
       summary: Change a bus
       description: |
         Full definition, same shape as `POST /api/buses`; the type cannot
-        change. The label can always change. New pins give the bus a new id
-        and are only accepted while no item uses the bus (move or delete the
-        items first). Fixed buses cannot be changed.
+        change. The id stays the same when the pins change, so items and
+        devices on the bus keep working: the running driver is re-pinned in
+        place (the sensors then read from the new pins, the wiring has to
+        follow). The exception is an SPI bus: its MAX31865 sensors are
+        rebuilt, which fails while a controller uses one of them. Fixed buses
+        cannot be changed.
       requestBody:
         required: true
         content:
@@ -1012,7 +1015,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
-          description: Changed; `id` is the (possibly new) id.
+          description: Changed; `id` is the unchanged id.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BusId" }
@@ -1026,8 +1029,9 @@ paths:
             text/plain: { schema: { type: string } }
         "409":
           description: >-
-            `bus i2c-1-2 is used by ambient, mcp4728-i2c-1-2-60`, `bus i2c-board is wired by
-            the board`, or a pin conflict as for `POST /api/buses`.
+            `bus i2c-board is wired by the board`, `sensor tank is referenced by a
+            controller` (SPI bus with a controller-wired MAX31865), or a pin
+            conflict as for `POST /api/buses`.
           content:
             text/plain: { schema: { type: string } }
         "503": { $ref: "#/components/responses/RegistryBusy" }
