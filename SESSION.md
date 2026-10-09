@@ -1610,3 +1610,43 @@ reine Rastenliste.
   `typecheck`, `build`. Im Node-Mock: Weizen mit zwei Schüttungen und kaltem Zubrühen,
   Aufguss-Sudhaus (4,3 l kochend), altes Rezept ohne Plan, 500 m, Aufteilen 30 %,
   Ziehen samt Sperre über den festen Schritten, 375 px ohne Querscrollen.
+
+## 2026-10-09 — Maischen-Tab Etappe 3b: Effizienz-Kette, Läutermodell, Stammwürze kalt
+
+Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“ (NHC 2010) und
+„Understanding Efficiency“ (braukaiser.com).
+
+- **Begriffe, Nutzerentscheidung 2026-10-09:** Statt „Maische-Effizienz“ für die Konversion
+  heißen die Glieder wie bei Malzknecht und Brewfather: Konversion × Läutereffizienz =
+  Maischeeffizienz (Extrakt in der Pfanne / Potenzial, bisher im Rezept „Sudhausausbeute“
+  genannt) × Würzeanteil = Brewhouse-Efficiency; dazu die Sudhausausbeute nach Narziss je kg
+  Schüttung. Grundlage in der Karte „Brauerei“ (`Brewery.efficiencyBasis`): Konversion,
+  Maischeeffizienz (Vorgabe, bisheriges Verhalten), Sudhausausbeute oder Brewhouse-Efficiency.
+  Das Sudhaus-Feld `mashEfficiencyPct` heißt jetzt „Konversion“, neue Sudhäuser 80 %; das Rezept
+  überschreibt es mit eigenem Feld `conversionPct`.
+- **Läutermodell** (`web/src/efficiency.ts`, rein): Troesters Batch-Sparge-Modell, jeder Ablauf
+  V nimmt V / (V + R) mit; R = Treberverlust + Würzeverluste vor dem Kochen + 0,62 l je kg
+  gelöster Extrakt. Vollguss ist ein Ablauf, Batch Sparge hat n gleich große Gaben (Wasser-Tab,
+  `water.spargeMethod`/`spargeBatches`), Fly Sparge zählt als 2 Gaben mit Hinweis; nur dort
+  ersetzt ein Festwert `Brewhouse.lauterEfficiencyPct` die Näherung (Nutzerentscheidung). Die
+  Rechnung iteriert, weil die Läutereffizienz am gelösten Extrakt und über einen nach
+  Stammwürze geführten Verschnitt an den Wassermengen hängt. `wortExtract`/`calcStats` nehmen
+  Sudhaus und Brauerei und rechnen den Extrakt über die Kette.
+- **Stammwürze kalt** (Nutzerentscheidung): Der Extrakt der heißen Ausschlagmenge steht jetzt in
+  Ausschlag × (1 − Abkühlschwund); vorher war die Stammwürze um den Schwund zu niedrig. Der
+  Würzeanteil zählt deshalb nur Totraum und Transfers ab dem Whirlpool. Der Schalter
+  „Menge = Ausschlag heiß / Anstellwürze kalt“ kommt mit dem Gärung-Tab (PLAN.md).
+- **UI:** Übersicht mit dem Feld der Grundlage und der Kette in den Kennwerten (Eingabe als
+  Abzeichen), Wasser-Tab mit Läutereffizienz, Verfahren und Gaben, Kopfkarte Maischen mit der
+  Konversion, Sudhaus-Editor mit Konversion und Fly-Sparge-Festwert. Neue Messung
+  `firstWortGravity` (Vorderwürze, Läutern). `Override` liegt jetzt in `fields.tsx`.
+- **Doku:** Konzept-Doc (Rezept › Effizienz, Ausschlagmenge kalt, Sudhaus, Brauerei),
+  `openapi.yaml` (`efficiencyBasis`, `mashEfficiencyPct`, `lauterEfficiencyPct`), PLAN.md
+  (Näherungen der Kette inkl. Fly-Sparge-Modell, Schalter heiß/kalt beim Gärung-Tab, Rechner
+  rechnet die Sudhausausbeute noch auf das Potenzial).
+- **Prüfung:** `pnpm test` (`efficiency.test.ts`: Vollguss nach Troester 83/72 % bei 10/16 °P,
+  Gaben +9/+3,4/+1,8, 30/70 −0,9, Fly, gleiche Stammwürze aus jeder Grundlage, Fixpunkt der
+  Iteration, Starkbier, Hinweise, ohne Sudhaus; Stammwürze kalt in `recipeWater.test.ts`),
+  `typecheck`, `build`, redocly. Im Node-Mock: Batch 1/2 Gaben 82/86 %, Fly 86 %, Vollguss
+  73 %; Grundlage Konversion 75 %: Pils 5 kg 11,9 °P, Starkbier 10 kg nur 17,4 °P (Läutern
+  83 → 62 %); 375 px ohne Querscrollen.

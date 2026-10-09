@@ -271,13 +271,22 @@ function GeneralSection({ bh, set }: SectionProps) {
       <div class={`${card} grid gap-3 sm:grid-cols-2`}>
         <Field label="Name"><TextInput value={bh.name} onChange={(name) => set({ ...bh, name })} /></Field>
         <div class="flex flex-wrap gap-4">
-          <Field label="Maische-Effizienz (%)">
+          <Field label="Konversion (%)">
             <NumInput value={bh.mashEfficiencyPct} onChange={(n) => set({ ...bh, mashEfficiencyPct: n })} />
           </Field>
           <Field label="Abkühlschwund (%)">
             <NumInput value={bh.coolingShrinkPct} onChange={(n) => set({ ...bh, coolingShrinkPct: n })} />
           </Field>
+          <Field label="Läutereffizienz Fly Sparge (%)">
+            <OptNum value={bh.lauterEfficiencyPct} placeholder="geschätzt"
+              onChange={(n) => set({ ...bh, lauterEfficiencyPct: n })} />
+          </Field>
         </div>
+        <p class="text-xs text-muted sm:col-span-2">
+          Konversion: Anteil des Extraktpotenzials, der sich in der Maische löst (gut sind 95–100 %).
+          Die Läutereffizienz rechnet das Rezept aus Vollguss oder Batch Sparge; für Fly Sparge gibt es kein Modell,
+          ohne Festwert gilt Batch Sparge mit 2 Gaben.
+        </p>
         <div class="sm:col-span-2">
           <Field label="Beschreibung">
             <textarea class={`${inp} w-full`} rows={2} value={bh.description}

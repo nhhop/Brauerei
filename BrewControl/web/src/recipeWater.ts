@@ -86,19 +86,30 @@ function restVolumeL(recipe: Recipe, bh: Brewhouse): number {
   return recipe.volumeL * (1 - bh.coolingShrinkPct / 100) - sum(losses);
 }
 
+// Share of the kettle's extract that reaches the fermenter: the rest over the
+// cooled knock-out. Cooling shrinks the volume, but loses no extract.
+export function fermenterShare(recipe: Recipe, bh: Brewhouse): number {
+  const cooledL = recipe.volumeL * (1 - bh.coolingShrinkPct / 100);
+  return cooledL > 0 ? Math.max(restVolumeL(recipe, bh), 0) / cooledL : 1;
+}
+
 // `extractKg` is the extract of the grist (recipeStats.wortExtract); without it
 // no gravity, and a dilution led by gravity counts as 0 l.
+// Kettle volumes are hot, the gravity is measured cold: the extract sits in the
+// volume left after the brewhouse's cooling shrink (none without a brewhouse).
 export function resolveDilution(recipe: Recipe, extractKg: number | undefined, bh: Brewhouse | undefined): DilutionResult {
   const d = recipe.water?.dilution;
   const knockOutL = recipe.volumeL;
   const notes: string[] = [];
-  const knockOutPlato = extractKg !== undefined && knockOutL > 0 ? platoFromExtract(extractKg, knockOutL) : undefined;
+  const cold = 1 - (bh?.coolingShrinkPct ?? 0) / 100;
+  const platoHot = (kg: number, hotL: number) => platoFromExtract(kg, hotL * cold);
+  const knockOutPlato = extractKg !== undefined && knockOutL > 0 ? platoHot(extractKg, knockOutL) : undefined;
   const byGravity = d?.lead === 'gravity' && d.plato !== undefined && d.plato > 0;
   if (byGravity && knockOutPlato === undefined) notes.push('Die Verschnittmenge braucht die Stammwürze (Vergärbares verknüpfen).');
   const at = d?.at ?? 'kettle';
 
   if (at === 'kettle') {
-    let volumeL = !byGravity ? (d?.volumeL ?? 0) : extractKg === undefined ? 0 : knockOutL - volumeFromExtract(extractKg, d.plato!);
+    let volumeL = !byGravity ? (d?.volumeL ?? 0) : extractKg === undefined ? 0 : knockOutL - volumeFromExtract(extractKg, d.plato!) / cold;
     if (volumeL < 0 || volumeL >= knockOutL) {
       notes.push(volumeL < 0
         ? 'Die Pfannen-Stammwürze liegt unter der Stammwürze, gerechnet wird ohne Verschnitt.'
@@ -108,7 +119,7 @@ export function resolveDilution(recipe: Recipe, extractKg: number | undefined, b
     const kettleL = knockOutL - volumeL;
     return {
       at, volumeL, kettleL, finalL: knockOutL, finalPlato: knockOutPlato, notes,
-      kettlePlato: extractKg !== undefined && kettleL > 0 ? platoFromExtract(extractKg, kettleL) : undefined,
+      kettlePlato: extractKg !== undefined && kettleL > 0 ? platoHot(extractKg, kettleL) : undefined,
       factor: knockOutL > 0 ? kettleL / knockOutL : 1,
     };
   }

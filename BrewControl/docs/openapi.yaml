@@ -4665,6 +4665,15 @@ components:
             Site altitude in metres. Recipes plan with the boiling point of the
             standard atmosphere at this altitude (strike and infusion limits,
             IBU). Unset = sea level.
+        efficiencyBasis:
+          type: string
+          enum: [conversion, mash, yield, fermenter]
+          description: |
+            Which efficiency recipes enter (`web/src/efficiency.ts`): `conversion`
+            (Konversion, from the brewhouse), `mash` (Maischeeffizienz, extract in
+            the kettle / potential), `yield` (Sudhausausbeute, per kg grain) or
+            `fermenter` (Brewhouse-Efficiency). The others follow from it.
+            Unset = `mash`.
       additionalProperties: true
 
     WaterProfile:
@@ -4706,8 +4715,17 @@ components:
         name: { type: string }
         description: { type: string }
         updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
-        mashEfficiencyPct: { type: number }
+        mashEfficiencyPct:
+          type: number
+          description: |
+            Conversion (Konversion), %: extract dissolved in the mash / laboratory
+            extract of the grain. The name predates the efficiency chain.
         coolingShrinkPct: { type: number, description: "Volume shrink on cooling, %." }
+        lauterEfficiencyPct:
+          type: number
+          description: |
+            Lauter efficiency for fly sparging, %, from own brews. Unset = the
+            recipe approximates fly sparging as batch sparging with two additions.
         vessels:
           type: array
           items: { $ref: "#/components/schemas/BrewhouseVessel" }

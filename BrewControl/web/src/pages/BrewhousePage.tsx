@@ -10,6 +10,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { Fab } from '../components/Fab';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
+import { BASIS_LABEL, DEFAULT_BASIS, basisOf, type EfficiencyBasis } from '../efficiency';
 import { DEFAULT_PH_MODEL, type PhModel } from '../mashPh';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 import { Field, NumInput } from './recipe/fields';
@@ -159,6 +160,15 @@ function BreweryCard() {
             }}>
             <option value="troester">Troester: pH aus Malzdaten</option>
             <option value="kolbach">Kolbach: Restalkalität nach Bierfarbe</option>
+          </select>
+        </Field>
+        <Field label="Effizienz im Rezept (Grundlage)">
+          <select class={inp} value={basisOf(draft)}
+            onChange={(e) => {
+              const v = e.currentTarget.value as EfficiencyBasis;
+              setDraft({ ...draft, efficiencyBasis: v === DEFAULT_BASIS ? undefined : v });
+            }}>
+            {(Object.keys(BASIS_LABEL) as EfficiencyBasis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}
           </select>
         </Field>
       </div>
