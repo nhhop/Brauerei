@@ -11,6 +11,7 @@
 #include "core/Actuator.h"
 #include "core/Controller.h"
 #include "core/DacOutput.h"
+#include "core/GpioPort.h"
 #include "core/Registry.h"
 #include "core/RegistrySnapshot.h"
 
@@ -30,6 +31,7 @@
 #endif
 
 #include "devices/MCP4728.h"
+#include "devices/PCF8575.h"
 
 #include "sensors/DigitalInputSensor.h"
 #include "sensors/AnalogInputSensor.h"
