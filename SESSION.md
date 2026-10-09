@@ -1754,3 +1754,24 @@ Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“
   `typecheck`, `build`, redocly. Im Node-Mock: Batch 1/2 Gaben 82/86 %, Fly 86 %, Vollguss
   73 %; Grundlage Konversion 75 %: Pils 5 kg 11,9 °P, Starkbier 10 kg nur 17,4 °P (Läutern
   83 → 62 %); 375 px ohne Querscrollen.
+
+## 2026-10-09 — ESP32-S2: On-Chip-DAC statt stillem PWM-Fallback
+
+- **Root Cause:** `AnalogOutputActuator.cpp` gab `dacWrite` nur für `CONFIG_IDF_TARGET_ESP32` frei.
+  Der S2 hat aber einen DAC (GPIO 17/18, `SOC_DAC_SUPPORTED`), `kLolinS2Mini` meldete die Pins
+  schon als `dac`; `mode:"dac"` fiel in `begin()` unbemerkt auf PWM zurück.
+- **Umsetzung:** Guard auf `SOC_DAC_SUPPORTED` (`<soc/soc_caps.h>`) umgestellt; der S3 bleibt ohne DAC.
+- **Prüfung:** Library 358/358 nativ; `lolin_s2_mini` (94,6 %), `esp32dev` (97,9 %) und
+  `lilygo_t_display_s3_amoled` bauen, `dacWrite` steht im S2-ELF. Am `brewcontrol-brautomat`
+  (OTA): DAC Pin 17 → `AnalogInput` Pin 6, ohne Glättung. Stabile, lineare Stufen ohne
+  PWM-Rippel (0 → 0,21, 0,825 → 2,10, 1,65 → 4,05, 2,475 → 6,00, 3,3 → 6,60; Skala siehe PLAN.md).
+  Ein erster Lauf mit schlecht steckendem Draht zeigte Rail-to-Rail-Rauschen und wäre als „PWM“
+  fehlzudeuten gewesen — ohne Glättung messen und die Verdrahtung prüfen.
+- **Nebenfund, gleich mitgefixt:** `AnalogInputSensor` rechnet mit Rohwerten 0–4095, der S2-Core
+  liest aber standardmäßig 13 Bit — die Anzeige lag auf doppelter Skala (DAC 3,3 V →
+  6,6). `begin()` setzt jetzt `analogReadResolution(12)` (ESP32 war schon 12 Bit). Erneut am S2
+  gemessen: 0 → 0,10, 0,825 → 1,05, 1,65 → 2,03, 2,475 → 3,00, 3,3 → 3,30 V; der Rest ist
+  ADC-Kennlinie (Offset unten, Sättigung oben), keine Skalenabweichung mehr.
+  Am LilyGo (S3) mit 4,7-kΩ-Teiler an GPIO 5 (≈1,65 V): vorher 1,66 V, nachher 1,66 V — der
+  S3-Core liest schon 12 Bit, der Fix ändert dort nichts.
+- **PLAN.md:** S2-DAC-Punkt raus.
