@@ -5051,7 +5051,7 @@ components:
         times: those come from the recipe's brewhouse. Loading one into a recipe
         keeps its fixed steps "Wasser vorlegen" and "Einmaischen", sets the
         temperature and hold of the latter from `doughIn` and replaces every
-        other step by `steps`.
+        other step by `steps`. Infusions and decoctions come led by temperature.
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
         name: { type: string }
@@ -5068,12 +5068,35 @@ components:
           type: array
           items:
             type: object
-            required: [kind, tempC, durationMin]
+            required: [kind, durationMin]
             properties:
-              kind: { type: string, enum: [rest, infusion], description: "`infusion` = Zubrühen, with boiling water." }
+              kind:
+                type: string
+                enum: [rest, infusion, decoction, doughIn]
+                description: |
+                  `infusion` = Zubrühen; `decoction` = part of the mash boiled in a
+                  second vessel and put back (the recipe computes the share from
+                  `tempC`); `doughIn` = mashing in a further charge (Schüttung). A
+                  `rest` at or above the boiling point boils the mash in its vessel.
               name: { type: string }
-              tempC: { type: number }
+              tempC: { type: number, description: "Target; required except for `doughIn`, whose temperature results from mixing. `decoction`: the mash after putting it back." }
               durationMin: { type: number }
+              waterTempC: { type: number, description: "`infusion`: temperature of the water. Missing = boiling." }
+              sharePct: { type: number, description: "`doughIn`: the further charge as % of the whole grist (0–100, exclusive). Loading splits it off the first charge when the recipe has no further charge left." }
+              decoction:
+                type: object
+                description: "`decoction` only."
+                properties:
+                  thin: { type: boolean, description: "Liquid only. Missing = thick." }
+                  rests:
+                    type: array
+                    description: Rests in the decoction vessel before the boil.
+                    items:
+                      type: object
+                      properties:
+                        tempC: { type: number }
+                        durationMin: { type: number }
+                  boilMin: { type: number }
       additionalProperties: true
 
     Brewhouse:
@@ -5135,9 +5158,10 @@ components:
         name: { type: string }
         volumeL: { type: number }
         deadSpaceL: { type: number, description: Volume left behind when emptied. }
-        evaporationLPerH: { type: number, description: Only for the boil vessel. }
+        evaporationLPerH: { type: number, description: "For a vessel that boils: the boil vessel, the decoction vessel, or a directly heated mash vessel (a rest at the boiling point)." }
         lauterMethod: { type: string, description: "Descriptive only (false bottom, bag …)." }
         grainAbsorptionLPerKg: { type: number, description: "Only for the lauter vessel: wort held back by the spent grain, l/kg. Missing = 0.96." }
+        heatLossKPerH: { type: number, description: "Only for the mash vessel: temperature the resting, unheated mash loses while a decoction is out, K/h. Missing = 0 (it holds)." }
       additionalProperties: true
 
     BrewhouseDevice:

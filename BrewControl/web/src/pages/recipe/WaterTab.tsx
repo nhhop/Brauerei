@@ -25,7 +25,7 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   }
   const bh = brewhouses.find((b) => b.id === recipe.brewhouseId);
   const wort = catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery) : undefined;
-  const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg);
+  const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg, brewery);
   const lauter = wort?.efficiency.lauter;
   if (!w || !bh) {
     return (
@@ -177,7 +177,7 @@ function WaterBar({ w }: { w: Water }) {
   const parts = [
     { label: d.at === 'kettle' && d.volumeL > 0 ? 'Ausschlag ohne Verschnitt' : 'Ausschlag', l: d.kettleL, color: 'var(--series-1)' },
     ...(d.volumeL > 0 ? [{ label: 'Verschnitt', l: d.volumeL, color: 'color-mix(in srgb, var(--series-1) 45%, transparent)' }] : []),
-    { label: 'Verdampfung', l: w.evaporationL, color: 'var(--series-2)' },
+    { label: 'Verdampfung', l: w.evaporationL + w.mashEvaporationL, color: 'var(--series-2)' },
     { label: 'Treber', l: w.absorptionL, color: 'var(--series-3)' },
     { label: 'Totraum/Transfer', l: w.wortLossL, color: 'var(--series-4)' },
   ];
@@ -228,6 +228,9 @@ function Calculation({ w, boilMin }: { w: Water; boilMin: number }) {
         <Row op="=" label="Pfannevoll" l={w.preBoilL} strong />
         {w.wortLosses.length > 0 ? lossRows(w.wortLosses) : <Row op="+" label="Würzeverluste (kein Transfer)" l={0} from="Sudhaus" />}
         <Row op="+" label={`Treber (${num(w.grainKg)} kg × ${num(w.absorptionLPerKg)} l/kg)`} l={w.absorptionL} from={w.absorptionFrom} />
+        {w.mashEvaporationL > 0 && (
+          <Row op="+" label="Verdampfung beim Maischen (Dekoktion, Kochrast)" l={w.mashEvaporationL} from="Sudhaus" />
+        )}
         <Row op="=" label="Gesamtwasser" l={w.totalL} strong />
         {w.sparge ? (
           <Row label={`Hauptguss (${num(w.mashRatioLPerKg!)} l/kg × ${num(w.grainKg)} kg)`} l={w.strikeL} from="Rezept" />

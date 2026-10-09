@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-preact';
+import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Plus, Trash2, X } from 'lucide-preact';
 import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
@@ -8,13 +8,13 @@ import type { Efficiency } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
 import { calcMash, fmtClock, type MashPlan, type MashRow } from '../../mashPlan';
 import {
-  BUILTIN_MASH_PROFILES, applyMashProfile, droppedChargeSteps, listMashProfiles, type MashProfile,
+  BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, profileLoadEffects, type MashProfile,
 } from '../../mashProfiles';
 import { calcStats, wortExtract, type RecipeStats, type WortPart } from '../../recipeStats';
 import { calcWater, fmtL } from '../../recipeWater';
 import {
-  MASH_KIND_LABEL, SCOPE_TIMINGS, addCharge, chargeIdOf, chargesOf, isMashGrain, removeCharge, uid,
-  type Infusion, type MashStep, type MashStepKind, type Recipe,
+  MASH_KIND_LABEL, SCOPE_TIMINGS, addCharge, chargeIdOf, chargesOf, isMashGrain, removeCharge, replaceDecoctions, uid,
+  type Decoction, type Infusion, type MashStep, type MashStepKind, type Recipe,
 } from '../../recipes';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
 import { Card, Field, NumInput } from './fields';
@@ -38,6 +38,9 @@ const REST_PRESETS: { name: string; tempC: number; durationMin: number }[] = [
   { name: 'Abmaischen', tempC: 78, durationMin: 5 },
 ];
 
+// A new decoction: thick, a saccharification rest, then the boil.
+const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, durationMin: 10 }], boilMin: 15 });
+
 // Tab "Maischen": head card, the mash ingredients by charge, the mash plan and
 // its temperature curve. The numbers come from mashPlan.ts; without a
 // brewhouse the plan is editable but not computed.
@@ -45,7 +48,7 @@ export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const wort = catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery) : undefined;
-  const water = bh ? calcWater(recipe, bh, wort?.extractKg).water : undefined;
+  const water = bh ? calcWater(recipe, bh, wort?.extractKg, brewery).water : undefined;
   const plan = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : undefined;
   return (
@@ -321,6 +324,11 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
     : [...steps].reverse().find((s) => s.tempC !== undefined)?.tempC ?? 63;
   const nextRest = REST_PRESETS.find((p) => p.tempC > lastC + 0.5) ?? REST_PRESETS[REST_PRESETS.length - 1];
   const unmashed = charges.slice(1).filter((c) => !steps.some((s) => s.kind === 'doughIn' && chargeIdOf(s, charges) === c.id));
+  const decoctionVessel = plan?.decoction?.vessel.name;
+  // Decoctions the brewhouse cannot do count as rests; replacing them keeps the
+  // temperature the plan reached.
+  const stranded = !!plan && !plan.decoction && steps.some((s) => s.kind === 'decoction');
+  const resultC = (s: MashStep) => plan?.rows.find((r) => r.step.id === s.id)?.tempC;
 
   // Insertion index under the pointer, never above the fixed steps.
   function dropIndex(clientY: number): number {
@@ -344,7 +352,9 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
             onClick={() => pick({ kind: 'doughIn', name: `${c.name} zugeben`, durationMin: 10, chargeId: c.id })} />
         ))}
         {unmashed.length === 0 && <MenuItem label="Einmaischen" sub="erst Schüttung anlegen" disabled />}
-        <MenuItem label="Dekoktion" sub="kommt mit 3d" disabled />
+        <MenuItem label="Dekoktion" disabled={!decoctionVessel}
+          sub={decoctionVessel ? `Teilmaische in ${decoctionVessel}` : plan ? 'Sudhaus ohne zweiten beheizten Behälter' : 'erst Sudhaus wählen'}
+          onClick={() => pick({ kind: 'decoction', name: 'Kochmaische', tempC: nextRest.tempC, durationMin: nextRest.durationMin, decoction: newDecoction() })} />
         <div class="px-2.5 pb-1 pt-2 text-xs font-semibold text-muted">Rast</div>
         {REST_PRESETS.map((p) => (
           <MenuItem key={p.name} label={p.name} sub={`${p.tempC} °C · ${p.durationMin} min`}
@@ -356,7 +366,8 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
 
   const profileMenu = (close: () => void) => {
     const item = (p: MashProfile) => (
-      <MenuItem key={p.id} label={p.name || 'Ohne Namen'} sub={[p.doughIn.tempC, ...p.steps.map((s) => s.tempC)].join(' · ') + ' °C'}
+      <MenuItem key={p.id} label={p.name || 'Ohne Namen'}
+        sub={[p.doughIn.tempC, ...p.steps.flatMap((s) => (s.tempC === undefined ? [] : [s.tempC]))].join(' · ') + ' °C'}
         onClick={() => { setPending(p); close(); }} />
     );
     return (
@@ -371,7 +382,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
       </>
     );
   };
-  const dropped = pending ? droppedChargeSteps(steps) : [];
+  const effects = pending ? profileLoadEffects(recipe, pending) : undefined;
 
   const holdMin = plan?.rows.reduce((s, r) => s + r.holdMin, 0) ?? 0;
   const strikeRow = plan?.rows[0];
@@ -398,7 +409,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
         </div>
         {steps.map((s, k) => (
           <StepRow key={s.id} step={s} index={k} count={steps.length} row={plan?.rows[k]} recipe={recipe}
-            boilC={boilC} patch={(p) => patch(s.id, p)} onMove={(by) => move(k, k + by)}
+            boilC={boilC} canDecoct={!!decoctionVessel} patch={(p) => patch(s.id, p)} onMove={(by) => move(k, k + by)}
             onDelete={() => set(steps.filter((x) => x.id !== s.id))}
             dragging={drag?.from === k}
             dropBefore={!!drag && drag.to === k && drag.to !== drag.from && drag.to !== drag.from + 1}
@@ -434,24 +445,31 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           {plan.notes.map((n) => <li key={n}>{n}</li>)}
         </ul>
       )}
+      {stranded && (
+        <button type="button" onClick={() => set(replaceDecoctions(steps, resultC))}
+          class="mt-2 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
+          Dekoktionen durch Rasten ersetzen
+        </button>
+      )}
       {dialog && (
-        <MashProfileDialog stored={stored} storeError={storeError} mash={steps} saveFirst={dialog === 'save'}
+        <MashProfileDialog stored={stored} storeError={storeError} recipe={recipe} resultC={resultC} saveFirst={dialog === 'save'}
           reload={reload} onLoad={setPending} onClose={() => setDialog(null)} />
       )}
       <ConfirmModal open={pending !== null} title="Profil laden?" confirmLabel="Laden"
-        onConfirm={() => { if (pending) set(applyMashProfile(steps, pending)); setPending(null); setDialog(null); }}
+        onConfirm={() => { if (pending) onChange(applyMashProfile(recipe, pending)); setPending(null); setDialog(null); }}
         onCancel={() => setPending(null)}>
         „{pending?.name}“ ersetzt alle Schritte außer Wasser vorlegen und Einmaischen; dessen Temperatur und Dauer setzt das Profil.
-        {dropped.length > 0 && ` Die Einmaisch-Schritte weiterer Schüttungen (${dropped.map((s) => s.name || 'Einmaischen').join(', ')}) entfallen, die Schüttungen bleiben.`}
+        {effects?.created.map((c) => ` ${c.name} entsteht mit ${c.pct} % der Schüttung (aus der ersten aufgeteilt).`)}
+        {effects && effects.unplaced.length > 0 && ` ${effects.unplaced.join(', ')} ${effects.unplaced.length === 1 ? 'hat' : 'haben'} danach keinen Schritt Einmaischen, die Schüttung bleibt.`}
       </ConfirmModal>
     </Card>
   );
 }
 
-const CHANGEABLE: MashStepKind[] = ['rest', 'infusion'];
+const CHANGEABLE: MashStepKind[] = ['rest', 'infusion', 'decoction'];
 
-function StepRow({ step: s, index: k, count, row, recipe, boilC, patch, onMove, onDelete, dragging, dropBefore, dropAfter, grip }: {
-  step: MashStep; index: number; count: number; row?: MashRow; recipe: Recipe; boilC: number;
+function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patch, onMove, onDelete, dragging, dropBefore, dropAfter, grip }: {
+  step: MashStep; index: number; count: number; row?: MashRow; recipe: Recipe; boilC: number; canDecoct: boolean;
   patch: (p: Partial<MashStep>) => void; onMove: (by: -1 | 1) => void; onDelete: () => void;
   dragging: boolean; dropBefore: boolean; dropAfter: boolean;
   grip: Record<string, (e: PointerEvent) => void>;
@@ -478,11 +496,17 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, patch, onMove, 
     );
   } else if (s.kind === 'infusion') {
     addition = <InfusionFields step={s} row={row} boilC={boilC} patch={patch} />;
+  } else if (s.kind === 'decoction') {
+    addition = <DecoctionFields step={s} row={row} patch={patch} />;
   } else {
-    addition = row?.waterL ? ro(`${fmtL(row.waterL)} à ${num(row.waterTempC!)} °C`) : ro('—');
+    addition = row?.waterL ? ro(`${fmtL(row.waterL)} à ${num(row.waterTempC!)} °C`)
+      : row?.evaporatedL ? ro(`verdampft ${fmtL(row.evaporatedL)}`) : ro('—');
   }
 
   const tempEditable = s.kind === 'rest' || s.kind === 'infusion' || s.kind === 'decoction' || (s.kind === 'doughIn' && k === 1);
+  // A decoction led by its share shows the temperature it reaches; editing it
+  // makes the temperature lead.
+  const tempResult = s.kind === 'decoction' && s.decoction?.lead === 'share';
   return (
     <div data-step class={`flex flex-wrap items-center gap-2 border-b border-border py-2 ${GRID} ${dragging ? 'opacity-50' : ''} ${indicator}`}>
       <span class="max-md:hidden">
@@ -500,21 +524,30 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, patch, onMove, 
           <select class={`${inp} w-full`} value={s.kind} aria-label="Art des Schritts"
             onChange={(e) => {
               const kind = e.currentTarget.value as MashStepKind;
-              patch({ kind, infusion: kind === 'infusion' ? { lead: 'temp' } : undefined });
+              patch({
+                kind,
+                infusion: kind === 'infusion' ? { lead: 'temp' } : undefined,
+                decoction: kind === 'decoction' ? newDecoction() : undefined,
+              });
             }}>
             <option value="rest">Rast</option>
             <option value="infusion">Zubrühen</option>
-            <option value="decoction" disabled>Dekoktion (kommt mit 3d)</option>
+            <option value="decoction" disabled={!canDecoct && s.kind !== 'decoction'}>
+              {canDecoct ? 'Dekoktion' : 'Dekoktion (Sudhaus kann es nicht)'}
+            </option>
           </select>
         )}
       </span>
       <input class={`${inp} min-w-0 flex-1 basis-40 md:basis-auto`} value={s.name} placeholder={MASH_KIND_LABEL[s.kind]}
         aria-label="Bezeichnung" onInput={(e) => patch({ name: e.currentTarget.value })} />
-      <span class={`basis-full text-xs md:basis-auto ${(s.kind === 'rest' && !row?.waterL) || s.kind === 'decoction' ? 'max-md:hidden' : ''}`}>
+      <span class={`basis-full text-xs md:basis-auto ${s.kind === 'rest' && !row?.waterL && !row?.evaporatedL ? 'max-md:hidden' : ''}`}>
         {addition}
       </span>
       <span class="flex items-center gap-1 text-xs text-muted">
-        {tempEditable ? (
+        {tempResult ? (
+          <NumInput value={round1(row?.tempC ?? s.tempC ?? 0)} class="w-16 text-muted"
+            onChange={(n) => patch({ tempC: n, decoction: { ...s.decoction!, lead: 'temp' } })} />
+        ) : tempEditable ? (
           <NumInput value={s.tempC ?? round1(row?.tempC ?? 0)} onChange={(n) => patch({ tempC: n })} class="w-16" />
         ) : (
           <span class="tabular-nums">{row ? num(row.tempC) : '—'}</span>
@@ -548,6 +581,69 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, patch, onMove, 
           </>
         )}
       </span>
+      {s.kind === 'decoction' && <DecoctionCourse step={s} row={row} patch={patch} />}
+    </div>
+  );
+}
+
+// Share of a decoction (leads once edited, else the computed one, muted),
+// thick or thin, and the volume pulled.
+function DecoctionFields({ step, row, patch }: {
+  step: MashStep; row?: MashRow; patch: (p: Partial<MashStep>) => void;
+}) {
+  const d = step.decoction ?? newDecoction();
+  const set = (p: Partial<Decoction>) => patch({ decoction: { ...d, ...p } });
+  const byShare = d.lead === 'share';
+  return (
+    <span class="flex flex-wrap items-center gap-1 text-muted">
+      <NumInput value={byShare ? (d.sharePct ?? 0) : round1(row?.decoction?.sharePct ?? 0)}
+        onChange={(n) => set({ lead: 'share', sharePct: n })} class={`w-16 ${byShare ? '' : 'text-muted'}`} />
+      %
+      <select class={inp} value={d.thin ? 'thin' : 'thick'} aria-label="Dicke der Teilmaische"
+        onChange={(e) => set({ thin: e.currentTarget.value === 'thin' || undefined })}>
+        <option value="thick">dick</option>
+        <option value="thin">dünn</option>
+      </select>
+      {row?.decoction && <span class="tabular-nums">{fmtL(row.decoction.volumeL)}</span>}
+    </span>
+  );
+}
+
+// The decoction's own course below its row: rests, the boil, and what the plan
+// computed for the mash left behind.
+function DecoctionCourse({ step, row, patch }: {
+  step: MashStep; row?: MashRow; patch: (p: Partial<MashStep>) => void;
+}) {
+  const d = step.decoction ?? newDecoction();
+  const set = (p: Partial<Decoction>) => patch({ decoction: { ...d, ...p } });
+  const setRest = (i: number, p: Partial<Decoction['rests'][number]>) =>
+    set({ rests: d.rests.map((r, k) => (k === i ? { ...r, ...p } : r)) });
+  const dr = row?.decoction;
+  return (
+    <div class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted md:col-span-6 md:col-start-3">
+      <span>Teilmaische{dr ? ` in ${dr.vessel}` : ''}:</span>
+      {d.rests.map((r, i) => (
+        <span key={i} class="flex items-center gap-1">
+          Rast <NumInput value={r.tempC} onChange={(n) => setRest(i, { tempC: n })} class="w-14" /> °C
+          <NumInput value={r.durationMin} onChange={(n) => setRest(i, { durationMin: n })} class="w-14" /> min
+          <button type="button" title="Rast der Teilmaische entfernen" aria-label="Rast der Teilmaische entfernen"
+            onClick={() => set({ rests: d.rests.filter((_, k) => k !== i) })} class="rounded px-0.5 text-faint hover:text-critical">
+            <X size={12} />
+          </button>
+        </span>
+      ))}
+      <button type="button" onClick={() => set({ rests: [...d.rests, { tempC: 72, durationMin: 10 }] })}
+        class="flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 hover:bg-fg/10">
+        <Plus size={12} /> Rast
+      </button>
+      <span class="flex items-center gap-1">
+        kochen <NumInput value={d.boilMin} onChange={(n) => set({ boilMin: n })} class="w-14" /> min
+      </span>
+      {dr && (
+        <span class="tabular-nums">
+          Restmaische {num(dr.restMashC)} °C{dr.evaporatedL > 0 ? ` · verdampft ${fmtL(dr.evaporatedL)}` : ''}
+        </span>
+      )}
     </div>
   );
 }

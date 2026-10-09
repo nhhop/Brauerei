@@ -1,25 +1,25 @@
-import { ArrowDown, ArrowUp, Copy, Download, Pencil, Plus, Trash2 } from 'lucide-preact';
+import { ArrowDown, ArrowUp, Copy, Download, Pencil, Plus, Trash2, X } from 'lucide-preact';
 import { useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import {
   BUILTIN_MASH_PROFILES, deleteMashProfile, duplicateMashProfile, isBuiltinProfile, mashProfileSummary, newMashProfile,
   profileOfPlan, saveMashProfile, type MashProfile, type MashProfileStep,
 } from '../../mashProfiles';
-import type { MashStep } from '../../recipes';
+import type { MashStep, Recipe } from '../../recipes';
 import { badgeAccent, btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
-import { Field, NumInput } from './fields';
+import { Field, NumInput, OptNum } from './fields';
 
 const iconBtn = 'rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10 disabled:opacity-30';
 
 // Dialog "Maischprofile": the shipped and own profiles, an editor for own ones,
 // duplicate and delete. "Laden" hands the profile to the plan (which asks first).
 // `stored` is null until the SD card answered; `storeError` shows the shipped
-// ones only.
-export function MashProfileDialog({ stored, storeError, mash, saveFirst, reload, onLoad, onClose }: {
-  stored: MashProfile[] | null; storeError: boolean; mash: MashStep[]; saveFirst: boolean;
-  reload: () => Promise<void>; onLoad: (p: MashProfile) => void; onClose: () => void;
+// ones only. `resultC` is the temperature the plan reaches at a step.
+export function MashProfileDialog({ stored, storeError, recipe, resultC, saveFirst, reload, onLoad, onClose }: {
+  stored: MashProfile[] | null; storeError: boolean; recipe: Recipe; resultC: (s: MashStep) => number | undefined;
+  saveFirst: boolean; reload: () => Promise<void>; onLoad: (p: MashProfile) => void; onClose: () => void;
 }) {
-  const fromPlan = () => newMashProfile(profileOfPlan(mash));
+  const fromPlan = () => newMashProfile(profileOfPlan(recipe, resultC));
   const [editing, setEditing] = useState<MashProfile | null>(saveFirst ? fromPlan() : null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MashProfile | null>(null);
@@ -158,7 +158,15 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
     [next[i], next[i + by]] = [next[i + by], next[i]];
     setSteps(next);
   };
-  const lastC = p.steps.length > 0 ? p.steps[p.steps.length - 1].tempC : p.doughIn.tempC;
+  const lastC = [...p.steps].reverse().find((s) => s.tempC !== undefined)?.tempC ?? p.doughIn.tempC;
+  // Switching the kind keeps name and hold; what the new kind needs is filled in.
+  const changeKind = (i: number, kind: MashProfileStep['kind']) => {
+    const { name, durationMin, tempC } = p.steps[i];
+    const step: MashProfileStep = kind === 'doughIn' ? { kind, name, durationMin, sharePct: 20 }
+      : { kind, name, durationMin, tempC: tempC ?? lastC };
+    if (kind === 'decoction') step.decoction = { rests: [{ tempC: 72, durationMin: 10 }], boilMin: 15 };
+    setSteps(p.steps.map((x, k) => (k === i ? step : x)));
+  };
 
   return (
     <div class={dialogScrim} onClick={onClose}>
@@ -182,7 +190,7 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
             </Field>
           </div>
 
-          <h3 class="mb-2 mt-5 text-sm font-medium">Rasten</h3>
+          <h3 class="mb-2 mt-5 text-sm font-medium">Schritte</h3>
           <div class="space-y-1 text-sm">
             <div class="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
               <span class="w-28 text-xs text-muted">Einmaischen</span>
@@ -194,13 +202,19 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
             {p.steps.map((s, i) => (
               <div key={i} class="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
                 <select class={`${inp} w-28`} value={s.kind} aria-label="Art des Schritts"
-                  onChange={(e) => patchStep(i, { kind: e.currentTarget.value as MashProfileStep['kind'] })}>
-                  <option value="rest">Rast</option>
-                  <option value="infusion">Zubrühen</option>
+                  onChange={(e) => changeKind(i, e.currentTarget.value as MashProfileStep['kind'])}>
+                  {Object.entries(KIND_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
                 </select>
                 <input class={`${inp} min-w-0 flex-1 basis-32`} value={s.name} aria-label="Bezeichnung"
-                  placeholder={s.kind === 'rest' ? 'Rast' : 'Zubrühen'} onInput={(e) => patchStep(i, { name: e.currentTarget.value })} />
-                <StepNumbers tempC={s.tempC} durationMin={s.durationMin} onChange={(d) => patchStep(i, d)} />
+                  placeholder={KIND_LABEL[s.kind]} onInput={(e) => patchStep(i, { name: e.currentTarget.value })} />
+                {s.kind === 'doughIn' ? (
+                  <span class="flex items-center gap-1 text-xs text-muted">
+                    <NumInput value={s.sharePct ?? 0} onChange={(n) => patchStep(i, { sharePct: n })} class="w-16" /> %
+                    <NumInput value={s.durationMin} onChange={(n) => patchStep(i, { durationMin: n })} class="ml-2 w-14" /> min
+                  </span>
+                ) : (
+                  <StepNumbers tempC={s.tempC ?? lastC} durationMin={s.durationMin} onChange={(d) => patchStep(i, d)} />
+                )}
                 <span class="ml-auto flex items-center gap-1">
                   <button type="button" title="Nach oben" aria-label="Nach oben" disabled={i === 0} onClick={() => swap(i, -1)} class={iconBtn}>
                     <ArrowUp size={14} />
@@ -213,6 +227,20 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
                     <Trash2 size={14} />
                   </button>
                 </span>
+                {s.kind === 'infusion' && (
+                  <span class="flex basis-full items-center gap-1 text-xs text-muted">
+                    Wasser <OptNum value={s.waterTempC} placeholder="kochend" class="w-20"
+                      onChange={(waterTempC) => patchStep(i, { waterTempC })} /> °C
+                  </span>
+                )}
+                {s.kind === 'doughIn' && (
+                  <span class="basis-full text-xs text-muted">
+                    Anteil an der ganzen Schüttung; fehlt dem Rezept die Schüttung, teilt das Laden sie von der ersten ab.
+                  </span>
+                )}
+                {s.kind === 'decoction' && s.decoction && (
+                  <DecoctionEditor d={s.decoction} onChange={(decoction) => patchStep(i, { decoction })} />
+                )}
               </div>
             ))}
           </div>
@@ -221,8 +249,8 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
             <Plus size={12} /> Rast
           </button>
           <p class="mt-3 text-xs text-muted">
-            „Wasser vorlegen“ und die Schüttungen gehören nicht ins Profil. Beim Laden setzt das Profil Temperatur und Dauer
-            des Einmaischens und ersetzt die Schritte danach.
+            „Wasser vorlegen“ gehört nicht ins Profil. Beim Laden setzt das Profil Temperatur und Dauer des Einmaischens und
+            ersetzt die Schritte danach. Den Anteil einer Dekoktion rechnet das Rezept aus der Zieltemperatur.
           </p>
           {error && <p class="mt-3 text-sm text-critical">{error}</p>}
         </div>
@@ -235,6 +263,44 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
         </div>
       </div>
     </div>
+  );
+}
+
+const KIND_LABEL: Record<MashProfileStep['kind'], string> = {
+  rest: 'Rast', infusion: 'Zubrühen', decoction: 'Dekoktion', doughIn: 'Schüttung',
+};
+
+// Thick or thin, the rests in the decoction vessel and the boil.
+function DecoctionEditor({ d, onChange }: {
+  d: NonNullable<MashProfileStep['decoction']>; onChange: (d: NonNullable<MashProfileStep['decoction']>) => void;
+}) {
+  const setRest = (i: number, p: Partial<(typeof d.rests)[number]>) =>
+    onChange({ ...d, rests: d.rests.map((r, k) => (k === i ? { ...r, ...p } : r)) });
+  return (
+    <span class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+      <select class={inp} value={d.thin ? 'thin' : 'thick'} aria-label="Dicke der Teilmaische"
+        onChange={(e) => onChange({ ...d, thin: e.currentTarget.value === 'thin' || undefined })}>
+        <option value="thick">dick</option>
+        <option value="thin">dünn</option>
+      </select>
+      {d.rests.map((r, i) => (
+        <span key={i} class="flex items-center gap-1">
+          Rast <NumInput value={r.tempC} onChange={(n) => setRest(i, { tempC: n })} class="w-14" /> °C
+          <NumInput value={r.durationMin} onChange={(n) => setRest(i, { durationMin: n })} class="w-14" /> min
+          <button type="button" title="Rast der Teilmaische entfernen" aria-label="Rast der Teilmaische entfernen"
+            onClick={() => onChange({ ...d, rests: d.rests.filter((_, k) => k !== i) })} class="rounded px-0.5 text-faint hover:text-critical">
+            <X size={12} />
+          </button>
+        </span>
+      ))}
+      <button type="button" onClick={() => onChange({ ...d, rests: [...d.rests, { tempC: 72, durationMin: 10 }] })}
+        class="flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 hover:bg-fg/10">
+        <Plus size={12} /> Rast
+      </button>
+      <span class="flex items-center gap-1">
+        kochen <NumInput value={d.boilMin} onChange={(n) => onChange({ ...d, boilMin: n })} class="w-14" /> min
+      </span>
+    </span>
   );
 }
 

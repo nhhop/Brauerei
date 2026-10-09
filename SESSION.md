@@ -1847,3 +1847,54 @@ Nav-Link ×2, Einstellungs-Karte und ein Link, der sich im `onClick` selbst entf
 je genau einen History-Eintrag, `window`-Marker überlebt, ein Navigation-Entry; Ctrl-Klick
 schreibt keinen Eintrag. Nicht gemessen: Verhalten vor dem Fix für den Selbst-Entfern-Fall
 und das Gerät selbst.
+
+## 2026-10-09 — Maischen-Tab Etappe 3d: Dekoktion, Kochen im Maischbehälter, Profile mit Dekoktion
+
+Vierter und letzter PR der Etappe 3 (Branch `feat/maische-3d`), reine Web-UI- und Doku-Arbeit, die
+Firmware ist unverändert. Vor dem Start mit dem Nutzer geklärt (Plan `maische-etappe-3.md` gegen den
+Code geprüft, keine Widersprüche, aber Lücken):
+
+- **Entscheidungen:** Die Restmaische verliert während der Dekoktion den **Wärmeverlust des
+  Maischbehälters** (neues Behälterfeld `heatLossKPerH`, Vorgabe 0 = hält) statt der 0,2 K/min des
+  Abkühlens, die bei 45–90 min Dekoktion 9–18 K gekostet hätten. Die **Verdampfung** beim Kochen nimmt
+  die Rate des Behälters aus dem Sudhaus und wirkt in Wärme- und Wasserbilanz. **Profile** können jetzt
+  Dekoktionen und weitere Schüttungen tragen; neu mitgeliefert sind Ein-, Zwei- und
+  Dreimaischverfahren und **Earls Kochmaische**. Der **Dekoktionsbehälter** wird abgeleitet: nicht der
+  Maischbehälter, eigene Heizquelle, heizt nicht die Maische (HERMS-/Kettle-RIMS-/Aufguss-Behälter
+  halten Wasser), der erste in Prozessreihenfolge. Für Earl: Profile tragen Schüttungsanteile (Laden
+  teilt die erste Schüttung auf), und eine Rast am Siedepunkt kocht im direkt beheizten Maischbehälter.
+- **Eigene Abweichung vom Vorschlag in der Rückfrage:** Die Heizzeit der Teilmaische kommt zuerst aus
+  der Heizleistung für ihre Masse, die Heizrate des Schritts erst ohne Leistung, weil sie für den vollen
+  Behälter gilt.
+- **Rechnung** (`web/src/mashPlan.ts`): `walk()` führt Wasser und Malz getrennt. Dekoktion: Anteil am
+  Maischevolumen, dick mit bis zu 2,1 l/kg (`THICK_DECOCTION_L_PER_KG`, `TODO(verify)`), dünn nur
+  Flüssigkeit; Rasten und Kochen im Dekoktionsbehälter, Verdampfung, Restmaische mit Wärmeverlust,
+  Mischtemperatur beim Zurückführen; führt die Temperatur, sucht eine Bisektion den Anteil. Eine dünne
+  Dekoktion ohne Verlust und Verdampfung ergibt genau Troesters Faustformel (Test). Kochrast: Ziel ab
+  Siedepunkt, Verdampfung des Maischbehälters, Hinweis außer bei direkter Heizung. Ohne
+  Dekoktionsbehälter zählt eine Dekoktion als Rast, ein Hinweis nennt alle.
+- **Wasser/Effizienz:** `mashEvaporationL` zählt zum Gesamtwasser (Nachguss, sonst Hauptguss),
+  `calcWater` bekommt dafür optional die Brauerei (Siedepunkt); der erste Ablauf im Läutermodell ist um
+  die Verdampfung kleiner.
+- **Profile** (`web/src/mashProfiles.ts`): Schritt-Arten `decoction` und `doughIn` (`sharePct`),
+  Zubrühen mit `waterTempC`; `applyMashProfile` arbeitet auf dem Rezept (Schüttungen, Zutaten),
+  `profileLoadEffects` speist die Bestätigung, `profileOfPlan` speichert Dekoktionen und
+  Schüttungsanteile. `splitCharge` aus `addCharge` herausgezogen. Earls Zubrühziel nach einem
+  Probelauf auf 62 °C gesetzt (bei 66 °C hätte die Maltoserast wieder abkühlen müssen).
+- **UI:** Dekoktion im Menü und in der Art-Auswahl (gesperrt ohne Dekoktionsbehälter), Felder Anteil,
+  dick/dünn, Volumen, darunter Rasten, Kochdauer, Restmaische und Verdampfung; zweite, gestrichelte
+  Linie im Temperaturverlauf; „Dekoktionen durch Rasten ersetzen“ in Übersicht und Maischen-Tab;
+  Profil-Editor mit allen vier Arten; im Sudhaus „Wärmeverlust (K/h)“ am Maischbehälter und
+  „Verdampfung“ auch am Dekoktionsbehälter und am direkt beheizten Maischbehälter.
+- **Doku:** Konzept-Doc (Stand 3d), `openapi.yaml` (`BrewhouseVessel.heatLossKPerH`, Schritte von
+  `MashProfile`), PLAN.md (3d raus; Näherungen der Dekoktion beim Punkt „Maischeplan rechnet mit
+  Näherungen“; Quellen der neuen Richtwerte).
+- **Prüfung:** `pnpm test` (347, neu u. a. Dekoktion und Kochrast in `mashPlan.test.ts`,
+  `decoctionVesselOf`, Wasserbilanz, Läutermodell, Profile mit Schüttungen und Round-Trip,
+  `MashCurve.test.ts`), `typecheck`, `build`, redocly (nur die bekannte info-license-Warnung). Im
+  Node-Mock: Dreimaischverfahren auf „Pfanne + Läuterbottich“ (Anteile 28/28/32 %, 3:13 h, zweite
+  Linie), Anteil ↔ Temperatur umschalten, Wasser-Tab mit 1,5 l Verdampfung beim Maischen, Wechsel auf
+  2-Kessel-HERMS mit Warnung und Ersetzen, Earl auf dem Ein-Topf in 500 m (Aufteilung 80/20, Kochen bei
+  98,3 °C, 0,8 l verdampft), Profil speichern mit Dekoktion und Schüttung, 3 K/h Wärmeverlust (Anteile
+  32,8 → 36,3 %), 375 px ohne Querscrollen. Kein Gerätetest nötig, das Profil-JSON ist für die Firmware
+  opak.

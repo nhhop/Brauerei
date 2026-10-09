@@ -4,7 +4,7 @@ import { route } from 'preact-router';
 import { Check, Plus, Trash2 } from 'lucide-preact';
 import {
   CHILLER_TYPES, DEFAULT_GRAIN_ABSORPTION, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
-  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
+  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, decoctionVesselOf, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
   newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
 } from '../brewhouse';
@@ -319,6 +319,10 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
   const steps = stepsOf(bh, v.id);
   const preset = vesselPreset(bh, v);
   const patch = (p: Partial<Vessel>) => set({ ...bh, vessels: bh.vessels.map((x) => (x.id === v.id ? { ...x, ...p } : x)) });
+  // The vessel boils: the wort, a decoction, or the mash itself when it is
+  // heated directly (Kochrast).
+  const boils = steps.includes('boil') || decoctionVesselOf(bh)?.vessel.id === v.id
+    || (steps.includes('mash') && heatingOf(bh, 'mash').direct);
 
   // A preset only ticks steps; steps ticked elsewhere move here.
   function applyPreset(i: number) {
@@ -339,9 +343,14 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
       <div class="mb-3 flex flex-wrap gap-4">
         <Field label="Volumen (l)"><NumInput value={v.volumeL} onChange={(volumeL) => patch({ volumeL })} /></Field>
         <Field label="Totraum (l)"><NumInput value={v.deadSpaceL} onChange={(deadSpaceL) => patch({ deadSpaceL })} /></Field>
-        {steps.includes('boil') && (
+        {boils && (
           <Field label="Verdampfung (l/h)">
             <OptNum value={v.evaporationLPerH} onChange={(evaporationLPerH) => patch({ evaporationLPerH })} />
+          </Field>
+        )}
+        {steps.includes('mash') && (
+          <Field label="Wärmeverlust (K/h)">
+            <OptNum value={v.heatLossKPerH} placeholder="0" onChange={(heatLossKPerH) => patch({ heatLossKPerH })} />
           </Field>
         )}
         {steps.includes('lauter') && (
