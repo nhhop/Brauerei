@@ -209,6 +209,9 @@ class DynamicItems {
     // bus), empty otherwise. Declared before the sensor so it outlives
     // it; dropping the entry releases the bus.
     PeripheralRegistry::Ref bus;
+    // The peripheral device whose channel the sensor reads (DigitalInput on
+    // a PCF8575), empty otherwise; outlives the sensor like bus.
+    PeripheralRegistry::Ref dev;
     // innerPtr holds the concrete sensor; ptr is the CalibratedSensor wrapped
     // around it and is what's registered with the Registry (cal points at it).
     // Declared inner-first so the wrapper is destroyed before what it wraps.
@@ -228,7 +231,7 @@ class DynamicItems {
     std::string id;
     std::string cfgJson;
     // The peripheral device whose channel the actuator drives (AnalogOutput
-    // on an MCP4728), empty otherwise. Declared before the actuator so the
+    // on an MCP4728, DigitalOutput on a PCF8575), empty otherwise. Declared before the actuator so the
     // device outlives it, as SensorEntry::bus does.
     PeripheralRegistry::Ref dev;
     // innerPtr holds the concrete actuator when wrapped by IntervalActuator
@@ -277,6 +280,9 @@ class DynamicItems {
   // The running driver of a device, created on its first user; it holds its
   // bus. Empty if the device's bus is gone (cannot happen after a check).
   PeripheralRegistry::Ref acquireDevice(const DeviceDef& d);
+  // The GPIO port of the device a "<device>:<channel>" pin names, acquired
+  // into dev; nullptr if the device is unknown or has no such GPIO channel.
+  SensActCtrl::GpioPort* acquireGpio(const PinRef& pin, PeripheralRegistry::Ref& dev);
   // Ids of the items using a channel of device id.
   std::vector<std::string> deviceUsers(const std::string& id) const;
   // The device's bus exists and has the right type, its address is free

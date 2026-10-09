@@ -181,6 +181,19 @@ void test_device_replace_ignores_own_address() {
   TEST_ASSERT_TRUE(checkAddressUse(nullptr, 0, uses, useOf(dac), dac.id.c_str()).ok);
 }
 
+void test_expander_not_on_waveshare_tca9554() {
+  // The Waveshare board's onboard TCA9554 answers on 0x20, the PCF8575's
+  // factory address: there it has to be jumpered to 0x21..0x27.
+  const BusDef ws = busFromFixed(kWaveshareAmoled175Buses[0]);
+  const DeviceDef at20 = device(R"({"type":"pcf8575","bus":"i2c-board"})");
+  auto r = checkAddressUse(ws.reserved, ws.reservedCount, {}, useOf(at20));
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_EQUAL_STRING("0x20 is reserved on bus i2c-board (Port-Expander (TCA9554))",
+                           r.error.c_str());
+  const DeviceDef at21 = device(R"({"type":"pcf8575","bus":"i2c-board","address":33})");
+  TEST_ASSERT_TRUE(checkAddressUse(ws.reserved, ws.reservedCount, {}, useOf(at21)).ok);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_collect_keys_per_type);
@@ -193,5 +206,6 @@ int main(int, char**) {
   RUN_TEST(test_device_and_sensor_share_one_address_space);
   RUN_TEST(test_device_on_reserved_address_is_409);
   RUN_TEST(test_device_replace_ignores_own_address);
+  RUN_TEST(test_expander_not_on_waveshare_tca9554);
   return UNITY_END();
 }

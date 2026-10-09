@@ -75,6 +75,23 @@ class Mcp4728Device : public Peripheral {
   MCP4728 dac_;
 };
 
+// A PCF8575 (DeviceConfig.h) on an I2C bus, its sixteen pins handed to
+// DigitalOutputActuators and DigitalInputSensors via gpio(). begin() adopts
+// the chip's latches and writes nothing, so a reboot leaves the other pins
+// as they are until their own item sets them.
+class Pcf8575Device : public Peripheral {
+ public:
+  Pcf8575Device(PeripheralRegistry::Ref bus, uint8_t address)
+      : bus_(std::move(bus)), port_(bus_.as<I2cBus>().wire, address) {}
+  const char* type() const override { return "pcf8575"; }
+  void begin() override { port_.begin(); }
+  GpioPort* gpio() override { return &port_; }
+
+ private:
+  PeripheralRegistry::Ref bus_;  // before port_: constructed first, destroyed last
+  PCF8575 port_;
+};
+
 }  // namespace
 
 DynamicItems::DynamicItems() : buses_(currentFixedBuses()) {}
@@ -248,7 +265,17 @@ PeripheralRegistry::Ref DynamicItems::acquireDevice(const DeviceDef& d) {
   if (!bus) return {};
   // The bus Ref is only a temporary if the device already runs: it holds
   // its own.
+  if (strcmp(d.type->type, "pcf8575") == 0)
+    return peripherals_.acquire<Pcf8575Device>(d.id, acquireBus(*bus), d.address);
   return peripherals_.acquire<Mcp4728Device>(d.id, acquireBus(*bus), d.address);
+}
+
+GpioPort* DynamicItems::acquireGpio(const PinRef& pin, PeripheralRegistry::Ref& dev) {
+  const DeviceDef* d = findDeviceDef(devices_, pin.device);
+  if (!d) return nullptr;
+  dev = acquireDevice(*d);
+  GpioPort* port = dev ? dev.get()->gpio() : nullptr;
+  return port && pin.index < port->channels() ? port : nullptr;
 }
 
 std::vector<std::string> DynamicItems::deviceUsers(const std::string& id) const {
@@ -326,7 +353,7 @@ void DynamicItems::writeDevices(JsonObject out) const {
     for (int i = 0; i < cap.count; ++i) {
       JsonObject ch = chs.add<JsonObject>();
       ch["index"] = i;
-      ch["name"] = std::string(1, cap.channelNames[i]);
+      ch["name"] = cap.channelNames[i];
       JsonArray users = ch["users"].to<JsonArray>();
       for (const PinUse& u : uses)
         if (u.device == d.id && u.gpio == i) users.add(u.item);
@@ -342,7 +369,8 @@ void DynamicItems::writeDevices(JsonObject out) const {
     o["addrDefault"] = t.addrDefault;
     o["cap"] = t.provides.cap;
     o["count"] = t.provides.count;
-    o["channels"] = t.provides.channelNames;
+    JsonArray names = o["channels"].to<JsonArray>();
+    for (int i = 0; i < t.provides.count; ++i) names.add(t.provides.channelNames[i]);
   }
 }
 
@@ -520,13 +548,21 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
       return {false, "invalid scale"};
     e->ptr = std::make_unique<HX711LoadCellSensor>(e->id.c_str(), dout, sck);
   } else if (strcmp(type, "DigitalInput") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
+    const PinRef pin = parsePinRef(cfg["pin"]);
+    if (pin.index < 0) return {false, "missing pin"};
     bool pullup       = cfg["pullup"]      | false;
     bool invert       = cfg["invert"]      | false;
     uint32_t debounce = cfg["debounce_ms"] | 0u;
-    e->ptr = std::make_unique<DigitalInputSensor>(
-        e->id.c_str(), pin, pullup, invert, debounce);
+    if (!pin.device.empty()) {
+      // "<device>:<channel>": a pin of a port expander, polled.
+      GpioPort* port = acquireGpio(pin, e->dev);
+      if (!port) return {false, "device has no such GPIO channel"};
+      e->ptr = std::make_unique<DigitalInputSensor>(
+          e->id.c_str(), *port, static_cast<uint8_t>(pin.index), pullup, invert, debounce);
+    } else {
+      e->ptr = std::make_unique<DigitalInputSensor>(
+          e->id.c_str(), pin.index, pullup, invert, debounce);
+    }
   } else if (strcmp(type, "AnalogInput") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
@@ -870,14 +906,23 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
   serializeJson(cfg, e->cfgJson);
 
   if (strcmp(type, "DigitalOutput") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
+    const PinRef pin = parsePinRef(cfg["pin"]);
+    if (pin.index < 0) return {false, "missing pin"};
     const char* modeStr = cfg["mode"] | "Binary";
     auto mode = strcmp(modeStr, "TimeProportional") == 0
                     ? DigitalOutputActuator::Mode::TimeProportional
                     : DigitalOutputActuator::Mode::Binary;
     bool invert = cfg["invert"] | false;
-    auto* a = new DigitalOutputActuator(e->id.c_str(), pin, mode, /*activeHigh=*/!invert);
+    DigitalOutputActuator* a = nullptr;
+    if (!pin.device.empty()) {
+      // "<device>:<channel>": a pin of a port expander.
+      GpioPort* port = acquireGpio(pin, e->dev);
+      if (!port) return {false, "device has no such GPIO channel"};
+      a = new DigitalOutputActuator(e->id.c_str(), *port, static_cast<uint8_t>(pin.index),
+                                    mode, /*activeHigh=*/!invert);
+    } else {
+      a = new DigitalOutputActuator(e->id.c_str(), pin.index, mode, /*activeHigh=*/!invert);
+    }
     if (mode == DigitalOutputActuator::Mode::TimeProportional)
       a->setPeriodMs(cfg["period_ms"] | 2000u);
     e->ptr.reset(a);
@@ -1331,6 +1376,7 @@ DynamicItems::Result DynamicItems::replaceSensor(const char* oldId,
   // down and rebuilt when the new config — or the restored old one — sits on
   // the same bus. A bus left without users goes when this Ref does.
   const PeripheralRegistry::Ref held = old->bus;
+  const PeripheralRegistry::Ref heldDev = old->dev;  // likewise its device
   return replaceEntry(
       sensors_, id, cfg, reg,
       [&](const char* i) { return removeSensor(i, reg); },
