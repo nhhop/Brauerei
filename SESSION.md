@@ -1822,3 +1822,23 @@ Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit 
   Duplizieren, Speichern aus dem Plan, Löschen, 375 px ohne Querscrollen, SD-Fehlerfall. Am LilyGo
   (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
   DELETE → 404.
+
+## 2026-10-09 — Bus-Pins ändern, während Items daran hängen
+
+- **Vorher:** `PUT /api/buses/{id}` mit neuen Pins lieferte 409, sobald ein Item oder Gerät am Bus
+  hing. Die Bus-Id war aus den Pins abgeleitet und steckt in Item-Configs (`bus`), Geräten und
+  deren Ids (`mcp4728-i2c-4-5-60`); ein Pinwechsel hätte alles umschreiben und neu aufbauen
+  müssen, und regler-verdrahtete Items lassen sich nicht ersetzen.
+- **Umsetzung:** Die Id ist nur noch der Startwert beim Anlegen und bleibt bei Pinwechseln
+  stabil (`parseBusDef(..., fromStorage)` liest sie nur aus `registry.json`). `updateBus` prüft die
+  neuen Pins gegen alle anderen Nutzer (`checkPinUses` mit Selbst-Ausnahme) und pinnt den
+  laufenden Treiber um: `OneWireBus::repin` (`OneWire::begin`), `I2cBus::repin` (`Wire.end/begin`).
+  Die Items halten nur Referenzen und bleiben unberührt, Regler ebenso. Einzige Ausnahme SPI: die
+  MAX31865 kopieren die Pins im Konstruktor und werden per `replaceSensor` neu gebaut; hängt eine
+  an einem Regler, gibt es vorab 409 (`referencedByController`, aus `removeSensor` herausgezogen).
+  UI: Pin-Felder im Bus-Dialog nicht mehr gesperrt, Hinweis zum Umstecken. Löschen bleibt 409,
+  solange Nutzer dranhängen. Bekannte Kleinigkeit: ein neuer Bus mit den alten Pins kollidiert
+  mit der Id des umgepinnten (409 „already exists“).
+- **Doku:** OpenAPI (PUT /api/buses/{id}), README „Geteilte Busse“, PLAN.md-Punkt entfernt.
+- **Prüfung:** `pio test -e native` (175, neu `test_stored_id_survives_pin_change`),
+  `pnpm typecheck`, redocly. Live-Umpinnen am Gerät: noch offen.
