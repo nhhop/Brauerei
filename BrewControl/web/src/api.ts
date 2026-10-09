@@ -1,4 +1,4 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo, PeripheralsInfo } from './types';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -585,6 +585,27 @@ export function updateBus(id: string, def: object): Promise<void> {
 
 export function deleteBus(id: string): Promise<void> {
   return deleteItem(`/api/buses/${encodeURIComponent(id)}`);
+}
+
+// ── Peripheral devices ───────────────────────────────────────────────────────
+
+export async function getPeripherals(): Promise<PeripheralsInfo> {
+  const r = await fetch('/api/peripherals');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as PeripheralsInfo;
+}
+
+// def: { type, bus, address, label? } — the firmware derives the id.
+export function createPeripheral(def: object): Promise<void> {
+  return postJson('/api/peripherals', def);
+}
+
+export function updatePeripheral(id: string, def: object): Promise<void> {
+  return putJson(`/api/peripherals/${encodeURIComponent(id)}`, def);
+}
+
+export function deletePeripheral(id: string): Promise<void> {
+  return deleteItem(`/api/peripherals/${encodeURIComponent(id)}`);
 }
 
 export async function scanBus(id: string): Promise<BusScanResult> {

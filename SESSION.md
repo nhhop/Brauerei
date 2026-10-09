@@ -1611,6 +1611,49 @@ reine Rastenliste.
   Aufguss-Sudhaus (4,3 l kochend), altes Rezept ohne Plan, 500 m, Aufteilen 30 %,
   Ziehen samt Sperre über den festen Schritten, 375 px ohne Querscrollen.
 
+## 2026-10-08 – 2026-10-09 — Peripherie-Abstraktion Etappe 3: externer DAC (MCP4728) (Branch `feat/peripherie-etappe-3`)
+
+Geräte, die Fähigkeiten nachrüsten: Ein MCP4728 (4 × 12-Bit-DAC, I²C) gibt Boards ohne
+eigenen DAC (LilyGo, Waveshare, StopWatch) echte Analogausgänge. Ein PR, je Etappe ein
+Commit.
+
+- **3a Library:** `core/DacOutput.h` (`rawMax()`, `write()`), neuer Konstruktor
+  `AnalogOutputActuator(id, DacOutput&)` mit `fault()` „DAC antwortet nicht“, eigener
+  Treiber `devices/MCP4728` (nur Multi-Write, Referenz VDD, Gain ×1, UDAC = 0, EEPROM nie
+  beschrieben). Native Tests über einen Test-Hook statt `TwoWire`-Stub (Muster ImuSensor).
+- **3b Firmware:** `DeviceConfig.h` (`kDeviceTypes`, Id `mcp4728-<bus>-<hh>`), Array
+  `devices` in `registry.json` (geladen zwischen Bussen und Items), `/api/peripherals`
+  (GET/POST/PUT/DELETE, Bus/Adresse nur ohne Nutzer). Kanal-Referenz
+  `"<Geräte-Id>:<Kanal>"` im `pin`-Feld eines AnalogOutput mit `mode:"dac"`; eine Zahl
+  bleibt der board-eigene DAC-Pin, keine Migration. `parsePinRef`, `PinUse.device`,
+  Prüfungen 400/409, Gerätekanäle sind keine GPIOs (Konflikte, Deep-Sleep-Hold) und
+  stehen in `GET /api/pins` unter `virtual`. Adressen je Bus gegen BME280/IMU geprüft,
+  das Gerät zählt als Bus-Nutzer. `Mcp4728Device` hält eine `Ref` auf seinen Bus, der
+  Aktor eine aufs Gerät; `PeripheralRegistry::release()` verschachtelt jetzt sicher
+  (Slot vor dem Erase herausgelöst). OpenAPI, README.
+- **3c Web:** Seite Einstellungen → Peripheriegeräte (`PeripheralsPage.tsx`: Karten mit
+  Kanälen und Nutzern, „Prüfen“ per Bus-Scan, Anlegen mit Bus und Adresse 0x60–0x67).
+  Im AnalogOutput-Formular PWM/DAC-Umschalter, sobald Board oder Gerät einen DAC hat
+  (`availableCaps`), im DAC-Modus Auswahl aus Board-DAC-Pins und Gerätekanälen
+  (`dacOutputs`), sonst ein Link auf die neue Seite. Bus-Seite nennt Geräte mit Namen.
+- **3d Hardware (LilyGo, MCP4728 am Qwiic-Stecker, Multimeter):** Kanäle A–D liefern
+  25/50/75/100 % von VDD (0,82 / 1,64 / 2,45 / 3,27 V bei 3,28 V), Zuordnung stimmt, UDAC = 0
+  reicht. `enabled:false` legt 0 V an, Werte und Gerät überstehen einen Kaltstart, die
+  Config nach dem Aufräumen ist identisch mit dem Backup. Display/Touch am selben Bus
+  liefen bei allen Tests weiter. **Befund und Fix:** Nach Abziehen und Wiederanstecken
+  startet der Chip mit seinen EEPROM-Werten (0 V); nur der danach beschriebene Kanal stand
+  wieder richtig, die anderen blieben still auf 0 V bei „ok“, und ohne Write fiel ein
+  fehlender Chip gar nicht auf. Jetzt schreibt `AnalogOutputActuator::tick()` einen
+  externen DAC jede Sekunde neu (`kRefreshMs`): Abziehen meldet an allen Kanälen binnen
+  1 s den Fehler (Alarm), danach stehen alle Spannungen wieder. Ein einmaliger
+  HTTP-Ausfall von zwei Minuten blieb unerklärt und nicht reproduzierbar (PLAN.md).
+- **PLAN.md:** Etappe 3 raus; offen bleiben Etappe 4 (Port-Expander) mit umformuliertem
+  Pin-Manager-Punkt, interne Referenz/Adresse des MCP4728, der S2-DAC-Nebenbefund
+  (`SOC_DAC_SUPPORTED`) und der HTTP-Ausfall; Flash-Eintrag auf 97,7 %.
+- **Prüfung:** Library 337/337, Firmware 169/169 nativ, alle fünf Envs bauen (esp32dev
+  97,7 %), Redocly-Lint, Web `typecheck`/`test` (273)/`build`, UI im Node-Mock und am
+  LilyGo (Prüfen „antwortet“, Scan benennt 0x60, Bearbeiten lädt den Kanal).
+
 ## 2026-10-09 — Maischen-Tab Etappe 3b: Effizienz-Kette, Läutermodell, Stammwürze kalt
 
 Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“ (NHC 2010) und

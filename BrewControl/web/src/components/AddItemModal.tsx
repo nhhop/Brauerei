@@ -7,7 +7,7 @@ import {
   setSensorLabel, setActuatorLabel, setControllerLabel,
   scanBus, startAutotune, stopAutotune, getPins, getBuses,
 } from '../api';
-import { riskyPins } from '../pins';
+import { availableCaps, dacOutputs, riskyPins } from '../pins';
 import { BUS_TYPE_LABEL, busTitle } from '../buses';
 import { PinHint } from './PinHint';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
@@ -835,8 +835,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             pulse_width_ms: width, gap_ms: gap, invert: pulseInvert,
           };
         } else if (actuatorType === 'AnalogOutput') {
-          const p = parseInt(analogPin, 10);
-          if (isNaN(p)) throw new Error('invalid pin');
+          // A GPIO number, or in DAC mode a device channel ref "<device>:<n>".
+          const raw = analogPin.trim();
+          let p: number | string = parseInt(raw, 10);
+          if (analogMode === 'dac' && raw.includes(':')) p = raw;
+          else if (isNaN(p)) throw new Error(analogMode === 'dac' ? 'Kein DAC-Ausgang gewählt' : 'invalid pin');
           cfg = { type: 'AnalogOutput', id: trimId, pin: p, mode: analogMode };
           if (analogShowRange) {
             const vmin = parseFloat(analogMin);
@@ -1004,6 +1007,19 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const lbl = 'block text-xs text-muted mb-1';
   // The edited item's own pins show as free in the hints.
   const selfId = isEdit ? String(editConfig!.id) : undefined;
+  // AnalogOutput: DAC outputs of the board and the peripheral devices.
+  const hasDac = availableCaps(pins).has('dac');
+  const dacOpts = dacOutputs(pins, selfId);
+  // A channel ref only fits DAC mode, a free GPIO number only PWM — on a mode
+  // switch keep the pin only if it fits, otherwise preselect the first free DAC.
+  function pickAnalogMode(m: 'pwm' | 'dac') {
+    setAnalogMode(m);
+    if (m === 'dac' && pins && !dacOpts.some((o) => o.value === analogPin)) {
+      setAnalogPin(dacOpts.find((o) => !o.taken)?.value ?? '');
+    } else if (m === 'pwm' && analogPin.includes(':')) {
+      setAnalogPin('');
+    }
+  }
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' :
@@ -1625,30 +1641,52 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* AnalogOutput fields */}
           {role === 'actuator' && actuatorType === 'AnalogOutput' && (
             <div class="space-y-3">
-              <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={analogPin}
-                  onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 25" class={inp} required />
-                <PinHint pins={pins} value={analogPin} selfId={selfId} output suggest
-                  onPick={(g) => setAnalogPin(String(g))} />
-              </div>
-              {/* DAC only where the board has one (the ESP32-S3 has none); an
-                  existing DAC item keeps the option so its mode stays visible. */}
-              {(!pins || pins.caps.dac || analogMode === 'dac') && (
+              {/* DAC only where the board (the ESP32-S3 has none) or a peripheral
+                  device has one; an existing DAC item keeps the option so its
+                  mode stays visible. */}
+              {(!pins || hasDac || analogMode === 'dac') && (
                 <div>
                   <label class={lbl}>Mode</label>
                   <div class="flex gap-2">
                     {(['pwm', 'dac'] as const).map((m) => (
-                      <button key={m} type="button" onClick={() => setAnalogMode(m)}
+                      <button key={m} type="button" onClick={() => pickAnalogMode(m)}
                         class={segBtn(analogMode === m)}>{m.toUpperCase()}</button>
                     ))}
                   </div>
-                  {analogMode === 'dac' && pins && (
+                </div>
+              )}
+              {analogMode === 'dac' && pins ? (
+                <div>
+                  <label class={lbl}>DAC-Ausgang</label>
+                  {dacOpts.length === 0 ? (
+                    <p class="text-xs text-caution">
+                      Kein DAC vorhanden — einen DAC-Baustein unter{' '}
+                      <a href="/settings/peripherals" class="underline">Einstellungen → Peripheriegeräte</a> anlegen.
+                    </p>
+                  ) : (
+                    <select value={analogPin} class={inp} required
+                      onChange={(e) => setAnalogPin((e.target as HTMLSelectElement).value)}>
+                      {!dacOpts.some((o) => o.value === analogPin) && <option value="">— wählen —</option>}
+                      {dacOpts.map((o) => (
+                        <option key={o.value} value={o.value} disabled={!!o.taken}>
+                          {o.label}{o.taken ? ` – ${o.taken}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label class={lbl}>GPIO Pin</label>
+                  <input type="number" value={analogPin}
+                    onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
+                    placeholder="z.B. 25" class={inp} required />
+                  <PinHint pins={pins} value={analogPin} selfId={selfId} output suggest
+                    onPick={(g) => setAnalogPin(String(g))} />
+                  {pins && !hasDac && (
                     <p class="mt-1 text-xs text-faint">
-                      {pins.caps.dac
-                        ? `DAC-Pins: ${pins.pins.filter((p) => p.dac).map((p) => p.gpio).join(', ')}`
-                        : 'Dieses Board hat keinen DAC.'}
+                      Echte Spannung statt PWM: einen DAC-Baustein unter{' '}
+                      <a href="/settings/peripherals" class="underline">Einstellungen → Peripheriegeräte</a> anlegen.
                     </p>
                   )}
                 </div>

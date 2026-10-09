@@ -111,6 +111,48 @@ export function suggestPins(
   return out;
 }
 
+// Capabilities beyond digital I/O that the board itself or a peripheral device
+// offers — today only 'dac'. The item form offers a mode only when something
+// can serve it.
+export function availableCaps(info: PinsInfo | null): Set<string> {
+  const out = new Set<string>();
+  if (info && (info.caps.dac || info.virtual?.some((v) => v.dac))) out.add('dac');
+  return out;
+}
+
+export interface DacOutputOption {
+  value: string; // value of the pin field: GPIO number as text, or a channel ref
+  label: string;
+  taken?: string; // why it cannot be picked
+}
+
+// Outputs for an AnalogOutput in DAC mode: the board's own DAC pins, then the
+// DAC channels of the peripheral devices. selfId: the edited item, whose own
+// output counts as free.
+export function dacOutputs(info: PinsInfo | null, selfId?: string): DacOutputOption[] {
+  if (!info) return [];
+  const out: DacOutputOption[] = [];
+  for (const p of info.pins) {
+    if (!p.dac) continue;
+    const s = pinStatus(info, p.gpio, { selfId, output: true });
+    out.push({
+      value: String(p.gpio),
+      label: `GPIO ${p.gpio} (Board-DAC)`,
+      taken: s.level === 'error' ? s.text : undefined,
+    });
+  }
+  for (const v of info.virtual ?? []) {
+    if (!v.dac) continue;
+    const others = v.users.filter((u) => u.id !== selfId);
+    out.push({
+      value: v.ref,
+      label: `${v.deviceLabel || v.device} · Kanal ${v.label}`,
+      taken: others.length ? `belegt von ${others.map(pinUserText).join(', ')}` : undefined,
+    });
+  }
+  return out;
+}
+
 // "GPIO n: reason" for every risky pin and every weak capability in an item
 // config or bus definition — the user has to confirm these before saving.
 export function riskyPins(info: PinsInfo | null, cfg: Record<string, unknown>): string[] {

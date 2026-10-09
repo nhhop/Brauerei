@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "DeviceConfig.h"
+
 namespace BrewControl {
 
 // GPIO bookkeeping for dynamic items: which pins a board has, which of them
@@ -18,6 +20,11 @@ namespace BrewControl {
 // pin owns it; anything else on the same pin is a conflict. Shared lines
 // (OneWire, SPI, I2C) belong to a bus definition (BusConfig.h), which the
 // items on it reference by id instead of repeating the pins.
+//
+// A pin field may also name a channel of a peripheral device
+// (DeviceConfig.h) as "<device id>:<channel>". Such a use has `device` set and
+// its channel in `gpio`; it occupies no GPIO, so everything that touches real
+// pins skips it.
 
 enum class PinClass : uint8_t {
   Free,
@@ -69,7 +76,37 @@ struct PinUse {
   bool analog;      // read with analogRead()
   bool pullup;      // relies on the internal pull-up
   bool irq;         // attachInterrupt() on this pin
+  std::string device;         // device id for a device channel, empty for a GPIO
+  const char* cap = nullptr;  // capability a device channel must offer ("dac");
+                              // nullptr: this key takes GPIOs only
 };
+
+// A pin field: a GPIO number, or "<device id>:<channel>". index < 0: the
+// field is absent, negative or malformed.
+struct PinRef {
+  std::string device;  // empty: index is a GPIO
+  int index = -1;
+};
+
+inline PinRef parsePinRef(JsonVariantConst v) {
+  PinRef r;
+  if (v.is<int>()) {
+    r.index = v.as<int>();
+    return r;
+  }
+  const char* s = v.as<const char*>();
+  if (!s) return r;
+  const char* colon = strrchr(s, ':');
+  if (!colon || colon == s || !colon[1]) return r;
+  int n = 0;
+  for (const char* p = colon + 1; *p; ++p) {
+    if (*p < '0' || *p > '9' || n > 255) return r;
+    n = n * 10 + (*p - '0');
+  }
+  r.device.assign(s, colon - s);
+  r.index = n;
+  return r;
+}
 
 struct PinCheck {
   bool ok = true;
@@ -130,17 +167,18 @@ inline const char* pinClassName(PinClass c) {
 // Appends the GPIOs one item config occupies. Keys mirror
 // DynamicItems::add{Sensor,Actuator}NoBegin; types without pins of their own
 // (remote, MQTT, controllers, BME280/GY521/DS18B20 on a bus) add nothing.
-// Bus lines are counted once, for the bus (BusConfig.h busPinUses).
+// Bus lines are counted once, for the bus (BusConfig.h busPinUses). A device
+// channel in any pin field is collected too, with the capability the key
+// needs (nullptr: none, so checkPinUses refuses it).
 inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
   const char* type = cfg["type"] | "";
   const char* id   = cfg["id"]   | "";
   enum : uint8_t { Out = 1, Rmt = 2, Analog = 4, Pullup = 8, Irq = 16 };
-  auto add = [&](const char* key, uint8_t f = 0) {
-    if (!cfg[key].is<int>()) return;
-    const int gpio = cfg[key].as<int>();
-    if (gpio < 0) return;
-    out.push_back({id, key, gpio, false, (f & Out) != 0, (f & Rmt) != 0,
-                   (f & Analog) != 0, (f & Pullup) != 0, (f & Irq) != 0});
+  auto add = [&](const char* key, uint8_t f = 0, const char* cap = nullptr) {
+    const PinRef ref = parsePinRef(cfg[key]);
+    if (ref.index < 0) return;
+    out.push_back({id, key, ref.index, false, (f & Out) != 0, (f & Rmt) != 0,
+                   (f & Analog) != 0, (f & Pullup) != 0, (f & Irq) != 0, ref.device, cap});
   };
   auto is = [&](const char* t) { return strcmp(type, t) == 0; };
 
@@ -158,8 +196,11 @@ inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
   } else if (is("HX711")) {
     add("dout");
     add("sck", Out);
-  } else if (is("DigitalOutput") || is("PulseOutput") || is("AnalogOutput")) {
+  } else if (is("DigitalOutput") || is("PulseOutput")) {
     add("pin", Out);
+  } else if (is("AnalogOutput")) {
+    // Only DAC mode may sit on a device channel; PWM needs an LEDC pin.
+    add("pin", Out, strcmp(cfg["mode"] | "", "dac") == 0 ? "dac" : nullptr);
   } else if (is("IDS1") || is("IDS2")) {
     add("pin_white", Out);
     add("pin_yellow", Out | Rmt);
@@ -181,9 +222,12 @@ inline size_t rmtItems(const std::vector<PinUse>& uses, const std::string& exclu
 
 // Checks the pins of one new or replacing item or bus (mine) against the
 // board and the pins already in use. replaceId names the item or bus being
-// replaced, whose own pins do not count as taken.
+// replaced, whose own pins do not count as taken. A device channel is checked
+// against devices: the device must exist and offer the capability and the
+// channel, and the channel must be free.
 inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
-                             const std::vector<PinUse>& mine, const char* replaceId = "") {
+                             const std::vector<PinUse>& mine, const char* replaceId = "",
+                             const std::vector<DeviceDef>& devices = {}) {
   PinCheck r;
   auto fail = [&](int status, const std::string& msg) {
     r.ok = false;
@@ -195,6 +239,24 @@ inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
 
   for (size_t i = 0; i < mine.size(); ++i) {
     const PinUse& u = mine[i];
+    if (!u.device.empty()) {
+      const std::string ref = u.device + ":" + std::to_string(u.gpio);
+      if (!u.cap) return fail(400, std::string(u.key) + " needs a GPIO, not device channel " + ref);
+      const DeviceDef* d = findDeviceDef(devices, u.device);
+      if (!d) return fail(400, "unknown device " + u.device);
+      if (strcmp(d->type->provides.cap, u.cap) != 0)
+        return fail(400, d->id + " has no " + u.cap + " channels");
+      if (u.gpio >= d->type->provides.count) return fail(400, ref + " does not exist");
+      for (size_t j = 0; j < i; ++j) {
+        if (mine[j].device == u.device && mine[j].gpio == u.gpio)
+          return fail(400, ref + " used twice (" + mine[j].key + ", " + u.key + ")");
+      }
+      for (const PinUse& e : uses) {
+        if (e.item == replace || e.device != u.device || e.gpio != u.gpio) continue;
+        return fail(409, ref + " already used by " + e.item + " (" + e.key + ")");
+      }
+      continue;
+    }
     const std::string g = "GPIO " + std::to_string(u.gpio);
     if (!pinExists(b, u.gpio)) return fail(400, g + " does not exist on this board");
     const char* note = "";
@@ -204,11 +266,11 @@ inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
     if (u.output && (b.inputOnly & pinBit(u.gpio)))
       return fail(400, g + " is input-only (" + u.key + ")");
     for (size_t j = 0; j < i; ++j) {
-      if (mine[j].gpio == u.gpio)
+      if (mine[j].device.empty() && mine[j].gpio == u.gpio)
         return fail(400, g + " used twice (" + mine[j].key + ", " + u.key + ")");
     }
     for (const PinUse& e : uses) {
-      if (e.item == replace || e.gpio != u.gpio) continue;
+      if (e.item == replace || !e.device.empty() || e.gpio != u.gpio) continue;
       return fail(409, g + " already used by " + (e.bus ? "bus " : "") + e.item +
                            " (" + e.key + ")");
     }
@@ -237,14 +299,18 @@ inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
 // Checks a new or replacing item config against the board and the pins
 // already in use (see checkPinUses).
 inline PinCheck checkItemPins(const Board& b, const std::vector<PinUse>& uses,
-                              JsonObjectConst cfg, const char* replaceId = "") {
+                              JsonObjectConst cfg, const char* replaceId = "",
+                              const std::vector<DeviceDef>& devices = {}) {
   std::vector<PinUse> mine;
   collectPins(cfg, mine);
-  PinCheck r = checkPinUses(b, uses, mine, replaceId);
+  PinCheck r = checkPinUses(b, uses, mine, replaceId, devices);
   if (!r.ok) return r;
 
   const char* type = cfg["type"] | "";
-  if (strcmp(type, "AnalogOutput") == 0 && strcmp(cfg["mode"] | "", "dac") == 0) {
+  // A device channel already passed checkPinUses as a DAC; a GPIO number
+  // means the board's own DAC, as before devices existed.
+  if (strcmp(type, "AnalogOutput") == 0 && strcmp(cfg["mode"] | "", "dac") == 0 &&
+      parsePinRef(cfg["pin"]).device.empty()) {
     const int pin = cfg["pin"] | -1;
     if (!(b.dac & pinBit(pin))) {
       r.ok = false;
@@ -278,7 +344,8 @@ inline PinCheck checkWakePin(const Board& b, const std::vector<PinUse>& uses, in
 // Conflicts already present in a loaded config: two users on one
 // GPIO, an item on a pin the board reserves or forbids, or an analog input
 // without a usable ADC (reason is shown in the UI as is). Risky pins are not
-// conflicts — the pin list shows them.
+// conflicts — the pin list shows them. Device channels are not GPIOs and are
+// skipped.
 inline std::vector<PinConflict> findPinConflicts(const Board& b,
                                                  const std::vector<PinUse>& uses) {
   std::vector<PinConflict> out;
@@ -294,6 +361,7 @@ inline std::vector<PinConflict> findPinConflicts(const Board& b,
   };
   for (size_t i = 0; i < uses.size(); ++i) {
     const PinUse& u = uses[i];
+    if (!u.device.empty()) continue;
     const char* note = "";
     const PinClass cls = classifyPin(b, u.gpio, &note);
     if (!pinExists(b, u.gpio)) {
@@ -305,7 +373,7 @@ inline std::vector<PinConflict> findPinConflicts(const Board& b,
     }
     for (size_t j = 0; j < i; ++j) {
       const PinUse& e = uses[j];
-      if (e.gpio != u.gpio) continue;
+      if (!e.device.empty() || e.gpio != u.gpio) continue;
       PinConflict& c = entry(u.gpio, "mehrfach belegt");
       addUser(c, &e);
       addUser(c, &u);
@@ -316,8 +384,11 @@ inline std::vector<PinConflict> findPinConflicts(const Board& b,
 
 // GET /api/pins body: every GPIO the chip has, with class, capabilities and
 // the items using it, plus the conflicts found in the current config.
+// "virtual" lists the channels of the peripheral devices; caps.dac stays the
+// board's own DAC.
 inline void writePinsJson(const Board& b, const char* boardName,
-                          const std::vector<PinUse>& uses, JsonObject out) {
+                          const std::vector<PinUse>& uses, JsonObject out,
+                          const std::vector<DeviceDef>& devices = {}) {
   out["board"] = boardName;
   JsonObject caps = out["caps"].to<JsonObject>();
   caps["dac"] = b.dac != 0;
@@ -356,7 +427,24 @@ inline void writePinsJson(const Board& b, const char* boardName,
     if (b.rtc & pinBit(g)) p["rtc"] = true;
     JsonArray users = p["users"].to<JsonArray>();
     for (const PinUse& u : uses)
-      if (u.gpio == g) writeUsers(users, u);
+      if (u.device.empty() && u.gpio == g) writeUsers(users, u);
+  }
+
+  JsonArray virt = out["virtual"].to<JsonArray>();
+  for (const DeviceDef& d : devices) {
+    const DeviceCap& c = d.type->provides;
+    for (int i = 0; i < c.count; ++i) {
+      JsonObject v = virt.add<JsonObject>();
+      v["ref"] = d.id + ":" + std::to_string(i);
+      v["device"] = d.id;
+      if (!d.label.empty()) v["deviceLabel"] = d.label;
+      v["index"] = i;
+      v["label"] = std::string(1, c.channelNames[i]);
+      v[c.cap] = true;
+      JsonArray users = v["users"].to<JsonArray>();
+      for (const PinUse& u : uses)
+        if (u.device == d.id && u.gpio == i) writeUsers(users, u);
+    }
   }
 
   JsonArray conflicts = out["conflicts"].to<JsonArray>();

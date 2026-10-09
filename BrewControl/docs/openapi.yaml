@@ -89,6 +89,11 @@ tags:
       Bus definitions (OneWire, SPI, I2C) and scanning them for attached
       devices. Items on a bus (DS18B20, MAX31865, BME280, the IMUs GY521/QMI8658/BMI270/BMI160) reference it
       by id (`bus`) instead of carrying the bus pins themselves.
+  - name: Peripherals
+    description: |
+      Peripheral devices: chips on a defined bus that offer capabilities to
+      items, e.g. an MCP4728 with four DAC channels. Items reference a channel
+      in a pin field as `"<device id>:<channel>"` instead of a GPIO number.
   - name: Remote Discovery
     description: |
       Find the sensors and actuators other SensActCtrl/BrewControl devices
@@ -914,7 +919,8 @@ paths:
         Every bus: the board's fixed ones first (`fixed: true`, e.g. the
         LilyGo's I2C bus of RTC, touch and PMU, with the addresses those
         occupy in `reserved`), then the user-defined ones in the order they
-        were added. `users` are the items referencing the bus. `types` lists
+        were added. `users` are the items and peripheral devices
+        (`/api/peripherals`) referencing the bus. `types` lists
         the bus types that can be defined, with their pin keys and how many
         the chip supports (`max`; I2C: 2 controllers, a fixed bus counts).
       responses:
@@ -1001,7 +1007,7 @@ paths:
             text/plain: { schema: { type: string } }
         "409":
           description: >-
-            `bus i2c-1-2 is used by ambient, tilt`, `bus i2c-board is wired by
+            `bus i2c-1-2 is used by ambient, mcp4728-i2c-1-2-60`, `bus i2c-board is wired by
             the board`, or a pin conflict as for `POST /api/buses`.
           content:
             text/plain: { schema: { type: string } }
@@ -1058,6 +1064,127 @@ paths:
             text/plain: { schema: { type: string } }
         "404":
           description: Body is `bus not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+
+  # ── Peripherals ────────────────────────────────────────────────────────────
+  /api/peripherals:
+    get:
+      tags: [Peripherals]
+      operationId: getPeripherals
+      summary: List the peripheral devices and the device types
+      description: |
+        Every defined device in the order it was added, with its channels and
+        the items using each. `types` lists what can be defined: the bus type
+        a device sits on, its address range and what it offers (`cap`, `count`
+        channels named by the characters of `channels`). Whether a device
+        answers is not tracked here: scan its bus (`GET /api/bus/scan`) and
+        look for its address; a failing write shows as the actuator's `fault`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Devices and types.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PeripheralsInfo" }
+    post:
+      tags: [Peripherals]
+      operationId: createPeripheral
+      summary: Define a peripheral device
+      description: |
+        The id is derived from type, bus and address (`mcp4728-i2c-board-60`);
+        an `id` in the body is ignored. The address defaults to the type's
+        factory address and is checked like an item's I2C address: it must be
+        free on the bus and not reserved by an onboard device. The device
+        then counts as a user of its bus. Nothing is written to the chip
+        until an item drives a channel. Persists to `/config/registry.json`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PeripheralCreate" }
+            example: { type: mcp4728, bus: i2c-board, address: 96, label: DAC Kessel }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusId" }
+        "400":
+          description: >-
+            Body is `unknown device type`, `missing bus`, `address must be
+            0x60..0x67`, `label too long`, `unknown bus i2c-1-2`, `bus has the
+            wrong type` or `invalid JSON`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            The device exists already (`device mcp4728-i2c-board-60 already
+            exists`), or its address is taken on the bus (`0x60 already used
+            by ambient`) or reserved there by an onboard device.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+
+  /api/peripherals/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+        example: mcp4728-i2c-board-60
+    put:
+      tags: [Peripherals]
+      operationId: replacePeripheral
+      summary: Change a peripheral device
+      description: |
+        Full definition, same shape as `POST /api/peripherals`; the type
+        cannot change. The label can always change. A new bus or address
+        gives the device a new id and is only accepted while no item uses one
+        of its channels.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PeripheralCreate" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Changed; `id` is the (possibly new) id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusId" }
+        "400":
+          description: Same reasons as `POST /api/peripherals`, plus `device type cannot change`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `device not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            `device mcp4728-i2c-board-60 is used by boil`, or an address
+            conflict as for `POST /api/peripherals`.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+    delete:
+      tags: [Peripherals]
+      operationId: deletePeripheral
+      summary: Delete a peripheral device
+      description: Only while no item uses one of its channels.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404":
+          description: Body is `device not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: Body is `device mcp4728-i2c-board-60 is used by boil`.
           content:
             text/plain: { schema: { type: string } }
         "503": { $ref: "#/components/responses/RegistryBusy" }
@@ -1223,7 +1350,8 @@ paths:
       description: |
         Returns each item's original creation body verbatim (the same shape that
         was POSTed to `/api/sensors`, `/api/actuators`, `/api/controllers`),
-        plus the user-defined buses (`/api/buses`, stored form). Used by the
+        plus the user-defined buses (`/api/buses`) and the peripheral devices
+        (`/api/peripherals`), both in stored form. Used by the
         edit UI to prefill forms. Statically compiled items and the board's
         fixed buses are not included.
 
@@ -1281,6 +1409,11 @@ paths:
         preset for the battery sensor the energy settings page can create.
         The deep-sleep wake pin (`energy.wakePin`) shows up as user
         `{id: energy, key: wake_pin}`; it must be an RTC GPIO (`rtc`).
+        `virtual` lists the channels of the peripheral devices
+        (`/api/peripherals`) with their users; such a channel is never a GPIO
+        and never appears under `pins`. `caps.dac` stays the board's own DAC:
+        a DAC is available if `caps.dac` is true or some `virtual` channel has
+        `dac`.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -3241,7 +3374,8 @@ components:
         `GPIO 7 is reserved by the board (I2C SDA (Touch, RTC, PMU))`, or for IDS
         cookers `no free RMT channel (4 in use)`. Every pin has one user; items
         share bus lines by referencing the bus (`bus`), see `GET /api/pins` and
-        `/api/buses`.
+        `/api/buses`. A device channel is taken the same way:
+        `mcp4728-i2c-board-60:1 already used by boil (pin)`.
 
         For BME280 and the IMUs only, a separate 409 covers the I2C *address* (not a
         pin), per bus: `0x51 is reserved on bus i2c-board (RTC (PCF8563))`, or
@@ -3662,8 +3796,21 @@ components:
           enum: [DigitalOutput, AnalogOutput, PulseOutput, IDS1, IDS2, MqttGeneric, Remote]
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
-        pin: { type: integer }
-        mode: { type: string, description: "e.g. `Binary` or `TPO`." }
+        pin:
+          description: |
+            A GPIO number. `AnalogOutput` with `mode: dac` also takes a DAC
+            channel of a peripheral device as `"<device id>:<channel>"`
+            (`GET /api/pins` → `virtual`); a number there still means the
+            board's own DAC pin. Every other type and `mode: pwm` refuse a
+            device channel with 400 (`pin needs a GPIO, not device channel …`);
+            an unknown device, a channel the device does not have or a device
+            without DAC channels are 400 too, a taken channel 409. Firmware
+            older than this reads such a string as GPIO 0: delete these
+            actuators (or restore the earlier backup) before a downgrade.
+          oneOf:
+            - { type: integer }
+            - { type: string, pattern: '^.+:[0-9]+$', example: 'mcp4728-i2c-board-60:0' }
+        mode: { type: string, description: "e.g. `Binary` or `TPO`; AnalogOutput `pwm` (default) or `dac`." }
         invert: { type: boolean, description: "Active-low. Also PulseOutput (active-low pulses)." }
         period_ms: { type: integer, description: TPO cycle length. }
         pulse_width_ms: { type: integer, description: "Pulse-on duration, ms (PulseOutput, default 50)." }
@@ -3748,12 +3895,14 @@ components:
       type: object
       required: [buses, sensors, actuators, controllers]
       description: |
-        The stored creation bodies of all dynamic items, verbatim, and the
-        user-defined buses (without the board's fixed ones). `buses` may be
-        absent in bundles from older firmware; such configs are migrated on
-        load (see `GET /api/config`).
+        The stored creation bodies of all dynamic items, verbatim, the
+        user-defined buses (without the board's fixed ones) and the peripheral
+        devices. `buses` may be absent in bundles from older firmware; such
+        configs are migrated on load (see `GET /api/config`). `devices` is
+        absent in bundles from before peripheral devices existed.
       properties:
         buses: { type: array, items: { $ref: "#/components/schemas/BusStored" } }
+        devices: { type: array, items: { $ref: "#/components/schemas/PeripheralStored" } }
         sensors: { type: array, items: { $ref: "#/components/schemas/SensorCreate" } }
         actuators: { type: array, items: { $ref: "#/components/schemas/ActuatorCreate" } }
         controllers: { type: array, items: { $ref: "#/components/schemas/ControllerCreate" } }
@@ -3776,7 +3925,7 @@ components:
           type: object
           required: [dac, rmtTx, rmtUsed, adc2Wifi]
           properties:
-            dac: { type: boolean, description: Board has a DAC (ESP32-S3 has none). }
+            dac: { type: boolean, description: 'Board has its own DAC (ESP32-S3 has none). Peripheral DAC channels are listed in `virtual`, not here.' }
             rmtTx: { type: integer, description: 'RMT channels able to transmit — one per IDS cooker.' }
             rmtUsed: { type: integer, description: IDS cookers configured. }
             adc2Wifi:
@@ -3810,6 +3959,20 @@ components:
               gpio: { type: integer }
               reason: { type: string, description: 'e.g. `mehrfach belegt`, `kein ADC`, `ADC2 – bei WLAN nicht nutzbar` or the note of a reserved pin.' }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
+        virtual:
+          type: array
+          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728.
+          items:
+            type: object
+            required: [ref, device, index, label, users]
+            properties:
+              ref: { type: string, description: 'What a pin field takes: `"<device>:<index>"`.' }
+              device: { type: string, description: Device id. }
+              deviceLabel: { type: string, description: The device's label; absent when it has none. }
+              index: { type: integer, description: Channel number from 0. }
+              label: { type: string, description: 'Channel name, e.g. `A`..`D`.' }
+              dac: { type: boolean, description: The channel is a DAC output. }
+              users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         battery:
           type: object
           required: [gpio, r1, r2]
@@ -3828,6 +3991,9 @@ components:
           - { gpio: 9, class: reserved, note: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
         conflicts:
           - { gpio: 9, reason: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
+        virtual:
+          - { ref: "mcp4728-i2c-board-60:0", device: mcp4728-i2c-board-60, deviceLabel: DAC Kessel, index: 0, label: A, dac: true, users: [{ id: boil, key: pin }] }
+          - { ref: "mcp4728-i2c-board-60:1", device: mcp4728-i2c-board-60, deviceLabel: DAC Kessel, index: 1, label: B, dac: true, users: [] }
 
     # ── Buses ────────────────────────────────────────────────────────────────
     BusCreate:
@@ -3889,7 +4055,7 @@ components:
                       properties:
                         address: { type: string, description: '`"0xNN"`' }
                         note: { type: string }
-                  users: { type: array, items: { type: string }, description: Ids of the items on this bus. }
+                  users: { type: array, items: { type: string }, description: Ids of the items and peripheral devices on this bus. }
         types:
           type: array
           items:
@@ -3916,6 +4082,78 @@ components:
           - { type: onewire, pins: [pin] }
           - { type: spi, pins: [clk, miso, mosi] }
           - { type: i2c, pins: [sda, scl], max: 2 }
+
+    # ── Peripherals ──────────────────────────────────────────────────────────
+    PeripheralCreate:
+      type: object
+      required: [type, bus]
+      description: A peripheral device definition.
+      properties:
+        type: { type: string, enum: [mcp4728] }
+        bus: { type: string, description: 'Id of the bus it sits on (`GET /api/buses`); its type must match the device type (MCP4728: `i2c`).' }
+        address: { type: integer, minimum: 96, maximum: 103, description: 'I2C address, 0x60..0x67 for the MCP4728; default 0x60 (factory).' }
+        label: { type: string, maxLength: 32, description: Optional name shown in the UI. }
+
+    PeripheralStored:
+      description: A device as stored in `registry.json` (and in `ConfigSnapshot`).
+      allOf:
+        - $ref: "#/components/schemas/PeripheralCreate"
+        - type: object
+          required: [id, address]
+          properties:
+            id: { type: string, description: 'Derived from type, bus and address: `mcp4728-i2c-board-60`.' }
+
+    PeripheralsInfo:
+      type: object
+      required: [devices, types]
+      properties:
+        devices:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/PeripheralStored"
+              - type: object
+                required: [cap, channels]
+                properties:
+                  cap: { type: string, enum: [dac], description: What the channels offer. }
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      required: [index, name, users]
+                      properties:
+                        index: { type: integer }
+                        name: { type: string, description: 'Channel name, e.g. `A`.' }
+                        users: { type: array, items: { type: string }, description: Ids of the items driving this channel. }
+        types:
+          type: array
+          items:
+            type: object
+            required: [type, bus, addrFirst, addrLast, addrDefault, cap, count, channels]
+            properties:
+              type: { type: string }
+              bus: { type: string, description: Bus type it sits on. }
+              addrFirst: { type: integer }
+              addrLast: { type: integer }
+              addrDefault: { type: integer, description: Factory address. }
+              cap: { type: string }
+              count: { type: integer, description: Number of channels. }
+              channels: { type: string, description: 'One character per channel name, e.g. `ABCD`.' }
+      example:
+        devices:
+          - id: mcp4728-i2c-board-60
+            type: mcp4728
+            label: DAC Kessel
+            bus: i2c-board
+            address: 96
+            cap: dac
+            channels:
+              - { index: 0, name: A, users: [boil] }
+              - { index: 1, name: B, users: [] }
+              - { index: 2, name: C, users: [] }
+              - { index: 3, name: D, users: [] }
+        types:
+          - { type: mcp4728, bus: i2c, addrFirst: 96, addrLast: 103, addrDefault: 96, cap: dac, count: 4, channels: ABCD }
 
     # ── Bus discovery ────────────────────────────────────────────────────────
     BusScanResult:
