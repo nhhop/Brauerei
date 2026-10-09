@@ -205,9 +205,31 @@ void EspNowTransport::tick() {
     retainedRequestPending_ = false;
     sendRetainedRequest_();
   }
+
+  for (;;) {
+    Incoming in;
+    {
+      std::lock_guard<std::mutex> lock(incomingMutex_);
+      if (incoming_.empty()) break;
+      in = incoming_.front();
+      incoming_.pop_front();
+    }
+    processIncoming_(in.mac, in.data, in.len);
+  }
 }
 
 void EspNowTransport::dispatchIncoming(const uint8_t* mac, const uint8_t* data,
+                                       int length) {
+  if (length < 1 || length > static_cast<int>(sizeof(Incoming::data))) return;
+  Incoming in;
+  if (mac) std::memcpy(in.mac, mac, 6); else std::memset(in.mac, 0, 6);
+  in.len = static_cast<uint8_t>(length);
+  std::memcpy(in.data, data, length);
+  std::lock_guard<std::mutex> lock(incomingMutex_);
+  if (incoming_.size() < kIncomingQueueSize) incoming_.push_back(in);
+}
+
+void EspNowTransport::processIncoming_(const uint8_t* mac, const uint8_t* data,
                                        int length) {
   if (length < 1) return;
   switch (data[0]) {
@@ -267,6 +289,7 @@ bool EspNowTransport::sendDataPacket_(const char*, const char*, const uint8_t*) 
 bool EspNowTransport::ensurePeer_(const EspNowPeerTable::Mac&) { return false; }
 void EspNowTransport::sendRetainedRequest_() {}
 void EspNowTransport::handleRetainedRequest_() {}
+void EspNowTransport::processIncoming_(const uint8_t*, const uint8_t*, int) {}
 void EspNowTransport::requestRetained_() {}
 
 }  // namespace SensActCtrl

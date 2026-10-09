@@ -1775,3 +1775,19 @@ Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“
   Am LilyGo (S3) mit 4,7-kΩ-Teiler an GPIO 5 (≈1,65 V): vorher 1,66 V, nachher 1,66 V — der
   S3-Core liest schon 12 Bit, der Fix ändert dort nichts.
 - **PLAN.md:** S2-DAC-Punkt raus.
+
+## 2026-10-09 — ESP-NOW: eingehende Pakete unter RegistryLock zustellen
+
+- **Root Cause:** `EspNowTransport::dispatchIncoming` lief im WiFi-Task und rief die
+  Subscriber-Callbacks direkt auf — für `/set` also `Actuator::write()` ohne `RegistryLock`,
+  parallel zu `registry.tick()`. Gleiches für `retained_`/`subs_` bei Retained-Requests.
+- **Umsetzung:** `dispatchIncoming` kopiert das Paket nur noch in eine begrenzte Queue
+  (16 Einträge, bei voll wird das neueste verworfen); `tick()` leert sie und ruft die
+  unveränderte Logik als `processIncoming_()` auf. `tick()` läuft in `loop()` unter dem Lock
+  (`tickTransports()`), wie bei MQTT/WebSocket.
+- **Prüfung:** Library 358/358 nativ, `esp32dev` und `lolin_s2_mini` bauen. Der Native-Stub hat
+  kein ESP-NOW, die Queue ist nur am Gerät prüfbar. Zwei S2 (`brewcontrol-lolin` mit
+  Test-DigitalOutput `entest` auf GPIO 5, `brewcontrol-brautomat` mit Remote-Aktor darauf, beide
+  per OTA): Retained-Sync nach Reboot (Discovery fand alle Items), `/set` 1/0/1/0 kam jeweils an
+  (Target + State folgen), 40 `/set` im Burst ohne Absturz (`resetReason` blieb `sw`). Den
+  TPO-Überschreib-Race selbst nicht gezielt provoziert. Test-Items danach gelöscht.
