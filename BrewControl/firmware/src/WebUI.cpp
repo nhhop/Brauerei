@@ -69,6 +69,8 @@ constexpr size_t kMaxBodyBytes = 16384;
 // Brewhouse configuration of the recipe package (SD boards only).
 constexpr const char* kBrewhouseDir = "/brewhouses";
 constexpr const char* kBreweryFile = "/brewery.json";
+// Mash profiles (rest sequences of the recipe editor), not the controller programs.
+constexpr const char* kMashProfileDir = "/mashprofiles";
 #endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
@@ -1903,6 +1905,46 @@ void WebUI::begin(bool serve) {
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/brewhouses/"));
         if (!JsonDocDir::remove(fs_, kBrewhouseDir, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // ── Mash profiles ───────────────────────────────────────────────────────────
+  // One file per profile, /mashprofiles/<id>.json, no index (JsonDocDir.h). Not
+  // to be confused with the controller programs under /api/profiles.
+  server_.on(AsyncURIMatcher::exact("/api/mash-profiles"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", JsonDocDir::list(fs_, kMashProfileDir).c_str());
+  });
+
+  // PUT /api/mash-profiles/:id — create or replace; the id is chosen by the client
+  server_.addHandler(new PutJsonPrefixHandler("/api/mash-profiles/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(strlen("/api/mash-profiles/"));
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, kMashProfileDir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // DELETE /api/mash-profiles/:id
+  server_.addHandler(new DeletePrefixHandler("/api/mash-profiles/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/mash-profiles/"));
+        if (!JsonDocDir::remove(fs_, kMashProfileDir, id.c_str())) {
           req->send(404, "text/plain", "not found");
           return;
         }

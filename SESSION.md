@@ -1791,3 +1791,34 @@ Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“
   per OTA): Retained-Sync nach Reboot (Discovery fand alle Items), `/set` 1/0/1/0 kam jeweils an
   (Target + State folgen), 40 `/set` im Burst ohne Absturz (`resetReason` blieb `sw`). Den
   TPO-Überschreib-Race selbst nicht gezielt provoziert. Test-Items danach gelöscht.
+## 2026-10-09 — Maischen-Tab Etappe 3c: Maischprofile
+
+Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit nach den Sudhäusern.
+
+- **Firmware:** `GET /api/mash-profiles`, `PUT`/`DELETE /api/mash-profiles/:id` über `JsonDocDir`
+  (`/mashprofiles/<id>.json`, nur SD, kein Index), Prüfung nur der `id`. Die Reglerprogramme
+  unter `/api/profiles` bleiben unberührt; im Code heißt das Ding `mashProfile`. `WebUI.h`,
+  `openapi.yaml` (Tag „Mash profiles“, Schema `MashProfile`) und `README.md` im selben Zug.
+- **Modell** (`web/src/mashProfiles.ts`): Name, Verfahren (freier Text), Beschreibung, `doughIn`
+  (Temperatur, Dauer) und `steps` (nur Rast/Zubrühen mit Name, Temperatur, Dauer). **Abweichung vom
+  Plan, bewusst:** Das feste Einmaischen gehört nicht als Schritt ins Profil, aber seine Temperatur
+  und Dauer sind die erste Rast der Folge (Weizen: 45 °C zuerst), sonst ließen sich Weizen- und
+  Eiweißrastprofile nicht abbilden. Laden setzt sie am festen Einmaischen und ersetzt alle weiteren
+  Schritte; Zubrühen kommt mit Siedepunkt-Wasser (`lead: 'temp'`). Die Einmaisch-Schritte weiterer
+  Schüttungen entfallen, die Bestätigung nennt sie.
+- **Mitgeliefert:** Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit
+  Eiweißrast, Kombirast 66 °C, im Web-UI eingebaut und schreibgeschützt, nicht auf der SD.
+  Die Werte sind Richtwerte aus gängiger Praxis und einem Artikel zu Hochkurz (`TODO(verify)`, PLAN.md).
+- **UI:** `MashProfileDialog.tsx` (Liste, Editor, Duplizieren, Löschen, „Plan als Profil
+  speichern“), im Maischeplan der Split-Button „Profile ▾“ (Pfeil lädt direkt, mit Bestätigung).
+  Fällt die SD aus, bleiben die mitgelieferten Profile ladbar, Speichern/Duplizieren sind gesperrt.
+- **Doku:** Konzept-Doc (Stand 3c, Ablage, Laden/Speichern), PLAN.md (3c erledigt; Backup der
+  Maischprofile beim Sudhaus-Backup-Punkt; Richtwerte der mitgelieferten Profile).
+- **Prüfung:** `pnpm test` (319, neu `mashProfiles.test.ts`: mitgelieferte Profile, Laden,
+  Speichern aus dem Plan, Round-Trip, API), `typecheck`, `build`, redocly (nur die bekannte
+  info-license-Warnung); `pio test -e native` (174), `pio run -e lilygo_t_display_s3_amoled`
+  (32,2 %) und `-e esp32dev` (**97,9 % Flash, 1 860 097 von 1 900 544 Byte, 40 447 Byte frei**,
+  prozentual unverändert gegenüber dem Stand vor 3c). Im Node-Mock: Laden mit Bestätigung,
+  Duplizieren, Speichern aus dem Plan, Löschen, 375 px ohne Querscrollen, SD-Fehlerfall. Am LilyGo
+  (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
+  DELETE → 404.
