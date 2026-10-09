@@ -1768,8 +1768,10 @@ Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“
   Ein erster Lauf mit schlecht steckendem Draht zeigte Rail-to-Rail-Rauschen und wäre als „PWM“
   fehlzudeuten gewesen — ohne Glättung messen und die Verdrahtung prüfen.
 - **Nebenfund, gleich mitgefixt:** `AnalogInputSensor` rechnet mit Rohwerten 0–4095, der S2-Core
-  (und der S3) liest aber standardmäßig 13 Bit — die Anzeige lag auf doppelter Skala (DAC 3,3 V →
+  liest aber standardmäßig 13 Bit — die Anzeige lag auf doppelter Skala (DAC 3,3 V →
   6,6). `begin()` setzt jetzt `analogReadResolution(12)` (ESP32 war schon 12 Bit). Erneut am S2
   gemessen: 0 → 0,10, 0,825 → 1,05, 1,65 → 2,03, 2,475 → 3,00, 3,3 → 3,30 V; der Rest ist
   ADC-Kennlinie (Offset unten, Sättigung oben), keine Skalenabweichung mehr.
+  Am LilyGo (S3) mit 4,7-kΩ-Teiler an GPIO 5 (≈1,65 V): vorher 1,66 V, nachher 1,66 V — der
+  S3-Core liest schon 12 Bit, der Fix ändert dort nichts.
 - **PLAN.md:** S2-DAC-Punkt raus.
