@@ -3,9 +3,10 @@
 
 #if defined(ARDUINO)
   #include <Arduino.h>
-  // dacWrite is only available on the original ESP32 (GPIO 25/26 DAC).
-  // ESP32-S2 and ESP32-S3 have no DAC peripheral.
-  #if defined(CONFIG_IDF_TARGET_ESP32)
+  #include <soc/soc_caps.h>
+  // dacWrite needs an on-chip DAC: ESP32 (GPIO 25/26) and ESP32-S2 (GPIO 17/18).
+  // ESP32-S3 has none.
+  #if defined(SOC_DAC_SUPPORTED)
     #define SENSACTCTRL_HAS_DAC 1
   #endif
 #else

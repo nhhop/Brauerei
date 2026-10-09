@@ -40,6 +40,8 @@ void AnalogInputSensor::setMeta(Quantity q, const char* unit, float minPhys,
 
 void AnalogInputSensor::begin() {
 #if defined(ARDUINO) && defined(ESP32)
+  // The raw range (0..4095) assumes 12 bit; the S2/S3 core defaults to 13.
+  analogReadResolution(12);
   if (attenuation_ >= 0) {
     analogSetPinAttenuation(pin_, static_cast<adc_attenuation_t>(attenuation_));
   }
