@@ -1822,3 +1822,28 @@ Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit 
   Duplizieren, Speichern aus dem Plan, Löschen, 375 px ohne Querscrollen, SD-Fehlerfall. Am LilyGo
   (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
   DELETE → 404.
+
+## 2026-10-09 — Link-Routing zentral (preact-router-Delegation)
+
+Der Plan-Punkt „Klick-Delegation ließ am Gerät einen Link durchrutschen" ist erledigt.
+Ein einziger Listener in `web/src/linkRouting.ts` (aus `main.tsx` installiert) routet alle
+internen Links selbst; der Sonderweg in `NavShell` entfällt.
+
+**Befund** (preact-router 4.1.2): Die Delegation hängt einmal auf `window`, sucht das `<a>`
+erst zur Bubble-Zeit über `parentNode` und lässt den Browser navigieren, sobald `route()`
+falsy liefert. Zwei Wege führen so zum echten Dokument-Load: das Klickziel wird von einem
+Element-`onClick` vorher aus dem DOM genommen, oder zum Klickzeitpunkt matcht kein
+registrierter Router. **Welcher davon am Gerät zutraf, ist nicht belegt** — der Fix macht
+das Routing von beiden unabhängig, beweist aber nicht die Ursache.
+
+**Umsetzung:** Capture-Listener löst den Link auf (vor jedem `onClick`), Bubble-Listener
+routet mit `preventDefault()` + `stopImmediatePropagation()` (keine doppelte
+History-Zeile); fällt `route()` durch, lädt `location.assign()` explizit. Nicht angefasst
+werden Modifier-/Mittelklick, `target`≠`_self`, `native`/`data-native`, `//…`, externe URLs und
+`/api/…` (Downloads). Reine Prüfung in `routableHref()`, Test `linkRouting.test.ts`.
+
+**Verifikation:** `pnpm typecheck` sauber, `pnpm test` 321 grün. Chromium gegen `pnpm dev`:
+Nav-Link ×2, Einstellungs-Karte und ein Link, der sich im `onClick` selbst entfernt, ergeben
+je genau einen History-Eintrag, `window`-Marker überlebt, ein Navigation-Entry; Ctrl-Klick
+schreibt keinen Eintrag. Nicht gemessen: Verhalten vor dem Fix für den Selbst-Entfern-Fall
+und das Gerät selbst.
