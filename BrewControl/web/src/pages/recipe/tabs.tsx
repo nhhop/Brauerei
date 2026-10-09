@@ -1,14 +1,15 @@
-import type { Brewery, Brewhouse } from '../../brewhouse';
+import { DEFAULT_CONVERSION, type Brewery, type Brewhouse } from '../../brewhouse';
+import { BASIS_LABEL, basisOf, efficiencyInput, lauterText, type Efficiency, type EfficiencyBasis } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
 import { calcStats, wortExtract } from '../../recipeStats';
 import { calcTreatment } from '../../recipeTreatment';
 import { calcMash, fmtClock } from '../../mashPlan';
 import { calcWater } from '../../recipeWater';
 import {
-  DEFAULT_EFFICIENCY, KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, type Ingredient, type Recipe, type Scope,
+  KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, type Ingredient, type Recipe, type Scope,
 } from '../../recipes';
-import { inp } from '../../ui';
-import { Card, Field, NumInput } from './fields';
+import { badgeAccent, inp } from '../../ui';
+import { Card, Field, NumInput, Override } from './fields';
 import { IngredientCard } from './IngredientCard';
 import { PhaseList } from './PhaseList';
 import { StyleCard } from './StyleCard';
@@ -59,7 +60,7 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : null;
-  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients).extractKg : undefined).water;
+  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery).extractKg : undefined).water;
   const mash = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.ingredients ?? null).columns[0].after.so4Cl;
   return (
@@ -81,9 +82,7 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
           <Field label="Ausschlagmenge (l)">
             <NumInput value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
           </Field>
-          <Field label="Sudhausausbeute (%)">
-            <NumInput value={recipe.efficiencyPct ?? DEFAULT_EFFICIENCY} onChange={(n) => onChange({ efficiencyPct: n })} />
-          </Field>
+          <EfficiencyField recipe={recipe} onChange={onChange} bh={bh} brewery={brewery} />
           <Field label="Sudhaus">
             <BrewhouseSelect recipe={recipe} onChange={onChange} brewhouses={brewhouses} />
           </Field>
@@ -105,6 +104,7 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
               <Stat label="Bittere" value={stats.ibu} unit="IBU" digits={0} />
               <Stat label="Farbe" value={stats.ebc} unit="EBC" digits={0} />
             </dl>
+            {stats.efficiency && <EfficiencyChain e={stats.efficiency} />}
             {stats.notes.length > 0 && (
               <ul class="mt-3 space-y-1 text-xs text-muted">
                 {stats.notes.map((n) => <li key={n}>{n}</li>)}
@@ -130,6 +130,54 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
         </ul>
       </Card>
     </>
+  );
+}
+
+// The input of the brewery's efficiency basis (efficiency.ts). The Konversion
+// is the brewhouse's unless the recipe sets its own.
+function EfficiencyField({ recipe, onChange, bh, brewery }: Pick<TabProps, 'recipe' | 'onChange' | 'brewery'> & { bh?: Brewhouse }) {
+  const basis = basisOf(brewery);
+  const label = `${BASIS_LABEL[basis]} (%)`;
+  if (basis === 'conversion') {
+    return (
+      <Override label={label} value={recipe.conversionPct} brewhouse={bh?.mashEfficiencyPct ?? DEFAULT_CONVERSION}
+        onChange={(conversionPct) => onChange({ conversionPct })} />
+    );
+  }
+  return (
+    <Field label={label}>
+      <NumInput value={efficiencyInput(recipe, bh, basis).pct} onChange={(n) => onChange({ efficiencyPct: n })} />
+    </Field>
+  );
+}
+
+// The whole chain, the input marked; what cannot follow (no brewhouse, no
+// grain) is left out.
+function EfficiencyChain({ e }: { e: Efficiency }) {
+  const links: { basis?: EfficiencyBasis; label: string; value?: number; sub: string }[] = [
+    { basis: 'conversion', label: BASIS_LABEL.conversion, value: e.conversionPct, sub: 'gelöst in der Maische' },
+    { label: 'Läutereffizienz', value: e.lauter?.pct, sub: e.lauter ? lauterText(e.lauter) : '' },
+    { basis: 'mash', label: BASIS_LABEL.mash, value: e.mashPct, sub: 'in der Pfanne' },
+    { basis: 'yield', label: BASIS_LABEL.yield, value: e.yieldPct, sub: 'je kg Schüttung' },
+    { basis: 'fermenter', label: BASIS_LABEL.fermenter, value: e.fermenterPct, sub: 'im Gärbehälter' },
+  ];
+  return (
+    <dl class="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-5">
+      {links.filter((l) => l.value !== undefined).map((l) => (
+        <div key={l.label}>
+          <dt class="flex flex-wrap items-center gap-1 text-xs text-muted">
+            {l.label}
+            {l.basis === e.basis && (
+              <span class={badgeAccent}>{e.inputFrom === 'Rezept' ? 'Eingabe' : `Eingabe · ${e.inputFrom}`}</span>
+            )}
+          </dt>
+          <dd class="text-lg font-semibold">
+            {Math.round(l.value!)} <span class="text-xs font-normal text-muted">%</span>
+          </dd>
+          <dd class="text-xs text-muted">{l.sub}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

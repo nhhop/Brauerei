@@ -123,6 +123,14 @@ describe('calcWater', () => {
   });
 });
 
+describe('gravity', () => {
+  it('puts the extract of the hot knock-out into its cooled volume', () => {
+    const herms = template('herms3');
+    expect(resolveDilution(recipeFor(herms), 3, herms).finalPlato).toBeCloseTo(platoFromExtract(3, 20 * 0.96), 9);
+    expect(resolveDilution(recipeFor(herms), 3, undefined).finalPlato).toBeCloseTo(platoFromExtract(3, 20), 9);
+  });
+});
+
 describe('dilution (high gravity)', () => {
   const herms = template('herms3');
   const extractKg = 6;
@@ -132,8 +140,9 @@ describe('dilution (high gravity)', () => {
   it('boils less in the kettle and counts back from there', () => {
     const d = withDilution({ at: 'kettle', lead: 'volume', volumeL: 10 });
     expect([d.volumeL, d.kettleL, d.finalL]).toEqual([10, 20, 30]);
-    expect(d.kettlePlato).toBeCloseTo(platoFromExtract(extractKg, 20), 9);
-    expect(d.finalPlato).toBeCloseTo(platoFromExtract(extractKg, 30), 9);
+    // measured cold, after 4 % shrink
+    expect(d.kettlePlato).toBeCloseTo(platoFromExtract(extractKg, 20 * 0.96), 9);
+    expect(d.finalPlato).toBeCloseTo(platoFromExtract(extractKg, 30 * 0.96), 9);
     const { w } = calc(herms, { volumeL: 30, water: { dilution: { at: 'kettle', lead: 'volume', volumeL: 10 } } });
     expect(round(w.preBoilL)).toBe(24);   // 20 l + 4 l evaporation
   });

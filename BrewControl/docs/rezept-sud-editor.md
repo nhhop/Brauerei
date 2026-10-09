@@ -1,8 +1,9 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-07. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-09. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
-2b-1), die pH-Modelle (2b-2) und die Automatik mit Zielprofilen (2b-3); Maischen, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a) und die
+Effizienz-Kette (3b); Maischprofile und Dekoktion, Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -339,6 +340,13 @@ Liste und Detailansicht.
 - **Ausschlagmenge** ist die Würze heiß im Kessel am Kochende, der klassische Bezug der Sudhausausbeute. Was
   danach verloren geht (Totraum der Pfanne, Hopfenaufnahme, Whirlpool, Hop Back, Kühler, Transfers ab
   Whirlpool, Kühlschwund), rechnet die Abfüllmenge in der Gärung vorwärts.
+  - **Stammwürze kalt** (seit 3b): Der Extrakt der heißen Ausschlagmenge steht in deren Volumen nach dem
+    Abkühlen, Ausschlag × (1 − Abkühlschwund des Sudhauses); vorher wurde er auf die heiße Menge gerechnet
+    und die Stammwürze lag um den Schwund zu niedrig (5 kg Pils, 75 %: 13,6 statt 14,1 °P). Ohne Sudhaus
+    bleibt es beim Ausschlag. Dasselbe gilt für Pfannen-Stammwürze und Verschnitt in der Pfanne.
+  - **Offen (mit dem Gärung-Tab, Entscheidung 2026-10-09):** ein Schalter, ob die Menge im Rezept der
+    Ausschlag heiß oder die Anstellwürze kalt im Gärbehälter ist (wie Brewfathers „Batch size“). Bei „kalt“
+    rechnet das Rezept den Ausschlag aus Anstellwürze, Verlusten nach dem Kochen und Schwund zurück.
 - **Wassermenge** wird **vom Ausschlag zurückgerechnet**, nicht vom Wasser vorwärts:
   1. Verdampfung = l/h × Kochdauer aus dem Würzekochen. Ausschlag + Verdampfung = **Pfannevoll**.
   2. **Würzeverluste vor dem Kochen** aus den Transfers der Schritte Maischen und Läutern: der
@@ -357,8 +365,9 @@ Liste und Detailansicht.
   Schüttung, Nachguss unter 0 (Verhältnis zu hoch), Pfannevoll größer als der Kochbehälter, Maische
   (Hauptguss + 0,75 l/kg Verdrängung, Wert aus dem Braumagazin) größer als der Maischbehälter.
 - **Darstellung:** Karte „Wassermenge“ mit Kennzahlen (Hauptguss, Nachguss, Gesamtwasser, Pfannevoll; darunter
-  „einfüllen x l“, wenn die Einfüllmenge abweicht), Schalter „Mit Nachguss“, Eingaben (Hauptguss-Verhältnis,
-  Nachguss-Temperatur, Verdampfung, Treberverlust) und farbigem Balken (Gesamtwasser aufgeteilt in
+  „einfüllen x l“, wenn die Einfüllmenge abweicht; seit 3b die Läutereffizienz mit Verfahren), Schalter
+  „Mit Nachguss“, Eingaben (Hauptguss-Verhältnis, Nachguss-Temperatur, mit Nachguss das Läutern als Batch
+  oder Fly Sparge und bei Batch die Zahl der Gaben, Verdampfung, Treberverlust) und farbigem Balken (Gesamtwasser aufgeteilt in
   Ausschlag, Verdampfung, Treber, Totraum/Transfer). Die Rechnung steht mit Herkunft jeder Zahl (Rezept
   bzw. Sudhaus) in einem Aufklappbereich „Berechnung“, standardmäßig zu.
 - Toträume, Transferverluste, Verdampfung und Treberverlust kommen als Vorgabe aus dem Sudhaus.
@@ -367,7 +376,7 @@ Liste und Detailansicht.
 
 ### Maischen und Würzekochen
 - **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
-  - Maische-Effizienz (Vorgabe aus dem Sudhaus)
+  - Konversion (Vorgabe aus dem Sudhaus, siehe Effizienz)
   - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge lässt sich per Ziehgriff ändern.
     Die erste Spalte legt die **Art des Schritts** fest:
     - **Wasser vorlegen:** Hauptguss auf Temperatur bringen. Menge und Temperatur sind nur lesbar: Die
@@ -421,7 +430,7 @@ Liste und Detailansicht.
     gibt, der die Teilmaische kochen kann. Das wird aus dem Sudhaus abgeleitet, einen Schalter gibt es
     nicht. Sonst ist die Schritt-Art Dekoktion im Rezept ausgegraut, mit Hinweis aufs Sudhaus.
   - Wechselt das Rezept auf ein Sudhaus ohne Dekoktion, warnt es und bietet ein Infusionsprofil an.
-- **Kopfkarte Maischen:** Maische-Effizienz (Sudhaus), Malztemperatur (Brauerei), Siedepunkt, Heizung,
+- **Kopfkarte Maischen:** Konversion (Eingabe oder berechnet), Malztemperatur (Brauerei), Siedepunkt, Heizung,
   Heizrate (Sudhaus oder aus der Heizleistung geschätzt) und Gesamtdauer, alles nur lesbar.
   Die Einmaischtemperatur steht im Plan beim Schritt Einmaischen, die berechnete Hauptguss-Temperatur
   beim Schritt Wasser vorlegen.
@@ -462,12 +471,66 @@ Liste und Detailansicht.
   und -Dauer, darunter eine Zeitleiste der Gaben (Läutern/Vorderwürze · Kochen · Nachisomerisierung ·
   Whirlpool). Danach die Zutaten (Vorderwürze, Kochen, Whirlpool) und der Hinweis, wenn das Sudhaus keinen
   Hop Back hat.
-- **Offen:** Effizienz-Kette (3b), Maischprofile (3c), Läutern (noch keine Felder, inkl. Fly/Batch
-  Sparge), Dekoktion als Schritt-Art (3d): Teilmaische
+- **Offen:** Maischprofile (3c), Läutern als eigener Schritt (Läuterruhe, Nachguss in Portionen; das
+  Verfahren Batch oder Fly Sparge steht seit 3b im Wasser-Tab), Dekoktion als Schritt-Art (3d): Teilmaische
   ziehen (Anteil, dick/dünn), eigene Rasten in der Würzepfanne, kochen, zurückführen mit berechneter
   Mischtemperatur; im Temperaturverlauf als zweite Linie. Teilschüttungen in Maischprofilen.
 - **Ausgangstemperatur des Hauptgusses** für die Heizzeit ist die Leitungswassertemperatur der
   Brauerei-Ebene (statt der früheren Annahme 14 °C); im Sud gilt der am Brautag gemessene Wert.
+
+### Effizienz
+Umgesetzt mit Etappe 3b (2026-10-09, `web/src/efficiency.ts`). Quelle: Kai Troester, „A Closer Look at
+Efficiency“ (NHC 2010, <https://braukaiser.com/documents/Troester_NHC_2010_Efficiency.pdf>) und sein
+Wiki-Artikel „Understanding Efficiency“ (braukaiser.com); Namen wie bei Malzknecht und Brewfather.
+
+- **Kette** (alle Werte Extrakt in kg, bezogen auf den Laborextrakt der Schüttung lufttrocken, das
+  Potenzial; nur die Sudhausausbeute bezieht sich auf das Gewicht):
+
+  | Glied | Bedeutung |
+  |---|---|
+  | Konversion | in der Maische gelöster Extrakt / Potenzial. Vorgabe aus dem Sudhaus (Feld `mashEfficiencyPct`, neue Sudhäuser 80 %; Troester nennt 95–100 % gut) |
+  | Läutereffizienz | Anteil des gelösten Extrakts, der in die Pfanne kommt; Modell, siehe unten |
+  | Maischeeffizienz | Konversion × Läutereffizienz = Extrakt in der Pfanne / Potenzial (bis 3b hieß dieser Wert im Rezept „Sudhausausbeute“) |
+  | Sudhausausbeute | Extrakt in der Pfanne je kg Schüttung (Narziss) = Maischeeffizienz × Potenzial je kg, rund 0,77 × Maischeeffizienz |
+  | Brewhouse-Efficiency | Maischeeffizienz × Würzeanteil = Extrakt im Gärbehälter / Potenzial |
+
+  Schüttung heißt hier Malz und Rohfrucht. Zucker und Extrakt laufen nicht durch die Kette, ihr Extrakt
+  kommt ganz hinzu.
+- **Getrennt**, weil nur die Konversion am Sudhaus und am Verfahren hängt (Schrot, pH, Rasten). Die
+  Läutereffizienz hängt am Rezept: Ein Starkbier verliert mehr im Treber, Vollguss läutert schlechter als
+  Nachguss. Ein fester Wert für Maischen und Läutern zusammen würde ein Starkbier zu stark vorhersagen.
+- **Grundlage** (Karte „Brauerei“, `Brewery.efficiencyBasis`): Konversion, Maischeeffizienz (Vorgabe, das
+  Verhalten vor 3b), Sudhausausbeute oder Brewhouse-Efficiency. Das Rezept gibt genau diesen einen Wert
+  ein, das Feld in der Übersicht trägt seinen Namen; die übrigen folgen. Maischeeffizienz, Sudhausausbeute
+  und Brewhouse-Efficiency teilen sich `recipe.efficiencyPct` (ohne Wert 75, 60 bzw. 70 %); ein Wechsel der
+  Grundlage deutet die gespeicherte Zahl um. Die Konversion kommt aus dem Sudhaus, das Rezept kann sie
+  überschreiben (`recipe.conversionPct`, eigenes Feld, weil fast alle Rezepte `efficiencyPct = 75`
+  gespeichert haben).
+- **Läutermodell** (Troesters Batch-Sparge-Modell): Jeder Ablauf V nimmt V / (V + R) des Extrakts mit, der
+  noch im Bottich ist. R ist die zurückgehaltene Würze: Treberverlust und Würzeverluste vor dem Kochen aus
+  dem Wasser-Tab plus das Volumen des gelösten Extrakts (0,62 l/kg). Der Treberverlust im Wasser-Tab ist
+  das verlorene Wasser; die zurückgehaltene Würze trägt den Extrakt dazu (Troester: wahre Aufnahme rund
+  1,56 l/kg gegenüber rund 1 l/kg scheinbarer).
+  - **Vollguss:** ein Ablauf, Hauptguss − Treberverlust − Würzeverluste (= Pfannevoll).
+  - **Batch Sparge mit n Gaben** (Vorgabe 1): erster Ablauf wie oben, dann n gleich große Gaben aus dem
+    Nachguss.
+  - **Fly Sparge:** kein belastbares Modell; gerechnet wie Batch Sparge mit 2 Gaben, mit Hinweis. Ein
+    Festwert im Sudhaus (`lauterEfficiencyPct`, aus eigenen Suden) ersetzt die Näherung, nur bei Fly Sparge.
+  - Abgleich mit Troester: Vollguss bei 15 % Verdampfung 82 % bei 10 °P, 71 % bei 16 °P Stammwürze
+    (Modell: 83 und 72 %); 0 → 1 → 2 → 3 Gaben +8, +3, +1 Punkte (Modell: +9, +3,4, +1,8); 30/70 statt
+    50/50 kostet 1 Punkt (Modell: 0,9).
+- **Würzeanteil:** Würze im Gärbehälter / Ausschlag nach dem Abkühlen. Es zählen Totraum und Transfers ab
+  dem Whirlpool; der Kühlschwund verliert Volumen, aber keinen Extrakt, er steckt in der kalten Stammwürze
+  (siehe Wasser › Ausschlagmenge). Hopfenaufnahme und Trub kommen mit dem Gärung-Tab.
+- **Rechnung:** Die Läutereffizienz hängt vom gelösten Extrakt ab und über einen nach Stammwürze geführten
+  Verschnitt von den Wassermengen; sie wird iteriert, bis sie steht (wenige Runden).
+- **Anzeige:** Die Kennwerte der Übersicht zeigen die Kette, die Eingabe als Abzeichen markiert. Ohne
+  Sudhaus fehlen Konversion, Läutereffizienz und Brewhouse-Efficiency; mit der Grundlage Konversion gibt es
+  dann keine Stammwürze. Hinweise: Konversion über 100 % (die Eingabe ist für dieses Läutern zu hoch),
+  Fly-Sparge-Näherung. Der Wasser-Tab zeigt die Läutereffizienz neben den Mengen, die Kopfkarte im
+  Maischen-Tab die Konversion.
+- **Messung Vorderwürze** (°P, Schritt Läutern): Damit bestimmt der Sud später die Konversion (Troesters
+  „Mash Gravity Test“).
 
 ### Gärung
 - Zutaten-Karte mit Anstellen, Hauptgärung, Reifung · Stopfen und Abfüllung · Karbonisierung; sie ersetzt die
@@ -519,6 +582,9 @@ Sudhaus mit einem Drucksensor verknüpfen kann.
 Ebenfalls dort steht das **pH-Modell** (seit 2b-2), eines für alle Rezepte: Troester (pH aus Malzdaten,
 Vorgabe) oder Kolbach (Restalkalität nach Bierfarbe, ohne pH). Siehe Wasser › Aufbereitung.
 
+Ebenfalls dort steht die **Grundlage der Effizienz** (seit 3b), eine für alle Rezepte: Konversion,
+Maischeeffizienz (Vorgabe), Sudhausausbeute oder Brewhouse-Efficiency. Siehe Rezept › Effizienz.
+
 Ein Wasserprofil mit dem Haken **Zielprofil** (seit 2b-3, `target: true`) ist kein Ausgangswasser: Es fehlt in
 der Auswahl der Ausgangswässer und des Standardwassers und dient nur dem Vergleich und der Automatik im
 Wasser-Tab (siehe Wasser › Aufbereitung, „Ziel“). Die mitgelieferten Zielprofile sind fest eingebaut.
@@ -536,7 +602,8 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in 
   2-Kessel-HERMS (Kochen und Nachguss in einem Kessel). Vorlagen: Ein Topf (Sack/Malzkorb), Ein Topf mit
   Malzrohr, Maische-/Würzepfanne + Läuterbottich, 2- und 3-Kessel-HERMS, Leer. Alle Geräte stehen dort auf
   „von Hand“.
-- **Allgemein:** Name, Beschreibung, Maische-Effizienz, Abkühlschwund (Vorgabe 4 %).
+- **Allgemein:** Name, Beschreibung, Konversion (bis 3b „Maische-Effizienz“, Vorgabe 80 %), Abkühlschwund
+  (Vorgabe 4 %), Läutereffizienz für Fly Sparge (optionaler Festwert). Siehe Rezept › Effizienz.
 - **Behälter:** Name, Volumen, Totraum (Behälterverlust, z. B. ohne Bodenablauf) und die Schritte, die er
   übernimmt. Eine Art (HLT, Maischbottich/-pfanne, Läuterbottich, Würzepfanne, All-in-One,
   Zwischenbehälter …) hakt die Schritte nur vor und wird nicht gespeichert; das Auswahlfeld zeigt die Art,
@@ -574,8 +641,8 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in 
   Verlust zählt nur bei Pumpe; „kommt im nächsten Schritt zurück“ markiert, dass das Restvolumen wieder
   eingebracht wird.
 - **Messungen gibt der Prozess vor**, nicht das Sudhaus: eine feste Liste je Schritt (Malz- und
-  Leitungswassertemperatur, Haupt- und Nachgussmenge, Temperaturen, pH, Pfannevoll, Stammwürze und pH vor
-  und nach dem Kochen, Luftdruck, Ausschlagmenge, Anstelltemperatur). Das Sudhaus verknüpft jede mit einem Sensor oder
+  Leitungswassertemperatur, Haupt- und Nachgussmenge, Temperaturen, pH, Vorderwürze, Pfannevoll, Stammwürze
+  und pH vor und nach dem Kochen, Luftdruck, Ausschlagmenge, Anstelltemperatur). Das Sudhaus verknüpft jede mit einem Sensor oder
   lässt sie „von Hand“ (Vorgabe); dann zeigt der Sud ein Eingabefeld und speichert den Wert.
 - **Prüfung:** Fehler sperren das Speichern (leerer Name, Pflichtschritt ohne Behälter, Verweis auf
   Gelöschtes, Maischen/Kochen ohne Heizquelle, indirekt ohne Pumpe außer Aufguss, Pumpentransfer ohne Pumpe,
@@ -650,6 +717,7 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in 
   (`/recipes/<id>.json`, `/api/recipes`) und gibt es nur auf SD-Boards.
 - **Zutaten-Datenbanken** (Malz, Hopfen, Hefen, Stile): mitgeliefert oder vom Nutzer gepflegt?
 - **Berechnungen:** Auf `web/src/brewMath.ts` aufbauen. Mehrere Konstanten dort sind laut PLAN.md noch
-  unverifiziert, darunter die Definitionen der Effizienzen. Dazu kommen Morey (Farbe), Tinseth (IBU), die
-  pH-Schätzung und der Rest-CO₂.
+  unverifiziert. Die Definitionen der Effizienzen stehen seit 3b fest (Rezept › Effizienz); der Rechner
+  rechnet seine Sudhausausbeute noch auf das Potenzial statt auf das Gewicht. Dazu kommen Morey (Farbe),
+  Tinseth (IBU), die pH-Schätzung und der Rest-CO₂.
 - **Gärführung als Programm** an den Gärplatz-Regler übertragen, über die vorhandenen Programme/Profile.

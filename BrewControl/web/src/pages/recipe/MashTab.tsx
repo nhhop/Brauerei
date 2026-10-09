@@ -3,6 +3,7 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
 import { lovibond } from '../../brewMath';
+import type { Efficiency } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
 import { calcMash, fmtClock, type MashPlan, type MashRow } from '../../mashPlan';
 import { calcStats, wortExtract, type RecipeStats, type WortPart } from '../../recipeStats';
@@ -38,13 +39,13 @@ const REST_PRESETS: { name: string; tempC: number; durationMin: number }[] = [
 export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
-  const wort = catalog ? wortExtract(recipe, catalog.ingredients) : undefined;
+  const wort = catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery) : undefined;
   const water = bh ? calcWater(recipe, bh, wort?.extractKg).water : undefined;
   const plan = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : undefined;
   return (
     <>
-      <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} />
+      <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />
       <GrainCard recipe={recipe} onChange={onChange} plan={plan} stats={stats} parts={wort?.colors ?? []} />
       <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} />
       {plan && (
@@ -66,8 +67,8 @@ function TextStat({ label, text, sub }: { label: string; text: string; sub?: str
   );
 }
 
-function HeadCard({ bh, brewery, plan, loaded }: {
-  bh?: Brewhouse; brewery: Brewery | null; plan?: MashPlan; loaded: boolean;
+function HeadCard({ bh, brewery, plan, loaded, efficiency: e }: {
+  bh?: Brewhouse; brewery: Brewery | null; plan?: MashPlan; loaded: boolean; efficiency?: Efficiency;
 }) {
   const rateSub = !plan ? undefined
     : plan.heating.via === 'infusion' ? 'Aufguss: wärmere Rasten durch Zubrühen'
@@ -82,7 +83,8 @@ function HeadCard({ bh, brewery, plan, loaded }: {
         </p>
       )}
       <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Maische-Effizienz" value={bh?.mashEfficiencyPct} unit="%" digits={0} sub={bh && 'Sudhaus'} />
+        <Stat label="Konversion" value={e?.conversionPct} unit="%" digits={0}
+          sub={e?.conversionPct === undefined ? undefined : e.basis === 'conversion' ? e.inputFrom : 'berechnet'} />
         <Stat label="Malztemperatur" value={brewery?.grainTempC} unit="°C" digits={1} sub="Brauerei" />
         <Stat label="Siedepunkt" value={plan?.boilC ?? breweryBoilC(brewery)} unit="°C" digits={1}
           sub={`${brewery?.altitudeM ?? 0} m ü. NN`} />

@@ -118,7 +118,8 @@ export interface Recipe {
   style: string;
   styleId?: string; // BJCP 2021 number the style text was picked from; unset = free text
   volumeL: number;
-  efficiencyPct?: number; // Sudhausausbeute; unset in old recipes, read via DEFAULT_EFFICIENCY
+  efficiencyPct?: number; // input of the brewery's efficiency basis (efficiency.ts); unset = its default
+  conversionPct?: number; // basis "Konversion": override of the brewhouse's value
   brewhouseId?: string;   // unset = no brewhouse chosen yet
   water?: RecipeWater;
   status: 'draft' | 'final';
@@ -137,6 +138,8 @@ export interface RecipeWater {
   sparge?: boolean;               // "Mit Nachguss"; only takes effect if the brewhouse has the sparge step
   mashRatioLPerKg?: number;
   spargeTempC?: number;
+  spargeMethod?: 'batch' | 'fly'; // with sparge; unset = batch
+  spargeBatches?: number;         // batch sparge: equal additions; unset = 1
   evaporationLPerH?: number;      // override; unset = the boil vessel's value
   grainAbsorptionLPerKg?: number; // override; unset = the lauter vessel's value
   // Source water per water; unset waterId = the brewery's default water, blended
@@ -176,7 +179,7 @@ export function uid(): string {
 
 export function newRecipe(): Recipe {
   return {
-    id: uid(), name: 'Neues Rezept', description: '', style: '', volumeL: 20, efficiencyPct: DEFAULT_EFFICIENCY,
+    id: uid(), name: 'Neues Rezept', description: '', style: '', volumeL: 20,
     status: 'draft', updatedAt: Date.now(),
     ingredients: [], mash: normalizeMash([]),
     boil: { durationMin: 60, whirlpoolTempC: 80, whirlpoolMin: 15 },

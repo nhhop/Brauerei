@@ -1,7 +1,8 @@
 import { failed } from './api';
 import { boilingPointC, pressureAtAltitudeHpa } from './brewMath';
-import { DEFAULT_EFFICIENCY, VALID_ID, uid } from './recipes';
+import { VALID_ID, uid } from './recipes';
 import { unitOf } from './refs';
+import type { EfficiencyBasis } from './efficiency';
 import type { PhModel } from './mashPh';
 import type { Snapshot } from './types';
 import type { WaterProfile } from './waterChem';
@@ -36,6 +37,7 @@ export interface Brewery {
   defaultWaterId?: string;  // the source water of recipes that pick none
   phModel?: PhModel;        // mash and wort pH of all recipes; unset = DEFAULT_PH_MODEL
   altitudeM?: number;       // site altitude; unset = sea level
+  efficiencyBasis?: EfficiencyBasis;  // which efficiency recipes enter; unset = DEFAULT_BASIS
 }
 
 export const DEFAULT_BREWERY: Brewery = { grainTempC: 18, tapWaterTempC: 12 };
@@ -55,6 +57,10 @@ export interface Vessel {
   lauterMethod?: string;      // descriptive (false bottom, bag …), only while it lauters
   grainAbsorptionLPerKg?: number; // wort the spent grain holds back, only while it lauters
 }
+
+// Default conversion of new brewhouses (Troester calls 95–100 % excellent;
+// agreed default 2026-10-09).
+export const DEFAULT_CONVERSION = 80;
 
 // Literature gives 0.8–1.0 l/kg; Brewfather's default.
 export const DEFAULT_GRAIN_ABSORPTION = 0.96;
@@ -132,7 +138,7 @@ export const DRIVES: { value: Transfer['drive']; label: string }[] = [
 
 export type MeasureKey =
   | 'grainTemp' | 'tapWaterTemp' | 'strikeVolume' | 'strikePh'
-  | 'mashTemp' | 'mashPh'
+  | 'mashTemp' | 'mashPh' | 'firstWortGravity'
   | 'spargeVolume' | 'spargeTemp' | 'spargePh'
   | 'preBoilVolume' | 'preBoilGravity' | 'preBoilPh' | 'postBoilVolume' | 'postBoilGravity' | 'postBoilPh'
   | 'airPressure' | 'batchVolume' | 'pitchTemp';
@@ -146,6 +152,7 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'strikePh', step: 'strike', label: 'pH Hauptguss', unit: 'pH' },
   { key: 'mashTemp', step: 'mash', label: 'Maischetemperatur', unit: '°C' },
   { key: 'mashPh', step: 'mash', label: 'pH Maische', unit: 'pH' },
+  { key: 'firstWortGravity', step: 'lauter', label: 'Vorderwürze', unit: '°P' },
   { key: 'spargeVolume', step: 'sparge', label: 'Nachgussmenge', unit: 'l' },
   { key: 'spargeTemp', step: 'sparge', label: 'Nachgusstemperatur', unit: '°C' },
   { key: 'spargePh', step: 'sparge', label: 'pH Nachguss', unit: 'pH' },
@@ -174,8 +181,9 @@ export interface Brewhouse {
   name: string;
   description: string;
   updatedAt: number;      // epoch ms, like Recipe
-  mashEfficiencyPct: number;
+  mashEfficiencyPct: number;     // conversion (Konversion): extract dissolved in the mash / potential
   coolingShrinkPct: number;
+  lauterEfficiencyPct?: number;  // fixed value for fly sparging; unset = approximated (efficiency.ts)
   vessels: Vessel[];
   devices: Device[];
   steps: Partial<Record<StepKey, StepConfig>>;
@@ -556,7 +564,7 @@ function dropUndefined<T extends object>(o: T): T {
 function blank(name: string): Brewhouse {
   return {
     id: uid(), name, description: '', updatedAt: 0,
-    mashEfficiencyPct: DEFAULT_EFFICIENCY, coolingShrinkPct: 4,
+    mashEfficiencyPct: DEFAULT_CONVERSION, coolingShrinkPct: 4,
     vessels: [], devices: [], steps: {}, transfers: [], measurements: {},
   };
 }
