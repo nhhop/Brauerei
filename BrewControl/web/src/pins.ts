@@ -1,7 +1,7 @@
 // Client-side view of GET /api/pins for the item form. The firmware checks
 // every create/replace itself (PinMap.h) — this only gives early hints and the
 // "risky pin" confirmation, which the firmware deliberately does not enforce.
-import type { PinInfo, PinsInfo, PinUser } from './types';
+import type { PinInfo, PinsInfo, PinUser, VirtualPin } from './types';
 
 // Config keys that hold a GPIO number in an item config (mirrors collectPins()
 // in PinMap.h) or a bus definition (BusConfig.h).
@@ -111,27 +111,60 @@ export function suggestPins(
   return out;
 }
 
-// Capabilities beyond digital I/O that the board itself or a peripheral device
-// offers — today only 'dac'. The item form offers a mode only when something
-// can serve it.
+// Capabilities beyond the chip's own GPIOs that the board or a peripheral
+// device offers: 'dac' (board DAC or DAC channels), 'gpio' (port-expander
+// pins). The item form offers a mode only when something can serve it.
 export function availableCaps(info: PinsInfo | null): Set<string> {
   const out = new Set<string>();
   if (info && (info.caps.dac || info.virtual?.some((v) => v.dac))) out.add('dac');
+  if (info?.virtual?.some((v) => v.gpio)) out.add('gpio');
   return out;
 }
 
-export interface DacOutputOption {
+// A pin field holding a device channel ref ("<device>:<n>") rather than a GPIO.
+export function isChannelRef(value: string): boolean {
+  return value.includes(':');
+}
+
+export interface ChannelOption {
   value: string; // value of the pin field: GPIO number as text, or a channel ref
   label: string;
   taken?: string; // why it cannot be picked
 }
 
+function channelTaken(v: VirtualPin, selfId?: string): string | undefined {
+  const others = v.users.filter((u) => u.id !== selfId);
+  return others.length ? `belegt von ${others.map(pinUserText).join(', ')}` : undefined;
+}
+
+// "IO · P05" — device label (or id) and channel name.
+export function channelLabel(v: VirtualPin): string {
+  return `${v.deviceLabel || v.device} · ${v.label}`;
+}
+
+// Port-expander pins for a DigitalOutput/DigitalInput, in device and channel
+// order. selfId: the edited item, whose own channel counts as free.
+export function gpioChannels(info: PinsInfo | null, selfId?: string): ChannelOption[] {
+  return (info?.virtual ?? [])
+    .filter((v) => v.gpio)
+    .map((v) => ({ value: v.ref, label: channelLabel(v), taken: channelTaken(v, selfId) }));
+}
+
+// Status of a channel ref in a pin field (the GPIO counterpart is pinStatus).
+export function channelStatus(info: PinsInfo, ref: string, selfId?: string): PinStatus {
+  const v = info.virtual?.find((x) => x.ref === ref);
+  if (!v) return { level: 'error', text: `Gerätekanal ${ref} gibt es nicht` };
+  const taken = channelTaken(v, selfId);
+  if (taken) return { level: 'error', text: taken };
+  return { level: 'ok', text: `frei – ${channelLabel(v)}` };
+}
+
 // Outputs for an AnalogOutput in DAC mode: the board's own DAC pins, then the
 // DAC channels of the peripheral devices. selfId: the edited item, whose own
 // output counts as free.
-export function dacOutputs(info: PinsInfo | null, selfId?: string): DacOutputOption[] {
+export function dacOutputs(info: PinsInfo | null, selfId?: string): ChannelOption[] {
   if (!info) return [];
-  const out: DacOutputOption[] = [];
+  const out: ChannelOption[] = [];
   for (const p of info.pins) {
     if (!p.dac) continue;
     const s = pinStatus(info, p.gpio, { selfId, output: true });
@@ -143,11 +176,10 @@ export function dacOutputs(info: PinsInfo | null, selfId?: string): DacOutputOpt
   }
   for (const v of info.virtual ?? []) {
     if (!v.dac) continue;
-    const others = v.users.filter((u) => u.id !== selfId);
     out.push({
       value: v.ref,
       label: `${v.deviceLabel || v.device} · Kanal ${v.label}`,
-      taken: others.length ? `belegt von ${others.map(pinUserText).join(', ')}` : undefined,
+      taken: channelTaken(v, selfId),
     });
   }
   return out;

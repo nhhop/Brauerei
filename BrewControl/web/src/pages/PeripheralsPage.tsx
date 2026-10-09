@@ -4,7 +4,7 @@ import {
   createPeripheral, deletePeripheral, getBuses, getPeripherals, scanBus, updatePeripheral,
 } from '../api';
 import { BUS_TYPE_LABEL, busTitle } from '../buses';
-import { DEVICE_TYPE_HINT, DEVICE_TYPE_LABEL, hexAddr } from '../peripherals';
+import { DEVICE_ADDRESS_HINT, DEVICE_TYPE_HINT, DEVICE_TYPE_LABEL, hexAddr } from '../peripherals';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -19,8 +19,9 @@ import {
 import { Microchip, Pencil, Plus, Search, Trash2 } from 'lucide-preact';
 
 // Peripheral devices (DeviceConfig.h in the firmware): chips on a bus that offer
-// items a capability — today the MCP4728 with four DAC channels. An AnalogOutput
-// picks a channel in its form; the device itself lives only here.
+// items a capability — the MCP4728 with four DAC channels, the PCF8575 with
+// sixteen digital pins. An AnalogOutput, DigitalOutput or DigitalInput picks a
+// channel in its form; the device itself lives only here.
 
 const inp = `${inpBase} w-full`;
 const lbl = 'block text-xs text-muted mb-1';
@@ -55,17 +56,22 @@ export function PeripheralsPage(_: { path?: string }) {
 
   const typeInfo = (t: string) => info?.types.find((x) => x.type === t);
 
-  function openNew() {
-    const t = info?.types[0];
-    if (!t) return;
+  // A new device of type t, on the first bus that fits and a free address.
+  function newDevice(t: DeviceTypeInfo): EditorState {
     const bus = buses?.buses.find((b) => b.type === t.bus)?.id ?? '';
-    setEditor({ device: null, type: t.type, bus, address: freeAddress(t, bus), label: '' });
+    return { device: null, type: t.type, bus, address: freeAddress(t, bus), label: '' };
   }
 
-  // The first address of the type no other device on that bus occupies.
+  function openNew() {
+    const t = info?.types[0];
+    if (t) setEditor(newDevice(t));
+  }
+
+  // The first address of the type that neither another device on that bus nor
+  // the board itself (reserved addresses of a fixed bus) occupies.
   function freeAddress(t: DeviceTypeInfo, bus: string): number {
     for (let a = t.addrDefault; a <= t.addrLast; a++) {
-      if (!info?.devices.some((d) => d.bus === bus && d.address === a)) return a;
+      if (!info?.devices.some((d) => d.bus === bus && d.address === a) && !reservedNote(buses, bus, a)) return a;
     }
     return t.addrDefault;
   }
@@ -120,9 +126,10 @@ export function PeripheralsPage(_: { path?: string }) {
       <Fab icon={Plus} label="Neues Gerät" onClick={openNew} />
 
       <p class="mb-6 text-sm text-muted">
-        Peripheriegeräte sind Bausteine an einem Bus, die zusätzliche Ausgänge bereitstellen —
-        etwa ein DAC-Baustein für echte Analogspannung auf Boards ohne eigenen DAC. Ein
-        Analogausgang wählt dann einen Kanal des Geräts statt eines GPIO.
+        Peripheriegeräte sind Bausteine an einem Bus, die zusätzliche Ein- und Ausgänge
+        bereitstellen — etwa ein DAC-Baustein für echte Analogspannung auf Boards ohne eigenen
+        DAC oder ein Port-Expander für weitere Schaltausgänge und Eingänge. Ein Item wählt dann
+        einen Kanal des Geräts statt eines GPIO.
       </p>
 
       {loadErr ? (
@@ -150,6 +157,7 @@ export function PeripheralsPage(_: { path?: string }) {
         <DeviceEditor state={editor} info={info} buses={buses}
           typeInfo={typeInfo(editor.type)}
           onChange={setEditor}
+          onTypeChange={(t) => { const ti = typeInfo(t); if (ti) setEditor({ ...newDevice(ti), label: editor.label }); }}
           onClose={() => setEditor(null)}
           onSaved={() => { setEditor(null); reload(); }} />
       )}
@@ -197,7 +205,7 @@ function DeviceCard({ device, busName, checking, check, onCheck, onEdit, onDelet
           <ul class="mt-2 grid grid-cols-1 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-2">
             {device.channels.map((c) => (
               <li key={c.index} class="flex gap-2">
-                <span class="w-16 shrink-0 text-faint">Kanal {c.name}</span>
+                <span class="w-16 shrink-0 text-faint">{device.cap === 'dac' ? `Kanal ${c.name}` : c.name}</span>
                 <span class={c.users.length ? 'truncate text-fg' : 'text-faint'}>
                   {c.users.length ? c.users.join(', ') : 'frei'}
                 </span>
@@ -229,12 +237,18 @@ function DeviceCard({ device, busName, checking, check, onCheck, onEdit, onDelet
   );
 }
 
-function DeviceEditor({ state, info, buses, typeInfo, onChange, onClose, onSaved }: {
+// Note of an address the board itself uses on a fixed bus, or undefined.
+function reservedNote(buses: BusesInfo | null, bus: string, a: number): string | undefined {
+  return buses?.buses.find((b) => b.id === bus)?.reserved?.find((r) => r.address === hexAddr(a))?.note;
+}
+
+function DeviceEditor({ state, info, buses, typeInfo, onChange, onTypeChange, onClose, onSaved }: {
   state: EditorState;
   info: PeripheralsInfo;
   buses: BusesInfo | null;
   typeInfo?: DeviceTypeInfo;
   onChange: (s: EditorState) => void;
+  onTypeChange: (type: string) => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -280,7 +294,7 @@ function DeviceEditor({ state, info, buses, typeInfo, onChange, onClose, onSaved
             <div>
               <label class={lbl}>Typ</label>
               <select value={state.type} class={inp}
-                onChange={(e) => onChange({ ...state, type: (e.target as HTMLSelectElement).value })}>
+                onChange={(e) => onTypeChange((e.target as HTMLSelectElement).value)}>
                 {info.types.map((t) => (
                   <option key={t.type} value={t.type}>{DEVICE_TYPE_LABEL[t.type] ?? t.type}</option>
                 ))}
@@ -320,29 +334,29 @@ function DeviceEditor({ state, info, buses, typeInfo, onChange, onClose, onSaved
             <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
               {addresses.map((a) => {
                 const other = takenBy(a);
+                const board = reservedNote(buses, state.bus, a);
                 const active = state.address === a;
                 return (
-                  <button key={a} type="button" disabled={locked || !!other}
-                    title={other ? `belegt von ${other.label || other.id}` : undefined}
+                  <button key={a} type="button" disabled={locked || !!other || !!board}
+                    title={other ? `belegt von ${other.label || other.id}` : board ? `vom Board belegt (${board})` : undefined}
                     onClick={() => onChange({ ...state, address: a })}
                     class={`rounded-md px-2 py-1.5 font-mono text-xs transition-colors disabled:cursor-not-allowed ${
                       active ? 'bg-accent text-accent-fg' : 'bg-fg/5 text-muted hover:bg-fg/10'
-                    } ${other || (locked && !active) ? 'opacity-40' : ''}`}>
+                    } ${other || board || (locked && !active) ? 'opacity-40' : ''}`}>
                     {hexAddr(a)}
                   </button>
                 );
               })}
             </div>
             <p class="mt-1 text-xs text-faint">
-              Ab Werk {typeInfo ? hexAddr(typeInfo.addrDefault) : ''}. Eine andere Adresse muss vorher im
-              Baustein programmiert sein — die Firmware trägt sie nur ein.
+              Ab Werk {typeInfo ? hexAddr(typeInfo.addrDefault) : ''}. {DEVICE_ADDRESS_HINT[state.type] ?? ''}
             </p>
           </div>
 
           {locked && (
             <p class="text-xs text-caution">
               Genutzt von {users.join(', ')} — Bus und Adresse lassen sich erst ändern, wenn
-              kein Ausgang mehr daran hängt. Der Name geht jederzeit.
+              kein Item mehr daran hängt. Der Name geht jederzeit.
             </p>
           )}
           {err && <p class="text-sm text-critical">{err}</p>}

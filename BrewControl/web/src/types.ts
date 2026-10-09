@@ -204,8 +204,9 @@ export interface VirtualPin {
   device: string;
   deviceLabel?: string;
   index: number;
-  label: string; // channel name, "A".."D"
-  dac?: boolean;
+  label: string; // channel name: "A".."D" (DAC), "P00".."P17" (PCF8575)
+  dac?: boolean; // a DAC channel
+  gpio?: boolean; // a digital pin of a port expander
   users: PinUser[];
 }
 
@@ -522,7 +523,8 @@ export interface BusScanResult {
 }
 
 // GET /api/peripherals — mirrors DynamicItems::writeDevices() / DeviceConfig.h.
-// A chip on a bus that offers items a capability (today: MCP4728 → 4 DACs).
+// A chip on a bus that offers items a capability (MCP4728 → 4 DACs,
+// PCF8575 → 16 digital pins).
 export interface DeviceStored {
   id: string; // derived from type, bus and address: "mcp4728-i2c-board-60"
   type: string;
@@ -533,12 +535,12 @@ export interface DeviceStored {
 
 export interface DeviceChannel {
   index: number;
-  name: string; // "A".."D"
+  name: string; // "A".."D", "P00".."P17"
   users: string[]; // ids of the items on this channel
 }
 
 export interface DeviceInfo extends DeviceStored {
-  cap: string; // capability the channels offer, e.g. "dac"
+  cap: string; // capability the channels offer: "dac", "gpio"
   channels: DeviceChannel[];
 }
 
@@ -550,7 +552,7 @@ export interface DeviceTypeInfo {
   addrDefault: number;
   cap: string;
   count: number;
-  channels: string; // channel names, one letter each: "ABCD"
+  channels: string[]; // channel names, e.g. ["A","B","C","D"]
 }
 
 export interface PeripheralsInfo {
