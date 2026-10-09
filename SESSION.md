@@ -1697,5 +1697,20 @@ je Teilschritt ein Commit.
   97,9 %, lolin_s2_mini 94,6 %), Redocly-Lint, Web `typecheck`/`test` (293)/`build`, UI im
   Node-Mock (Waveshare-Profil: Typwechsel wählt 0x22, weil 0x20 reserviert und 0x21 belegt;
   Bearbeiten lädt den Expander-Kanal, Chip-Klick wechselt die Quelle und setzt den Pull-up,
-  `PUT` schickt den Ref). Firmware und UI sind per OTA auf dem LilyGo, die Config ist
-  unverändert. **Hardwaretest mit dem PCF8575 steht aus** (PLAN.md → Hardware-Verifikation).
+  `PUT` schickt den Ref).
+- **Hardware (LilyGo, PCF8575 am Qwiic, NXP-Chip):** Antwortete zuerst nicht — Adress-Pads
+  A0–A2 offen und Brücke VDD–VCC offen (VDD 2,45 V parasitär über SDA/SCL); beides gelötet,
+  dann 0x20. Danach lasen Eingänge zufällig, Rohlesen über eine temporäre Diagnose-Route
+  (nicht eingecheckt) zeigte: Writes und Reads kommen an, aber der Chip hält eine 1 nur kurz
+  nach einem Write (seine ~100-µA-Quelle fehlt), offene/verkabelte Pins kippen im 50-Hz-Takt.
+  Mit externem Pull-up (ESP-GPIO mit `INPUT_PULLUP` an der Brücke P00–P10) geprüft:
+  Ein-/Ausschalten 100 % richtig an beiden Eingängen; Not-Aus gibt P00 sofort frei; TPO
+  2 s/50 % mit Flanken alle 1,0 s; `PUT` mit Gerät behält den Kanal; Chip abziehen → `fault`
+  und Alarm an allen fünf Items binnen ≤ 1 s, Snapshot weiter in 33–55 ms, Display bedienbar;
+  wieder anstecken → Fault weg, TPO wieder richtig; nach Stromlos-Zyklus (die SD hing nach
+  einem Power-on beim Verkabeln, bekannter LilyGo-Effekt) Gerät und Items aus der Config
+  zurück und lauffähig. Negativfälle am Gerät: DigitalInput ohne `pullup` und PulseOutput auf
+  dem Expander → 400. Aufgeräumt: `GET /api/config` byte-identisch mit dem Backup. Offen
+  (PLAN.md): Eingang nur mit dem chip-eigenen Pull-up an einem unbeschädigten Modul.
+  Nebenbei: GPIO 2 sah während des SD-Ausfalls frei aus, gehörte aber zu `agitator` —
+  bei leerer Registry nie Pins aus `/api/pins` für Verkabelung nehmen.

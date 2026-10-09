@@ -352,6 +352,13 @@ taktend (TPO mit Perioden im Sekundenbereich) und gepollte `DigitalInput`s.
   „Invertieren“ setzen) oder hinter einen Transistor; direkt aktiv-high treibt der Pin
   praktisch nichts. Eingänge haben immer diesen Pull-up — ein `DigitalInput` ohne
   `pullup: true` ist dort 400, die UI setzt das Häkchen selbst. Taster/Schalter nach Masse.
+  Der schwache Pull-up hält eine offene Leitung nur knapp: Für Eingänge an Kabeln einen
+  externen Pull-up (4,7–10 kΩ nach 3,3 V) vorsehen, sonst streut Netzbrummen ein.
+- **Modul anschließen**: Auf den gängigen Modulen müssen die Adress-Pads A0–A2 je mit GND oder
+  VDD gebrückt sein (offen antwortet der Chip nicht zuverlässig), und die Brücke VDD–VCC muss
+  geschlossen sein. Offen bekommt der Chip seine Versorgung nur parasitär über SDA/SCL
+  (~2,5 V). Ein so betriebener PCF8575 hielt am LilyGo danach eine 1 nur noch kurz nach
+  jedem Write — vermutlich bleibend beschädigt (SESSION.md, 2026-10-09).
 - **Treiber** (`SensActCtrl/src/devices/PCF8575`): ein Schattenregister für alle 16 Ausgänge,
   jeder Write schickt beide Bytes, Eingänge immer als 1. Eingänge werden höchstens alle 20 ms
   gelesen (ein Transfer für alle), kein INT-Pin. Ausgänge schreibt der Aktor bei Pegelwechsel
