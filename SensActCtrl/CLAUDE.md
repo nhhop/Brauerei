@@ -12,10 +12,10 @@ SensActCtrl ist eine wiederverwendbare ESP32-Library (PlatformIO, Arduino, C++17
 
 ```
 src/
-├── core/         Reading, Quantity, ValueKind, DacOutput, Registry, RegistrySnapshot
+├── core/         Reading, Quantity, ValueKind, DacOutput, GpioPort, Registry, RegistrySnapshot
 ├── sensors/      DS18B20, BME280, AnalogInput, Voltage, DigitalInput, PulseCounter, ImuSensor (GY521/QMI8658/BMI270/BMI160, raw), ImuTilt (+ GY521Tilt), CalibratedSensor (Decorator)
 ├── actuators/    DigitalOutput (Binary + TPO), PulseOutput, AnalogOutput (PWM / On-Chip-DAC / externer DacOutput), Ids, Interval, MqttGeneric
-├── devices/      MCP4728 (externer 4-Kanal-DAC, liefert DacOutput-Kanäle)
+├── devices/      MCP4728 (externer 4-Kanal-DAC, liefert DacOutput-Kanäle), PCF8575 (16-Pin-Port-Expander, GpioPort)
 ├── controllers/  TwoPoint, PID (AutoTune-Wrapper)
 ├── transport/    ITransport, MqttTransport, EspNowTransport, WebhookTransport, WebSocketTransport
 └── remote/       RemoteSensor, RemoteActuator, RemotePublisher, MetaJson, Topics

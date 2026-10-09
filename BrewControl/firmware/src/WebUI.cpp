@@ -752,6 +752,11 @@ void WebUI::begin(bool serve) {
           return;
         }
         String id = url.substring(strlen("/api/actuators/"));
+        // Under the registry lock: loop() ticks the same actuator, and on a
+        // port expander or external DAC both write to one shared chip — an
+        // unlocked write could be overwritten by a tick that started before.
+        RegistryTryLock lock(kRegistryWaitMs);
+        if (!lock.locked()) { req->send(503, "text/plain", "busy, retry"); return; }
         auto* a = reg_.findActuator(id.c_str());
         if (!a) { req->send(404); return; }
         bool hasEnabled = !doc["enabled"].isNull();
@@ -771,6 +776,7 @@ void WebUI::begin(bool serve) {
         }
         if (hasV) a->write(doc["v"].as<float>());
         pushSnapshot_();
+        lock.release();
         req->send(204);
       }));
 
@@ -785,12 +791,21 @@ void WebUI::begin(bool serve) {
   // on the next boot. Like a mechanical E-stop it stays engaged until it is
   // released deliberately via DELETE /api/estop. Deliberately unauthenticated
   // — stopping must work from a locked UI; releasing must not.
+  //
+  // Switched off under the registry lock, so no tick() of loop() drives an
+  // output again afterwards (a time-proportional output that had already read
+  // "enabled", a port expander's shared output register). Stopping must never
+  // fail, though: if loop() holds the lock too long, it switches off without.
   server_.on("/api/estop", HTTP_POST, [this](AsyncWebServerRequest* req) {
-    for (auto* a : reg_.actuators()) a->setEnabled(false);
-    for (auto* c : reg_.controllers()) c->setEnabled(false);
-    programs_.pauseAllRunning(reg_);
+    {
+      RegistryTryLock lock(kRegistryWaitMs);
+      if (!lock.locked()) Serial.println(F("emergency stop: registry busy, stopping without lock"));
+      for (auto* a : reg_.actuators()) a->setEnabled(false);
+      for (auto* c : reg_.controllers()) c->setEnabled(false);
+      programs_.pauseAllRunning(reg_);
+      timers_.pauseAllRunning();
+    }
     programs_.saveToSD(fs_);
-    timers_.pauseAllRunning();
     timers_.saveToSD(fs_);
     estop_ = true;
     saveEstop_();

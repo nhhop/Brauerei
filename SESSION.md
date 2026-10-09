@@ -1653,3 +1653,64 @@ Commit.
 - **Prüfung:** Library 337/337, Firmware 169/169 nativ, alle fünf Envs bauen (esp32dev
   97,7 %), Redocly-Lint, Web `typecheck`/`test` (273)/`build`, UI im Node-Mock und am
   LilyGo (Prüfen „antwortet“, Scan benennt 0x60, Bearbeiten lädt den Kanal).
+
+## 2026-10-09 — Peripherie-Abstraktion Etappe 4: Port-Expander PCF8575 (Branch `feat/peripherie-etappe-4`)
+
+Ein PCF8575 (16 Pins, I²C 0x20–0x27) liefert zusätzliche, langsame Digitalpins für
+DigitalOutput (Binary/TPO) und DigitalInput (gepollt) — zugleich Pin-Manager Stufe 3b
+„Pins von Port-Expandern“. Der Schnitt aus Etappe 3 blieb unverändert (Kanal-Referenz
+`"<Geräte-Id>:<n>"`, `virtual[]`, `kDeviceTypes`, Fähigkeits-Hook am `Peripheral`). Ein PR,
+je Teilschritt ein Commit.
+
+- **4a Library:** `core/GpioPort.h` (`pinMode`/`write`/`read` je Kanal), Treiber
+  `devices/PCF8575`: Schattenregister aller 16 Ausgänge, jeder Write schickt beide Bytes,
+  Eingänge immer als 1 (quasi-bidirektional), `begin()` übernimmt die Latches des Chips (kein
+  Umschalten der anderen Pins nach einem Reset), Port-Reads 20 ms gecacht, Schatten + Transfer
+  unter einer Mutex. `DigitalOutputActuator`/`DigitalInputSensor` mit `GpioPort&` + Kanal; der
+  Aktor schreibt einen Expander-Kanal nur bei Pegelwechsel und jede Sekunde neu (auch Binary),
+  beide melden `fault()` „Port-Expander antwortet nicht“, der Sensor dann ungültige Werte.
+- **4b Lock:** `POST /api/actuators/<id>` (v/enabled/interval) und `POST /api/estop` laufen
+  jetzt unter dem `RegistryLock` (vorher im AsyncTCP-Task ohne Lock, PLAN-Eintrag vom selben
+  Tag). Damit überschreibt weder ein TPO-`tick()` den Not-Aus noch der DAC-Refresh einen frisch
+  gesetzten Wert, und Expander-Writes aus REST und `loop()` sind serialisiert. Der Not-Aus
+  schaltet ohne Lock ab, wenn er ihn nicht binnen 3 s bekommt (nie 503). Zusätzlich die Mutex
+  im Treiber, weil ESP-NOW-Befehle aus dem WiFi-Task ohne Lock schreiben — dieser Pfad selbst
+  ist neuer PLAN-Eintrag.
+- **4c Firmware:** `kDeviceTypes` mit `pcf8575` (`gpio`, 16, `inputsPullup`), Kanalnamen als
+  Liste (`types[].channels` in `GET /api/peripherals` jetzt ein Array). Zulassung nur über
+  Fähigkeiten in `collectPins`: DigitalOutput und DigitalInput `gpio`, PulseOutput abgetrennt;
+  alle anderen Typen lehnen Gerätekanäle weiter mit 400 ab. DigitalInput ohne `pullup` auf dem
+  PCF8575 → 400 (der Chip hat immer einen Pull-up). `Pcf8575Device` wie `Mcp4728Device`,
+  `SensorEntry::dev` hält das Gerät auch über `PUT`. Waveshare: 0x20 ist über die reservierte
+  TCA9554-Adresse gesperrt. OpenAPI, README (inkl. Einschaltzustand: Power-on High, ein
+  ESP-Reset lässt die Ausgänge stehen → aktiv-low verdrahten).
+- **4d Web:** `DigitalPinField` mit Umschalter GPIO | Port-Expander (Muster DAC-Auswahl),
+  Auswahl der Kanäle P00–P17; `PinHint` zeigt den Status eines Refs und schlägt freie
+  Expander-Pins als eigene Gruppe vor (mit Gerätename, sobald es mehrere gibt). Expander-
+  Eingänge setzen und sperren „Pullup“, Expander-Ausgänge zeigen den Einschalt-Hinweis.
+  Peripheriegeräte-Seite: PCF8575, Typwechsel setzt Bus und freie Adresse neu, reservierte
+  Adressen des Board-Busses gesperrt.
+- **Feste Onboard-Expander** (M5IOE1, TCA9554) nur skizziert: `currentFixedDevices()`,
+  reservierte Kanäle, `BoardInit` über dieselbe `GpioPort`-Instanz — gebaut wird mit der
+  Hardware (PLAN.md).
+- **Prüfung:** Library 358/358, Firmware 174/174 nativ, alle fünf Envs bauen (esp32dev
+  97,9 %, lolin_s2_mini 94,6 %), Redocly-Lint, Web `typecheck`/`test` (293)/`build`, UI im
+  Node-Mock (Waveshare-Profil: Typwechsel wählt 0x22, weil 0x20 reserviert und 0x21 belegt;
+  Bearbeiten lädt den Expander-Kanal, Chip-Klick wechselt die Quelle und setzt den Pull-up,
+  `PUT` schickt den Ref).
+- **Hardware (LilyGo, PCF8575 am Qwiic, NXP-Chip):** Antwortete zuerst nicht — Adress-Pads
+  A0–A2 offen und Brücke VDD–VCC offen (VDD 2,45 V parasitär über SDA/SCL); beides gelötet,
+  dann 0x20. Danach lasen Eingänge zufällig, Rohlesen über eine temporäre Diagnose-Route
+  (nicht eingecheckt) zeigte: Writes und Reads kommen an, aber der Chip hält eine 1 nur kurz
+  nach einem Write (seine ~100-µA-Quelle fehlt), offene/verkabelte Pins kippen im 50-Hz-Takt.
+  Mit externem Pull-up (ESP-GPIO mit `INPUT_PULLUP` an der Brücke P00–P10) geprüft:
+  Ein-/Ausschalten 100 % richtig an beiden Eingängen; Not-Aus gibt P00 sofort frei; TPO
+  2 s/50 % mit Flanken alle 1,0 s; `PUT` mit Gerät behält den Kanal; Chip abziehen → `fault`
+  und Alarm an allen fünf Items binnen ≤ 1 s, Snapshot weiter in 33–55 ms, Display bedienbar;
+  wieder anstecken → Fault weg, TPO wieder richtig; nach Stromlos-Zyklus (die SD hing nach
+  einem Power-on beim Verkabeln, bekannter LilyGo-Effekt) Gerät und Items aus der Config
+  zurück und lauffähig. Negativfälle am Gerät: DigitalInput ohne `pullup` und PulseOutput auf
+  dem Expander → 400. Aufgeräumt: `GET /api/config` byte-identisch mit dem Backup. Offen
+  (PLAN.md): Eingang nur mit dem chip-eigenen Pull-up an einem unbeschädigten Modul.
+  Nebenbei: GPIO 2 sah während des SD-Ausfalls frei aus, gehörte aber zu `agitator` —
+  bei leerer Registry nie Pins aus `/api/pins` für Verkabelung nehmen.

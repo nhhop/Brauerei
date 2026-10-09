@@ -127,7 +127,7 @@ Faktor; kalibrierbar sind die ersten vier Kanäle eines Sensors, weitere
 werden unverändert durchgereicht).
 
 **Aktoren** (`src/actuators/`): `DigitalOutputActuator` (binär oder
-Time-Proportional/SSR), `PulseOutputActuator` (nicht-blockierende
+Time-Proportional/SSR, auf einem GPIO oder einem Port-Expander-Kanal über `GpioPort`), `PulseOutputActuator` (nicht-blockierende
 Puls-Queue), `AnalogOutputActuator` (PWM, On-Chip-DAC oder externer DAC über `DacOutput`), `IdsActuator` (IDS1/IDS2
 Induktionskochfeld, Arduino-only; sendet per RMT, `fault()` meldet neben Plattenfehlern
 auch einen fehlenden RMT-Kanal, dann blockiert das Software-Timing `loop()` ~139 ms je Frame), `MqttGenericActuator` (frei
@@ -155,6 +155,37 @@ den Ausgangswert jede Sekunde erneut (`kRefreshMs`): Ein abgezogener und
 wieder angesteckter Chip startet mit seinen EEPROM-Werten, bekommt so binnen
 einer Sekunde die richtigen zurück, und ein fehlender Chip fällt auch ohne
 Wertänderung auf. Eine neue I²C-Adresse programmiert die Library nicht.
+
+**Port-Expander** (`src/devices/`): `PCF8575` (16 Pins P00–P07/P10–P17, I²C
+0x20–0x27) implementiert `GpioPort` (`pinMode`/`write`/`read` je Kanal 0–15).
+`DigitalOutputActuator(id, GpioPort&, ch, …)` und `DigitalInputSensor(id,
+GpioPort&, ch, …)` nehmen einen Kanal statt eines GPIO — nur für langsame
+Digitalpfade (kein PWM, keine Interrupts, keine Bit-Bang-Protokolle):
+
+```cpp
+PCF8575 io(Wire, 0x20);
+io.begin();
+DigitalOutputActuator pump("pump", io, 0, DigitalOutputActuator::Mode::Binary,
+                           /*activeHigh=*/false);   // Relaismodul aktiv-low
+DigitalInputSensor lid("lid", io, 8, /*pullup=*/true, /*invert=*/true);
+```
+
+Der PCF8575 ist quasi-bidirektional: 0 zieht hart nach Masse (~25 mA), 1 ist
+nur ein schwacher Pull-up (~100 µA) und zugleich Eingang. Lasten gehören
+deshalb zwischen Pin und VCC (aktiv-low) oder hinter einen Transistor;
+Eingänge haben immer den schwachen Pull-up. Der Treiber hält ein
+Schattenregister aller 16 Ausgänge, jeder Write schickt beide Bytes, Eingänge
+immer als 1; Schatten und Transfer liegen unter einer Mutex, mehrere Tasks
+dürfen also verschiedene Kanäle schreiben. `begin()` übernimmt die aktuellen
+Latches des Chips, damit ein ESP-Neustart die anderen Kanäle nicht umschaltet.
+`read()` holt den Port höchstens alle 20 ms (`kReadCacheMs`), N Eingänge
+kosten so einen Transfer. Ausgänge schreibt der Aktor nur bei Pegelwechsel und
+jede Sekunde neu (`kRefreshMs`) — ein wieder angesteckter Chip steht binnen
+einer Sekunde wieder richtig. Antwortet der Chip nicht, melden Aktor und
+Sensor `fault()`, der Sensor liefert dann ungültige Werte. **Einschaltzustand:**
+Nach dem Einschalten stehen alle Pins auf 1, und ein Reset des ESP32 lässt
+sie, wo sie waren, bis der Aktor sie neu setzt — sicherheitsrelevante
+Ausgänge deshalb aktiv-low verdrahten.
 
 **Controller** (`src/controllers/`): `TwoPointController` (Bang-Bang mit
 Hysterese), `PIDController` (AutoTunePID-Wrapper, 5 Tuning-Algorithmen),

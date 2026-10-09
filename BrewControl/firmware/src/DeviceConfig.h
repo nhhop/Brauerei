@@ -11,7 +11,7 @@
 namespace BrewControl {
 
 // Peripheral devices: chips on a bus that offer capabilities to items — an
-// MCP4728 offers four DAC channels. Items reference a channel in a pin field
+// MCP4728 offers four DAC channels, a PCF8575 sixteen digital pins. Items reference a channel in a pin field
 // as "<device id>:<channel>" (PinMap.h parsePinRef) instead of a GPIO number.
 // Header-only and Arduino-free like BusConfig.h; the drivers live in
 // DynamicItems.cpp.
@@ -21,10 +21,11 @@ namespace BrewControl {
 
 // The capability a device type offers, on `count` channels.
 struct DeviceCap {
-  const char* cap;           // "dac"; later "gpio" for port expanders
+  const char* cap;                  // "dac", "gpio"
   uint8_t count;
-  uint16_t rawMax;
-  const char* channelNames;  // one character per channel
+  uint16_t rawMax;                  // dac: full scale; gpio: 1
+  const char* const* channelNames;  // `count` names
+  bool inputsPullup = false;        // gpio: inputs always have a pull-up
 };
 
 struct DeviceType {
@@ -36,8 +37,17 @@ struct DeviceType {
   DeviceCap provides;
 };
 
+inline constexpr const char* kMcp4728Channels[] = {"A", "B", "C", "D"};
+inline constexpr const char* kPcf8575Channels[] = {
+    "P00", "P01", "P02", "P03", "P04", "P05", "P06", "P07",
+    "P10", "P11", "P12", "P13", "P14", "P15", "P16", "P17"};
+
+// PCF8575: quasi-bidirectional pins (0 sinks hard, 1 is a weak pull-up that
+// doubles as input), so its inputs always have a pull-up. On the Waveshare
+// board 0x20 is the onboard TCA9554 (reserved address of i2c-board).
 inline constexpr DeviceType kDeviceTypes[] = {
-    {"mcp4728", "i2c", 0x60, 0x67, 0x60, {"dac", 4, 4095, "ABCD"}},
+    {"mcp4728", "i2c", 0x60, 0x67, 0x60, {"dac", 4, 4095, kMcp4728Channels}},
+    {"pcf8575", "i2c", 0x20, 0x27, 0x20, {"gpio", 16, 1, kPcf8575Channels, true}},
 };
 
 inline const DeviceType* findDeviceType(const char* type) {
