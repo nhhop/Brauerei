@@ -7,9 +7,10 @@ import {
   setSensorLabel, setActuatorLabel, setControllerLabel,
   scanBus, startAutotune, stopAutotune, getPins, getBuses,
 } from '../api';
-import { availableCaps, dacOutputs, riskyPins } from '../pins';
+import { availableCaps, dacOutputs, isChannelRef, riskyPins } from '../pins';
 import { BUS_TYPE_LABEL, busTitle } from '../buses';
 import { PinHint } from './PinHint';
+import { DigitalPinField } from './DigitalPinField';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
 import {
@@ -296,6 +297,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // Risky pins of the last submit attempt, and the set the user confirmed.
   const [riskyWarn, setRiskyWarn] = useState<string[]>([]);
   const [riskyAck, setRiskyAck] = useState('');
+
+  // A port-expander pin ("<device>:<n>") fits only DigitalOutput/DigitalInput.
+  // `pin` is shared with other types: drop a ref when the type changes.
+  useEffect(() => {
+    if (isChannelRef(pin) && !(role === 'actuator' && actuatorType === 'DigitalOutput')) setPin('');
+  }, [role, actuatorType, sensorType]);
+  // Expander inputs always have a (weak) pull-up; the firmware insists on it.
+  useEffect(() => {
+    if (isChannelRef(diPin)) setDiPullup(true);
+  }, [diPin]);
 
   useEffect(() => {
     if (!open) return;
@@ -721,8 +732,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           if (isNaN(sck)  || sck  < 0) throw new Error('SCK Pin ungültig');
           cfg = { type: 'HX711', id: trimId, dout, sck };
         } else if (sensorType === 'DigitalInput') {
-          const p = parseInt(diPin, 10);
-          if (isNaN(p) || p < 0) throw new Error('Pin ungültig');
+          // A GPIO number, or a port-expander pin "<device>:<n>".
+          const raw = diPin.trim();
+          const p: number | string = isChannelRef(raw) ? raw : parseInt(raw, 10);
+          if (typeof p === 'number' && (isNaN(p) || p < 0)) throw new Error('Pin ungültig');
           cfg = {
             type: 'DigitalInput', id: trimId, pin: p,
             invert: diInvert, pullup: diPullup,
@@ -885,8 +898,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             cfg.peer_url = peerUrl;
           }
         } else {
-          const p = parseInt(pin, 10);
-          if (isNaN(p)) throw new Error('invalid pin');
+          const raw = pin.trim();
+          const p: number | string = isChannelRef(raw) ? raw : parseInt(raw, 10);
+          if (typeof p === 'number' && isNaN(p)) throw new Error('invalid pin');
           cfg = { type: 'DigitalOutput', id: trimId, pin: p, mode, invert: invertOut };
         }
         if ((actuatorType === 'DigitalOutput' || actuatorType === 'AnalogOutput' || actuatorType === 'MqttGeneric') && intervalShow) {
@@ -1283,26 +1297,27 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* DigitalInput fields */}
           {role === 'sensor' && sensorType === 'DigitalInput' && (
             <div class="space-y-3">
-              <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={diPin}
-                  onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 15" class={inp} required />
-                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} suggest
-                  onPick={(g) => setDiPin(String(g))} />
-              </div>
+              <DigitalPinField pins={pins} value={diPin} onChange={setDiPin} selfId={selfId}
+                pullup={diPullup} placeholder="z.B. 15" inputClass={inp} labelClass={lbl} />
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
                   <input type="checkbox" checked={diInvert} class="accent-accent"
                     onChange={(e) => setDiInvert((e.target as HTMLInputElement).checked)} />
                   Invertieren
                 </label>
-                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <label class={`flex items-center gap-2 text-sm text-fg ${isChannelRef(diPin) ? 'opacity-60' : 'cursor-pointer'}`}>
                   <input type="checkbox" checked={diPullup} class="accent-accent"
+                    disabled={isChannelRef(diPin)}
                     onChange={(e) => setDiPullup((e.target as HTMLInputElement).checked)} />
                   Pullup aktivieren
                 </label>
               </div>
+              {isChannelRef(diPin) && (
+                <p class="text-xs text-faint">
+                  Port-Expander-Eingänge haben immer einen schwachen Pull-up (~100 µA) — Taster
+                  oder Schalter nach Masse schalten, für „gedrückt = an“ Invertieren setzen.
+                </p>
+              )}
               <div>
                 <label class={lbl}>Entprellung (ms)</label>
                 <input type="number" value={diDebounce} min="0"
@@ -1612,14 +1627,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* DigitalOutput fields */}
           {role === 'actuator' && actuatorType === 'DigitalOutput' && (
             <>
-              <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={pin}
-                  onInput={(e) => setPin((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 16" class={inp} required />
-                <PinHint pins={pins} value={pin} selfId={selfId} output suggest
-                  onPick={(g) => setPin(String(g))} />
-              </div>
+              <DigitalPinField pins={pins} value={pin} onChange={setPin} selfId={selfId} output
+                placeholder="z.B. 16" inputClass={inp} labelClass={lbl} />
               <div>
                 <label class={lbl}>Mode</label>
                 <select value={mode} title="Mode"
@@ -1634,6 +1643,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   onChange={(e) => setInvertOut((e.target as HTMLInputElement).checked)} />
                 Invertieren (active-low)
               </label>
+              {isChannelRef(pin) && (
+                <p class="text-xs text-caution">
+                  Port-Expander-Ausgänge stehen nach dem Einschalten auf High und behalten bei
+                  einem Neustart des Boards ihren Zustand, bis die Firmware sie setzt. „Aus“ ist
+                  nur bei aktiv-low sicher: Relaismodul zwischen Pin und VCC und „Invertieren“
+                  setzen. High ist nur ein schwacher Pull-up — aktiv-high nur über Transistor.
+                </p>
+              )}
               {intervalFields()}
             </>
           )}

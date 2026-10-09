@@ -49,8 +49,38 @@ void test_mcp4728_type_table() {
   TEST_ASSERT_EQUAL_STRING("dac", t->provides.cap);
   TEST_ASSERT_EQUAL(4, t->provides.count);
   TEST_ASSERT_EQUAL(4095, t->provides.rawMax);
-  TEST_ASSERT_EQUAL_STRING("ABCD", t->provides.channelNames);
-  TEST_ASSERT_NULL(findDeviceType("pcf8575"));
+  TEST_ASSERT_EQUAL_STRING("A", t->provides.channelNames[0]);
+  TEST_ASSERT_EQUAL_STRING("D", t->provides.channelNames[3]);
+  TEST_ASSERT_FALSE(t->provides.inputsPullup);
+  TEST_ASSERT_NULL(findDeviceType("mcp23017"));
+}
+
+void test_pcf8575_type_table() {
+  const DeviceType* t = findDeviceType("pcf8575");
+  TEST_ASSERT_NOT_NULL(t);
+  TEST_ASSERT_EQUAL_STRING("i2c", t->bus);
+  TEST_ASSERT_EQUAL(0x20, t->addrFirst);
+  TEST_ASSERT_EQUAL(0x27, t->addrLast);
+  TEST_ASSERT_EQUAL(0x20, t->addrDefault);
+  TEST_ASSERT_EQUAL_STRING("gpio", t->provides.cap);
+  TEST_ASSERT_EQUAL(16, t->provides.count);
+  TEST_ASSERT_TRUE(t->provides.inputsPullup);
+  TEST_ASSERT_EQUAL_STRING("P00", t->provides.channelNames[0]);
+  TEST_ASSERT_EQUAL_STRING("P07", t->provides.channelNames[7]);
+  TEST_ASSERT_EQUAL_STRING("P10", t->provides.channelNames[8]);
+  TEST_ASSERT_EQUAL_STRING("P17", t->provides.channelNames[15]);
+
+  DeviceDef d = ok(R"({"type":"pcf8575","bus":"i2c-board","address":33})");
+  TEST_ASSERT_EQUAL_STRING("pcf8575-i2c-board-21", d.id.c_str());
+  d = ok(R"({"type":"pcf8575","bus":"i2c-4-5"})");
+  TEST_ASSERT_EQUAL_STRING("pcf8575-i2c-4-5-20", d.id.c_str());
+  JsonDocument doc;
+  TEST_ASSERT_TRUE(deserializeJson(doc, R"({"type":"pcf8575","bus":"i2c-board","address":96})") ==
+                   DeserializationError::Ok);
+  DeviceDef bad;
+  std::string err;
+  TEST_ASSERT_FALSE(parseDeviceDef(doc.as<JsonObjectConst>(), bad, err));
+  TEST_ASSERT_EQUAL_STRING("address must be 0x20..0x27", err.c_str());
 }
 
 void test_parse_derives_id_from_type_bus_and_address() {
@@ -123,6 +153,7 @@ void test_devices_count_as_bus_users() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_mcp4728_type_table);
+  RUN_TEST(test_pcf8575_type_table);
   RUN_TEST(test_parse_derives_id_from_type_bus_and_address);
   RUN_TEST(test_given_id_is_ignored);
   RUN_TEST(test_address_defaults_to_factory_address);

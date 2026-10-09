@@ -36,6 +36,13 @@ DigitalOutputActuator::DigitalOutputActuator(const char* id, int pin,
   }
 }
 
+DigitalOutputActuator::DigitalOutputActuator(const char* id, GpioPort& port,
+                                             uint8_t ch, Mode mode, bool activeHigh)
+    : DigitalOutputActuator(id, -1, mode, activeHigh) {
+  port_ = &port;
+  ch_ = ch;
+}
+
 ActuatorMeta DigitalOutputActuator::meta() const {
   if (mode_ == Mode::Binary) {
     return ActuatorMeta{ValueKind::Binary, Quantity::None, "",
@@ -51,7 +58,8 @@ void DigitalOutputActuator::end() {
 }
 
 void DigitalOutputActuator::begin() {
-  pinMode(pin_, OUTPUT);
+  if (port_) port_->pinMode(ch_, GpioPort::Mode::Output);
+  else pinMode(pin_, OUTPUT);
   applyPin(false);
   cycleStartMs_ = millis();
 }
@@ -69,7 +77,11 @@ void DigitalOutputActuator::write(float v) {
 }
 
 void DigitalOutputActuator::tick() {
-  if (mode_ == Mode::Binary) return;
+  if (mode_ == Mode::Binary) {
+    // Write-driven; only an expander needs its periodic refresh.
+    if (port_ && millis() - lastWriteMs_ >= kRefreshMs) applyPin(state_ != 0.0f);
+    return;
+  }
   const uint32_t now = millis();
   const uint32_t elapsed = now - cycleStartMs_;
   if (elapsed >= periodMs_) {
@@ -96,7 +108,15 @@ void DigitalOutputActuator::applyPin(bool on) {
   // (write-driven) and TimeProportional (tick-driven) alike.
   if (!enabled_) on = false;
   const int level = (on == activeHigh_) ? HIGH : LOW;
-  digitalWrite(pin_, level);
+  if (!port_) {
+    digitalWrite(pin_, level);
+    return;
+  }
+  const uint32_t now = millis();
+  if (level == lastLevel_ && now - lastWriteMs_ < kRefreshMs) return;
+  portFault_ = !port_->write(ch_, level == HIGH);
+  lastLevel_ = level;
+  lastWriteMs_ = now;
 }
 
 }  // namespace SensActCtrl

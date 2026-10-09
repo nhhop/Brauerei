@@ -92,8 +92,9 @@ tags:
   - name: Peripherals
     description: |
       Peripheral devices: chips on a defined bus that offer capabilities to
-      items, e.g. an MCP4728 with four DAC channels. Items reference a channel
-      in a pin field as `"<device id>:<channel>"` instead of a GPIO number.
+      items, e.g. an MCP4728 with four DAC channels or a PCF8575 port expander
+      with sixteen digital pins. Items reference a channel in a pin field as
+      `"<device id>:<channel>"` instead of a GPIO number.
   - name: Remote Discovery
     description: |
       Find the sensors and actuators other SensActCtrl/BrewControl devices
@@ -637,6 +638,10 @@ paths:
         the last change): after a restart the actuator comes back on/off with
         its value and interval. Not kept: the value of an actuator a controller
         drives, and a pulse actuator's value. A latched emergency stop wins.
+
+        Applied under the registry lock, so a `tick()` already running in
+        `loop()` cannot overwrite the new value afterwards (an external DAC's
+        refresh, a port expander's shared output register).
       requestBody:
         required: true
         content:
@@ -659,6 +664,7 @@ paths:
             text/plain: { schema: { type: string } }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
     delete:
       tags: [Dynamic Items]
       operationId: deleteActuator
@@ -725,6 +731,10 @@ paths:
 
         Deliberately unauthenticated even when a password is configured:
         stopping must work from a locked UI. Releasing does require auth.
+
+        Switches off under the registry lock, so no `tick()` of `loop()` drives
+        an output again afterwards. Never answers 503: if the lock cannot be
+        taken in time, it switches off without it.
       responses:
         "204": { $ref: "#/components/responses/NoContent" }
     delete:
@@ -1078,7 +1088,7 @@ paths:
         Every defined device in the order it was added, with its channels and
         the items using each. `types` lists what can be defined: the bus type
         a device sits on, its address range and what it offers (`cap`, `count`
-        channels named by the characters of `channels`). Whether a device
+        channels named by `channels`). Whether a device
         answers is not tracked here: scan its bus (`GET /api/bus/scan`) and
         look for its address; a failing write shows as the actuator's `fault`.
       responses:
@@ -1413,7 +1423,7 @@ paths:
         (`/api/peripherals`) with their users; such a channel is never a GPIO
         and never appears under `pins`. `caps.dac` stays the board's own DAC:
         a DAC is available if `caps.dac` is true or some `virtual` channel has
-        `dac`.
+        `dac`; port-expander pins carry `gpio`.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -3682,7 +3692,16 @@ components:
           enum: [DS18B20, MAX31865, BME280, GY521, QMI8658, BMI270, BMI160, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
-        pin: { type: integer }
+        pin:
+          description: |
+            A GPIO number. `DigitalInput` also takes a pin of a port expander
+            as `"<device id>:<channel>"` (`GET /api/pins` → `virtual` with
+            `gpio`), read by polling; its inputs always have a pull-up, so it
+            needs `pullup: true` (400 otherwise). Every other type refuses a
+            device channel with 400 (`pin needs a GPIO, not device channel …`).
+          oneOf:
+            - { type: integer }
+            - { type: string, pattern: '^.+:[0-9]+$', example: 'pcf8575-i2c-board-20:8' }
         bus:
           type: string
           description: >-
@@ -3801,12 +3820,15 @@ components:
             A GPIO number. `AnalogOutput` with `mode: dac` also takes a DAC
             channel of a peripheral device as `"<device id>:<channel>"`
             (`GET /api/pins` → `virtual`); a number there still means the
-            board's own DAC pin. Every other type and `mode: pwm` refuse a
-            device channel with 400 (`pin needs a GPIO, not device channel …`);
-            an unknown device, a channel the device does not have or a device
-            without DAC channels are 400 too, a taken channel 409. Firmware
-            older than this reads such a string as GPIO 0: delete these
-            actuators (or restore the earlier backup) before a downgrade.
+            board's own DAC pin. `DigitalOutput` (Binary or TPO) takes a pin of
+            a port expander the same way (`virtual` entries with `gpio`). Every
+            other type and `mode: pwm` refuse a device channel with 400
+            (`pin needs a GPIO, not device channel …`); an unknown device, a
+            channel the device does not have or a device without the needed
+            capability (`… has no dac channels`, `… has no gpio channels`) are
+            400 too, a taken channel 409. Firmware older than this reads such a
+            string as GPIO 0: delete these actuators (or restore the earlier
+            backup) before a downgrade.
           oneOf:
             - { type: integer }
             - { type: string, pattern: '^.+:[0-9]+$', example: 'mcp4728-i2c-board-60:0' }
@@ -3961,7 +3983,7 @@ components:
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         virtual:
           type: array
-          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728.
+          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728, sixteen per PCF8575.
           items:
             type: object
             required: [ref, device, index, label, users]
@@ -3970,8 +3992,9 @@ components:
               device: { type: string, description: Device id. }
               deviceLabel: { type: string, description: The device's label; absent when it has none. }
               index: { type: integer, description: Channel number from 0. }
-              label: { type: string, description: 'Channel name, e.g. `A`..`D`.' }
+              label: { type: string, description: 'Channel name: `A`..`D` (MCP4728), `P00`..`P07`, `P10`..`P17` (PCF8575).' }
               dac: { type: boolean, description: The channel is a DAC output. }
+              gpio: { type: boolean, description: The channel is a digital pin of a port expander. }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         battery:
           type: object
@@ -4089,9 +4112,9 @@ components:
       required: [type, bus]
       description: A peripheral device definition.
       properties:
-        type: { type: string, enum: [mcp4728] }
-        bus: { type: string, description: 'Id of the bus it sits on (`GET /api/buses`); its type must match the device type (MCP4728: `i2c`).' }
-        address: { type: integer, minimum: 96, maximum: 103, description: 'I2C address, 0x60..0x67 for the MCP4728; default 0x60 (factory).' }
+        type: { type: string, enum: [mcp4728, pcf8575] }
+        bus: { type: string, description: 'Id of the bus it sits on (`GET /api/buses`); its type must match the device type (both: `i2c`).' }
+        address: { type: integer, minimum: 32, maximum: 103, description: 'I2C address, default the factory one: 0x60..0x67 for the MCP4728 (default 0x60), 0x20..0x27 for the PCF8575 (default 0x20). Outside the type''s range: 400 `address must be 0x..0x..`.' }
         label: { type: string, maxLength: 32, description: Optional name shown in the UI. }
 
     PeripheralStored:
@@ -4115,7 +4138,7 @@ components:
               - type: object
                 required: [cap, channels]
                 properties:
-                  cap: { type: string, enum: [dac], description: What the channels offer. }
+                  cap: { type: string, enum: [dac, gpio], description: What the channels offer. }
                   channels:
                     type: array
                     items:
@@ -4123,7 +4146,7 @@ components:
                       required: [index, name, users]
                       properties:
                         index: { type: integer }
-                        name: { type: string, description: 'Channel name, e.g. `A`.' }
+                        name: { type: string, description: 'Channel name, e.g. `A` or `P05`.' }
                         users: { type: array, items: { type: string }, description: Ids of the items driving this channel. }
         types:
           type: array
@@ -4138,7 +4161,7 @@ components:
               addrDefault: { type: integer, description: Factory address. }
               cap: { type: string }
               count: { type: integer, description: Number of channels. }
-              channels: { type: string, description: 'One character per channel name, e.g. `ABCD`.' }
+              channels: { type: array, items: { type: string }, description: 'Channel names, `count` of them.' }
       example:
         devices:
           - id: mcp4728-i2c-board-60
@@ -4153,7 +4176,8 @@ components:
               - { index: 2, name: C, users: [] }
               - { index: 3, name: D, users: [] }
         types:
-          - { type: mcp4728, bus: i2c, addrFirst: 96, addrLast: 103, addrDefault: 96, cap: dac, count: 4, channels: ABCD }
+          - { type: mcp4728, bus: i2c, addrFirst: 96, addrLast: 103, addrDefault: 96, cap: dac, count: 4, channels: [A, B, C, D] }
+          - { type: pcf8575, bus: i2c, addrFirst: 32, addrLast: 39, addrDefault: 32, cap: gpio, count: 16, channels: [P00, P01, P02, P03, P04, P05, P06, P07, P10, P11, P12, P13, P14, P15, P16, P17] }
 
     # ── Bus discovery ────────────────────────────────────────────────────────
     BusScanResult:

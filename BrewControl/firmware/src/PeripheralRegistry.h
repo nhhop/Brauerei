@@ -8,6 +8,7 @@
 
 namespace SensActCtrl {
 class DacOutput;
+class GpioPort;
 }
 
 namespace BrewControl {
@@ -23,7 +24,7 @@ namespace BrewControl {
 // too, with its device id; it holds a Ref on its bus, so the bus outlives it.
 //
 // Capabilities are asked for without RTTI: dac(ch) is nullptr unless the
-// peripheral offers a DAC channel ch.
+// peripheral offers a DAC channel ch, gpio() unless it offers digital pins.
 class Peripheral {
  public:
   virtual ~Peripheral() = default;
@@ -31,6 +32,7 @@ class Peripheral {
   virtual void begin() {}  // on the first user, before it is handed out
   virtual void end() {}    // after the last user is gone, before delete
   virtual SensActCtrl::DacOutput* dac(int /*ch*/) { return nullptr; }
+  virtual SensActCtrl::GpioPort* gpio() { return nullptr; }
   const std::string& id() const { return id_; }
 
  private:

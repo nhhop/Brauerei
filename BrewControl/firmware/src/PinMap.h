@@ -187,7 +187,8 @@ inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
   } else if (is("YF-S201")) {
     add("pin", Pullup | Irq);
   } else if (is("DigitalInput")) {
-    add("pin", (cfg["pullup"] | false) ? Pullup : 0);
+    // Polled: a port expander's pin will do.
+    add("pin", (cfg["pullup"] | false) ? Pullup : 0, "gpio");
   } else if (is("AnalogInput") || is("Voltage")) {
     add("pin", Analog);
   } else if (is("HCSR04")) {
@@ -196,7 +197,11 @@ inline void collectPins(JsonObjectConst cfg, std::vector<PinUse>& out) {
   } else if (is("HX711")) {
     add("dout");
     add("sck", Out);
-  } else if (is("DigitalOutput") || is("PulseOutput")) {
+  } else if (is("DigitalOutput")) {
+    // Binary or time-proportional with periods of seconds: an expander pin
+    // will do. PulseOutput times its pulses in ms and stays on GPIOs.
+    add("pin", Out, "gpio");
+  } else if (is("PulseOutput")) {
     add("pin", Out);
   } else if (is("AnalogOutput")) {
     // Only DAC mode may sit on a device channel; PWM needs an LEDC pin.
@@ -247,6 +252,9 @@ inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
       if (strcmp(d->type->provides.cap, u.cap) != 0)
         return fail(400, d->id + " has no " + u.cap + " channels");
       if (u.gpio >= d->type->provides.count) return fail(400, ref + " does not exist");
+      if (!u.output && !u.pullup && d->type->provides.inputsPullup)
+        return fail(400, ref + ": inputs of " + d->type->type +
+                             " always have a pull-up (set pullup)");
       for (size_t j = 0; j < i; ++j) {
         if (mine[j].device == u.device && mine[j].gpio == u.gpio)
           return fail(400, ref + " used twice (" + mine[j].key + ", " + u.key + ")");
@@ -439,7 +447,7 @@ inline void writePinsJson(const Board& b, const char* boardName,
       v["device"] = d.id;
       if (!d.label.empty()) v["deviceLabel"] = d.label;
       v["index"] = i;
-      v["label"] = std::string(1, c.channelNames[i]);
+      v["label"] = c.channelNames[i];
       v[c.cap] = true;
       JsonArray users = v["users"].to<JsonArray>();
       for (const PinUse& u : uses)

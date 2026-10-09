@@ -264,6 +264,7 @@ void test_bus_used_by_item_survives_device() {
 void test_dac_is_null_by_default() {
   PeripheralRegistry::Ref a = reg->acquire<FakeBus>(busId(4), c, 4);
   TEST_ASSERT_NULL(a.get()->dac(0));
+  TEST_ASSERT_NULL(a.get()->gpio());
 }
 
 int main(int, char**) {
