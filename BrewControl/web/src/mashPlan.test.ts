@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
 import { GRAIN_HEAT_RATIO, strikeWaterTempC } from './brewMath';
-import { calcMash, HEATER_EFFICIENCY, ICE_TEMP_C, WATER_J_PER_KG_K } from './mashPlan';
-import { calcWater } from './recipeWater';
-import { addCharge, newRecipe, type Ingredient, type MashStep, type Recipe } from './recipes';
+import { calcMash, HEATER_EFFICIENCY, ICE_TEMP_C, THICK_DECOCTION_L_PER_KG, WATER_J_PER_KG_K, type MashRow } from './mashPlan';
+import { GRAIN_DISPLACEMENT_L_PER_KG, calcWater } from './recipeWater';
+import { addCharge, newRecipe, type Decoction, type Ingredient, type MashStep, type Recipe } from './recipes';
 
 const template = (key: string) => TEMPLATES.find((t) => t.key === key)!.build();
 const brewery: Brewery = { grainTempC: 18, tapWaterTempC: 12 };
@@ -21,7 +21,7 @@ function recipeFor(bh: Brewhouse, rest: Partial<MashStep>[] = [], p: Partial<Rec
 }
 
 function plan(bh: Brewhouse, r: Recipe, b: Brewery = brewery) {
-  return calcMash(r, bh, b, calcWater(r, bh).water!);
+  return calcMash(r, bh, b, calcWater(r, bh, undefined, b).water!);
 }
 
 describe('calcMash', () => {
@@ -131,5 +131,156 @@ describe('calcMash', () => {
     const p = plan(kettle, recipeFor(kettle, [{ kind: 'infusion', tempC: 50, infusion: { lead: 'volume', volumeL: 40 } }]));
     expect(p.notes[0]).toContain('größer als der Hauptguss');
     expect(p.rows[0].waterL).toBeCloseTo(p.strikeL, 6);
+  });
+});
+
+describe('calcMash: decoction', () => {
+  // Mash kettle heated directly; the Einkocher (1800 W, 27 l) boils the decoction.
+  const kettle = template('kettle-lauter');
+  const einkocher = kettle.vessels.find((v) => v.name === 'Einkocher')!;
+  const withVessel = (bh: Brewhouse, id: string, p: Partial<Brewhouse['vessels'][number]>): Brewhouse =>
+    ({ ...bh, vessels: bh.vessels.map((v) => (v.id === id ? { ...v, ...p } : v)) });
+  const mashVesselId = kettle.steps.mash!.vesselId;
+
+  // Mashed in at 50 °C for 15 min, then one decoction to 64 °C.
+  function decoctionRecipe(bh: Brewhouse, d: Partial<Decoction> = {}, step: Partial<MashStep> = {}): Recipe {
+    const r = { ...newRecipe(), volumeL: 20, brewhouseId: bh.id, ingredients: [malt] };
+    r.mash = [
+      { ...r.mash[0] }, { ...r.mash[1], tempC: 50, durationMin: 15 },
+      {
+        id: 'dek', kind: 'decoction', name: 'Kochmaische', tempC: 64, durationMin: 30,
+        decoction: { lead: 'temp', rests: [{ tempC: 72, durationMin: 15 }], boilMin: 15, ...d }, ...step,
+      },
+    ];
+    return r;
+  }
+  // Heat equivalent of the mash before the decoction and of the part pulled.
+  const massOf = (p: ReturnType<typeof plan>) => p.rows[0].waterL! + GRAIN_HEAT_RATIO * 5;
+  const pulledMass = (row: MashRow) => {
+    const d = row.decoction!;
+    return d.volumeL - GRAIN_DISPLACEMENT_L_PER_KG * d.grainKg + GRAIN_HEAT_RATIO * d.grainKg;
+  };
+
+  it('finds the share that closes the heat balance, and back from the share', () => {
+    const p = plan(kettle, decoctionRecipe(kettle));
+    const row = p.rows[2];
+    const d = row.decoction!;
+    expect(p.decoction?.vessel.name).toBe('Einkocher');
+    expect(row.transition.kind).toBe('decoction');
+    expect(row.tempC).toBeCloseTo(64, 3);
+    expect(d.restMashC).toBeCloseTo(50, 6);  // no heat loss: the mash left behind holds
+    const m = massOf(p);
+    const md = pulledMass(row);
+    expect(((m - md) * d.restMashC + md * 100) / m).toBeCloseTo(64, 3);
+    // Thick: grain at 2.1 l/kg (the mash is thinner).
+    expect((d.volumeL - GRAIN_DISPLACEMENT_L_PER_KG * d.grainKg) / d.grainKg).toBeCloseTo(THICK_DECOCTION_L_PER_KG, 6);
+
+    const byShare = plan(kettle, decoctionRecipe(kettle, { lead: 'share', sharePct: d.sharePct }, { tempC: 70 }));
+    expect(byShare.rows[2].tempC).toBeCloseTo(64, 3);
+  });
+
+  it('a thin decoction without loss and evaporation is Troester\'s formula of the heat equivalent', () => {
+    const p = plan(kettle, decoctionRecipe(kettle, { thin: true }));
+    const row = p.rows[2];
+    expect(row.decoction!.grainKg).toBe(0);
+    expect(row.decoction!.volumeL / massOf(p)).toBeCloseTo((64 - 50) / (100 - 50), 3);
+  });
+
+  it('a thick decoction needs more volume than a thin one', () => {
+    const thick = plan(kettle, decoctionRecipe(kettle)).rows[2].decoction!;
+    const thin = plan(kettle, decoctionRecipe(kettle, { thin: true })).rows[2].decoction!;
+    expect(thick.volumeL).toBeGreaterThan(thin.volumeL);
+  });
+
+  it('times the decoction from the heater power for its own mass', () => {
+    const p = plan(kettle, decoctionRecipe(kettle));
+    const row = p.rows[2];
+    const rate = (1800 * HEATER_EFFICIENCY * 60) / (pulledMass(row) * WATER_J_PER_KG_K);
+    const min = (72 - 50) / rate + 15 + (100 - 72) / rate + 15;
+    expect(row.transition.min).toBeCloseTo(min, 3);
+    // Pulled when the doughIn rest ends, back at the target.
+    expect(row.startMin).toBeCloseTo(p.rows[1].startMin + 15 + min, 3);
+    expect(row.decoction!.curve.map((c) => c.tempC)).toEqual([50, 72, 72, 100, 100]);
+    expect(row.decoction!.curve[0].min).toBeCloseTo(p.rows[1].startMin + 15, 6);
+    expect(row.decoction!.curve[4].min).toBeCloseTo(row.startMin, 6);
+    expect(p.totalMin).toBeCloseTo(row.startMin + 30, 6);
+    expect(p.notes.join()).toContain('Heizzeiten der Teilmaische geschätzt aus der Heizleistung von Einkocher');
+  });
+
+  it('falls back to the heat rate of the vessel\'s step, for a full vessel', () => {
+    const heater = kettle.devices.find((d) => d.name === 'Einkocher')!;
+    const bh: Brewhouse = {
+      ...kettle,
+      devices: kettle.devices.map((d) => (d.id === heater.id ? { ...d, powerW: undefined } : d)),
+      steps: { ...kettle.steps, sparge: { ...kettle.steps.sparge!, heatRateKPerMin: 2 } },
+    };
+    const row = plan(bh, decoctionRecipe(bh)).rows[2];
+    expect(row.transition.min).toBeCloseTo((100 - 50) / 2 + 15 + 15, 6);
+    expect(plan(bh, decoctionRecipe(bh)).notes.join()).toContain('die für die volle Füllung gilt');
+  });
+
+  it('a heat loss of the mash vessel cools the mash left behind and grows the share', () => {
+    const lossy = withVessel(kettle, mashVesselId, { heatLossKPerH: 6 });
+    const base = plan(kettle, decoctionRecipe(kettle)).rows[2];
+    const p = plan(lossy, decoctionRecipe(lossy));
+    const row = p.rows[2];
+    expect(row.decoction!.restMashC).toBeCloseTo(50 - (6 * row.transition.min) / 60, 6);
+    expect(row.decoction!.sharePct).toBeGreaterThan(base.decoction!.sharePct);
+    expect(row.tempC).toBeCloseTo(64, 3);
+  });
+
+  it('evaporates at the decoction vessel\'s rate and takes the water off the mash', () => {
+    const none = plan(kettle, decoctionRecipe(kettle));
+    expect(none.rows[2].decoction!.evaporatedL).toBe(0);
+    expect(none.notes.join()).toContain('Einkocher hat keine Verdampfung, gerechnet wird mit 0 l/h.');
+    const bh = withVessel(kettle, einkocher.id, { evaporationLPerH: 2 });
+    const p = plan(bh, decoctionRecipe(bh));
+    const row = p.rows[2];
+    expect(row.decoction!.evaporatedL).toBeCloseTo(0.5, 6);
+    expect(p.notes.join()).not.toContain('keine Verdampfung');
+    const m = massOf(p);
+    const md = pulledMass(row);
+    expect(((m - md) * 50 + (md - 0.5) * 100) / (m - 0.5)).toBeCloseTo(64, 3);
+  });
+
+  it('notes a target it cannot reach and one it would have to lower', () => {
+    const hot = plan(kettle, decoctionRecipe(kettle, { thin: true }, { tempC: 99 }));
+    expect(hot.notes.join()).toContain('lassen sich auch mit der ganzen Maische nicht erreichen');
+    const low = plan(kettle, decoctionRecipe(kettle, {}, { tempC: 45 }));
+    expect(low.notes.join()).toContain('eine Dekoktion hebt nur');
+    expect(low.rows[2].decoction!.sharePct).toBe(0);
+  });
+
+  it('notes a decoction larger than its vessel', () => {
+    const small = withVessel(kettle, einkocher.id, { volumeL: 3 });
+    expect(plan(small, decoctionRecipe(small)).notes.join()).toContain('passt nicht in Einkocher');
+  });
+
+  it('counts a decoction as a rest where the brewhouse has no decoction vessel', () => {
+    const pot = template('pot');
+    const p = plan(pot, decoctionRecipe(pot));
+    expect(p.decoction).toBeUndefined();
+    expect(p.rows[2].transition.kind).toBe('heat');
+    expect(p.rows[2].tempC).toBeCloseTo(64, 6);
+    expect(p.notes.join()).toContain('keinen zweiten beheizten Behälter');
+  });
+});
+
+describe('calcMash: boiling rest', () => {
+  it('boils the mash at the boiling point of the altitude and evaporates at the mash vessel\'s rate', () => {
+    const pot = template('pot');  // heated directly, 3 l/h
+    const p = plan(pot, recipeFor(pot, [{ tempC: 72 }, { tempC: 100, durationMin: 15 }]), { ...brewery, altitudeM: 500 });
+    const row = p.rows[3];
+    expect(row.tempC).toBeCloseTo(p.boilC, 6);
+    expect(p.boilC).toBeCloseTo(98.3, 1);
+    expect(row.transition.text).toMatch(/^Heizen \d+ min · Kochen$/);
+    expect(row.evaporatedL).toBeCloseTo(0.75, 6);
+    expect(p.notes.join()).not.toContain('direkt beheizt');
+  });
+
+  it('notes that only a directly heated mash vessel can boil', () => {
+    const herms = template('herms3');
+    const p = plan(herms, recipeFor(herms, [{ tempC: 100, durationMin: 15 }]));
+    expect(p.notes.join()).toContain('Kochen im Maischbehälter geht nur, wenn er direkt beheizt ist.');
   });
 });

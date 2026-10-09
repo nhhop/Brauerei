@@ -1,20 +1,33 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  BUILTIN_MASH_PROFILES, applyMashProfile, deleteMashProfile, droppedChargeSteps, duplicateMashProfile, isBuiltinProfile,
-  listMashProfiles, mashProfileSummary, newMashProfile, normalizeMashProfile, profileOfPlan, saveMashProfile,
+  BUILTIN_MASH_PROFILES, applyMashProfile, deleteMashProfile, duplicateMashProfile, isBuiltinProfile,
+  listMashProfiles, mashProfileSummary, newMashProfile, normalizeMashProfile, profileLoadEffects, profileOfPlan, saveMashProfile,
+  type MashProfile,
 } from './mashProfiles';
-import { VALID_ID, normalizeMash, type MashStep } from './recipes';
+import { VALID_ID, chargesOf, normalizeMash, type Ingredient, type MashStep, type Recipe } from './recipes';
 
 afterEach(() => vi.unstubAllGlobals());
 
 const byId = (id: string) => BUILTIN_MASH_PROFILES.find((p) => p.id === id)!;
 
+const grain = (id: string, amount: number, chargeId?: string): Ingredient =>
+  ({ id, kind: 'fermentable', name: id, amount, timing: 'mash', chargeId });
+
+// A plan of the fixed steps plus `mash`, 4 kg Pilsner and 1 kg wheat in one charge.
+const recipeOf = (mash: MashStep[] = [], p: Partial<Recipe> = {}): Pick<Recipe, 'mash' | 'charges' | 'ingredients'> =>
+  ({ mash: [...normalizeMash([]), ...mash], ingredients: [grain('pils', 4), grain('weizen', 1)], ...p });
+
+const kgOf = (r: Pick<Recipe, 'ingredients' | 'charges'>, chargeId: string) => r.ingredients
+  .filter((i) => (i.chargeId && chargesOf(r).some((c) => c.id === i.chargeId) ? i.chargeId : chargesOf(r)[0].id) === chargeId)
+  .reduce((s, i) => s + i.amount, 0);
+
 describe('shipped profiles', () => {
-  it('are the five of the plan, with valid unique ids', () => {
+  it('are the nine of the plan, with valid unique ids', () => {
     expect(BUILTIN_MASH_PROFILES.map((p) => p.name)).toEqual([
       'Hochkurz', 'Einrast-Infusion', 'Weizen mit Ferulasäurerast', 'Klassisch mit Eiweißrast', 'Kombirast 66 °C',
+      'Einmaischverfahren', 'Zweimaischverfahren', 'Dreimaischverfahren', 'Earls Kochmaische',
     ]);
-    expect(new Set(BUILTIN_MASH_PROFILES.map((p) => p.id)).size).toBe(5);
+    expect(new Set(BUILTIN_MASH_PROFILES.map((p) => p.id)).size).toBe(9);
     for (const p of BUILTIN_MASH_PROFILES) {
       expect(VALID_ID.test(p.id)).toBe(true);
       expect(isBuiltinProfile(p)).toBe(true);
@@ -23,69 +36,136 @@ describe('shipped profiles', () => {
     }
   });
 
-  it('rise in temperature', () => {
-    for (const p of BUILTIN_MASH_PROFILES) {
-      const temps = [p.doughIn.tempC, ...p.steps.map((s) => s.tempC)];
+  it('rise in temperature, but Earl boils and cools', () => {
+    for (const p of BUILTIN_MASH_PROFILES.filter((x) => x.id !== 'std-earl')) {
+      const temps = [p.doughIn.tempC, ...p.steps.map((s) => s.tempC!)];
       expect(temps).toEqual([...temps].sort((a, b) => a - b));
     }
+  });
+
+  it('the decoction methods have one, two and three decoctions, the last of three thin', () => {
+    const decoctions = (id: string) => byId(id).steps.filter((s) => s.kind === 'decoction');
+    expect(decoctions('std-einmaisch')).toHaveLength(1);
+    expect(decoctions('std-zweimaisch')).toHaveLength(2);
+    expect(decoctions('std-dreimaisch').map((s) => !!s.decoction!.thin)).toEqual([false, false, true]);
   });
 });
 
 describe('applyMashProfile', () => {
-  const plan = (): MashStep[] => [
-    ...normalizeMash([]),
+  const plan = () => recipeOf([
     { id: 'r1', kind: 'rest', name: 'alt', tempC: 72, durationMin: 20 },
     { id: 'd2', kind: 'doughIn', name: 'Schüttung 2 zugeben', chargeId: 'c2' },
-  ];
+  ]);
 
   it('keeps the two fixed steps and replaces the rest', () => {
     const before = plan();
-    const after = applyMashProfile(before, byId('std-weizen'));
-    expect(after[0]).toBe(before[0]);
-    expect(after[1]).toMatchObject({ id: before[1].id, kind: 'doughIn', tempC: 45, durationMin: 20 });
+    const after = applyMashProfile(before, byId('std-weizen')).mash;
+    expect(after[0]).toBe(before.mash[0]);
+    expect(after[1]).toMatchObject({ id: before.mash[1].id, kind: 'doughIn', tempC: 45, durationMin: 20 });
     expect(after.slice(2).map((s) => [s.kind, s.name, s.tempC, s.durationMin])).toEqual([
       ['rest', 'Maltoserast', 63, 45], ['rest', 'Verzuckerungsrast', 72, 20], ['rest', 'Abmaischen', 78, 5],
     ]);
     expect(new Set(after.map((s) => s.id)).size).toBe(after.length);
   });
 
-  it('gives infusion steps a temperature lead', () => {
-    const p = { ...newMashProfile(), steps: [{ kind: 'infusion' as const, name: 'Zubrühen', tempC: 72, durationMin: 10 }] };
-    expect(applyMashProfile(plan(), p)[2].infusion).toEqual({ lead: 'temp' });
+  it('gives infusion steps a temperature lead, with the profile\'s water temperature', () => {
+    const p = {
+      ...newMashProfile(), steps: [
+        { kind: 'infusion' as const, name: 'Zubrühen', tempC: 72, durationMin: 10 },
+        { kind: 'infusion' as const, name: 'kalt', tempC: 60, durationMin: 0, waterTempC: 12 },
+      ],
+    };
+    const mash = applyMashProfile(plan(), p).mash;
+    expect(mash[2].infusion).toEqual({ lead: 'temp' });
+    expect(mash[3].infusion).toEqual({ lead: 'temp', waterTempC: 12 });
   });
 
-  it('reports the doughIn steps of further charges it drops', () => {
-    expect(droppedChargeSteps(plan()).map((s) => s.id)).toEqual(['d2']);
-    expect(droppedChargeSteps(normalizeMash([]))).toEqual([]);
+  it('loads decoctions led by temperature', () => {
+    const mash = applyMashProfile(plan(), byId('std-dreimaisch')).mash;
+    expect(mash[2]).toMatchObject({
+      kind: 'decoction', tempC: 52, durationMin: 15, decoction: { lead: 'temp', rests: [{ tempC: 72, durationMin: 10 }], boilMin: 20 },
+    });
+    expect(mash[4].decoction).toEqual({ lead: 'temp', thin: true, rests: [], boilMin: 10 });
+  });
+
+  it('splits the first charge for a profile charge the recipe lacks; the kg stay', () => {
+    const before = recipeOf();
+    const after = applyMashProfile(before, byId('std-earl'));
+    const charges = chargesOf(after);
+    expect(charges).toHaveLength(2);
+    expect(kgOf(after, charges[1].id)).toBeCloseTo(1, 6);       // 20 % of 5 kg
+    expect(kgOf(after, charges[0].id)).toBeCloseTo(4, 6);
+    expect(after.ingredients.filter((i) => i.name === 'pils').reduce((s, i) => s + i.amount, 0)).toBeCloseTo(4, 6);
+    const doughIns = after.mash.filter((s) => s.kind === 'doughIn');
+    expect(doughIns[1]).toMatchObject({ chargeId: charges[1].id, name: 'Schüttung 2 zugeben', durationMin: 10 });
+    expect(profileLoadEffects(before, byId('std-earl'))).toEqual({ created: [{ name: 'Schüttung 2', pct: 20 }], unplaced: [] });
+  });
+
+  it('takes an existing further charge without touching the grain', () => {
+    const before = recipeOf([], {
+      charges: [{ id: 'c1', name: 'Schüttung 1' }, { id: 'c2', name: 'Weizen' }],
+      ingredients: [grain('pils', 4), grain('weizen', 1, 'c2')],
+    });
+    const after = applyMashProfile(before, byId('std-earl'));
+    expect(after.charges).toBe(before.charges);
+    expect(after.ingredients).toBe(before.ingredients);
+    expect(after.mash.filter((s) => s.kind === 'doughIn')[1].chargeId).toBe('c2');
+    expect(profileLoadEffects(before, byId('std-earl'))).toEqual({ created: [], unplaced: [] });
+  });
+
+  it('reports further charges left without a doughIn step', () => {
+    const before = recipeOf([], { charges: [{ id: 'c1', name: 'Schüttung 1' }, { id: 'c2', name: 'Weizen' }] });
+    expect(profileLoadEffects(before, byId('std-weizen'))).toEqual({ created: [], unplaced: ['Weizen'] });
+    expect(profileLoadEffects(recipeOf(), byId('std-weizen'))).toEqual({ created: [], unplaced: [] });
   });
 });
 
 describe('profileOfPlan', () => {
   it('takes doughIn temperature and hold plus rests and infusions', () => {
-    const mash: MashStep[] = [
+    const r = recipeOf();
+    r.mash = [
       ...normalizeMash([{ id: 'k', kind: 'doughIn', name: 'Einmaischen', tempC: 57, durationMin: 15 }]),
       { id: 'r', kind: 'rest', name: 'Maltoserast', tempC: 63, durationMin: 40 },
       { id: 'd2', kind: 'doughIn', name: 'Schüttung 2 zugeben', chargeId: 'c2', durationMin: 10 },
       { id: 'i', kind: 'infusion', name: 'Zubrühen', tempC: 72, durationMin: 10, infusion: { lead: 'volume', volumeL: 3 } },
+      { id: 'j', kind: 'infusion', name: 'kalt', tempC: 66, durationMin: 0, infusion: { lead: 'temp', waterTempC: 12 } },
     ];
-    expect(profileOfPlan(mash)).toEqual({
+    // c2 is no charge of the recipe, so that doughIn counts as the first charge and stays out.
+    expect(profileOfPlan(r)).toEqual({
       doughIn: { tempC: 57, durationMin: 15 },
       steps: [
         { kind: 'rest', name: 'Maltoserast', tempC: 63, durationMin: 40 },
         { kind: 'infusion', name: 'Zubrühen', tempC: 72, durationMin: 10 },
+        { kind: 'infusion', name: 'kalt', tempC: 66, durationMin: 0, waterTempC: 12 },
       ],
     });
   });
 
+  it('stores further charges by their share and decoctions with the reached temperature', () => {
+    const r = recipeOf([
+      { id: 'dek', kind: 'decoction', name: 'Kochmaische', tempC: 60, durationMin: 30, decoction: { lead: 'share', sharePct: 35, rests: [], boilMin: 20 } },
+      { id: 'd2', kind: 'doughIn', name: 'Weizen zugeben', chargeId: 'c2', durationMin: 10 },
+    ], {
+      charges: [{ id: 'c1', name: 'Schüttung 1' }, { id: 'c2', name: 'Weizen' }],
+      ingredients: [grain('pils', 4), grain('weizen', 1, 'c2')],
+    });
+    expect(profileOfPlan(r, (s) => (s.id === 'dek' ? 64.04 : undefined)).steps).toEqual([
+      { kind: 'decoction', name: 'Kochmaische', tempC: 64, durationMin: 30, decoction: { rests: [], boilMin: 20 } },
+      { kind: 'doughIn', name: 'Weizen zugeben', durationMin: 10, sharePct: 20 },
+    ]);
+  });
+
   it('round-trips through apply', () => {
-    const p = byId('std-eiweiss');
-    const again = profileOfPlan(applyMashProfile(normalizeMash([]), p));
-    expect(again).toEqual({ doughIn: p.doughIn, steps: p.steps });
+    for (const id of ['std-eiweiss', 'std-dreimaisch', 'std-earl']) {
+      const p: MashProfile = byId(id);
+      const again = profileOfPlan(applyMashProfile(recipeOf(), p));
+      expect(again).toEqual({ doughIn: p.doughIn, steps: p.steps });
+    }
   });
 
   it('lets a rest without a temperature keep the previous one', () => {
-    const mash = [...normalizeMash([]), { id: 'r', kind: 'rest' as const, name: 'x', durationMin: 5 }];
-    expect(profileOfPlan(mash).steps[0].tempC).toBe(67);
+    const r = recipeOf([{ id: 'r', kind: 'rest', name: 'x', durationMin: 5 }]);
+    expect(profileOfPlan(r).steps[0].tempC).toBe(67);
   });
 });
 
@@ -94,12 +174,17 @@ describe('normalizeMashProfile', () => {
     const p = normalizeMashProfile({
       id: 'a', steps: [
         { kind: 'rest', name: 'ok', tempC: 63, durationMin: 30 },
-        { kind: 'decoction', name: 'später', tempC: 70, durationMin: 10 },
+        { kind: 'steep', name: 'unbekannt', tempC: 70, durationMin: 10 },
         { kind: 'rest', name: 'ohne Zahl' },
+        { kind: 'doughIn', name: 'ohne Anteil', durationMin: 10 },
+        { kind: 'decoction', tempC: 64, durationMin: 20, decoction: { rests: [{ tempC: 72 }, { tempC: 72, durationMin: 5 }] } },
       ] as never,
     });
     expect(p).toMatchObject({ name: '', method: '', description: '', doughIn: { tempC: 67, durationMin: 60 } });
-    expect(p.steps).toEqual([{ kind: 'rest', name: 'ok', tempC: 63, durationMin: 30 }]);
+    expect(p.steps).toEqual([
+      { kind: 'rest', name: 'ok', tempC: 63, durationMin: 30 },
+      { kind: 'decoction', name: '', tempC: 64, durationMin: 20, decoction: { rests: [{ tempC: 72, durationMin: 5 }], boilMin: 15 } },
+    ]);
   });
 });
 
@@ -113,8 +198,10 @@ describe('copies and summary', () => {
     expect(byId('std-einrast').steps[0].tempC).toBe(78);
   });
 
-  it('summarizes the sequence', () => {
+  it('summarizes the sequence, marking decoctions and further charges', () => {
     expect(mashProfileSummary(byId('std-hochkurz'))).toBe('62 °C 35 min → 72 °C 20 min → 78 °C 5 min');
+    expect(mashProfileSummary(byId('std-einmaisch'))).toBe('50 °C 15 min → Dekoktion 64 °C 40 min → 72 °C 20 min → 78 °C 5 min');
+    expect(mashProfileSummary(byId('std-earl'))).toContain('→ +20 % Schüttung →');
   });
 });
 
