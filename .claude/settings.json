@@ -7,7 +7,7 @@
     "context7@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true
   },
-   "allowedTools": [
+  "allowedTools": [
     "Bash",
     "Edit",
     "Write",
@@ -15,5 +15,18 @@
     "Glob",
     "Grep",
     "PowerShell"
-  ]
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/scripts/cloud-setup.sh\""
+          }
+        ]
+      }
+    ]
+  }
 }
