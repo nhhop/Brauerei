@@ -83,7 +83,7 @@ export interface Ingredient {
 // Mash plan (tab "Maischen", mashPlan.ts computes it). Every step has a target
 // temperature and a hold; the kind only sets how the mash gets there. The plan
 // always starts with `strike` and the first `doughIn`, which stay in place.
-export type MashStepKind = 'strike' | 'doughIn' | 'rest' | 'infusion' | 'decoction';  // decoction: stage 3d
+export type MashStepKind = 'strike' | 'doughIn' | 'rest' | 'infusion' | 'decoction';
 
 export interface MashStep {
   id: string;
@@ -93,11 +93,23 @@ export interface MashStep {
   durationMin?: number; // hold at tempC
   chargeId?: string;    // doughIn: the charge it adds; unset = the first
   infusion?: Infusion;
+  decoction?: Decoction;
 }
 
 // Water added to the mash. Volume and water temperature depend on each other;
 // `lead` names the one edited last. Ice melts at 0 °C and always leads by temperature.
 export interface Infusion { lead: 'volume' | 'temp'; volumeL?: number; waterTempC?: number; ice?: boolean }
+
+// Part of the mash boiled in a second vessel and put back (tempC: the mash after
+// that). Share and that temperature depend on each other; `lead` names the one
+// edited last. Thick takes mostly grain, thin only liquid.
+export interface Decoction {
+  lead: 'share' | 'temp';
+  sharePct?: number;    // of the mash volume, while it leads
+  thin?: boolean;       // unset = thick
+  rests: { tempC: number; durationMin: number }[];  // in the decoction vessel, before the boil
+  boilMin: number;
+}
 
 // A share of the grist that is mashed in by its own doughIn step. Without
 // `Recipe.charges` there is exactly one, implicit.
@@ -223,19 +235,27 @@ export const isMashGrain = (i: Ingredient) => i.kind === 'fermentable' && i.timi
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-// Adds a charge and its doughIn step after `afterStepId` (unset = at the end).
-// With `fromId` and `pct`, that share of every grain of charge `fromId` moves
-// into it, so the kg per malt stay the same.
-export function addCharge(r: Recipe, opts: { fromId?: string; pct?: number; afterStepId?: string } = {}): Partial<Recipe> {
+// A new charge, named after the next free number, and the ingredients with
+// `pct` % of every grain of charge `fromId` moved into it (the kg per malt stay
+// the same). Without `fromId` or `pct` the charge is empty.
+export function splitCharge(r: Pick<Recipe, 'charges' | 'ingredients'>, fromId?: string, pct?: number): { charge: Charge; ingredients: Ingredient[] } {
   const charges = chargesOf(r);
   let n = charges.length + 1;
   while (charges.some((c) => c.name === `Schüttung ${n}`)) n++;
   const charge: Charge = { id: uid(), name: `Schüttung ${n}` };
   const ingredients = r.ingredients.flatMap((i) => {
-    if (!opts.fromId || !opts.pct || !isMashGrain(i) || chargeIdOf(i, charges) !== opts.fromId) return [i];
-    const move = round3((i.amount * opts.pct) / 100);
+    if (!fromId || !pct || !isMashGrain(i) || chargeIdOf(i, charges) !== fromId) return [i];
+    const move = round3((i.amount * pct) / 100);
     return [{ ...i, amount: round3(i.amount - move) }, { ...i, id: uid(), amount: move, chargeId: charge.id, auto: undefined }];
   });
+  return { charge, ingredients };
+}
+
+// Adds a charge and its doughIn step after `afterStepId` (unset = at the end),
+// splitting `pct` % off charge `fromId` (splitCharge).
+export function addCharge(r: Recipe, opts: { fromId?: string; pct?: number; afterStepId?: string } = {}): Partial<Recipe> {
+  const charges = chargesOf(r);
+  const { charge, ingredients } = splitCharge(r, opts.fromId, opts.pct);
   const step: MashStep = { id: uid(), kind: 'doughIn', name: `${charge.name} zugeben`, durationMin: 10, chargeId: charge.id };
   const at = r.mash.findIndex((s) => s.id === opts.afterStepId);
   const mash = at < 0 ? [...r.mash, step] : [...r.mash.slice(0, at + 1), step, ...r.mash.slice(at + 1)];
@@ -263,6 +283,18 @@ export function removeCharge(r: Recipe, id: string): Partial<Recipe> {
     ingredients: rest.length > 1 ? ingredients : ingredients.map((i) => (i.chargeId ? { ...i, chargeId: undefined } : i)),
     mash: r.mash.filter((s) => !(s.kind === 'doughIn' && s.chargeId === id)),
   };
+}
+
+// The plan with every decoction turned into a rest to the same temperature and
+// hold, for a brewhouse without a decoction vessel. `resultC` gives the
+// temperature a decoction led by its share reaches (the plan's row).
+export function replaceDecoctions(mash: MashStep[], resultC?: (s: MashStep) => number | undefined): MashStep[] {
+  return mash.map((s) => {
+    if (s.kind !== 'decoction') return s;
+    const { decoction, ...rest } = s;
+    const tempC = decoction?.lead === 'share' ? resultC?.(s) ?? s.tempC : s.tempC;
+    return { ...rest, kind: 'rest', tempC: tempC === undefined ? undefined : Math.round(tempC * 10) / 10 };
+  });
 }
 
 // What the list shows; GET /api/recipes returns only these fields.

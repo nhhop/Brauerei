@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addCharge, chargeIdOf, chargesOf, deleteRecipe, exportRecipes, getRecipe, importLocalRecipes, importRecipes, listRecipes,
-  newRecipe, normalizeMash, removeCharge, saveRecipe,
+  newRecipe, normalizeMash, removeCharge, replaceDecoctions, saveRecipe, splitCharge,
   type Ingredient, type MashStep, type Recipe,
 } from './recipes';
 
@@ -157,6 +157,21 @@ describe('mash plan', () => {
     expect(steps[1].chargeId).toBeUndefined();
   });
 
+  it('replaceDecoctions turns decoctions into rests at the temperature they reach', () => {
+    const steps: MashStep[] = [
+      ...normalizeMash([]),
+      { id: 'a', kind: 'decoction', name: 'Kochmaische', tempC: 64, durationMin: 30, decoction: { lead: 'temp', rests: [], boilMin: 15 } },
+      { id: 'b', kind: 'decoction', name: 'Läutermaische', tempC: 70, durationMin: 5, decoction: { lead: 'share', sharePct: 30, thin: true, rests: [], boilMin: 10 } },
+      { id: 'c', kind: 'rest', name: 'Abmaischen', tempC: 78, durationMin: 5 },
+    ];
+    const out = replaceDecoctions(steps, (s) => (s.id === 'b' ? 75.96 : undefined));
+    expect(out.slice(2)).toEqual([
+      { id: 'a', kind: 'rest', name: 'Kochmaische', tempC: 64, durationMin: 30 },
+      { id: 'b', kind: 'rest', name: 'Läutermaische', tempC: 76, durationMin: 5 },
+      steps[4],
+    ]);
+  });
+
   it('loads a recipe with a normalized plan', async () => {
     mockDevice([{ ...recipe('a1'), mash: [] as MashStep[] }]);
     expect((await getRecipe('a1'))!.mash.map((s) => s.kind)).toEqual(['strike', 'doughIn']);
@@ -180,6 +195,16 @@ describe('charges', () => {
     const second = split.ingredients.filter((i) => chargeIdOf(i, charges) === charges[1].id);
     expect(second.map((i) => [i.name, i.amount])).toEqual([['weizen', 1.3], ['pils', 0.9]]);
     expect(split.mash[2]).toMatchObject({ kind: 'doughIn', chargeId: charges[1].id });
+  });
+
+  it('splitCharge moves a share into a new charge and keeps the kg; without a share it is empty', () => {
+    const { charge, ingredients } = splitCharge(base, 'c1', 25);
+    expect(charge.name).toBe('Schüttung 2');
+    const r = { ...base, ingredients, charges: [...chargesOf(base), charge] };
+    expect(kgOf(r, 'weizen')).toBeCloseTo(2.6, 9);
+    expect(kgOf(r, 'pils')).toBeCloseTo(1.8, 9);
+    expect(ingredients.filter((i) => i.chargeId === charge.id).map((i) => i.amount)).toEqual([0.65, 0.45]);
+    expect(splitCharge(base).ingredients).toEqual(base.ingredients);
   });
 
   it('removing a charge merges its grain back and drops its doughIn', () => {

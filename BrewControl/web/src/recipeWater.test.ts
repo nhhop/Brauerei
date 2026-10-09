@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRAIN_ABSORPTION, TEMPLATES, type Brewhouse } from './brewhouse';
 import { platoFromExtract } from './brewMath';
 import { calcWater, resolveDilution } from './recipeWater';
-import { newRecipe, type Ingredient, type Recipe } from './recipes';
+import { newRecipe, type Ingredient, type MashStep, type Recipe } from './recipes';
 
 const template = (key: string) => TEMPLATES.find((t) => t.key === key)!.build();
 
@@ -179,5 +179,43 @@ describe('dilution (high gravity)', () => {
     expect(calc(small, { volumeL: 30 }).w.fitDilutionL).toBe(13);
     const fitted = calc(small, { volumeL: 30, water: { dilution: { at: 'kettle', lead: 'volume', volumeL: 13 } } }).w;
     expect([fitted.preBoilL, fitted.fitDilutionL]).toEqual([20, undefined]);
+  });
+});
+
+describe('mash evaporation', () => {
+  const kettle = template('kettle-lauter');
+  // The Einkocher boils the decoction at 2 l/h.
+  const bh: Brewhouse = { ...kettle, vessels: kettle.vessels.map((v) => (v.name === 'Einkocher' ? { ...v, evaporationLPerH: 2 } : v)) };
+  const dek: MashStep = {
+    id: 'dek', kind: 'decoction', name: 'Kochmaische', tempC: 64, durationMin: 30, decoction: { lead: 'temp', rests: [], boilMin: 30 },
+  };
+  const plus = (r: Recipe, s: MashStep): Recipe => ({ ...r, mash: [...r.mash, s] });
+
+  it('adds the decoction boil to the total water, as sparge water', () => {
+    const plain = calcWater(recipeFor(bh), bh).water!;
+    const w = calcWater(plus(recipeFor(bh), dek), bh).water!;
+    expect(w.mashEvaporationL).toBeCloseTo(1, 9);
+    expect(w.totalL - plain.totalL).toBeCloseTo(1, 9);
+    expect(w.strikeL).toBeCloseTo(plain.strikeL, 9);
+    expect(w.spargeL - plain.spargeL).toBeCloseTo(1, 9);
+  });
+
+  it('without sparge, as strike water', () => {
+    const p = { water: { sparge: false } };
+    const plain = calcWater(recipeFor(bh, p), bh).water!;
+    expect(calcWater(plus(recipeFor(bh, p), dek), bh).water!.strikeL - plain.strikeL).toBeCloseTo(1, 9);
+  });
+
+  it('a rest at the boiling point of the altitude evaporates in the mash vessel', () => {
+    const pot = template('pot');  // 3 l/h
+    const r = plus(recipeFor(pot), { id: 'k', kind: 'rest', name: 'Kochen', tempC: 99, durationMin: 20 });
+    expect(calcWater(r, pot).water!.mashEvaporationL).toBe(0);  // 99 °C does not boil at sea level
+    expect(calcWater(r, pot, undefined, { grainTempC: 18, tapWaterTempC: 12, altitudeM: 500 }).water!.mashEvaporationL)
+      .toBeCloseTo(1, 9);
+  });
+
+  it('a decoction without a decoction vessel boils off nothing', () => {
+    const pot = template('pot');
+    expect(calcWater(plus(recipeFor(pot), dek), pot).water!.mashEvaporationL).toBe(0);
   });
 });
