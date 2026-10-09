@@ -1,11 +1,15 @@
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Plus, Trash2 } from 'lucide-preact';
 import { Fragment, type ComponentChildren } from 'preact';
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { ConfirmModal } from '../../components/ConfirmModal';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
 import { lovibond } from '../../brewMath';
 import type { Efficiency } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
 import { calcMash, fmtClock, type MashPlan, type MashRow } from '../../mashPlan';
+import {
+  BUILTIN_MASH_PROFILES, applyMashProfile, droppedChargeSteps, listMashProfiles, type MashProfile,
+} from '../../mashProfiles';
 import { calcStats, wortExtract, type RecipeStats, type WortPart } from '../../recipeStats';
 import { calcWater, fmtL } from '../../recipeWater';
 import {
@@ -16,6 +20,7 @@ import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialo
 import { Card, Field, NumInput } from './fields';
 import { IngredientCard, type IngredientGroup } from './IngredientCard';
 import { MashCurve } from './MashCurve';
+import { MashProfileDialog } from './MashProfileDialog';
 import { Stat, type TabProps } from './tabs';
 
 const num = (n: number) => n.toFixed(1).replace('.', ',');
@@ -97,17 +102,17 @@ function HeadCard({ bh, brewery, plan, loaded, efficiency: e }: {
   );
 }
 
-// "+ Label" plus an arrow that opens `menu`, or runs `onArrow`.
-function SplitButton({ label, onMain, onArrow, arrowTitle, menu }: {
+// "+ Label" plus an arrow that opens `menu`, or runs `onArrow`; `plain` drops the plus.
+function SplitButton({ label, onMain, onArrow, arrowTitle, menu, plain }: {
   label: string; onMain: () => void; onArrow?: () => void; arrowTitle: string;
-  menu?: (close: () => void) => ComponentChildren;
+  menu?: (close: () => void) => ComponentChildren; plain?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const btn = 'flex items-center gap-1 border border-border py-1 text-xs text-muted hover:bg-fg/10';
   return (
     <div class="relative inline-flex">
       <button type="button" onClick={onMain} class={`${btn} rounded-l-md px-2`}>
-        <Plus size={12} /> {label}
+        {!plain && <Plus size={12} />} {label}
       </button>
       <button type="button" title={arrowTitle} aria-label={arrowTitle} aria-haspopup={menu ? 'menu' : undefined}
         aria-expanded={menu ? open : undefined}
@@ -292,6 +297,13 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
   const charges = chargesOf(recipe);
   const listRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
+  // Own profiles come from the SD card, the shipped ones are built in.
+  const [stored, setStored] = useState<MashProfile[] | null>(null);
+  const [storeError, setStoreError] = useState(false);
+  const [dialog, setDialog] = useState<'list' | 'save' | null>(null);
+  const [pending, setPending] = useState<MashProfile | null>(null);
+  const reload = () => listMashProfiles().then((l) => { setStored(l); setStoreError(false); }).catch(() => setStoreError(true));
+  useEffect(() => { void reload(); }, []);
 
   const set = (mash: MashStep[]) => onChange({ mash });
   const patch = (id: string, p: Partial<MashStep>) => set(steps.map((s) => (s.id === id ? { ...s, ...p } : s)));
@@ -342,12 +354,36 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
     );
   };
 
+  const profileMenu = (close: () => void) => {
+    const item = (p: MashProfile) => (
+      <MenuItem key={p.id} label={p.name || 'Ohne Namen'} sub={[p.doughIn.tempC, ...p.steps.map((s) => s.tempC)].join(' · ') + ' °C'}
+        onClick={() => { setPending(p); close(); }} />
+    );
+    return (
+      <>
+        <div class="px-2.5 pb-1 pt-2 text-xs font-semibold text-muted">Profil laden</div>
+        {BUILTIN_MASH_PROFILES.map(item)}
+        {stored?.map(item)}
+        {storeError && <div class="px-2.5 py-1 text-xs text-muted">Eigene Profile nicht geladen (SD-Karte?).</div>}
+        <div class="mt-1 border-t border-border pt-1" />
+        <MenuItem label="Plan als Profil speichern …" disabled={storeError} onClick={() => { setDialog('save'); close(); }} />
+        <MenuItem label="Profile verwalten …" onClick={() => { setDialog('list'); close(); }} />
+      </>
+    );
+  };
+  const dropped = pending ? droppedChargeSteps(steps) : [];
+
   const holdMin = plan?.rows.reduce((s, r) => s + r.holdMin, 0) ?? 0;
   const strikeRow = plan?.rows[0];
 
   return (
     <Card title="Maischeplan"
-      action={<SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />}>
+      action={
+        <div class="flex items-center gap-2">
+          <SplitButton plain label="Profile" onMain={() => setDialog('list')} arrowTitle="Profil laden" menu={profileMenu} />
+          <SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />
+        </div>
+      }>
       <div ref={listRef} class="text-sm">
         <div class={`hidden border-b border-border pb-1 text-xs text-muted ${GRID}`}>
           <span />
@@ -398,6 +434,16 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           {plan.notes.map((n) => <li key={n}>{n}</li>)}
         </ul>
       )}
+      {dialog && (
+        <MashProfileDialog stored={stored} storeError={storeError} mash={steps} saveFirst={dialog === 'save'}
+          reload={reload} onLoad={setPending} onClose={() => setDialog(null)} />
+      )}
+      <ConfirmModal open={pending !== null} title="Profil laden?" confirmLabel="Laden"
+        onConfirm={() => { if (pending) set(applyMashProfile(steps, pending)); setPending(null); setDialog(null); }}
+        onCancel={() => setPending(null)}>
+        „{pending?.name}“ ersetzt alle Schritte außer Wasser vorlegen und Einmaischen; dessen Temperatur und Dauer setzt das Profil.
+        {dropped.length > 0 && ` Die Einmaisch-Schritte weiterer Schüttungen (${dropped.map((s) => s.name || 'Einmaischen').join(', ')}) entfallen, die Schüttungen bleiben.`}
+      </ConfirmModal>
     </Card>
   );
 }
