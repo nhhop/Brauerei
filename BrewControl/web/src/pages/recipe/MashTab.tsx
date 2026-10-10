@@ -6,7 +6,7 @@ import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../b
 import { lovibond } from '../../brewMath';
 import type { Efficiency } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
-import { calcMash, fmtClock, type MashPlan, type MashRow } from '../../mashPlan';
+import { calcMash, fmtClock, outlineMash, type MashPlan, type MashRow } from '../../mashPlan';
 import {
   BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, profileLoadEffects, type MashProfile,
 } from '../../mashProfiles';
@@ -43,7 +43,8 @@ const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, dura
 
 // Tab "Maischen": head card, the mash ingredients by charge, the mash plan and
 // its temperature curve. The numbers come from mashPlan.ts; without a
-// brewhouse the plan is editable but not computed.
+// brewhouse the plan is editable but not computed, and the curve is only the
+// outline of targets and holds.
 export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
@@ -56,11 +57,12 @@ export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
       <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />
       <GrainCard recipe={recipe} onChange={onChange} plan={plan} stats={stats} parts={wort?.colors ?? []} />
       <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} />
-      {plan && (
-        <Card title="Temperaturverlauf">
-          <MashCurve plan={plan} />
-        </Card>
-      )}
+      <Card title="Temperaturverlauf">
+        {!plan && (
+          <p class="mb-2 text-xs text-muted">Ohne Sudhaus nur Zieltemperaturen und Haltezeiten, Übergänge als Sprung.</p>
+        )}
+        <MashCurve rows={plan?.rows ?? outlineMash(recipe, brewery)} />
+      </Card>
     </>
   );
 }

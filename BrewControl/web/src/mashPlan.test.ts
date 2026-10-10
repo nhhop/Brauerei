@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
 import { GRAIN_HEAT_RATIO, strikeWaterTempC } from './brewMath';
-import { calcMash, HEATER_EFFICIENCY, ICE_TEMP_C, THICK_DECOCTION_L_PER_KG, WATER_J_PER_KG_K, type MashRow } from './mashPlan';
+import { calcMash, outlineMash, HEATER_EFFICIENCY, ICE_TEMP_C, THICK_DECOCTION_L_PER_KG, WATER_J_PER_KG_K, type MashRow } from './mashPlan';
 import { GRAIN_DISPLACEMENT_L_PER_KG, calcWater } from './recipeWater';
 import { addCharge, newRecipe, type Decoction, type Ingredient, type MashStep, type Recipe } from './recipes';
 
@@ -282,5 +282,44 @@ describe('calcMash: boiling rest', () => {
     const herms = template('herms3');
     const p = plan(herms, recipeFor(herms, [{ tempC: 100, durationMin: 15 }]));
     expect(p.notes.join()).toContain('Kochen im Maischbehälter geht nur, wenn er direkt beheizt ist.');
+  });
+});
+
+describe('outlineMash (no brewhouse)', () => {
+  // The fixed steps plus `rest`, mashed in at 63 °C for 30 min, no brewhouse.
+  const outline = (rest: Partial<MashStep>[], p: Partial<Recipe> = {}, b: Brewery | null = brewery) => {
+    const r = { ...newRecipe(), ingredients: [malt], ...p };
+    r.mash = [
+      { ...r.mash[0] }, { ...r.mash[1], tempC: 63, durationMin: 30 },
+      ...rest.map((s, i) => ({ id: `s${i}`, kind: 'rest' as const, name: `Schritt ${i}`, durationMin: 10, ...s })),
+    ];
+    return outlineMash(r, b);
+  };
+
+  it('starts at mashing in and jumps from hold to hold', () => {
+    const rows = outline([{ tempC: 72, durationMin: 20 }, { kind: 'infusion', tempC: 78, durationMin: 5, infusion: { lead: 'temp' } }]);
+    expect(rows.map((r) => [r.step.kind, r.fromC, r.tempC, r.startMin, r.holdMin])).toEqual([
+      ['doughIn', 63, 63, 0, 30], ['rest', 63, 72, 30, 20], ['infusion', 72, 78, 50, 5],
+    ]);
+    expect(rows.every((r) => r.transition.min === 0)).toBe(true);
+    expect(rows[0]).toMatchObject({ grainKg: 5, chargeName: 'Schüttung 1' });
+  });
+
+  it('a further charge and a rest without a target keep the temperature', () => {
+    const base = { ...newRecipe(), ingredients: [malt] };
+    const charges = addCharge(base, { fromId: 'c1', pct: 40 });
+    const rows = outline([{ tempC: 45 }, { kind: 'doughIn', chargeId: charges.charges![1].id, tempC: 99 }, { tempC: undefined }], charges);
+    expect(rows.map((r) => r.tempC)).toEqual([63, 45, 45, 45]);
+    expect(rows[2]).toMatchObject({ grainKg: 2, chargeName: 'Schüttung 2' });
+  });
+
+  it('a boiling rest stops at the boiling point of the altitude, a decoction jumps to its target', () => {
+    const rows = outline([
+      { tempC: 100, durationMin: 15 },
+      { kind: 'decoction', tempC: 70, decoction: { lead: 'temp', rests: [], boilMin: 15 } },
+    ], {}, { ...brewery, altitudeM: 500 });
+    expect(rows[1].tempC).toBeCloseTo(98.3, 1);
+    expect(rows[2].tempC).toBe(70);
+    expect(rows[2].decoction).toBeUndefined();
   });
 });
