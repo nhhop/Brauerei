@@ -1,22 +1,23 @@
 import { useEffect, useRef } from 'preact/hooks';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { fmtClock, type MashPlan } from '../../mashPlan';
+import { fmtClock, type MashRow } from '../../mashPlan';
 
 function cssVar(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-// Ramps and holds of the plan over time, from heating the strike water on; a
-// point marks each addition (water, grain or a decoction put back). A
-// transition without a known duration is drawn as a jump. A decoction has its
-// own series (`decs`, null elsewhere) that drops back into the mash when it is
-// put back; meanwhile the mash line shows the mash left behind.
-export function curveOf(plan: MashPlan): {
+// Ramps and holds of the plan's rows over time (calcMash: from heating the
+// strike water on; outlineMash: from mashing in); a point marks each addition
+// (water, grain or a decoction put back). A transition without a known
+// duration is drawn as a jump. A decoction has its own series (`decs`, null
+// elsewhere) that drops back into the mash when it is put back; meanwhile the
+// mash line shows the mash left behind.
+export function curveOf(rows: MashRow[]): {
   xs: number[]; ys: (number | null)[]; decs: (number | null)[]; marks: (number | null)[]; labels: string[];
 } {
   const xs: number[] = [0];
-  const ys: (number | null)[] = [plan.rows[0]?.fromC ?? 0];
+  const ys: (number | null)[] = [rows[0]?.fromC ?? 0];
   const decs: (number | null)[] = [null];
   const marks: (number | null)[] = [null];
   const labels: string[] = [''];
@@ -27,7 +28,7 @@ export function curveOf(plan: MashPlan): {
     marks.push(label === undefined || y === null ? null : y);
     labels.push(label ?? '');
   };
-  for (const r of plan.rows) {
+  for (const r of rows) {
     if (r.decoction) {
       for (const p of r.decoction.curve) push(p.min, null, undefined, p.tempC);
       push(r.startMin, null, undefined, r.tempC);
@@ -40,9 +41,9 @@ export function curveOf(plan: MashPlan): {
   return { xs, ys, decs, marks, labels };
 }
 
-export function MashCurve({ plan }: { plan: MashPlan }) {
+export function MashCurve({ rows }: { rows: MashRow[] }) {
   const elRef = useRef<HTMLDivElement>(null);
-  const { xs, ys, decs, marks, labels } = curveOf(plan);
+  const { xs, ys, decs, marks, labels } = curveOf(rows);
   const key = JSON.stringify([xs, ys, decs, labels]);
 
   useEffect(() => {

@@ -1934,3 +1934,20 @@ Kochmaische), es ist nur ein Eintrag in `BUILTIN_MASH_PROFILES`.
   Wasser, nach der zweiten Schüttung 44,5 °C, Maltaserast heizt 0,5 K nach, 2:24 h; Ein-Topf (Vollguss):
   11,7 l kaltes Wasser, 45,0 °C. Keine Abkühl-Hinweise.
 - **Prüfung:** `pnpm test` (350, neu: Aufbau des Herrmann-Profils, Round-Trip), `typecheck`, `build`.
+
+## 2026-10-10 — Temperaturverlauf ohne Sudhaus
+
+Am LilyGo fehlte der Temperaturverlauf im Maischen-Tab, im Mock nicht: Die Karte erschien nur mit Plan,
+und `calcMash` braucht ein Sudhaus; die Rezepte auf dem Gerät hatten keins gewählt (vom Nutzer selbst
+gefunden). Entscheidung: ohne Sudhaus ein vereinfachter Verlauf (Branch `feat/maische-verlauf-ohne-sudhaus`).
+
+- **`outlineMash`** (`web/src/mashPlan.ts`): Zieltemperaturen und Haltezeiten ab dem Einmaischen, jeder
+  Übergang ein Sprung, kein Wasser vorlegen; weitere Schüttungen und Rasten ohne Ziel behalten die vorige
+  Temperatur, eine Kochrast endet am Siedepunkt der Brauerei, eine Dekoktion springt ohne eigene Linie.
+- **UI:** Die Karte erscheint immer, ohne Sudhaus mit dem Hinweis „Ohne Sudhaus nur Zieltemperaturen
+  und Haltezeiten, Übergänge als Sprung.“ `MashCurve`/`curveOf` nehmen dafür Zeilen statt des Plans.
+- **Prüfung:** `pnpm test` (354, neu `outlineMash` und die Kurve ohne Sudhaus), `typecheck`, `build`; im
+  Node-Mock Earls Kochmaische ohne Sudhaus (Stufen 62/72/100, Sprung durch das kalte Wasser, Punkt bei
+  der zweiten Schüttung) und mit Sudhaus unverändert.
+- **Nebenbefund:** Die Plantabelle ragt bei rund 800 px Fensterbreite über ihre Karte hinaus, offen in
+  PLAN.md.

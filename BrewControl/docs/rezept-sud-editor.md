@@ -474,7 +474,9 @@ Liste und Detailansicht.
     ersten zusammen. Der Zutaten-Tab markiert die Schüttung. Die Summen je Schüttung (°P, EBC) sind ihr
     Anteil am Extrakt bzw. an den MCU.
   - **Temperaturverlauf** mit uPlot: Rampen und Haltestufen ab dem Aufheizen des Hauptgusses, Punkte
-    und Namen bei den Zugaben.
+    und Namen bei den Zugaben. Ohne Sudhaus (seit 2026-10-10, `outlineMash`) nur die Zieltemperaturen
+    und Haltezeiten ab dem Einmaischen, Übergänge als Sprung, mit Hinweis; Schritte ohne Zieltemperatur
+    (weitere Schüttung) behalten die vorige, eine Kochrast endet am Siedepunkt der Brauerei.
   - Der Maische-pH (2b-2) rechnet weiter mit der ganzen Schüttung und dem ganzen Hauptguss.
 - **Würzekochen** (Tab): Karte „Kochen & Whirlpool“ mit Kochdauer, Nachisomerisierung, Whirlpool-Temperatur
   und -Dauer, darunter eine Zeitleiste der Gaben (Läutern/Vorderwürze · Kochen · Nachisomerisierung ·

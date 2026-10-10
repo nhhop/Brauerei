@@ -392,3 +392,35 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
     heating, heatRate: result.heatRate, decoction, notes: result.notes,
   };
 }
+
+// The plan without a brewhouse, for the temperature curve only: no strike
+// water (its temperature needs the volumes), every step jumps to its target
+// and holds it. A step without a target keeps the temperature before it: a
+// further charge (its mixing temperature needs the volumes) or a rest without
+// one. A boiling rest stops at the brewery's boiling point.
+export function outlineMash(recipe: Recipe, brewery: Brewery | null): MashRow[] {
+  const boilC = breweryBoilC(brewery);
+  const charges = chargesOf(recipe);
+  const grainOf = (chargeId: string) => recipe.ingredients
+    .filter((i) => isMashGrain(i) && chargeIdOf(i, charges) === chargeId)
+    .reduce((s, i) => s + i.amount, 0);
+  const rows: MashRow[] = [];
+  let t: number | undefined;
+  let clock = 0;
+  for (const [k, s] of recipe.mash.entries()) {
+    if (s.kind === 'strike') continue;
+    const from = t;
+    if (isBoilRest(s, boilC)) t = boilC;
+    else if (s.kind !== 'doughIn' || k === 1) t = s.tempC ?? t;
+    if (t === undefined) continue;
+    const charge = s.kind === 'doughIn' ? charges.find((c) => c.id === chargeIdOf(s, charges))! : undefined;
+    const holdMin = s.durationMin ?? 0;
+    rows.push({
+      step: s, fromC: from ?? t, tempC: t, startMin: clock, holdMin,
+      transition: { kind: 'none', min: 0, text: '—' },
+      ...(charge ? { grainKg: grainOf(charge.id), chargeName: charge.name } : {}),
+    });
+    clock += holdMin;
+  }
+  return rows;
+}
