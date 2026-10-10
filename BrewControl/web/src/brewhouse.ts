@@ -1,6 +1,8 @@
 import { failed } from './api';
-import { DEFAULT_EFFICIENCY, VALID_ID, uid } from './recipes';
+import { boilingPointC, pressureAtAltitudeHpa } from './brewMath';
+import { VALID_ID, uid } from './recipes';
 import { unitOf } from './refs';
+import type { EfficiencyBasis } from './efficiency';
 import type { PhModel } from './mashPh';
 import type { Snapshot } from './types';
 import type { WaterProfile } from './waterChem';
@@ -34,19 +36,32 @@ export interface Brewery {
   waters?: WaterProfile[];  // water analyses; VE water is built in (waterChem.VE_WATER)
   defaultWaterId?: string;  // the source water of recipes that pick none
   phModel?: PhModel;        // mash and wort pH of all recipes; unset = DEFAULT_PH_MODEL
+  altitudeM?: number;       // site altitude; unset = sea level
+  efficiencyBasis?: EfficiencyBasis;  // which efficiency recipes enter; unset = DEFAULT_BASIS
 }
 
 export const DEFAULT_BREWERY: Brewery = { grainTempC: 18, tapWaterTempC: 12 };
+
+// Boiling point the recipes plan with, from the altitude (standard atmosphere).
+// The brew day uses the air pressure measurement instead.
+export function breweryBoilC(b: Brewery | null | undefined): number {
+  return boilingPointC(pressureAtAltitudeHpa(b?.altitudeM ?? 0));
+}
 
 export interface Vessel {
   id: string;
   name: string;
   volumeL: number;
   deadSpaceL: number;
-  evaporationLPerH?: number;  // only shown/checked while the vessel boils
+  evaporationLPerH?: number;  // shown while the vessel boils, decocts or mashes heated directly (Kochrast)
   lauterMethod?: string;      // descriptive (false bottom, bag …), only while it lauters
   grainAbsorptionLPerKg?: number; // wort the spent grain holds back, only while it lauters
+  heatLossKPerH?: number;     // the resting mash, unheated (during a decoction); unset = 0, it holds
 }
+
+// Default conversion of new brewhouses (Troester calls 95–100 % excellent;
+// agreed default 2026-10-09).
+export const DEFAULT_CONVERSION = 80;
 
 // Literature gives 0.8–1.0 l/kg; Brewfather's default.
 export const DEFAULT_GRAIN_ABSORPTION = 0.96;
@@ -124,10 +139,10 @@ export const DRIVES: { value: Transfer['drive']; label: string }[] = [
 
 export type MeasureKey =
   | 'grainTemp' | 'tapWaterTemp' | 'strikeVolume' | 'strikePh'
-  | 'mashTemp' | 'mashPh'
+  | 'mashTemp' | 'mashPh' | 'firstWortGravity'
   | 'spargeVolume' | 'spargeTemp' | 'spargePh'
   | 'preBoilVolume' | 'preBoilGravity' | 'preBoilPh' | 'postBoilVolume' | 'postBoilGravity' | 'postBoilPh'
-  | 'batchVolume' | 'pitchTemp';
+  | 'airPressure' | 'batchVolume' | 'pitchTemp';
 
 // Set by the brewing process, not by the brewhouse; shown only for steps the
 // brewhouse has. A brewhouse links each to a sensor or leaves it "von Hand".
@@ -138,6 +153,7 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'strikePh', step: 'strike', label: 'pH Hauptguss', unit: 'pH' },
   { key: 'mashTemp', step: 'mash', label: 'Maischetemperatur', unit: '°C' },
   { key: 'mashPh', step: 'mash', label: 'pH Maische', unit: 'pH' },
+  { key: 'firstWortGravity', step: 'lauter', label: 'Vorderwürze', unit: '°P' },
   { key: 'spargeVolume', step: 'sparge', label: 'Nachgussmenge', unit: 'l' },
   { key: 'spargeTemp', step: 'sparge', label: 'Nachgusstemperatur', unit: '°C' },
   { key: 'spargePh', step: 'sparge', label: 'pH Nachguss', unit: 'pH' },
@@ -147,6 +163,7 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'postBoilVolume', step: 'boil', label: 'Ausschlagmenge', unit: 'l' },
   { key: 'postBoilGravity', step: 'boil', label: 'Stammwürze nach dem Kochen', unit: '°P' },
   { key: 'postBoilPh', step: 'boil', label: 'pH Ausschlagwürze', unit: 'pH' },
+  { key: 'airPressure', step: 'boil', label: 'Luftdruck', unit: 'hPa' },
   { key: 'batchVolume', step: 'chill', label: 'Anstellwürze', unit: 'l' },
   { key: 'pitchTemp', step: 'chill', label: 'Anstelltemperatur', unit: '°C' },
 ];
@@ -157,6 +174,7 @@ const UNIT_FITS: Record<string, string[]> = {
   l: ['l'],
   '°P': ['°p', 'sg', '°bx', 'brix'],
   pH: ['ph'],
+  hPa: ['hpa', 'mbar'],
 };
 
 export interface Brewhouse {
@@ -164,8 +182,9 @@ export interface Brewhouse {
   name: string;
   description: string;
   updatedAt: number;      // epoch ms, like Recipe
-  mashEfficiencyPct: number;
+  mashEfficiencyPct: number;     // conversion (Konversion): extract dissolved in the mash / potential
   coolingShrinkPct: number;
+  lauterEfficiencyPct?: number;  // fixed value for fly sparging; unset = approximated (efficiency.ts)
   vessels: Vessel[];
   devices: Device[];
   steps: Partial<Record<StepKey, StepConfig>>;
@@ -242,6 +261,27 @@ export function heatingOf(bh: Brewhouse, step: StepKey): Heating {
   return { heater, direct: false, via, viaVessel };
 }
 
+// Decoction: a part of the mash boils in a second vessel with its own heater.
+// The vessel that heats the mash indirectly (HERMS, Kettle-RIMS, Aufguss) holds
+// water while mashing, so it does not count. The first one in process order.
+// `stepRateKPerMin` is the heat rate of a step that heater has, for a full vessel.
+export interface DecoctionVessel { vessel: Vessel; heater: Device; stepRateKPerMin?: number }
+
+export function decoctionVesselOf(bh: Brewhouse): DecoctionVessel | undefined {
+  const mashVesselId = bh.steps.mash?.vesselId;
+  if (!mashVesselId) return undefined;
+  const busy = heatingOf(bh, 'mash').viaVessel?.id;
+  for (const vessel of processOrder(bh)) {
+    if (vessel.id === mashVesselId || vessel.id === busy) continue;
+    const heater = bh.devices.find((d) => d.kind === 'heater' && d.vesselId === vessel.id);
+    if (!heater) continue;
+    const stepRateKPerMin = STEPS.map((s) => bh.steps[s.key])
+      .find((c) => c?.vesselId === vessel.id && c.heaterId === heater.id && c.heatRateKPerMin)?.heatRateKPerMin;
+    return { vessel, heater, stepRateKPerMin };
+  }
+  return undefined;
+}
+
 // Whether the heating only works with the recirculation pump of the step.
 export const needsPump = (h: Heating) => !!h.heater && !h.direct && h.via !== 'infusion';
 
@@ -288,14 +328,19 @@ export interface SchemaEdge {
 
 const litres = (n: number) => `${String(n).replace('.', ',')} l`;
 
-export function schemaOf(bh: Brewhouse): { nodes: string[]; edges: SchemaEdge[] } {
+// Vessels by their first step; one without steps comes last.
+function processOrder(bh: Brewhouse): Vessel[] {
   const firstStep = (v: Vessel) => {
     const s = stepsOf(bh, v.id);
     return s.length ? STEPS.findIndex((x) => x.key === s[0]) : STEPS.length;
   };
-  const nodes = bh.vessels.map((v, i) => ({ v, i }))
+  return bh.vessels.map((v, i) => ({ v, i }))
     .sort((a, b) => firstStep(a.v) - firstStep(b.v) || a.i - b.i)
-    .map(({ v }) => v.id);
+    .map(({ v }) => v);
+}
+
+export function schemaOf(bh: Brewhouse): { nodes: string[]; edges: SchemaEdge[] } {
+  const nodes = processOrder(bh).map((v) => v.id);
   const isVessel = (id: string | undefined) => bh.vessels.some((v) => v.id === id);
   const deviceName = (id: string | undefined) => {
     const d = bh.devices.find((x) => x.id === id);
@@ -546,7 +591,7 @@ function dropUndefined<T extends object>(o: T): T {
 function blank(name: string): Brewhouse {
   return {
     id: uid(), name, description: '', updatedAt: 0,
-    mashEfficiencyPct: DEFAULT_EFFICIENCY, coolingShrinkPct: 4,
+    mashEfficiencyPct: DEFAULT_CONVERSION, coolingShrinkPct: 4,
     vessels: [], devices: [], steps: {}, transfers: [], measurements: {},
   };
 }

@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { grainAbsorptionOf } from '../../brewhouse';
+import { lauterText } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
 import { wortExtract } from '../../recipeStats';
 import { DEFAULT_MASH_RATIO, DEFAULT_SPARGE_TEMP, type Dilution, type RecipeWater } from '../../recipes';
@@ -7,7 +8,7 @@ import { calcWater, fmtL, type Loss, type Source, type Water } from '../../recip
 import { Segmented } from '../../components/Segmented';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
 import { btnSecondary, inp } from '../../ui';
-import { Card, Field, NumInput, OptNum } from './fields';
+import { Card, Field, NumInput, Override } from './fields';
 import { Stat, type TabProps } from './tabs';
 import { TreatmentCard } from './TreatmentCard';
 
@@ -23,8 +24,9 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
     return <Card title="Wassermenge"><p class="text-sm text-muted">Sudhäuser nicht geladen, Wassermengen nicht verfügbar.</p></Card>;
   }
   const bh = brewhouses.find((b) => b.id === recipe.brewhouseId);
-  const extractKg = catalog ? wortExtract(recipe, catalog.ingredients).extractKg : undefined;
-  const { water: w, notes } = calcWater(recipe, bh, extractKg);
+  const wort = catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery) : undefined;
+  const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg, brewery);
+  const lauter = wort?.efficiency.lauter;
   if (!w || !bh) {
     return (
       <Card title="Wassermenge">
@@ -47,12 +49,13 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
     <>
       <Card title="Wassermenge">
         <p class="mb-3 text-xs text-muted">Sudhaus „{bh.name}“, vom Ausschlag ({fmtL(w.knockOutL)}) zurückgerechnet</p>
-        <dl class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <dl class="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Hauptguss" value={w.strikeL} unit="l" digits={1} sub={fillSub(w.strikeFillL, w.strikeL)} />
           <Stat label="Nachguss" value={w.sparge ? w.spargeL : undefined} unit="l" digits={1}
             sub={w.sparge ? fillSub(w.spargeFillL, w.spargeL) : 'Vollguss'} />
           <Stat label="Gesamtwasser" value={w.totalL} unit="l" digits={1} />
           <Stat label="Pfannevoll" value={w.preBoilL} unit="l" digits={1} />
+          <Stat label="Läutereffizienz" value={lauter?.pct} unit="%" digits={0} sub={lauter && lauterText(lauter)} />
         </dl>
 
         <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -72,9 +75,22 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
             )}
           </Field>
           {w.sparge && (
-            <Field label="Nachguss-Temperatur (°C)">
-              <NumInput value={settings.spargeTempC ?? DEFAULT_SPARGE_TEMP} onChange={(n) => set({ spargeTempC: n })} />
-            </Field>
+            <>
+              <Field label="Nachguss-Temperatur (°C)">
+                <NumInput value={settings.spargeTempC ?? DEFAULT_SPARGE_TEMP} onChange={(n) => set({ spargeTempC: n })} />
+              </Field>
+              <Field label="Läutern">
+                <Segmented value={settings.spargeMethod ?? 'batch'}
+                  onChange={(v) => set({ spargeMethod: v === 'batch' ? undefined : v })}
+                  options={[{ value: 'batch', label: 'Batch Sparge' }, { value: 'fly', label: 'Fly Sparge' }]} />
+              </Field>
+              {settings.spargeMethod !== 'fly' && (
+                <Field label="Gaben">
+                  <NumInput value={settings.spargeBatches ?? 1} class="w-16"
+                    onChange={(n) => set({ spargeBatches: n > 1 ? Math.round(n) : undefined })} />
+                </Field>
+              )}
+            </>
           )}
           <Override label="Verdampfung (l/h)" value={settings.evaporationLPerH} brewhouse={boilEvaporation ?? 0}
             onChange={(evaporationLPerH) => set({ evaporationLPerH })} />
@@ -153,26 +169,6 @@ function DilutionSection({ w, value, onChange }: {
   );
 }
 
-// A recipe value over the brewhouse's: the placeholder shows the brewhouse
-// value, the button drops the override.
-function Override({ label, value, brewhouse, onChange }: {
-  label: string; value: number | undefined; brewhouse: number; onChange: (n: number | undefined) => void;
-}) {
-  return (
-    <div class="flex items-end gap-1">
-      <Field label={label}>
-        <OptNum value={value} placeholder={String(brewhouse)} onChange={onChange} />
-      </Field>
-      {value !== undefined && (
-        <button type="button" class={btnSecondary} title={`Sudhaus-Wert ${String(brewhouse).replace('.', ',')}`}
-          onClick={() => onChange(undefined)}>
-          Sudhaus-Wert
-        </button>
-      )}
-    </div>
-  );
-}
-
 // Total water split by where it goes. Slots 3 and 4 are below 3:1 contrast on
 // the light theme, so the legend carries every value.
 // A dilution adds its own segment on top of the total water.
@@ -181,7 +177,7 @@ function WaterBar({ w }: { w: Water }) {
   const parts = [
     { label: d.at === 'kettle' && d.volumeL > 0 ? 'Ausschlag ohne Verschnitt' : 'Ausschlag', l: d.kettleL, color: 'var(--series-1)' },
     ...(d.volumeL > 0 ? [{ label: 'Verschnitt', l: d.volumeL, color: 'color-mix(in srgb, var(--series-1) 45%, transparent)' }] : []),
-    { label: 'Verdampfung', l: w.evaporationL, color: 'var(--series-2)' },
+    { label: 'Verdampfung', l: w.evaporationL + w.mashEvaporationL, color: 'var(--series-2)' },
     { label: 'Treber', l: w.absorptionL, color: 'var(--series-3)' },
     { label: 'Totraum/Transfer', l: w.wortLossL, color: 'var(--series-4)' },
   ];
@@ -232,6 +228,9 @@ function Calculation({ w, boilMin }: { w: Water; boilMin: number }) {
         <Row op="=" label="Pfannevoll" l={w.preBoilL} strong />
         {w.wortLosses.length > 0 ? lossRows(w.wortLosses) : <Row op="+" label="Würzeverluste (kein Transfer)" l={0} from="Sudhaus" />}
         <Row op="+" label={`Treber (${num(w.grainKg)} kg × ${num(w.absorptionLPerKg)} l/kg)`} l={w.absorptionL} from={w.absorptionFrom} />
+        {w.mashEvaporationL > 0 && (
+          <Row op="+" label="Verdampfung beim Maischen (Dekoktion, Kochrast)" l={w.mashEvaporationL} from="Sudhaus" />
+        )}
         <Row op="=" label="Gesamtwasser" l={w.totalL} strong />
         {w.sparge ? (
           <Row label={`Hauptguss (${num(w.mashRatioLPerKg!)} l/kg × ${num(w.grainKg)} kg)`} l={w.strikeL} from="Rezept" />

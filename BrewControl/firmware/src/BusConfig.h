@@ -78,7 +78,8 @@ struct BusDef {
 };
 
 // "onewire-4", "spi-18-19-23", "i2c-4-5". Pins are exclusive to one bus, so
-// the id is unique; it changes with the pins (allowed only while unused).
+// the id is unique when the bus is added. It is only the starting value: a bus
+// keeps its id when its pins change, so items and devices never need rewriting.
 inline std::string busIdFor(const BusType& t, const int pins[]) {
   std::string id = t.type;
   for (uint8_t i = 0; i < t.pinCount; ++i) id += "-" + std::to_string(pins[i]);
@@ -100,9 +101,10 @@ inline BusDef busFromFixed(const FixedBus& f) {
 
 // Parses a bus definition as stored and as POST/PUT /api/buses send it:
 // {"type":"i2c","sda":4,"scl":5,"label":"...","port":1}. The id is derived
-// from type and pins, a given "id" is ignored. "port" is only read back from
-// storage; DynamicItems assigns it.
-inline bool parseBusDef(JsonObjectConst in, BusDef& out, std::string& err) {
+// from type and pins, a given "id" is ignored. "id" and "port" are only read
+// back from storage (fromStorage); DynamicItems assigns the port.
+inline bool parseBusDef(JsonObjectConst in, BusDef& out, std::string& err,
+                        bool fromStorage = false) {
   const BusType* t = findBusType(in["type"] | "");
   if (!t) { err = "unknown bus type"; return false; }
   BusDef d;
@@ -131,7 +133,8 @@ inline bool parseBusDef(JsonObjectConst in, BusDef& out, std::string& err) {
     }
     d.port = port;
   }
-  d.id = busIdFor(*t, d.pins);
+  const char* storedId = in["id"] | "";
+  d.id = fromStorage && storedId[0] ? storedId : busIdFor(*t, d.pins);
   out = d;
   return true;
 }

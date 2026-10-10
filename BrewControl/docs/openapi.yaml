@@ -89,6 +89,12 @@ tags:
       Bus definitions (OneWire, SPI, I2C) and scanning them for attached
       devices. Items on a bus (DS18B20, MAX31865, BME280, the IMUs GY521/QMI8658/BMI270/BMI160) reference it
       by id (`bus`) instead of carrying the bus pins themselves.
+  - name: Peripherals
+    description: |
+      Peripheral devices: chips on a defined bus that offer capabilities to
+      items, e.g. an MCP4728 with four DAC channels or a PCF8575 port expander
+      with sixteen digital pins. Items reference a channel in a pin field as
+      `"<device id>:<channel>"` instead of a GPIO number.
   - name: Remote Discovery
     description: |
       Find the sensors and actuators other SensActCtrl/BrewControl devices
@@ -128,6 +134,15 @@ tags:
       LittleFS boards answer 404 for every route here. Like recipes, the
       documents are owned by the web UI; the firmware checks a brewhouse's `id`
       and nothing else.
+  - name: Mash profiles
+    description: |
+      Rest sequences of the recipe editor, one file each on the SD card
+      (`/mashprofiles/<id>.json`), global for all recipes. Only on boards with
+      an SD slot — the LittleFS boards answer 404 for every route here. Not the
+      controller programs and step templates under `/api/profiles`. The
+      shipped profiles are built into the web UI; only own ones are stored.
+      Like brewhouses, the documents are owned by the web UI; the firmware
+      checks a profile's `id` and nothing else.
   - name: Settings
     description: Theme, time, firmware channel and remote-transport settings.
   - name: Network
@@ -632,6 +647,10 @@ paths:
         the last change): after a restart the actuator comes back on/off with
         its value and interval. Not kept: the value of an actuator a controller
         drives, and a pulse actuator's value. A latched emergency stop wins.
+
+        Applied under the registry lock, so a `tick()` already running in
+        `loop()` cannot overwrite the new value afterwards (an external DAC's
+        refresh, a port expander's shared output register).
       requestBody:
         required: true
         content:
@@ -654,6 +673,7 @@ paths:
             text/plain: { schema: { type: string } }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
     delete:
       tags: [Dynamic Items]
       operationId: deleteActuator
@@ -720,6 +740,10 @@ paths:
 
         Deliberately unauthenticated even when a password is configured:
         stopping must work from a locked UI. Releasing does require auth.
+
+        Switches off under the registry lock, so no `tick()` of `loop()` drives
+        an output again afterwards. Never answers 503: if the lock cannot be
+        taken in time, it switches off without it.
       responses:
         "204": { $ref: "#/components/responses/NoContent" }
     delete:
@@ -914,7 +938,8 @@ paths:
         Every bus: the board's fixed ones first (`fixed: true`, e.g. the
         LilyGo's I2C bus of RTC, touch and PMU, with the addresses those
         occupy in `reserved`), then the user-defined ones in the order they
-        were added. `users` are the items referencing the bus. `types` lists
+        were added. `users` are the items and peripheral devices
+        (`/api/peripherals`) referencing the bus. `types` lists
         the bus types that can be defined, with their pin keys and how many
         the chip supports (`max`; I2C: 2 controllers, a fixed bus counts).
       responses:
@@ -976,9 +1001,12 @@ paths:
       summary: Change a bus
       description: |
         Full definition, same shape as `POST /api/buses`; the type cannot
-        change. The label can always change. New pins give the bus a new id
-        and are only accepted while no item uses the bus (move or delete the
-        items first). Fixed buses cannot be changed.
+        change. The id stays the same when the pins change, so items and
+        devices on the bus keep working: the running driver is re-pinned in
+        place (the sensors then read from the new pins, the wiring has to
+        follow). The exception is an SPI bus: its MAX31865 sensors are
+        rebuilt, which fails while a controller uses one of them. Fixed buses
+        cannot be changed.
       requestBody:
         required: true
         content:
@@ -987,7 +1015,7 @@ paths:
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
-          description: Changed; `id` is the (possibly new) id.
+          description: Changed; `id` is the unchanged id.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BusId" }
@@ -1001,8 +1029,9 @@ paths:
             text/plain: { schema: { type: string } }
         "409":
           description: >-
-            `bus i2c-1-2 is used by ambient, tilt`, `bus i2c-board is wired by
-            the board`, or a pin conflict as for `POST /api/buses`.
+            `bus i2c-board is wired by the board`, `sensor tank is referenced by a
+            controller` (SPI bus with a controller-wired MAX31865), or a pin
+            conflict as for `POST /api/buses`.
           content:
             text/plain: { schema: { type: string } }
         "503": { $ref: "#/components/responses/RegistryBusy" }
@@ -1058,6 +1087,127 @@ paths:
             text/plain: { schema: { type: string } }
         "404":
           description: Body is `bus not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+
+  # ── Peripherals ────────────────────────────────────────────────────────────
+  /api/peripherals:
+    get:
+      tags: [Peripherals]
+      operationId: getPeripherals
+      summary: List the peripheral devices and the device types
+      description: |
+        Every defined device in the order it was added, with its channels and
+        the items using each. `types` lists what can be defined: the bus type
+        a device sits on, its address range and what it offers (`cap`, `count`
+        channels named by `channels`). Whether a device
+        answers is not tracked here: scan its bus (`GET /api/bus/scan`) and
+        look for its address; a failing write shows as the actuator's `fault`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Devices and types.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PeripheralsInfo" }
+    post:
+      tags: [Peripherals]
+      operationId: createPeripheral
+      summary: Define a peripheral device
+      description: |
+        The id is derived from type, bus and address (`mcp4728-i2c-board-60`);
+        an `id` in the body is ignored. The address defaults to the type's
+        factory address and is checked like an item's I2C address: it must be
+        free on the bus and not reserved by an onboard device. The device
+        then counts as a user of its bus. Nothing is written to the chip
+        until an item drives a channel. Persists to `/config/registry.json`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PeripheralCreate" }
+            example: { type: mcp4728, bus: i2c-board, address: 96, label: DAC Kessel }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusId" }
+        "400":
+          description: >-
+            Body is `unknown device type`, `missing bus`, `address must be
+            0x60..0x67`, `label too long`, `unknown bus i2c-1-2`, `bus has the
+            wrong type` or `invalid JSON`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            The device exists already (`device mcp4728-i2c-board-60 already
+            exists`), or its address is taken on the bus (`0x60 already used
+            by ambient`) or reserved there by an onboard device.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+
+  /api/peripherals/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+        example: mcp4728-i2c-board-60
+    put:
+      tags: [Peripherals]
+      operationId: replacePeripheral
+      summary: Change a peripheral device
+      description: |
+        Full definition, same shape as `POST /api/peripherals`; the type
+        cannot change. The label can always change. A new bus or address
+        gives the device a new id and is only accepted while no item uses one
+        of its channels.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PeripheralCreate" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: Changed; `id` is the (possibly new) id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusId" }
+        "400":
+          description: Same reasons as `POST /api/peripherals`, plus `device type cannot change`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404":
+          description: Body is `device not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: >-
+            `device mcp4728-i2c-board-60 is used by boil`, or an address
+            conflict as for `POST /api/peripherals`.
+          content:
+            text/plain: { schema: { type: string } }
+        "503": { $ref: "#/components/responses/RegistryBusy" }
+    delete:
+      tags: [Peripherals]
+      operationId: deletePeripheral
+      summary: Delete a peripheral device
+      description: Only while no item uses one of its channels.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404":
+          description: Body is `device not found`.
+          content:
+            text/plain: { schema: { type: string } }
+        "409":
+          description: Body is `device mcp4728-i2c-board-60 is used by boil`.
           content:
             text/plain: { schema: { type: string } }
         "503": { $ref: "#/components/responses/RegistryBusy" }
@@ -1223,7 +1373,8 @@ paths:
       description: |
         Returns each item's original creation body verbatim (the same shape that
         was POSTed to `/api/sensors`, `/api/actuators`, `/api/controllers`),
-        plus the user-defined buses (`/api/buses`, stored form). Used by the
+        plus the user-defined buses (`/api/buses`) and the peripheral devices
+        (`/api/peripherals`), both in stored form. Used by the
         edit UI to prefill forms. Statically compiled items and the board's
         fixed buses are not included.
 
@@ -1281,6 +1432,11 @@ paths:
         preset for the battery sensor the energy settings page can create.
         The deep-sleep wake pin (`energy.wakePin`) shows up as user
         `{id: energy, key: wake_pin}`; it must be an RTC GPIO (`rtc`).
+        `virtual` lists the channels of the peripheral devices
+        (`/api/peripherals`) with their users; such a channel is never a GPIO
+        and never appears under `pins`. `caps.dac` stays the board's own DAC:
+        a DAC is available if `caps.dac` is true or some `virtual` channel has
+        `dac`; port-expander pins carry `gpio`.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -2289,6 +2445,68 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ── Mash profiles ──────────────────────────────────────────────────────────
+  /api/mash-profiles:
+    get:
+      tags: [Mash profiles]
+      operationId: listMashProfiles
+      summary: List the mash profiles
+      description: |
+        Every `/mashprofiles/<id>.json`, complete, in no particular order. There
+        is no index: a site has only a few profiles, and the list needs the full
+        objects anyway. Temp files of an interrupted save and other names are
+        skipped. A missing card or directory gives `[]`. The profiles shipped
+        with the web UI are not among them.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All stored mash profiles, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MashProfile" }
+
+  /api/mash-profiles/{id}:
+    parameters: [{ $ref: "#/components/parameters/MashProfileId" }]
+    put:
+      tags: [Mash profiles]
+      operationId: putMashProfile
+      summary: Create or replace a mash profile
+      description: |
+        The client picks the id. Written to `/mashprofiles/<id>.json` via a
+        temporary file, so a power cut during the save leaves the previous
+        version. The body is re-serialized, not byte-for-byte; the 16 KB body
+        limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MashProfile" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Mash profiles]
+      operationId: deleteMashProfile
+      summary: Delete a mash profile
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/brewery:
     get:
       tags: [Brewhouse]
@@ -3168,6 +3386,14 @@ components:
       description: Brewhouse id, chosen by the client; it becomes the file name.
       example: mgx4k2a1b2c3d4
 
+    MashProfileId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Mash profile id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+
     ProgramId:
       name: id
       in: path
@@ -3241,7 +3467,8 @@ components:
         `GPIO 7 is reserved by the board (I2C SDA (Touch, RTC, PMU))`, or for IDS
         cookers `no free RMT channel (4 in use)`. Every pin has one user; items
         share bus lines by referencing the bus (`bus`), see `GET /api/pins` and
-        `/api/buses`.
+        `/api/buses`. A device channel is taken the same way:
+        `mcp4728-i2c-board-60:1 already used by boil (pin)`.
 
         For BME280 and the IMUs only, a separate 409 covers the I2C *address* (not a
         pin), per bus: `0x51 is reserved on bus i2c-board (RTC (PCF8563))`, or
@@ -3548,7 +3775,16 @@ components:
           enum: [DS18B20, MAX31865, BME280, GY521, QMI8658, BMI270, BMI160, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
-        pin: { type: integer }
+        pin:
+          description: |
+            A GPIO number. `DigitalInput` also takes a pin of a port expander
+            as `"<device id>:<channel>"` (`GET /api/pins` → `virtual` with
+            `gpio`), read by polling; its inputs always have a pull-up, so it
+            needs `pullup: true` (400 otherwise). Every other type refuses a
+            device channel with 400 (`pin needs a GPIO, not device channel …`).
+          oneOf:
+            - { type: integer }
+            - { type: string, pattern: '^.+:[0-9]+$', example: 'pcf8575-i2c-board-20:8' }
         bus:
           type: string
           description: >-
@@ -3662,8 +3898,24 @@ components:
           enum: [DigitalOutput, AnalogOutput, PulseOutput, IDS1, IDS2, MqttGeneric, Remote]
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
-        pin: { type: integer }
-        mode: { type: string, description: "e.g. `Binary` or `TPO`." }
+        pin:
+          description: |
+            A GPIO number. `AnalogOutput` with `mode: dac` also takes a DAC
+            channel of a peripheral device as `"<device id>:<channel>"`
+            (`GET /api/pins` → `virtual`); a number there still means the
+            board's own DAC pin. `DigitalOutput` (Binary or TPO) takes a pin of
+            a port expander the same way (`virtual` entries with `gpio`). Every
+            other type and `mode: pwm` refuse a device channel with 400
+            (`pin needs a GPIO, not device channel …`); an unknown device, a
+            channel the device does not have or a device without the needed
+            capability (`… has no dac channels`, `… has no gpio channels`) are
+            400 too, a taken channel 409. Firmware older than this reads such a
+            string as GPIO 0: delete these actuators (or restore the earlier
+            backup) before a downgrade.
+          oneOf:
+            - { type: integer }
+            - { type: string, pattern: '^.+:[0-9]+$', example: 'mcp4728-i2c-board-60:0' }
+        mode: { type: string, description: "e.g. `Binary` or `TPO`; AnalogOutput `pwm` (default) or `dac`." }
         invert: { type: boolean, description: "Active-low. Also PulseOutput (active-low pulses)." }
         period_ms: { type: integer, description: TPO cycle length. }
         pulse_width_ms: { type: integer, description: "Pulse-on duration, ms (PulseOutput, default 50)." }
@@ -3748,12 +4000,14 @@ components:
       type: object
       required: [buses, sensors, actuators, controllers]
       description: |
-        The stored creation bodies of all dynamic items, verbatim, and the
-        user-defined buses (without the board's fixed ones). `buses` may be
-        absent in bundles from older firmware; such configs are migrated on
-        load (see `GET /api/config`).
+        The stored creation bodies of all dynamic items, verbatim, the
+        user-defined buses (without the board's fixed ones) and the peripheral
+        devices. `buses` may be absent in bundles from older firmware; such
+        configs are migrated on load (see `GET /api/config`). `devices` is
+        absent in bundles from before peripheral devices existed.
       properties:
         buses: { type: array, items: { $ref: "#/components/schemas/BusStored" } }
+        devices: { type: array, items: { $ref: "#/components/schemas/PeripheralStored" } }
         sensors: { type: array, items: { $ref: "#/components/schemas/SensorCreate" } }
         actuators: { type: array, items: { $ref: "#/components/schemas/ActuatorCreate" } }
         controllers: { type: array, items: { $ref: "#/components/schemas/ControllerCreate" } }
@@ -3776,7 +4030,7 @@ components:
           type: object
           required: [dac, rmtTx, rmtUsed, adc2Wifi]
           properties:
-            dac: { type: boolean, description: Board has a DAC (ESP32-S3 has none). }
+            dac: { type: boolean, description: 'Board has its own DAC (ESP32-S3 has none). Peripheral DAC channels are listed in `virtual`, not here.' }
             rmtTx: { type: integer, description: 'RMT channels able to transmit — one per IDS cooker.' }
             rmtUsed: { type: integer, description: IDS cookers configured. }
             adc2Wifi:
@@ -3810,6 +4064,21 @@ components:
               gpio: { type: integer }
               reason: { type: string, description: 'e.g. `mehrfach belegt`, `kein ADC`, `ADC2 – bei WLAN nicht nutzbar` or the note of a reserved pin.' }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
+        virtual:
+          type: array
+          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728, sixteen per PCF8575.
+          items:
+            type: object
+            required: [ref, device, index, label, users]
+            properties:
+              ref: { type: string, description: 'What a pin field takes: `"<device>:<index>"`.' }
+              device: { type: string, description: Device id. }
+              deviceLabel: { type: string, description: The device's label; absent when it has none. }
+              index: { type: integer, description: Channel number from 0. }
+              label: { type: string, description: 'Channel name: `A`..`D` (MCP4728), `P00`..`P07`, `P10`..`P17` (PCF8575).' }
+              dac: { type: boolean, description: The channel is a DAC output. }
+              gpio: { type: boolean, description: The channel is a digital pin of a port expander. }
+              users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         battery:
           type: object
           required: [gpio, r1, r2]
@@ -3828,6 +4097,9 @@ components:
           - { gpio: 9, class: reserved, note: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
         conflicts:
           - { gpio: 9, reason: Touch-/RTC-Interrupt, users: [{ id: IDS1, key: pin_white }] }
+        virtual:
+          - { ref: "mcp4728-i2c-board-60:0", device: mcp4728-i2c-board-60, deviceLabel: DAC Kessel, index: 0, label: A, dac: true, users: [{ id: boil, key: pin }] }
+          - { ref: "mcp4728-i2c-board-60:1", device: mcp4728-i2c-board-60, deviceLabel: DAC Kessel, index: 1, label: B, dac: true, users: [] }
 
     # ── Buses ────────────────────────────────────────────────────────────────
     BusCreate:
@@ -3889,7 +4161,7 @@ components:
                       properties:
                         address: { type: string, description: '`"0xNN"`' }
                         note: { type: string }
-                  users: { type: array, items: { type: string }, description: Ids of the items on this bus. }
+                  users: { type: array, items: { type: string }, description: Ids of the items and peripheral devices on this bus. }
         types:
           type: array
           items:
@@ -3916,6 +4188,79 @@ components:
           - { type: onewire, pins: [pin] }
           - { type: spi, pins: [clk, miso, mosi] }
           - { type: i2c, pins: [sda, scl], max: 2 }
+
+    # ── Peripherals ──────────────────────────────────────────────────────────
+    PeripheralCreate:
+      type: object
+      required: [type, bus]
+      description: A peripheral device definition.
+      properties:
+        type: { type: string, enum: [mcp4728, pcf8575] }
+        bus: { type: string, description: 'Id of the bus it sits on (`GET /api/buses`); its type must match the device type (both: `i2c`).' }
+        address: { type: integer, minimum: 32, maximum: 103, description: 'I2C address, default the factory one: 0x60..0x67 for the MCP4728 (default 0x60), 0x20..0x27 for the PCF8575 (default 0x20). Outside the type''s range: 400 `address must be 0x..0x..`.' }
+        label: { type: string, maxLength: 32, description: Optional name shown in the UI. }
+
+    PeripheralStored:
+      description: A device as stored in `registry.json` (and in `ConfigSnapshot`).
+      allOf:
+        - $ref: "#/components/schemas/PeripheralCreate"
+        - type: object
+          required: [id, address]
+          properties:
+            id: { type: string, description: 'Derived from type, bus and address: `mcp4728-i2c-board-60`.' }
+
+    PeripheralsInfo:
+      type: object
+      required: [devices, types]
+      properties:
+        devices:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/PeripheralStored"
+              - type: object
+                required: [cap, channels]
+                properties:
+                  cap: { type: string, enum: [dac, gpio], description: What the channels offer. }
+                  channels:
+                    type: array
+                    items:
+                      type: object
+                      required: [index, name, users]
+                      properties:
+                        index: { type: integer }
+                        name: { type: string, description: 'Channel name, e.g. `A` or `P05`.' }
+                        users: { type: array, items: { type: string }, description: Ids of the items driving this channel. }
+        types:
+          type: array
+          items:
+            type: object
+            required: [type, bus, addrFirst, addrLast, addrDefault, cap, count, channels]
+            properties:
+              type: { type: string }
+              bus: { type: string, description: Bus type it sits on. }
+              addrFirst: { type: integer }
+              addrLast: { type: integer }
+              addrDefault: { type: integer, description: Factory address. }
+              cap: { type: string }
+              count: { type: integer, description: Number of channels. }
+              channels: { type: array, items: { type: string }, description: 'Channel names, `count` of them.' }
+      example:
+        devices:
+          - id: mcp4728-i2c-board-60
+            type: mcp4728
+            label: DAC Kessel
+            bus: i2c-board
+            address: 96
+            cap: dac
+            channels:
+              - { index: 0, name: A, users: [boil] }
+              - { index: 1, name: B, users: [] }
+              - { index: 2, name: C, users: [] }
+              - { index: 3, name: D, users: [] }
+        types:
+          - { type: mcp4728, bus: i2c, addrFirst: 96, addrLast: 103, addrDefault: 96, cap: dac, count: 4, channels: [A, B, C, D] }
+          - { type: pcf8575, bus: i2c, addrFirst: 32, addrLast: 39, addrDefault: 32, cap: gpio, count: 16, channels: [P00, P01, P02, P03, P04, P05, P06, P07, P10, P11, P12, P13, P14, P15, P16, P17] }
 
     # ── Bus discovery ────────────────────────────────────────────────────────
     BusScanResult:
@@ -4659,6 +5004,21 @@ components:
             Mash and wort pH model of all recipes (`web/src/mashPh.ts`): `troester`
             estimates the pH from malt data, `kolbach` shows the residual alkalinity
             against a range for the beer colour, without a pH. Unset = `troester`.
+        altitudeM:
+          type: number
+          description: |
+            Site altitude in metres. Recipes plan with the boiling point of the
+            standard atmosphere at this altitude (strike and infusion limits,
+            IBU). Unset = sea level.
+        efficiencyBasis:
+          type: string
+          enum: [conversion, mash, yield, fermenter]
+          description: |
+            Which efficiency recipes enter (`web/src/efficiency.ts`): `conversion`
+            (Konversion, from the brewhouse), `mash` (Maischeeffizienz, extract in
+            the kettle / potential), `yield` (Sudhausausbeute, per kg grain) or
+            `fermenter` (Brewhouse-Efficiency). The others follow from it.
+            Unset = `mash`.
       additionalProperties: true
 
     WaterProfile:
@@ -4685,6 +5045,64 @@ components:
             water tab, never a source water. Unset = an analysis.
       additionalProperties: true
 
+    MashProfile:
+      type: object
+      required: [id]
+      description: |
+        Owned by the web UI (`web/src/mashProfiles.ts`, type `MashProfile`). The
+        firmware checks only `id`; the other fields are documented for clients
+        and stay optional on read. Holds temperatures and holds only, no heating
+        times: those come from the recipe's brewhouse. Loading one into a recipe
+        keeps its fixed steps "Wasser vorlegen" and "Einmaischen", sets the
+        temperature and hold of the latter from `doughIn` and replaces every
+        other step by `steps`. Infusions and decoctions come led by temperature.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        name: { type: string }
+        method: { type: string, description: 'Free text, e.g. "Infusion, Stufen".' }
+        description: { type: string }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
+        doughIn:
+          type: object
+          description: Temperature and hold of the step "Einmaischen", the first rest.
+          properties:
+            tempC: { type: number }
+            durationMin: { type: number }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [kind, durationMin]
+            properties:
+              kind:
+                type: string
+                enum: [rest, infusion, decoction, doughIn]
+                description: |
+                  `infusion` = Zubrühen; `decoction` = part of the mash boiled in a
+                  second vessel and put back (the recipe computes the share from
+                  `tempC`); `doughIn` = mashing in a further charge (Schüttung). A
+                  `rest` at or above the boiling point boils the mash in its vessel.
+              name: { type: string }
+              tempC: { type: number, description: "Target; required except for `doughIn`, whose temperature results from mixing. `decoction`: the mash after putting it back." }
+              durationMin: { type: number }
+              waterTempC: { type: number, description: "`infusion`: temperature of the water. Missing = boiling." }
+              sharePct: { type: number, description: "`doughIn`: the further charge as % of the whole grist (0–100, exclusive). Loading splits it off the first charge when the recipe has no further charge left." }
+              decoction:
+                type: object
+                description: "`decoction` only."
+                properties:
+                  thin: { type: boolean, description: "Liquid only. Missing = thick." }
+                  rests:
+                    type: array
+                    description: Rests in the decoction vessel before the boil.
+                    items:
+                      type: object
+                      properties:
+                        tempC: { type: number }
+                        durationMin: { type: number }
+                  boilMin: { type: number }
+      additionalProperties: true
+
     Brewhouse:
       type: object
       required: [id]
@@ -4700,8 +5118,17 @@ components:
         name: { type: string }
         description: { type: string }
         updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
-        mashEfficiencyPct: { type: number }
+        mashEfficiencyPct:
+          type: number
+          description: |
+            Conversion (Konversion), %: extract dissolved in the mash / laboratory
+            extract of the grain. The name predates the efficiency chain.
         coolingShrinkPct: { type: number, description: "Volume shrink on cooling, %." }
+        lauterEfficiencyPct:
+          type: number
+          description: |
+            Lauter efficiency for fly sparging, %, from own brews. Unset = the
+            recipe approximates fly sparging as batch sparging with two additions.
         vessels:
           type: array
           items: { $ref: "#/components/schemas/BrewhouseVessel" }
@@ -4735,9 +5162,10 @@ components:
         name: { type: string }
         volumeL: { type: number }
         deadSpaceL: { type: number, description: Volume left behind when emptied. }
-        evaporationLPerH: { type: number, description: Only for the boil vessel. }
+        evaporationLPerH: { type: number, description: "For a vessel that boils: the boil vessel, the decoction vessel, or a directly heated mash vessel (a rest at the boiling point)." }
         lauterMethod: { type: string, description: "Descriptive only (false bottom, bag …)." }
         grainAbsorptionLPerKg: { type: number, description: "Only for the lauter vessel: wort held back by the spent grain, l/kg. Missing = 0.96." }
+        heatLossKPerH: { type: number, description: "Only for the mash vessel: temperature the resting, unheated mash loses while a decoction is out, K/h. Missing = 0 (it holds)." }
       additionalProperties: true
 
     BrewhouseDevice:

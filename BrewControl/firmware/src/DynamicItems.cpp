@@ -23,6 +23,8 @@ class OneWireBus : public Peripheral {
  public:
   explicit OneWireBus(int pin) : ow(pin) {}
   const char* type() const override { return "onewire"; }
+  // The DS18B20s hold a reference to ow, so moving the pin needs no rebuild.
+  void repin(int pin) { ow.begin(pin); }
   OneWire ow;
 };
 
@@ -32,7 +34,10 @@ class SpiBus : public Peripheral {
  public:
   SpiBus(int clk, int miso, int mosi) : clk(clk), miso(miso), mosi(mosi) {}
   const char* type() const override { return "spi"; }
-  const int clk, miso, mosi;
+  // The MAX31865s copied the pins into their constructors: the caller has to
+  // rebuild them (DynamicItems::updateBus).
+  void repin(int c, int mi, int mo) { clk = c; miso = mi; mosi = mo; }
+  int clk, miso, mosi;
 };
 
 // One of the chip's two I2C controllers (Wire or Wire1) on the bus's pins.
@@ -51,10 +56,50 @@ class I2cBus : public Peripheral {
   void end() override {
     if (!keepRunning_) wire.end();
   }
+  // The devices hold a reference to wire; the controller (port) stays.
+  void repin(int sda, int scl) {
+    wire.end();
+    wire.begin(sda, scl);
+  }
   TwoWire& wire;
 
  private:
   const bool keepRunning_;
+};
+
+// An MCP4728 (DeviceConfig.h) on an I2C bus. Holds a Ref on the bus so the
+// bus outlives the chip's driver; its four channels are handed to
+// AnalogOutputActuators via dac(). begin() writes nothing: until the first
+// actuator write the chip holds its EEPROM values (0 V from the factory).
+class Mcp4728Device : public Peripheral {
+ public:
+  Mcp4728Device(PeripheralRegistry::Ref bus, uint8_t address)
+      : bus_(std::move(bus)), dac_(bus_.as<I2cBus>().wire, address) {}
+  const char* type() const override { return "mcp4728"; }
+  DacOutput* dac(int ch) override {
+    return ch >= 0 && ch < MCP4728::kChannels ? &dac_.channel(ch) : nullptr;
+  }
+
+ private:
+  PeripheralRegistry::Ref bus_;  // before dac_: constructed first, destroyed last
+  MCP4728 dac_;
+};
+
+// A PCF8575 (DeviceConfig.h) on an I2C bus, its sixteen pins handed to
+// DigitalOutputActuators and DigitalInputSensors via gpio(). begin() adopts
+// the chip's latches and writes nothing, so a reboot leaves the other pins
+// as they are until their own item sets them.
+class Pcf8575Device : public Peripheral {
+ public:
+  Pcf8575Device(PeripheralRegistry::Ref bus, uint8_t address)
+      : bus_(std::move(bus)), port_(bus_.as<I2cBus>().wire, address) {}
+  const char* type() const override { return "pcf8575"; }
+  void begin() override { port_.begin(); }
+  GpioPort* gpio() override { return &port_; }
+
+ private:
+  PeripheralRegistry::Ref bus_;  // before port_: constructed first, destroyed last
+  PCF8575 port_;
 };
 
 }  // namespace
@@ -84,6 +129,7 @@ std::vector<std::string> DynamicItems::busUsers(const std::string& id) const {
         id == (doc["bus"] | ""))
       out.push_back(e->id);
   }
+  for (const std::string& d : devicesOnBus(devices_, id)) out.push_back(d);
   return out;
 }
 
@@ -119,7 +165,7 @@ DynamicItems::Result DynamicItems::addBus(const JsonObject& def, std::string& ne
 }
 
 DynamicItems::Result DynamicItems::updateBus(const char* id, const JsonObject& def,
-                                             std::string& newId) {
+                                             Registry& reg) {
   BusDef* old = nullptr;
   for (BusDef& b : buses_) if (b.id == id) old = &b;
   if (!old) return busFail("bus not found", false);
@@ -128,18 +174,44 @@ DynamicItems::Result DynamicItems::updateBus(const char* id, const JsonObject& d
   std::string err;
   if (!parseBusDef(def, d, err)) return busFail(err, false);
   if (d.type != old->type) return busFail("bus type cannot change", false);
-  if (d.id != old->id) {
-    const std::vector<std::string> users = busUsers(old->id);
-    if (!users.empty()) return busFail("bus " + old->id + " is used by " + joined(users), true);
-    if (findBus(d.id.c_str())) return busFail("bus " + d.id + " already exists", true);
+  // The id stays: items and devices refer to it, and the drivers they hold
+  // are re-pinned below instead of rebuilt.
+  d.id = old->id;
+  d.port = old->port;
+  const bool repin = !std::equal(d.pins, d.pins + kMaxBusPins, old->pins);
+  std::vector<std::string> rebuild;  // MAX31865s copy the SPI pins at construction
+  if (repin) {
     std::vector<PinUse> mine;
     busPinUses(d, mine);
     const PinCheck c = checkPinUses(currentBoard(), pinUses(), mine, old->id.c_str());
     if (!c.ok) return busFail(c.error, c.status == 409);
+    if (strcmp(d.type->type, "spi") == 0) {
+      for (const std::string& u : busUsers(old->id)) {
+        if (referencedByController(u.c_str()))
+          return busFail("sensor " + u + " is referenced by a controller", true);
+        rebuild.push_back(u);
+      }
+    }
   }
-  d.port = old->port;
   *old = d;
-  newId = d.id;
+  if (!repin) return {true};
+
+  // A bus without running users has no driver yet; it starts on the new pins.
+  Peripheral* live = peripherals_.find(d.id);
+  if (live) {
+    const char* t = d.type->type;
+    if (strcmp(t, "onewire") == 0) static_cast<OneWireBus*>(live)->repin(d.pins[0]);
+    else if (strcmp(t, "spi") == 0) static_cast<SpiBus*>(live)->repin(d.pins[0], d.pins[1], d.pins[2]);
+    else static_cast<I2cBus*>(live)->repin(d.pins[0], d.pins[1]);
+  }
+  for (const std::string& u : rebuild) {
+    SensorEntry* e = findSensorEntry(u.c_str());
+    if (!e) continue;
+    JsonDocument doc;
+    deserializeJson(doc, e->cfgJson);
+    const Result r = replaceSensor(u.c_str(), doc.as<JsonObject>(), reg);
+    if (!r.ok) return busFail("bus " + d.id + " re-pinned, but " + u + " failed: " + r.error, true);
+  }
   return {true};
 }
 
@@ -220,6 +292,122 @@ DynamicItems::Result DynamicItems::scanBus(const char* id, JsonObject out) {
     }
   }
   return {true};
+}
+
+// ── Peripheral devices (DeviceConfig.h) ──────────────────────────────────
+
+PeripheralRegistry::Ref DynamicItems::acquireDevice(const DeviceDef& d) {
+  const BusDef* bus = findBus(d.bus.c_str());
+  if (!bus) return {};
+  // The bus Ref is only a temporary if the device already runs: it holds
+  // its own.
+  if (strcmp(d.type->type, "pcf8575") == 0)
+    return peripherals_.acquire<Pcf8575Device>(d.id, acquireBus(*bus), d.address);
+  return peripherals_.acquire<Mcp4728Device>(d.id, acquireBus(*bus), d.address);
+}
+
+GpioPort* DynamicItems::acquireGpio(const PinRef& pin, PeripheralRegistry::Ref& dev) {
+  const DeviceDef* d = findDeviceDef(devices_, pin.device);
+  if (!d) return nullptr;
+  dev = acquireDevice(*d);
+  GpioPort* port = dev ? dev.get()->gpio() : nullptr;
+  return port && pin.index < port->channels() ? port : nullptr;
+}
+
+std::vector<std::string> DynamicItems::deviceUsers(const std::string& id) const {
+  std::vector<std::string> out;
+  for (const PinUse& u : pinUses())
+    if (u.device == id && std::find(out.begin(), out.end(), u.item) == out.end())
+      out.push_back(u.item);
+  return out;
+}
+
+DynamicItems::Result DynamicItems::checkDevice(const DeviceDef& d, const char* replaceId) {
+  const BusDef* bus = findBus(d.bus.c_str());
+  if (!bus) return busFail("unknown bus " + d.bus, false);
+  if (strcmp(bus->type->type, d.type->bus) != 0) return busFail("bus has the wrong type", false);
+  const AddressCheck c = checkAddressUse(bus->reserved, bus->reservedCount, addressUses(),
+                                         {d.id, d.bus, d.address}, replaceId);
+  if (!c.ok) return busFail(c.error, true);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::addDevice(const JsonObject& def, std::string& newId) {
+  DeviceDef d;
+  std::string err;
+  if (!parseDeviceDef(def, d, err)) return busFail(err, false);
+  if (findDeviceDef(devices_, d.id)) return busFail("device " + d.id + " already exists", true);
+  const Result c = checkDevice(d, "");
+  if (!c.ok) return c;
+  newId = d.id;
+  devices_.push_back(d);
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::updateDevice(const char* id, const JsonObject& def,
+                                                std::string& newId) {
+  DeviceDef* old = nullptr;
+  for (DeviceDef& d : devices_) if (d.id == id) old = &d;
+  if (!old) return busFail("device not found", false);
+  DeviceDef d;
+  std::string err;
+  if (!parseDeviceDef(def, d, err)) return busFail(err, false);
+  if (d.type != old->type) return busFail("device type cannot change", false);
+  // Same id = same bus and address: only the label changes.
+  if (d.id != old->id) {
+    const std::vector<std::string> users = deviceUsers(old->id);
+    if (!users.empty()) return busFail("device " + old->id + " is used by " + joined(users), true);
+    if (findDeviceDef(devices_, d.id)) return busFail("device " + d.id + " already exists", true);
+    const Result c = checkDevice(d, old->id.c_str());
+    if (!c.ok) return c;
+  }
+  *old = d;
+  newId = d.id;
+  return {true};
+}
+
+DynamicItems::Result DynamicItems::removeDevice(const char* id) {
+  for (auto it = devices_.begin(); it != devices_.end(); ++it) {
+    if (it->id != id) continue;
+    const std::vector<std::string> users = deviceUsers(it->id);
+    if (!users.empty()) return busFail("device " + it->id + " is used by " + joined(users), true);
+    devices_.erase(it);
+    return {true};
+  }
+  return busFail("device not found", false);
+}
+
+void DynamicItems::writeDevices(JsonObject out) const {
+  const std::vector<PinUse> uses = pinUses();
+  JsonArray arr = out["devices"].to<JsonArray>();
+  for (const DeviceDef& d : devices_) {
+    JsonObject o = arr.add<JsonObject>();
+    writeDeviceDef(d, o);
+    const DeviceCap& cap = d.type->provides;
+    o["cap"] = cap.cap;
+    JsonArray chs = o["channels"].to<JsonArray>();
+    for (int i = 0; i < cap.count; ++i) {
+      JsonObject ch = chs.add<JsonObject>();
+      ch["index"] = i;
+      ch["name"] = cap.channelNames[i];
+      JsonArray users = ch["users"].to<JsonArray>();
+      for (const PinUse& u : uses)
+        if (u.device == d.id && u.gpio == i) users.add(u.item);
+    }
+  }
+  JsonArray types = out["types"].to<JsonArray>();
+  for (const DeviceType& t : kDeviceTypes) {
+    JsonObject o = types.add<JsonObject>();
+    o["type"] = t.type;
+    o["bus"] = t.bus;
+    o["addrFirst"] = t.addrFirst;
+    o["addrLast"] = t.addrLast;
+    o["addrDefault"] = t.addrDefault;
+    o["cap"] = t.provides.cap;
+    o["count"] = t.provides.count;
+    JsonArray names = o["channels"].to<JsonArray>();
+    for (int i = 0; i < t.provides.count; ++i) names.add(t.provides.channelNames[i]);
+  }
 }
 
 // ── Remote transport resolution ──────────────────────────────────────────
@@ -396,13 +584,21 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
       return {false, "invalid scale"};
     e->ptr = std::make_unique<HX711LoadCellSensor>(e->id.c_str(), dout, sck);
   } else if (strcmp(type, "DigitalInput") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
+    const PinRef pin = parsePinRef(cfg["pin"]);
+    if (pin.index < 0) return {false, "missing pin"};
     bool pullup       = cfg["pullup"]      | false;
     bool invert       = cfg["invert"]      | false;
     uint32_t debounce = cfg["debounce_ms"] | 0u;
-    e->ptr = std::make_unique<DigitalInputSensor>(
-        e->id.c_str(), pin, pullup, invert, debounce);
+    if (!pin.device.empty()) {
+      // "<device>:<channel>": a pin of a port expander, polled.
+      GpioPort* port = acquireGpio(pin, e->dev);
+      if (!port) return {false, "device has no such GPIO channel"};
+      e->ptr = std::make_unique<DigitalInputSensor>(
+          e->id.c_str(), *port, static_cast<uint8_t>(pin.index), pullup, invert, debounce);
+    } else {
+      e->ptr = std::make_unique<DigitalInputSensor>(
+          e->id.c_str(), pin.index, pullup, invert, debounce);
+    }
   } else if (strcmp(type, "AnalogInput") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};
@@ -746,14 +942,23 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
   serializeJson(cfg, e->cfgJson);
 
   if (strcmp(type, "DigitalOutput") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
+    const PinRef pin = parsePinRef(cfg["pin"]);
+    if (pin.index < 0) return {false, "missing pin"};
     const char* modeStr = cfg["mode"] | "Binary";
     auto mode = strcmp(modeStr, "TimeProportional") == 0
                     ? DigitalOutputActuator::Mode::TimeProportional
                     : DigitalOutputActuator::Mode::Binary;
     bool invert = cfg["invert"] | false;
-    auto* a = new DigitalOutputActuator(e->id.c_str(), pin, mode, /*activeHigh=*/!invert);
+    DigitalOutputActuator* a = nullptr;
+    if (!pin.device.empty()) {
+      // "<device>:<channel>": a pin of a port expander.
+      GpioPort* port = acquireGpio(pin, e->dev);
+      if (!port) return {false, "device has no such GPIO channel"};
+      a = new DigitalOutputActuator(e->id.c_str(), *port, static_cast<uint8_t>(pin.index),
+                                    mode, /*activeHigh=*/!invert);
+    } else {
+      a = new DigitalOutputActuator(e->id.c_str(), pin.index, mode, /*activeHigh=*/!invert);
+    }
     if (mode == DigitalOutputActuator::Mode::TimeProportional)
       a->setPeriodMs(cfg["period_ms"] | 2000u);
     e->ptr.reset(a);
@@ -779,13 +984,25 @@ DynamicItems::Result DynamicItems::addActuatorNoBegin(const JsonObject& cfg,
         static_cast<uint8_t>(pinY),
         static_cast<uint8_t>(pinI));
   } else if (strcmp(type, "AnalogOutput") == 0) {
-    int pin = cfg["pin"] | -1;
-    if (pin < 0) return {false, "missing pin"};
+    const PinRef pin = parsePinRef(cfg["pin"]);
+    if (pin.index < 0) return {false, "missing pin"};
     const char* modeStr = cfg["mode"] | "pwm";
     auto mode = strcmp(modeStr, "dac") == 0
                     ? AnalogOutputActuator::Mode::Dac
                     : AnalogOutputActuator::Mode::Pwm;
-    auto* a = new AnalogOutputActuator(e->id.c_str(), pin, mode);
+    AnalogOutputActuator* a = nullptr;
+    if (!pin.device.empty()) {
+      // "<device>:<channel>": a DAC channel of a peripheral device.
+      if (mode != AnalogOutputActuator::Mode::Dac) return {false, "device channel needs mode dac"};
+      const DeviceDef* d = findDeviceDef(devices_, pin.device);
+      if (!d) return {false, "unknown device"};
+      e->dev = acquireDevice(*d);
+      DacOutput* out = e->dev ? e->dev.get()->dac(pin.index) : nullptr;
+      if (!out) return {false, "device has no such DAC channel"};
+      a = new AnalogOutputActuator(e->id.c_str(), *out);
+    } else {
+      a = new AnalogOutputActuator(e->id.c_str(), pin.index, mode);
+    }
     if (!cfg["freq"].isNull())
       a->setFrequency(cfg["freq"] | 5000u);
     if (!cfg["resolution_bits"].isNull())
@@ -1004,15 +1221,20 @@ DynamicItems::Result DynamicItems::addController(const JsonObject& cfg,
 
 // ── Remove ────────────────────────────────────────────────────────────────
 
-DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
-  for (auto& e : controllers_) {
-    // sensorId may name a channel ("tank.derived") of the sensor being removed.
-    const size_t n = strlen(id);
-    if (e->sensorId == id ||
-        (e->sensorId.compare(0, n, id) == 0 && e->sensorId.size() > n &&
+bool DynamicItems::referencedByController(const char* sensorId) const {
+  for (const auto& e : controllers_) {
+    // sensorId may name a channel ("tank.derived") of the sensor.
+    const size_t n = strlen(sensorId);
+    if (e->sensorId == sensorId ||
+        (e->sensorId.compare(0, n, sensorId) == 0 && e->sensorId.size() > n &&
          e->sensorId[n] == '.'))
-      return {false, "sensor is referenced by a controller"};
+      return true;
   }
+  return false;
+}
+
+DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
+  if (referencedByController(id)) return {false, "sensor is referenced by a controller"};
   for (auto it = sensors_.begin(); it != sensors_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
@@ -1195,6 +1417,7 @@ DynamicItems::Result DynamicItems::replaceSensor(const char* oldId,
   // down and rebuilt when the new config — or the restored old one — sits on
   // the same bus. A bus left without users goes when this Ref does.
   const PeripheralRegistry::Ref held = old->bus;
+  const PeripheralRegistry::Ref heldDev = old->dev;  // likewise its device
   return replaceEntry(
       sensors_, id, cfg, reg,
       [&](const char* i) { return removeSensor(i, reg); },
@@ -1205,11 +1428,14 @@ DynamicItems::Result DynamicItems::replaceActuator(const char* oldId,
                                                    const JsonObject& cfg,
                                                    Registry& reg) {
   const std::string id = oldId;
-  bool found = false;
-  for (auto& e : actuators_) found |= (e->id == id);
-  if (!found) return {false, "not a dynamic item"};
+  const ActuatorEntry* old = nullptr;
+  for (auto& e : actuators_) if (e->id == id) old = e.get();
+  if (!old) return {false, "not a dynamic item"};
   Result pins = checkPins(cfg, id.c_str());
   if (!pins.ok) return pins;
+  // Like the bus in replaceSensor: the old actuator's device survives the
+  // swap instead of being torn down and rebuilt.
+  const PeripheralRegistry::Ref held = old->dev;
   return replaceEntry(
       actuators_, id, cfg, reg,
       [&](const char* i) { return removeActuator(i, reg); },
@@ -1243,7 +1469,7 @@ std::vector<PinUse> DynamicItems::pinUses() const {
 
 DynamicItems::Result DynamicItems::checkPins(const JsonObject& cfg,
                                              const char* replaceId) {
-  const PinCheck c = checkItemPins(currentBoard(), pinUses(), cfg, replaceId);
+  const PinCheck c = checkItemPins(currentBoard(), pinUses(), cfg, replaceId, devices_);
   if (c.ok) return {true};
   pinError_ = c.error;
   return {false, pinError_.c_str(), c.status == 409};
@@ -1258,6 +1484,7 @@ std::vector<AddressUse> DynamicItems::addressUses() const {
     if (deserializeJson(doc, e->cfgJson) == DeserializationError::Ok)
       collectAddresses(doc.as<JsonObjectConst>(), uses);
   }
+  collectDeviceAddresses(devices_, uses);
   return uses;
 }
 
@@ -1381,7 +1608,7 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   for (JsonObject def : doc["buses"].as<JsonArray>()) {
     BusDef d;
     std::string err;
-    if (!parseBusDef(def, d, err) || findBus(d.id.c_str())) {
+    if (!parseBusDef(def, d, err, true) || findBus(d.id.c_str())) {
       Serial.printf("[buses] skipping bus %s (%s)\n", (const char*)(def["id"] | "?"),
                     err.empty() ? "duplicate" : err.c_str());
       continue;
@@ -1396,6 +1623,24 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
       }
     }
     buses_.push_back(d);
+  }
+
+  // Devices after the buses they sit on, before the items using them.
+  for (JsonObject def : doc["devices"].as<JsonArray>()) {
+    DeviceDef d;
+    std::string err;
+    if (parseDeviceDef(def, d, err)) {
+      const BusDef* bus = findBus(d.bus.c_str());
+      if (findDeviceDef(devices_, d.id)) {
+        err = "duplicate";
+      } else if (!bus || strcmp(bus->type->type, d.type->bus) != 0) {
+        err = "unknown bus " + d.bus;
+      } else {
+        devices_.push_back(d);
+        continue;
+      }
+    }
+    Serial.printf("[devices] skipping device %s (%s)\n", (const char*)(def["id"] | "?"), err.c_str());
   }
 
   bool migrated = false;
@@ -1430,6 +1675,15 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   if (migrated || !gy521Migrated.empty()) saveToSD(sd);
 }
 
+std::string DynamicItems::storedDevicesJson() const {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (const DeviceDef& d : devices_) writeDeviceDef(d, arr.add<JsonObject>());
+  std::string out;
+  serializeJson(doc, out);
+  return out;
+}
+
 std::string DynamicItems::storedBusesJson() const {
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
@@ -1448,6 +1702,8 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
 
   f.print("{\"buses\":");
   f.print(storedBusesJson().c_str());
+  f.print(",\"devices\":");
+  f.print(storedDevicesJson().c_str());
   f.print(",\"sensors\":[");
   for (size_t i = 0; i < sensors_.size(); ++i) {
     if (i) f.print(",");
@@ -1472,6 +1728,8 @@ void DynamicItems::saveToSD(fs::FS& sd) const {
 String DynamicItems::serializeConfig() const {
   String out = "{\"buses\":";
   out += storedBusesJson().c_str();
+  out += ",\"devices\":";
+  out += storedDevicesJson().c_str();
   out += ",\"sensors\":[";
   for (size_t i = 0; i < sensors_.size(); ++i) {
     if (i) out += ',';

@@ -163,6 +163,7 @@ export type ItemConfig = Record<string, unknown>;
 
 export interface ConfigSnapshot {
   buses?: BusStored[]; // user-defined buses; absent from older firmware
+  devices?: DeviceStored[]; // peripheral devices; absent from older firmware
   sensors: ItemConfig[];
   actuators: ItemConfig[];
   controllers: ItemConfig[];
@@ -196,11 +197,26 @@ export interface PinConflict {
   users: PinUser[];
 }
 
+// A channel of a peripheral device (see PeripheralsInfo) — not a GPIO. Items
+// put its ref into their pin field instead of a GPIO number.
+export interface VirtualPin {
+  ref: string; // "<device id>:<index>", e.g. "mcp4728-i2c-board-60:1"
+  device: string;
+  deviceLabel?: string;
+  index: number;
+  label: string; // channel name: "A".."D" (DAC), "P00".."P17" (PCF8575)
+  dac?: boolean; // a DAC channel
+  gpio?: boolean; // a digital pin of a port expander
+  users: PinUser[];
+}
+
 export interface PinsInfo {
   board: string;
+  // caps.dac: the board's own DAC; device channels are listed in virtual.
   // adc2Wifi: 'blocked' = ADC2 unusable while Wi-Fi runs, 'shared' = may drop reads
   caps: { dac: boolean; rmtTx: number; rmtUsed: number; adc2Wifi: 'blocked' | 'shared' };
   pins: PinInfo[];
+  virtual?: VirtualPin[]; // absent from older firmware
   conflicts: PinConflict[];
   // Onboard battery voltage divider (LilyGo), absent on boards without one.
   // r1 (battery → pin) and r2 (pin → GND) in kΩ.
@@ -480,7 +496,7 @@ export interface BusInfo extends BusStored {
   fixed?: boolean; // wired by the board, read-only
   note?: string;
   reserved?: { address: string; note: string }[];
-  users: string[]; // ids of the items on this bus
+  users: string[]; // ids of the items and peripheral devices on this bus
 }
 
 export interface BusTypeInfo {
@@ -504,6 +520,44 @@ export interface BusScanResult {
   bus: string;
   type: 'onewire' | 'i2c';
   devices: ScannedDevice[];
+}
+
+// GET /api/peripherals — mirrors DynamicItems::writeDevices() / DeviceConfig.h.
+// A chip on a bus that offers items a capability (MCP4728 → 4 DACs,
+// PCF8575 → 16 digital pins).
+export interface DeviceStored {
+  id: string; // derived from type, bus and address: "mcp4728-i2c-board-60"
+  type: string;
+  label?: string;
+  bus: string;
+  address: number;
+}
+
+export interface DeviceChannel {
+  index: number;
+  name: string; // "A".."D", "P00".."P17"
+  users: string[]; // ids of the items on this channel
+}
+
+export interface DeviceInfo extends DeviceStored {
+  cap: string; // capability the channels offer: "dac", "gpio"
+  channels: DeviceChannel[];
+}
+
+export interface DeviceTypeInfo {
+  type: string;
+  bus: BusType;
+  addrFirst: number;
+  addrLast: number;
+  addrDefault: number;
+  cap: string;
+  count: number;
+  channels: string[]; // channel names, e.g. ["A","B","C","D"]
+}
+
+export interface PeripheralsInfo {
+  devices: DeviceInfo[];
+  types: DeviceTypeInfo[];
 }
 
 // One entry of GET /api/remote/discover — an item a remote device publishes.

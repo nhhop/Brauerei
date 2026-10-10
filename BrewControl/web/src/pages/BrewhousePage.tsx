@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { route } from 'preact-router';
 import { Copy, Factory, Pencil, Plus, Trash2 } from 'lucide-preact';
 import {
-  DEFAULT_BREWERY, TEMPLATES, brewhouseSummary, deleteBrewhouse, getBrewery, listBrewhouses, saveBrewery,
+  DEFAULT_BREWERY, TEMPLATES, breweryBoilC, brewhouseSummary, deleteBrewhouse, getBrewery, listBrewhouses, saveBrewery,
   type Brewery, type Brewhouse,
 } from '../brewhouse';
 import { Breadcrumb } from '../components/Breadcrumb';
@@ -10,6 +10,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { Fab } from '../components/Fab';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
+import { BASIS_LABEL, DEFAULT_BASIS, basisOf, type EfficiencyBasis } from '../efficiency';
 import { DEFAULT_PH_MODEL, type PhModel } from '../mashPh';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 import { Field, NumInput } from './recipe/fields';
@@ -143,6 +144,14 @@ function BreweryCard() {
         <Field label="Leitungswassertemperatur (°C)">
           <NumInput value={draft.tapWaterTempC} onChange={(n) => setDraft({ ...draft, tapWaterTempC: n })} />
         </Field>
+        <div class="flex items-end gap-2">
+          <Field label="Höhe (m ü. NN)">
+            <NumInput value={draft.altitudeM ?? 0} onChange={(n) => setDraft({ ...draft, altitudeM: n || undefined })} />
+          </Field>
+          <span class="pb-2 text-xs text-muted" title="Normatmosphäre, ohne Erhöhung durch den Extrakt">
+            Siedepunkt {breweryBoilC(draft).toFixed(1).replace('.', ',')} °C
+          </span>
+        </div>
         <Field label="pH-Modell (alle Rezepte)">
           <select class={inp} value={draft.phModel ?? DEFAULT_PH_MODEL}
             onChange={(e) => {
@@ -151,6 +160,15 @@ function BreweryCard() {
             }}>
             <option value="troester">Troester: pH aus Malzdaten</option>
             <option value="kolbach">Kolbach: Restalkalität nach Bierfarbe</option>
+          </select>
+        </Field>
+        <Field label="Effizienz im Rezept (Grundlage)">
+          <select class={inp} value={basisOf(draft)}
+            onChange={(e) => {
+              const v = e.currentTarget.value as EfficiencyBasis;
+              setDraft({ ...draft, efficiencyBasis: v === DEFAULT_BASIS ? undefined : v });
+            }}>
+            {(Object.keys(BASIS_LABEL) as EfficiencyBasis[]).map((b) => <option key={b} value={b}>{BASIS_LABEL[b]}</option>)}
           </select>
         </Field>
       </div>

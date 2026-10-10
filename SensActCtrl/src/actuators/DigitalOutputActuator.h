@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "core/Actuator.h"
+#include "core/GpioPort.h"
 
 namespace SensActCtrl {
 
@@ -19,12 +20,23 @@ namespace SensActCtrl {
 // master switch alone is the on/off control, and a reboot never energises a
 // relay on its own. TimeProportional starts enabled at duty 0, which is
 // already inactive.
+//
+// On a GpioPort channel (port expander) the pin is written only when its
+// level changes or every kRefreshMs — TimeProportional would otherwise cost
+// one bus transfer per tick(), and a re-plugged expander (all pins back at
+// their power-up level) is set right again within a second. A write the
+// expander does not acknowledge shows as fault() until the next one is.
 class DigitalOutputActuator : public Actuator {
  public:
   enum class Mode : uint8_t { Binary, TimeProportional };
 
   DigitalOutputActuator(const char* id, int pin, Mode mode = Mode::Binary,
                         bool activeHigh = true);
+  // Channel ch of a port expander. The port must outlive the actuator.
+  DigitalOutputActuator(const char* id, GpioPort& port, uint8_t ch,
+                        Mode mode = Mode::Binary, bool activeHigh = true);
+
+  static constexpr uint32_t kRefreshMs = 1000;
 
   const char* id() const override { return id_; }
   ActuatorMeta meta() const override;
@@ -34,6 +46,9 @@ class DigitalOutputActuator : public Actuator {
   void tick() override;
   void write(float v) override;
   float target() const override { return state_; }
+  const char* fault() const override {
+    return portFault_ ? "Port-Expander antwortet nicht" : nullptr;
+  }
 
   // Period of one PWM cycle in TimeProportional mode (default 2000 ms).
   void setPeriodMs(uint32_t periodMs) { periodMs_ = periodMs; }
@@ -49,11 +64,16 @@ class DigitalOutputActuator : public Actuator {
 
   const char* id_;
   int pin_;
+  GpioPort* port_ = nullptr;
+  uint8_t ch_ = 0;
   Mode mode_;
   bool activeHigh_;
   float state_ = 0.0f;         // last commanded value (post-clamp)
   uint32_t periodMs_ = 2000;
   uint32_t cycleStartMs_ = 0;
+  int lastLevel_ = -1;  // port: level last sent, -1 = none yet
+  uint32_t lastWriteMs_ = 0;
+  bool portFault_ = false;
 };
 
 }  // namespace SensActCtrl

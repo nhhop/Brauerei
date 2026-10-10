@@ -7,9 +7,10 @@ import {
   setSensorLabel, setActuatorLabel, setControllerLabel,
   scanBus, startAutotune, stopAutotune, getPins, getBuses,
 } from '../api';
-import { riskyPins } from '../pins';
+import { availableCaps, dacOutputs, isChannelRef, riskyPins } from '../pins';
 import { BUS_TYPE_LABEL, busTitle } from '../buses';
 import { PinHint } from './PinHint';
+import { DigitalPinField } from './DigitalPinField';
 import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
 import {
@@ -296,6 +297,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // Risky pins of the last submit attempt, and the set the user confirmed.
   const [riskyWarn, setRiskyWarn] = useState<string[]>([]);
   const [riskyAck, setRiskyAck] = useState('');
+
+  // A port-expander pin ("<device>:<n>") fits only DigitalOutput/DigitalInput.
+  // `pin` is shared with other types: drop a ref when the type changes.
+  useEffect(() => {
+    if (isChannelRef(pin) && !(role === 'actuator' && actuatorType === 'DigitalOutput')) setPin('');
+  }, [role, actuatorType, sensorType]);
+  // Expander inputs always have a (weak) pull-up; the firmware insists on it.
+  useEffect(() => {
+    if (isChannelRef(diPin)) setDiPullup(true);
+  }, [diPin]);
 
   useEffect(() => {
     if (!open) return;
@@ -721,8 +732,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           if (isNaN(sck)  || sck  < 0) throw new Error('SCK Pin ungültig');
           cfg = { type: 'HX711', id: trimId, dout, sck };
         } else if (sensorType === 'DigitalInput') {
-          const p = parseInt(diPin, 10);
-          if (isNaN(p) || p < 0) throw new Error('Pin ungültig');
+          // A GPIO number, or a port-expander pin "<device>:<n>".
+          const raw = diPin.trim();
+          const p: number | string = isChannelRef(raw) ? raw : parseInt(raw, 10);
+          if (typeof p === 'number' && (isNaN(p) || p < 0)) throw new Error('Pin ungültig');
           cfg = {
             type: 'DigitalInput', id: trimId, pin: p,
             invert: diInvert, pullup: diPullup,
@@ -835,8 +848,11 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             pulse_width_ms: width, gap_ms: gap, invert: pulseInvert,
           };
         } else if (actuatorType === 'AnalogOutput') {
-          const p = parseInt(analogPin, 10);
-          if (isNaN(p)) throw new Error('invalid pin');
+          // A GPIO number, or in DAC mode a device channel ref "<device>:<n>".
+          const raw = analogPin.trim();
+          let p: number | string = parseInt(raw, 10);
+          if (analogMode === 'dac' && raw.includes(':')) p = raw;
+          else if (isNaN(p)) throw new Error(analogMode === 'dac' ? 'Kein DAC-Ausgang gewählt' : 'invalid pin');
           cfg = { type: 'AnalogOutput', id: trimId, pin: p, mode: analogMode };
           if (analogShowRange) {
             const vmin = parseFloat(analogMin);
@@ -882,8 +898,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             cfg.peer_url = peerUrl;
           }
         } else {
-          const p = parseInt(pin, 10);
-          if (isNaN(p)) throw new Error('invalid pin');
+          const raw = pin.trim();
+          const p: number | string = isChannelRef(raw) ? raw : parseInt(raw, 10);
+          if (typeof p === 'number' && isNaN(p)) throw new Error('invalid pin');
           cfg = { type: 'DigitalOutput', id: trimId, pin: p, mode, invert: invertOut };
         }
         if ((actuatorType === 'DigitalOutput' || actuatorType === 'AnalogOutput' || actuatorType === 'MqttGeneric') && intervalShow) {
@@ -1004,6 +1021,19 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   const lbl = 'block text-xs text-muted mb-1';
   // The edited item's own pins show as free in the hints.
   const selfId = isEdit ? String(editConfig!.id) : undefined;
+  // AnalogOutput: DAC outputs of the board and the peripheral devices.
+  const hasDac = availableCaps(pins).has('dac');
+  const dacOpts = dacOutputs(pins, selfId);
+  // A channel ref only fits DAC mode, a free GPIO number only PWM — on a mode
+  // switch keep the pin only if it fits, otherwise preselect the first free DAC.
+  function pickAnalogMode(m: 'pwm' | 'dac') {
+    setAnalogMode(m);
+    if (m === 'dac' && pins && !dacOpts.some((o) => o.value === analogPin)) {
+      setAnalogPin(dacOpts.find((o) => !o.taken)?.value ?? '');
+    } else if (m === 'pwm' && analogPin.includes(':')) {
+      setAnalogPin('');
+    }
+  }
   const segBtn = (active: boolean, disabled = false) =>
     `flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' :
@@ -1267,26 +1297,27 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* DigitalInput fields */}
           {role === 'sensor' && sensorType === 'DigitalInput' && (
             <div class="space-y-3">
-              <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={diPin}
-                  onInput={(e) => setDiPin((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 15" class={inp} required />
-                <PinHint pins={pins} value={diPin} selfId={selfId} pullup={diPullup} suggest
-                  onPick={(g) => setDiPin(String(g))} />
-              </div>
+              <DigitalPinField pins={pins} value={diPin} onChange={setDiPin} selfId={selfId}
+                pullup={diPullup} placeholder="z.B. 15" inputClass={inp} labelClass={lbl} />
               <div class="flex gap-4">
                 <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
                   <input type="checkbox" checked={diInvert} class="accent-accent"
                     onChange={(e) => setDiInvert((e.target as HTMLInputElement).checked)} />
                   Invertieren
                 </label>
-                <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
+                <label class={`flex items-center gap-2 text-sm text-fg ${isChannelRef(diPin) ? 'opacity-60' : 'cursor-pointer'}`}>
                   <input type="checkbox" checked={diPullup} class="accent-accent"
+                    disabled={isChannelRef(diPin)}
                     onChange={(e) => setDiPullup((e.target as HTMLInputElement).checked)} />
                   Pullup aktivieren
                 </label>
               </div>
+              {isChannelRef(diPin) && (
+                <p class="text-xs text-faint">
+                  Port-Expander-Eingänge haben immer einen schwachen Pull-up (~100 µA) — Taster
+                  oder Schalter nach Masse schalten, für „gedrückt = an“ Invertieren setzen.
+                </p>
+              )}
               <div>
                 <label class={lbl}>Entprellung (ms)</label>
                 <input type="number" value={diDebounce} min="0"
@@ -1596,14 +1627,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* DigitalOutput fields */}
           {role === 'actuator' && actuatorType === 'DigitalOutput' && (
             <>
-              <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={pin}
-                  onInput={(e) => setPin((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 16" class={inp} required />
-                <PinHint pins={pins} value={pin} selfId={selfId} output suggest
-                  onPick={(g) => setPin(String(g))} />
-              </div>
+              <DigitalPinField pins={pins} value={pin} onChange={setPin} selfId={selfId} output
+                placeholder="z.B. 16" inputClass={inp} labelClass={lbl} />
               <div>
                 <label class={lbl}>Mode</label>
                 <select value={mode} title="Mode"
@@ -1618,6 +1643,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   onChange={(e) => setInvertOut((e.target as HTMLInputElement).checked)} />
                 Invertieren (active-low)
               </label>
+              {isChannelRef(pin) && (
+                <p class="text-xs text-caution">
+                  Port-Expander-Ausgänge stehen nach dem Einschalten auf High und behalten bei
+                  einem Neustart des Boards ihren Zustand, bis die Firmware sie setzt. „Aus“ ist
+                  nur bei aktiv-low sicher: Relaismodul zwischen Pin und VCC und „Invertieren“
+                  setzen. High ist nur ein schwacher Pull-up — aktiv-high nur über Transistor.
+                </p>
+              )}
               {intervalFields()}
             </>
           )}
@@ -1625,30 +1658,52 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           {/* AnalogOutput fields */}
           {role === 'actuator' && actuatorType === 'AnalogOutput' && (
             <div class="space-y-3">
-              <div>
-                <label class={lbl}>GPIO Pin</label>
-                <input type="number" value={analogPin}
-                  onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
-                  placeholder="z.B. 25" class={inp} required />
-                <PinHint pins={pins} value={analogPin} selfId={selfId} output suggest
-                  onPick={(g) => setAnalogPin(String(g))} />
-              </div>
-              {/* DAC only where the board has one (the ESP32-S3 has none); an
-                  existing DAC item keeps the option so its mode stays visible. */}
-              {(!pins || pins.caps.dac || analogMode === 'dac') && (
+              {/* DAC only where the board (the ESP32-S3 has none) or a peripheral
+                  device has one; an existing DAC item keeps the option so its
+                  mode stays visible. */}
+              {(!pins || hasDac || analogMode === 'dac') && (
                 <div>
                   <label class={lbl}>Mode</label>
                   <div class="flex gap-2">
                     {(['pwm', 'dac'] as const).map((m) => (
-                      <button key={m} type="button" onClick={() => setAnalogMode(m)}
+                      <button key={m} type="button" onClick={() => pickAnalogMode(m)}
                         class={segBtn(analogMode === m)}>{m.toUpperCase()}</button>
                     ))}
                   </div>
-                  {analogMode === 'dac' && pins && (
+                </div>
+              )}
+              {analogMode === 'dac' && pins ? (
+                <div>
+                  <label class={lbl}>DAC-Ausgang</label>
+                  {dacOpts.length === 0 ? (
+                    <p class="text-xs text-caution">
+                      Kein DAC vorhanden — einen DAC-Baustein unter{' '}
+                      <a href="/settings/peripherals" class="underline">Einstellungen → Peripheriegeräte</a> anlegen.
+                    </p>
+                  ) : (
+                    <select value={analogPin} class={inp} required
+                      onChange={(e) => setAnalogPin((e.target as HTMLSelectElement).value)}>
+                      {!dacOpts.some((o) => o.value === analogPin) && <option value="">— wählen —</option>}
+                      {dacOpts.map((o) => (
+                        <option key={o.value} value={o.value} disabled={!!o.taken}>
+                          {o.label}{o.taken ? ` – ${o.taken}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label class={lbl}>GPIO Pin</label>
+                  <input type="number" value={analogPin}
+                    onInput={(e) => setAnalogPin((e.target as HTMLInputElement).value)}
+                    placeholder="z.B. 25" class={inp} required />
+                  <PinHint pins={pins} value={analogPin} selfId={selfId} output suggest
+                    onPick={(g) => setAnalogPin(String(g))} />
+                  {pins && !hasDac && (
                     <p class="mt-1 text-xs text-faint">
-                      {pins.caps.dac
-                        ? `DAC-Pins: ${pins.pins.filter((p) => p.dac).map((p) => p.gpio).join(', ')}`
-                        : 'Dieses Board hat keinen DAC.'}
+                      Echte Spannung statt PWM: einen DAC-Baustein unter{' '}
+                      <a href="/settings/peripherals" class="underline">Einstellungen → Peripheriegeräte</a> anlegen.
                     </p>
                   )}
                 </div>

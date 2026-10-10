@@ -6,6 +6,11 @@
 #include <utility>
 #include <vector>
 
+namespace SensActCtrl {
+class DacOutput;
+class GpioPort;
+}
+
 namespace BrewControl {
 
 // Hardware that several items use at once: a OneWire pin carrying several
@@ -15,13 +20,19 @@ namespace BrewControl {
 //
 // id() names the instance: the id of its bus definition (BusConfig.h), which
 // starts with its type ("onewire-4", "spi-18-19-23"), so two types can never
-// collide on one id.
+// collide on one id. A peripheral device (DeviceConfig.h) is a Peripheral
+// too, with its device id; it holds a Ref on its bus, so the bus outlives it.
+//
+// Capabilities are asked for without RTTI: dac(ch) is nullptr unless the
+// peripheral offers a DAC channel ch, gpio() unless it offers digital pins.
 class Peripheral {
  public:
   virtual ~Peripheral() = default;
   virtual const char* type() const = 0;
   virtual void begin() {}  // on the first user, before it is handed out
   virtual void end() {}    // after the last user is gone, before delete
+  virtual SensActCtrl::DacOutput* dac(int /*ch*/) { return nullptr; }
+  virtual SensActCtrl::GpioPort* gpio() { return nullptr; }
   const std::string& id() const { return id_; }
 
  private:
@@ -111,10 +122,15 @@ class PeripheralRegistry {
   void release(Slot* slot) {
     if (--slot->users) return;
     slot->p->end();
+    // Out of the vector first, deleted after: a peripheral that holds a Ref
+    // on another one (a device on its bus) releases it from its destructor,
+    // which must not run while slots_ is in the middle of an erase.
+    std::unique_ptr<Slot> dead;
     for (auto it = slots_.begin(); it != slots_.end(); ++it) {
       if (it->get() == slot) {
+        dead = std::move(*it);
         slots_.erase(it);
-        return;
+        break;
       }
     }
   }

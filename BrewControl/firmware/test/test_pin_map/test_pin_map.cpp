@@ -384,6 +384,265 @@ void test_wake_pin() {
   TEST_ASSERT_EQUAL_STRING("GPIO 27 already used by energy (wake_pin)", item.error.c_str());
 }
 
+// ── Device channels (DeviceConfig.h) ──────────────────────────────────────
+
+namespace {
+// One MCP4728 on the LilyGo's board bus at 0x60.
+std::vector<DeviceDef> oneDac() {
+  JsonDocument doc = parse(R"({"type":"mcp4728","bus":"i2c-board","address":96,"label":"DAC Kessel"})");
+  DeviceDef d;
+  std::string err;
+  TEST_ASSERT_TRUE(parseDeviceDef(doc.as<JsonObjectConst>(), d, err));
+  return {d};
+}
+
+// Plus a PCF8575 on the same bus at 0x20.
+std::vector<DeviceDef> dacAndExpander() {
+  std::vector<DeviceDef> out = oneDac();
+  JsonDocument doc = parse(R"({"type":"pcf8575","bus":"i2c-board","address":32,"label":"IO"})");
+  DeviceDef d;
+  std::string err;
+  TEST_ASSERT_TRUE(parseDeviceDef(doc.as<JsonObjectConst>(), d, err));
+  out.push_back(d);
+  return out;
+}
+
+PinCheck checkDev(const Board& b, const std::vector<PinUse>& uses, const char* cfg,
+                  const char* replaceId = "") {
+  JsonDocument doc = parse(cfg);
+  return checkItemPins(b, uses, doc.as<JsonObjectConst>(), replaceId, dacAndExpander());
+}
+
+PinRef ref(const char* json) {
+  JsonDocument doc = parse(json);
+  return parsePinRef(doc["pin"]);
+}
+}  // namespace
+
+void test_parse_pin_ref() {
+  PinRef r = ref(R"({"pin":25})");
+  TEST_ASSERT_TRUE(r.device.empty());
+  TEST_ASSERT_EQUAL(25, r.index);
+  r = ref(R"({"pin":"mcp4728-i2c-board-60:3"})");
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60", r.device.c_str());
+  TEST_ASSERT_EQUAL(3, r.index);
+  // The last colon splits.
+  r = ref(R"({"pin":"a:b:1"})");
+  TEST_ASSERT_EQUAL_STRING("a:b", r.device.c_str());
+  TEST_ASSERT_EQUAL(1, r.index);
+
+  TEST_ASSERT_EQUAL(-1, ref(R"({})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":-1})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":"25"})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":":1"})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":"dev:"})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":"dev:x"})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":"dev:-1"})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":"dev:99999"})").index);
+  TEST_ASSERT_EQUAL(-1, ref(R"({"pin":true})").index);
+}
+
+void test_collect_device_channel() {
+  auto u = usesOf({R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:1","mode":"dac"})"});
+  TEST_ASSERT_EQUAL(1, u.size());
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60", u[0].device.c_str());
+  TEST_ASSERT_EQUAL(1, u[0].gpio);
+  TEST_ASSERT_EQUAL_STRING("dac", u[0].cap);
+  // PWM and other types take GPIOs only.
+  u = usesOf({R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:1"})",
+              R"({"type":"PulseOutput","id":"p","pin":"pcf8575-i2c-board-20:2"})"});
+  TEST_ASSERT_EQUAL(2, u.size());
+  TEST_ASSERT_NULL(u[0].cap);
+  TEST_ASSERT_NULL(u[1].cap);
+  // DigitalOutput and DigitalInput may sit on a GPIO channel.
+  u = usesOf({R"({"type":"DigitalOutput","id":"d","pin":"pcf8575-i2c-board-20:2"})",
+              R"({"type":"DigitalInput","id":"i","pin":"pcf8575-i2c-board-20:3","pullup":true})"});
+  TEST_ASSERT_EQUAL_STRING("gpio", u[0].cap);
+  TEST_ASSERT_TRUE(u[0].output);
+  TEST_ASSERT_EQUAL_STRING("gpio", u[1].cap);
+  TEST_ASSERT_FALSE(u[1].output);
+  TEST_ASSERT_TRUE(u[1].pullup);
+  // A GPIO use has no device.
+  u = usesOf({R"({"type":"AnalogOutput","id":"a","pin":25,"mode":"dac"})"});
+  TEST_ASSERT_TRUE(u[0].device.empty());
+}
+
+void test_device_channel_checks() {
+  // A board without its own DAC drives a device channel.
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, {},
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:0","mode":"dac"})").ok);
+
+  auto r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-61:0","mode":"dac"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("unknown device mcp4728-i2c-board-61", r.error.c_str());
+
+  r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:4","mode":"dac"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60:4 does not exist", r.error.c_str());
+
+  // Wrong capability: PWM, or an item type that has no use for a DAC.
+  r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:0","mode":"pwm"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("pin needs a GPIO, not device channel mcp4728-i2c-board-60:0",
+                           r.error.c_str());
+  r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"DigitalOutput","id":"d","pin":"mcp4728-i2c-board-60:0"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60 has no gpio channels", r.error.c_str());
+
+  // Without a device table the reference is unknown.
+  r = check(kLilyGoAmoled, {},
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:0","mode":"dac"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+}
+
+void test_device_channel_taken() {
+  auto uses = usesOf({R"({"type":"AnalogOutput","id":"boil","pin":"mcp4728-i2c-board-60:1","mode":"dac"})"});
+  auto r = checkDev(kLilyGoAmoled, uses,
+      R"({"type":"AnalogOutput","id":"mash","pin":"mcp4728-i2c-board-60:1","mode":"dac"})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60:1 already used by boil (pin)", r.error.c_str());
+  // Its own channel counts as free on replace, other channels are free anyway.
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses,
+      R"({"type":"AnalogOutput","id":"boil","pin":"mcp4728-i2c-board-60:1","mode":"dac"})", "boil").ok);
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses,
+      R"({"type":"AnalogOutput","id":"mash","pin":"mcp4728-i2c-board-60:2","mode":"dac"})").ok);
+}
+
+void test_device_channel_is_not_a_gpio() {
+  // Channel 2 and GPIO 2 are different things, both ways round.
+  auto uses = usesOf({R"({"type":"AnalogOutput","id":"boil","pin":"mcp4728-i2c-board-60:2","mode":"dac"})"});
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses, R"({"type":"DigitalOutput","id":"d","pin":2})").ok);
+  uses = usesOf({R"({"type":"DigitalOutput","id":"d","pin":2})"});
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses,
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:2","mode":"dac"})").ok);
+  // Nor a conflict in a stored config, though channel 0 would be GPIO 0 (BOOT).
+  uses = usesOf({R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:0","mode":"dac"})",
+                 R"({"type":"AnalogOutput","id":"b","pin":"mcp4728-i2c-board-60:0","mode":"dac"})"});
+  TEST_ASSERT_TRUE(findPinConflicts(kLilyGoAmoled, uses).empty());
+}
+
+void test_expander_channel_checks() {
+  // Slow digital paths may use an expander pin.
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, {},
+      R"({"type":"DigitalOutput","id":"d","pin":"pcf8575-i2c-board-20:0"})").ok);
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, {},
+      R"({"type":"DigitalOutput","id":"d","pin":"pcf8575-i2c-board-20:15","mode":"TimeProportional"})").ok);
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, {},
+      R"({"type":"DigitalInput","id":"i","pin":"pcf8575-i2c-board-20:8","pullup":true})").ok);
+
+  // Its inputs always have a pull-up; saying otherwise is refused.
+  auto r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"DigitalInput","id":"i","pin":"pcf8575-i2c-board-20:8"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING(
+      "pcf8575-i2c-board-20:8: inputs of pcf8575 always have a pull-up (set pullup)",
+      r.error.c_str());
+
+  r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"DigitalOutput","id":"d","pin":"pcf8575-i2c-board-20:16"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("pcf8575-i2c-board-20:16 does not exist", r.error.c_str());
+
+  // Everything timing-, interrupt- or peripheral-bound stays on GPIOs.
+  const char* refused[] = {
+      R"({"type":"PulseOutput","id":"x","pin":"pcf8575-i2c-board-20:0"})",
+      R"({"type":"AnalogOutput","id":"x","pin":"pcf8575-i2c-board-20:0"})",
+      R"({"type":"AnalogInput","id":"x","pin":"pcf8575-i2c-board-20:0"})",
+      R"({"type":"Voltage","id":"x","pin":"pcf8575-i2c-board-20:0"})",
+      R"({"type":"YF-S201","id":"x","pin":"pcf8575-i2c-board-20:0"})",
+      R"({"type":"HX711","id":"x","dout":"pcf8575-i2c-board-20:0","sck":5})",
+      R"({"type":"HCSR04","id":"x","trig":"pcf8575-i2c-board-20:0","echo":5})",
+      R"({"type":"MAX31865","id":"x","cs":"pcf8575-i2c-board-20:0"})",
+      R"({"type":"IDS1","id":"x","pin_white":"pcf8575-i2c-board-20:0","pin_yellow":2,"pin_interrupt":3})",
+  };
+  for (const char* cfg : refused) {
+    r = checkDev(kLilyGoAmoled, {}, cfg);
+    TEST_ASSERT_EQUAL_MESSAGE(400, r.status, cfg);
+    TEST_ASSERT_TRUE_MESSAGE(r.error.find("needs a GPIO, not device channel") != std::string::npos,
+                             r.error.c_str());
+  }
+  // An AnalogOutput in DAC mode on an expander: wrong capability.
+  r = checkDev(kLilyGoAmoled, {},
+      R"({"type":"AnalogOutput","id":"x","pin":"pcf8575-i2c-board-20:0","mode":"dac"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("pcf8575-i2c-board-20 has no dac channels", r.error.c_str());
+}
+
+void test_expander_channel_taken() {
+  auto uses = usesOf({R"({"type":"DigitalOutput","id":"pump","pin":"pcf8575-i2c-board-20:3"})"});
+  auto r = checkDev(kLilyGoAmoled, uses,
+      R"({"type":"DigitalInput","id":"lid","pin":"pcf8575-i2c-board-20:3","pullup":true})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_EQUAL_STRING("pcf8575-i2c-board-20:3 already used by pump (pin)", r.error.c_str());
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses,
+      R"({"type":"DigitalOutput","id":"pump","pin":"pcf8575-i2c-board-20:3","mode":"TimeProportional"})",
+      "pump").ok);
+  // Same index on the DAC or as a GPIO is something else.
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses,
+      R"({"type":"AnalogOutput","id":"a","pin":"mcp4728-i2c-board-60:3","mode":"dac"})").ok);
+  TEST_ASSERT_TRUE(checkDev(kLilyGoAmoled, uses, R"({"type":"DigitalOutput","id":"g","pin":3})").ok);
+}
+
+void test_gpio_numbers_unchanged() {
+  // Stored configs with GPIO numbers load and check as before.
+  TEST_ASSERT_TRUE(checkDev(kEsp32Dev, {}, R"({"type":"DigitalOutput","id":"d","pin":26})").ok);
+  TEST_ASSERT_TRUE(checkDev(kEsp32Dev, {}, R"({"type":"DigitalInput","id":"i","pin":27})").ok);
+  auto u = usesOf({R"({"type":"DigitalInput","id":"i","pin":27,"pullup":false})"});
+  TEST_ASSERT_TRUE(u[0].device.empty());
+  TEST_ASSERT_EQUAL(27, u[0].gpio);
+  auto r = checkDev(kEsp32Dev, {}, R"({"type":"DigitalOutput","id":"d","pin":34})");
+  TEST_ASSERT_EQUAL(400, r.status);  // input-only, as before
+}
+
+void test_legacy_dac_number_unchanged() {
+  // {"mode":"dac","pin":25} still means the board's own DAC.
+  TEST_ASSERT_TRUE(checkDev(kEsp32Dev, {}, R"({"type":"AnalogOutput","id":"a","pin":25,"mode":"dac"})").ok);
+  auto r = checkDev(kLilyGoAmoled, {}, R"({"type":"AnalogOutput","id":"a","pin":47,"mode":"dac"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("this board has no DAC", r.error.c_str());
+}
+
+void test_pins_json_virtual_channels() {
+  auto uses = usesOf({R"({"type":"AnalogOutput","id":"boil","pin":"mcp4728-i2c-board-60:1","mode":"dac"})"});
+  JsonDocument doc;
+  writePinsJson(kLilyGoAmoled, "lilygo", uses, doc.to<JsonObject>(), oneDac());
+  TEST_ASSERT_FALSE(doc["caps"]["dac"].as<bool>());  // board-own only
+  JsonArrayConst v = doc["virtual"];
+  TEST_ASSERT_EQUAL(4, v.size());
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60:1", v[1]["ref"]);
+  TEST_ASSERT_EQUAL_STRING("mcp4728-i2c-board-60", v[1]["device"]);
+  TEST_ASSERT_EQUAL_STRING("DAC Kessel", v[1]["deviceLabel"]);
+  TEST_ASSERT_EQUAL(1, v[1]["index"].as<int>());
+  TEST_ASSERT_EQUAL_STRING("B", v[1]["label"]);
+  TEST_ASSERT_TRUE(v[1]["dac"].as<bool>());
+  TEST_ASSERT_EQUAL_STRING("boil", v[1]["users"][0]["id"]);
+  TEST_ASSERT_EQUAL(0, v[0]["users"].size());
+  // The channel does not show up as GPIO 1's user.
+  TEST_ASSERT_EQUAL(0, doc["pins"][1]["users"].size());
+
+  JsonDocument io;
+  uses = usesOf({R"({"type":"DigitalInput","id":"lid","pin":"pcf8575-i2c-board-20:13","pullup":true})"});
+  writePinsJson(kLilyGoAmoled, "lilygo", uses, io.to<JsonObject>(), dacAndExpander());
+  JsonArrayConst w = io["virtual"];
+  TEST_ASSERT_EQUAL(20, w.size());
+  JsonObjectConst p15 = w[4 + 13];
+  TEST_ASSERT_EQUAL_STRING("pcf8575-i2c-board-20:13", p15["ref"]);
+  TEST_ASSERT_EQUAL_STRING("P15", p15["label"]);
+  TEST_ASSERT_EQUAL_STRING("IO", p15["deviceLabel"]);
+  TEST_ASSERT_TRUE(p15["gpio"].as<bool>());
+  TEST_ASSERT_TRUE(p15["dac"].isNull());
+  TEST_ASSERT_EQUAL_STRING("lid", p15["users"][0]["id"]);
+
+  JsonDocument none;
+  writePinsJson(kLilyGoAmoled, "lilygo", {}, none.to<JsonObject>());
+  TEST_ASSERT_TRUE(none["virtual"].is<JsonArrayConst>());
+  TEST_ASSERT_EQUAL(0, none["virtual"].size());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_collect_keys_per_type);
@@ -411,5 +670,15 @@ int main(int, char**) {
   RUN_TEST(test_wake_pin);
   RUN_TEST(test_waveshare_board_pins);
   RUN_TEST(test_m5_stopwatch_board_pins);
+  RUN_TEST(test_parse_pin_ref);
+  RUN_TEST(test_collect_device_channel);
+  RUN_TEST(test_device_channel_checks);
+  RUN_TEST(test_device_channel_taken);
+  RUN_TEST(test_device_channel_is_not_a_gpio);
+  RUN_TEST(test_expander_channel_checks);
+  RUN_TEST(test_expander_channel_taken);
+  RUN_TEST(test_gpio_numbers_unchanged);
+  RUN_TEST(test_legacy_dac_number_unchanged);
+  RUN_TEST(test_pins_json_virtual_channels);
   return UNITY_END();
 }

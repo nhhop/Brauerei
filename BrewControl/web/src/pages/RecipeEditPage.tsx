@@ -6,8 +6,9 @@ import { Breadcrumb } from '../components/Breadcrumb';
 import { PageShell } from '../components/PageShell';
 import { TabBtn } from '../components/TabBtn';
 import { badgeAccent, badgeSuccess, btnPrimary, btnSecondary } from '../ui';
+import { MashTab } from './recipe/MashTab';
 import {
-  BoilTab, FermentationTab, IngredientsTab, MashTab, OverviewTab, type TabProps,
+  BoilTab, FermentationTab, IngredientsTab, OverviewTab, type TabProps,
 } from './recipe/tabs';
 import { WaterTab } from './recipe/WaterTab';
 

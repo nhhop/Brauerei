@@ -3,9 +3,9 @@
 // the boil belongs to the bottling volume of the fermentation. Pure, like
 // recipeStats.ts.
 import { platoFromExtract, volumeFromExtract } from './brewMath';
-import { grainAbsorptionOf, stepShort, type Brewhouse, type StepKey } from './brewhouse';
+import { breweryBoilC, decoctionVesselOf, grainAbsorptionOf, stepShort, type Brewery, type Brewhouse, type StepKey } from './brewhouse';
 import { platoToSg } from './gravityUnits';
-import { DEFAULT_MASH_RATIO, type Dilution, type Recipe } from './recipes';
+import { DEFAULT_MASH_RATIO, type Dilution, type MashStep, type Recipe } from './recipes';
 
 export type Source = 'Rezept' | 'Sudhaus';
 
@@ -25,6 +25,7 @@ export interface Water {
   absorptionLPerKg: number;
   absorptionFrom: Source;
   absorptionL: number;
+  mashEvaporationL: number;   // boiled off while mashing (decoctions, Kochrast)
   totalL: number;             // water that reaches mash and lauter tun
   canSparge: boolean;         // the brewhouse has the sparge step
   sparge: boolean;            // in effect
@@ -45,6 +46,22 @@ export const GRAIN_DISPLACEMENT_L_PER_KG = 0.75;
 export const fmtL = (n: number) => `${n.toFixed(1).replace('.', ',')} l`;
 
 const sum = (losses: Loss[]) => losses.reduce((s, x) => s + x.l, 0);
+
+// A rest at the boiling point boils the mash in its vessel (Earl's Kochmaische).
+export const isBoilRest = (s: MashStep, boilC: number) => s.kind === 'rest' && s.tempC !== undefined && s.tempC >= boilC - 0.05;
+
+// Water boiled off while mashing, at the evaporation of the vessel that boils:
+// a decoction's boil in the decoction vessel (none without one, the plan counts
+// it as a rest then), a boiling rest in the mash vessel.
+export function mashEvaporationL(recipe: Recipe, bh: Brewhouse, boilC: number): number {
+  const decoction = decoctionVesselOf(bh)?.vessel;
+  const mashVessel = bh.vessels.find((v) => v.id === bh.steps.mash?.vesselId);
+  return recipe.mash.reduce((l, s) => {
+    if (s.kind === 'decoction' && decoction && s.decoction) return l + ((decoction.evaporationLPerH ?? 0) * s.decoction.boilMin) / 60;
+    if (isBoilRest(s, boilC)) return l + ((mashVessel?.evaporationLPerH ?? 0) * (s.durationMin ?? 0)) / 60;
+    return l;
+  }, 0);
+}
 
 // Losses of the transfers in `steps`. A pump's line loss counts unless it comes
 // back. The source vessel's dead space counts when it drains (pump or gravity;
@@ -86,19 +103,30 @@ function restVolumeL(recipe: Recipe, bh: Brewhouse): number {
   return recipe.volumeL * (1 - bh.coolingShrinkPct / 100) - sum(losses);
 }
 
+// Share of the kettle's extract that reaches the fermenter: the rest over the
+// cooled knock-out. Cooling shrinks the volume, but loses no extract.
+export function fermenterShare(recipe: Recipe, bh: Brewhouse): number {
+  const cooledL = recipe.volumeL * (1 - bh.coolingShrinkPct / 100);
+  return cooledL > 0 ? Math.max(restVolumeL(recipe, bh), 0) / cooledL : 1;
+}
+
 // `extractKg` is the extract of the grist (recipeStats.wortExtract); without it
 // no gravity, and a dilution led by gravity counts as 0 l.
+// Kettle volumes are hot, the gravity is measured cold: the extract sits in the
+// volume left after the brewhouse's cooling shrink (none without a brewhouse).
 export function resolveDilution(recipe: Recipe, extractKg: number | undefined, bh: Brewhouse | undefined): DilutionResult {
   const d = recipe.water?.dilution;
   const knockOutL = recipe.volumeL;
   const notes: string[] = [];
-  const knockOutPlato = extractKg !== undefined && knockOutL > 0 ? platoFromExtract(extractKg, knockOutL) : undefined;
+  const cold = 1 - (bh?.coolingShrinkPct ?? 0) / 100;
+  const platoHot = (kg: number, hotL: number) => platoFromExtract(kg, hotL * cold);
+  const knockOutPlato = extractKg !== undefined && knockOutL > 0 ? platoHot(extractKg, knockOutL) : undefined;
   const byGravity = d?.lead === 'gravity' && d.plato !== undefined && d.plato > 0;
   if (byGravity && knockOutPlato === undefined) notes.push('Die Verschnittmenge braucht die Stammwürze (Vergärbares verknüpfen).');
   const at = d?.at ?? 'kettle';
 
   if (at === 'kettle') {
-    let volumeL = !byGravity ? (d?.volumeL ?? 0) : extractKg === undefined ? 0 : knockOutL - volumeFromExtract(extractKg, d.plato!);
+    let volumeL = !byGravity ? (d?.volumeL ?? 0) : extractKg === undefined ? 0 : knockOutL - volumeFromExtract(extractKg, d.plato!) / cold;
     if (volumeL < 0 || volumeL >= knockOutL) {
       notes.push(volumeL < 0
         ? 'Die Pfannen-Stammwürze liegt unter der Stammwürze, gerechnet wird ohne Verschnitt.'
@@ -108,7 +136,7 @@ export function resolveDilution(recipe: Recipe, extractKg: number | undefined, b
     const kettleL = knockOutL - volumeL;
     return {
       at, volumeL, kettleL, finalL: knockOutL, finalPlato: knockOutPlato, notes,
-      kettlePlato: extractKg !== undefined && kettleL > 0 ? platoFromExtract(extractKg, kettleL) : undefined,
+      kettlePlato: extractKg !== undefined && kettleL > 0 ? platoHot(extractKg, kettleL) : undefined,
       factor: knockOutL > 0 ? kettleL / knockOutL : 1,
     };
   }
@@ -131,8 +159,9 @@ export function resolveDilution(recipe: Recipe, extractKg: number | undefined, b
 }
 
 // `bh` is the recipe's brewhouse; without one there is only the note.
-// `extractKg` (recipeStats.wortExtract) only matters for a dilution led by gravity.
-export function calcWater(recipe: Recipe, bh: Brewhouse | undefined, extractKg?: number): { water?: Water; notes: string[] } {
+// `extractKg` (recipeStats.wortExtract) only matters for a dilution led by gravity,
+// `brewery` only for the boiling point (which rests boil the mash).
+export function calcWater(recipe: Recipe, bh: Brewhouse | undefined, extractKg?: number, brewery?: Brewery | null): { water?: Water; notes: string[] } {
   if (!recipe.brewhouseId) return { notes: ['Kein Sudhaus gewählt.'] };
   if (!bh) return { notes: [`Das Sudhaus „${recipe.brewhouseId}“ gibt es nicht mehr.`] };
   const notes: string[] = [];
@@ -160,8 +189,9 @@ export function calcWater(recipe: Recipe, bh: Brewhouse | undefined, extractKg?:
   const absorptionFrom: Source = w.grainAbsorptionLPerKg != null ? 'Rezept' : 'Sudhaus';
   const absorptionLPerKg = w.grainAbsorptionLPerKg ?? grainAbsorptionOf(bh);
   const absorptionL = grainKg * absorptionLPerKg;
+  const mashEvapL = mashEvaporationL(recipe, bh, breweryBoilC(brewery));
 
-  const totalL = preBoilL + wortLossL + absorptionL;
+  const totalL = preBoilL + wortLossL + absorptionL + mashEvapL;
 
   const canSparge = !!bh.steps.sparge;
   const sparge = canSparge && (w.sparge ?? true);
@@ -197,7 +227,7 @@ export function calcWater(recipe: Recipe, bh: Brewhouse | undefined, extractKg?:
   return {
     water: {
       knockOutL: recipe.volumeL, dilution, evaporationLPerH, evaporationFrom, evaporationL, preBoilL,
-      wortLosses, wortLossL, grainKg, absorptionLPerKg, absorptionFrom, absorptionL, totalL,
+      wortLosses, wortLossL, grainKg, absorptionLPerKg, absorptionFrom, absorptionL, mashEvaporationL: mashEvapL, totalL,
       canSparge, sparge, mashRatioLPerKg, strikeL, spargeL,
       strikeFill, strikeFillL: strikeL + sum(strikeFill), spargeFill, spargeFillL: spargeL + sum(spargeFill),
       mashVolumeL, fitDilutionL,

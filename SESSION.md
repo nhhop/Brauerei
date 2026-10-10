@@ -1569,3 +1569,385 @@ dem vorhandenen `SettingsGroup` gegliedert und bleibt bewusst einspaltig:
   Einstellungsseite, Hub mit „1 aktiv“ und „inaktiv“, Umleitung von
   `/settings/logs` auf `/logs` mit aktivem Nav-Eintrag, Alarmseite bei 375 px.
   Konsole ohne Fehler.
+
+## 2026-10-08 — Maischen-Tab Etappe 3a: Maischeplan, Wärmerechnung, Siedepunkt
+
+Erster von vier PRs zum Maischen-Tab (Plan „Maischen-Tab Etappe 3“: 3a Plan und
+Wärmerechnung, 3b Effizienz-Kette, 3c Maischprofile, 3d Dekoktion). Der Tab war eine
+reine Rastenliste.
+
+- **Modell** (`web/src/recipes.ts`): `MashStep` mit Art (`strike`, `doughIn`, `rest`,
+  `infusion`, `decoction` erst in 3d), Zieltemperatur, Haltedauer, Schüttung und
+  Zubrühen (`lead` Menge oder Temperatur, Eis). `Recipe.charges` und
+  `Ingredient.chargeId` für Teilschüttungen. `normalizeMash` beim Laden: Einträge
+  ohne Art fallen weg (keine Migration, Nutzerentscheidung), Wasser vorlegen und das
+  erste Einmaischen stehen fest vorn. `addCharge`/`removeCharge` teilen bzw. führen
+  Malz zusammen, die kg je Malz bleiben gleich.
+- **Rechnung** (`web/src/mashPlan.ts`, rein): Wärmeäquivalent Wasser + 0,41 × Malz
+  (Konstante jetzt `GRAIN_HEAT_RATIO` in `brewMath.ts`), Hauptguss-Temperatur,
+  Mischtemperatur weiterer Schüttungen, Zubrühen in beide Richtungen und mit Eis,
+  Grenzen Leitungswasser bis Siedepunkt, Heizzeit aus Heizrate oder geschätzt aus der
+  Heizleistung (85 %), passives Abkühlen 0,2 K/min. Die Wassermenge zum Vorlegen
+  (Hauptguss − Zubrühmengen) wird per Bisektion gelöst, weil nach Temperatur geführte
+  Zubrühmengen mit der Maische wachsen. Im Aufguss-Sudhaus werden wärmere Rasten durch
+  Zubrühen mit Siedepunkt-Wasser erreicht.
+- **Siedepunkt:** `Brewery.altitudeM` (Karte „Brauerei“ mit berechnetem Siedepunkt),
+  `pressureAtAltitudeHpa`/`boilingPointC` in `brewMath.ts`, neue Messung `airPressure`
+  (Kochen, hPa/mbar). `hopIbu` skaliert die Kochausnutzung relativ zu 100 °C, Whirlpool
+  wie bisher; `calcStats` bekommt die Brauerei. 500 m: 98,3 °C, im Mock 24 → 21 IBU.
+- **UI:** `pages/recipe/MashTab.tsx` mit Kopfkarte, „Zutaten (Maische)“ mit
+  Zwischenzeile je Schüttung (Name, Zeitpunkt, kg, %, EBC, °P), Split-Button
+  „+ Schüttung“ mit Dialog „Schüttung aufteilen“, Maischeplan als Tabelle (Ziehgriff,
+  mobil Pfeile, Split-Button „+ Rast“ mit Zubrühen, Einmaischen und sechs Rasten),
+  `MashCurve.tsx` (uPlot, Rampen, Haltestufen, Zugaben). `IngredientCard` kann Gruppen
+  und eine Markierung; der Zutaten-Tab zeigt die Schüttung. Die Übersicht zeigt die
+  Gesamtdauer.
+- **Doku:** Konzept-Doc (Maischen › Stand 3a, Brauerei-Höhe, Luftdruck), `openapi.yaml`
+  (`Brewery.altitudeM`), PLAN.md (Näherungen des Maischeplans als offener Punkt).
+- **Prüfung:** `pnpm test` (Siedepunkt, IBU bei 98 °C, `mashPlan.test.ts` mit Vorlegen,
+  zweiter Schüttung, Zubrühen in beide Richtungen, Eis, Grenze nach Höhe, Heizzeit aus
+  Rate und Leistung, Abkühlen, Aufguss, Überschuss; `normalizeMash` und Aufteilen),
+  `typecheck`, `build`. Im Node-Mock: Weizen mit zwei Schüttungen und kaltem Zubrühen,
+  Aufguss-Sudhaus (4,3 l kochend), altes Rezept ohne Plan, 500 m, Aufteilen 30 %,
+  Ziehen samt Sperre über den festen Schritten, 375 px ohne Querscrollen.
+
+## 2026-10-08 – 2026-10-09 — Peripherie-Abstraktion Etappe 3: externer DAC (MCP4728) (Branch `feat/peripherie-etappe-3`)
+
+Geräte, die Fähigkeiten nachrüsten: Ein MCP4728 (4 × 12-Bit-DAC, I²C) gibt Boards ohne
+eigenen DAC (LilyGo, Waveshare, StopWatch) echte Analogausgänge. Ein PR, je Etappe ein
+Commit.
+
+- **3a Library:** `core/DacOutput.h` (`rawMax()`, `write()`), neuer Konstruktor
+  `AnalogOutputActuator(id, DacOutput&)` mit `fault()` „DAC antwortet nicht“, eigener
+  Treiber `devices/MCP4728` (nur Multi-Write, Referenz VDD, Gain ×1, UDAC = 0, EEPROM nie
+  beschrieben). Native Tests über einen Test-Hook statt `TwoWire`-Stub (Muster ImuSensor).
+- **3b Firmware:** `DeviceConfig.h` (`kDeviceTypes`, Id `mcp4728-<bus>-<hh>`), Array
+  `devices` in `registry.json` (geladen zwischen Bussen und Items), `/api/peripherals`
+  (GET/POST/PUT/DELETE, Bus/Adresse nur ohne Nutzer). Kanal-Referenz
+  `"<Geräte-Id>:<Kanal>"` im `pin`-Feld eines AnalogOutput mit `mode:"dac"`; eine Zahl
+  bleibt der board-eigene DAC-Pin, keine Migration. `parsePinRef`, `PinUse.device`,
+  Prüfungen 400/409, Gerätekanäle sind keine GPIOs (Konflikte, Deep-Sleep-Hold) und
+  stehen in `GET /api/pins` unter `virtual`. Adressen je Bus gegen BME280/IMU geprüft,
+  das Gerät zählt als Bus-Nutzer. `Mcp4728Device` hält eine `Ref` auf seinen Bus, der
+  Aktor eine aufs Gerät; `PeripheralRegistry::release()` verschachtelt jetzt sicher
+  (Slot vor dem Erase herausgelöst). OpenAPI, README.
+- **3c Web:** Seite Einstellungen → Peripheriegeräte (`PeripheralsPage.tsx`: Karten mit
+  Kanälen und Nutzern, „Prüfen“ per Bus-Scan, Anlegen mit Bus und Adresse 0x60–0x67).
+  Im AnalogOutput-Formular PWM/DAC-Umschalter, sobald Board oder Gerät einen DAC hat
+  (`availableCaps`), im DAC-Modus Auswahl aus Board-DAC-Pins und Gerätekanälen
+  (`dacOutputs`), sonst ein Link auf die neue Seite. Bus-Seite nennt Geräte mit Namen.
+- **3d Hardware (LilyGo, MCP4728 am Qwiic-Stecker, Multimeter):** Kanäle A–D liefern
+  25/50/75/100 % von VDD (0,82 / 1,64 / 2,45 / 3,27 V bei 3,28 V), Zuordnung stimmt, UDAC = 0
+  reicht. `enabled:false` legt 0 V an, Werte und Gerät überstehen einen Kaltstart, die
+  Config nach dem Aufräumen ist identisch mit dem Backup. Display/Touch am selben Bus
+  liefen bei allen Tests weiter. **Befund und Fix:** Nach Abziehen und Wiederanstecken
+  startet der Chip mit seinen EEPROM-Werten (0 V); nur der danach beschriebene Kanal stand
+  wieder richtig, die anderen blieben still auf 0 V bei „ok“, und ohne Write fiel ein
+  fehlender Chip gar nicht auf. Jetzt schreibt `AnalogOutputActuator::tick()` einen
+  externen DAC jede Sekunde neu (`kRefreshMs`): Abziehen meldet an allen Kanälen binnen
+  1 s den Fehler (Alarm), danach stehen alle Spannungen wieder. Ein einmaliger
+  HTTP-Ausfall von zwei Minuten blieb unerklärt und nicht reproduzierbar (PLAN.md).
+- **PLAN.md:** Etappe 3 raus; offen bleiben Etappe 4 (Port-Expander) mit umformuliertem
+  Pin-Manager-Punkt, interne Referenz/Adresse des MCP4728, der S2-DAC-Nebenbefund
+  (`SOC_DAC_SUPPORTED`) und der HTTP-Ausfall; Flash-Eintrag auf 97,7 %.
+- **Prüfung:** Library 337/337, Firmware 169/169 nativ, alle fünf Envs bauen (esp32dev
+  97,7 %), Redocly-Lint, Web `typecheck`/`test` (273)/`build`, UI im Node-Mock und am
+  LilyGo (Prüfen „antwortet“, Scan benennt 0x60, Bearbeiten lädt den Kanal).
+
+## 2026-10-09 — Peripherie-Abstraktion Etappe 4: Port-Expander PCF8575 (Branch `feat/peripherie-etappe-4`)
+
+Ein PCF8575 (16 Pins, I²C 0x20–0x27) liefert zusätzliche, langsame Digitalpins für
+DigitalOutput (Binary/TPO) und DigitalInput (gepollt) — zugleich Pin-Manager Stufe 3b
+„Pins von Port-Expandern“. Der Schnitt aus Etappe 3 blieb unverändert (Kanal-Referenz
+`"<Geräte-Id>:<n>"`, `virtual[]`, `kDeviceTypes`, Fähigkeits-Hook am `Peripheral`). Ein PR,
+je Teilschritt ein Commit.
+
+- **4a Library:** `core/GpioPort.h` (`pinMode`/`write`/`read` je Kanal), Treiber
+  `devices/PCF8575`: Schattenregister aller 16 Ausgänge, jeder Write schickt beide Bytes,
+  Eingänge immer als 1 (quasi-bidirektional), `begin()` übernimmt die Latches des Chips (kein
+  Umschalten der anderen Pins nach einem Reset), Port-Reads 20 ms gecacht, Schatten + Transfer
+  unter einer Mutex. `DigitalOutputActuator`/`DigitalInputSensor` mit `GpioPort&` + Kanal; der
+  Aktor schreibt einen Expander-Kanal nur bei Pegelwechsel und jede Sekunde neu (auch Binary),
+  beide melden `fault()` „Port-Expander antwortet nicht“, der Sensor dann ungültige Werte.
+- **4b Lock:** `POST /api/actuators/<id>` (v/enabled/interval) und `POST /api/estop` laufen
+  jetzt unter dem `RegistryLock` (vorher im AsyncTCP-Task ohne Lock, PLAN-Eintrag vom selben
+  Tag). Damit überschreibt weder ein TPO-`tick()` den Not-Aus noch der DAC-Refresh einen frisch
+  gesetzten Wert, und Expander-Writes aus REST und `loop()` sind serialisiert. Der Not-Aus
+  schaltet ohne Lock ab, wenn er ihn nicht binnen 3 s bekommt (nie 503). Zusätzlich die Mutex
+  im Treiber, weil ESP-NOW-Befehle aus dem WiFi-Task ohne Lock schreiben — dieser Pfad selbst
+  ist neuer PLAN-Eintrag.
+- **4c Firmware:** `kDeviceTypes` mit `pcf8575` (`gpio`, 16, `inputsPullup`), Kanalnamen als
+  Liste (`types[].channels` in `GET /api/peripherals` jetzt ein Array). Zulassung nur über
+  Fähigkeiten in `collectPins`: DigitalOutput und DigitalInput `gpio`, PulseOutput abgetrennt;
+  alle anderen Typen lehnen Gerätekanäle weiter mit 400 ab. DigitalInput ohne `pullup` auf dem
+  PCF8575 → 400 (der Chip hat immer einen Pull-up). `Pcf8575Device` wie `Mcp4728Device`,
+  `SensorEntry::dev` hält das Gerät auch über `PUT`. Waveshare: 0x20 ist über die reservierte
+  TCA9554-Adresse gesperrt. OpenAPI, README (inkl. Einschaltzustand: Power-on High, ein
+  ESP-Reset lässt die Ausgänge stehen → aktiv-low verdrahten).
+- **4d Web:** `DigitalPinField` mit Umschalter GPIO | Port-Expander (Muster DAC-Auswahl),
+  Auswahl der Kanäle P00–P17; `PinHint` zeigt den Status eines Refs und schlägt freie
+  Expander-Pins als eigene Gruppe vor (mit Gerätename, sobald es mehrere gibt). Expander-
+  Eingänge setzen und sperren „Pullup“, Expander-Ausgänge zeigen den Einschalt-Hinweis.
+  Peripheriegeräte-Seite: PCF8575, Typwechsel setzt Bus und freie Adresse neu, reservierte
+  Adressen des Board-Busses gesperrt.
+- **Feste Onboard-Expander** (M5IOE1, TCA9554) nur skizziert: `currentFixedDevices()`,
+  reservierte Kanäle, `BoardInit` über dieselbe `GpioPort`-Instanz — gebaut wird mit der
+  Hardware (PLAN.md).
+- **Prüfung:** Library 358/358, Firmware 174/174 nativ, alle fünf Envs bauen (esp32dev
+  97,9 %, lolin_s2_mini 94,6 %), Redocly-Lint, Web `typecheck`/`test` (293)/`build`, UI im
+  Node-Mock (Waveshare-Profil: Typwechsel wählt 0x22, weil 0x20 reserviert und 0x21 belegt;
+  Bearbeiten lädt den Expander-Kanal, Chip-Klick wechselt die Quelle und setzt den Pull-up,
+  `PUT` schickt den Ref).
+- **Hardware (LilyGo, PCF8575 am Qwiic, NXP-Chip):** Antwortete zuerst nicht — Adress-Pads
+  A0–A2 offen und Brücke VDD–VCC offen (VDD 2,45 V parasitär über SDA/SCL); beides gelötet,
+  dann 0x20. Danach lasen Eingänge zufällig, Rohlesen über eine temporäre Diagnose-Route
+  (nicht eingecheckt) zeigte: Writes und Reads kommen an, aber der Chip hält eine 1 nur kurz
+  nach einem Write (seine ~100-µA-Quelle fehlt), offene/verkabelte Pins kippen im 50-Hz-Takt.
+  Mit externem Pull-up (ESP-GPIO mit `INPUT_PULLUP` an der Brücke P00–P10) geprüft:
+  Ein-/Ausschalten 100 % richtig an beiden Eingängen; Not-Aus gibt P00 sofort frei; TPO
+  2 s/50 % mit Flanken alle 1,0 s; `PUT` mit Gerät behält den Kanal; Chip abziehen → `fault`
+  und Alarm an allen fünf Items binnen ≤ 1 s, Snapshot weiter in 33–55 ms, Display bedienbar;
+  wieder anstecken → Fault weg, TPO wieder richtig; nach Stromlos-Zyklus (die SD hing nach
+  einem Power-on beim Verkabeln, bekannter LilyGo-Effekt) Gerät und Items aus der Config
+  zurück und lauffähig. Negativfälle am Gerät: DigitalInput ohne `pullup` und PulseOutput auf
+  dem Expander → 400. Aufgeräumt: `GET /api/config` byte-identisch mit dem Backup. Offen
+  (PLAN.md): Eingang nur mit dem chip-eigenen Pull-up an einem unbeschädigten Modul.
+  Nebenbei: GPIO 2 sah während des SD-Ausfalls frei aus, gehörte aber zu `agitator` —
+  bei leerer Registry nie Pins aus `/api/pins` für Verkabelung nehmen.
+
+## 2026-10-09 — Maischen-Tab Etappe 3b: Effizienz-Kette, Läutermodell, Stammwürze kalt
+
+Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“ (NHC 2010) und
+„Understanding Efficiency“ (braukaiser.com).
+
+- **Begriffe, Nutzerentscheidung 2026-10-09:** Statt „Maische-Effizienz“ für die Konversion
+  heißen die Glieder wie bei Malzknecht und Brewfather: Konversion × Läutereffizienz =
+  Maischeeffizienz (Extrakt in der Pfanne / Potenzial, bisher im Rezept „Sudhausausbeute“
+  genannt) × Würzeanteil = Brewhouse-Efficiency; dazu die Sudhausausbeute nach Narziss je kg
+  Schüttung. Grundlage in der Karte „Brauerei“ (`Brewery.efficiencyBasis`): Konversion,
+  Maischeeffizienz (Vorgabe, bisheriges Verhalten), Sudhausausbeute oder Brewhouse-Efficiency.
+  Das Sudhaus-Feld `mashEfficiencyPct` heißt jetzt „Konversion“, neue Sudhäuser 80 %; das Rezept
+  überschreibt es mit eigenem Feld `conversionPct`.
+- **Läutermodell** (`web/src/efficiency.ts`, rein): Troesters Batch-Sparge-Modell, jeder Ablauf
+  V nimmt V / (V + R) mit; R = Treberverlust + Würzeverluste vor dem Kochen + 0,62 l je kg
+  gelöster Extrakt. Vollguss ist ein Ablauf, Batch Sparge hat n gleich große Gaben (Wasser-Tab,
+  `water.spargeMethod`/`spargeBatches`), Fly Sparge zählt als 2 Gaben mit Hinweis; nur dort
+  ersetzt ein Festwert `Brewhouse.lauterEfficiencyPct` die Näherung (Nutzerentscheidung). Die
+  Rechnung iteriert, weil die Läutereffizienz am gelösten Extrakt und über einen nach
+  Stammwürze geführten Verschnitt an den Wassermengen hängt. `wortExtract`/`calcStats` nehmen
+  Sudhaus und Brauerei und rechnen den Extrakt über die Kette.
+- **Stammwürze kalt** (Nutzerentscheidung): Der Extrakt der heißen Ausschlagmenge steht jetzt in
+  Ausschlag × (1 − Abkühlschwund); vorher war die Stammwürze um den Schwund zu niedrig. Der
+  Würzeanteil zählt deshalb nur Totraum und Transfers ab dem Whirlpool. Der Schalter
+  „Menge = Ausschlag heiß / Anstellwürze kalt“ kommt mit dem Gärung-Tab (PLAN.md).
+- **UI:** Übersicht mit dem Feld der Grundlage und der Kette in den Kennwerten (Eingabe als
+  Abzeichen), Wasser-Tab mit Läutereffizienz, Verfahren und Gaben, Kopfkarte Maischen mit der
+  Konversion, Sudhaus-Editor mit Konversion und Fly-Sparge-Festwert. Neue Messung
+  `firstWortGravity` (Vorderwürze, Läutern). `Override` liegt jetzt in `fields.tsx`.
+- **Doku:** Konzept-Doc (Rezept › Effizienz, Ausschlagmenge kalt, Sudhaus, Brauerei),
+  `openapi.yaml` (`efficiencyBasis`, `mashEfficiencyPct`, `lauterEfficiencyPct`), PLAN.md
+  (Näherungen der Kette inkl. Fly-Sparge-Modell, Schalter heiß/kalt beim Gärung-Tab, Rechner
+  rechnet die Sudhausausbeute noch auf das Potenzial).
+- **Prüfung:** `pnpm test` (`efficiency.test.ts`: Vollguss nach Troester 83/72 % bei 10/16 °P,
+  Gaben +9/+3,4/+1,8, 30/70 −0,9, Fly, gleiche Stammwürze aus jeder Grundlage, Fixpunkt der
+  Iteration, Starkbier, Hinweise, ohne Sudhaus; Stammwürze kalt in `recipeWater.test.ts`),
+  `typecheck`, `build`, redocly. Im Node-Mock: Batch 1/2 Gaben 82/86 %, Fly 86 %, Vollguss
+  73 %; Grundlage Konversion 75 %: Pils 5 kg 11,9 °P, Starkbier 10 kg nur 17,4 °P (Läutern
+  83 → 62 %); 375 px ohne Querscrollen.
+
+## 2026-10-09 — ESP32-S2: On-Chip-DAC statt stillem PWM-Fallback
+
+- **Root Cause:** `AnalogOutputActuator.cpp` gab `dacWrite` nur für `CONFIG_IDF_TARGET_ESP32` frei.
+  Der S2 hat aber einen DAC (GPIO 17/18, `SOC_DAC_SUPPORTED`), `kLolinS2Mini` meldete die Pins
+  schon als `dac`; `mode:"dac"` fiel in `begin()` unbemerkt auf PWM zurück.
+- **Umsetzung:** Guard auf `SOC_DAC_SUPPORTED` (`<soc/soc_caps.h>`) umgestellt; der S3 bleibt ohne DAC.
+- **Prüfung:** Library 358/358 nativ; `lolin_s2_mini` (94,6 %), `esp32dev` (97,9 %) und
+  `lilygo_t_display_s3_amoled` bauen, `dacWrite` steht im S2-ELF. Am `brewcontrol-brautomat`
+  (OTA): DAC Pin 17 → `AnalogInput` Pin 6, ohne Glättung. Stabile, lineare Stufen ohne
+  PWM-Rippel (0 → 0,21, 0,825 → 2,10, 1,65 → 4,05, 2,475 → 6,00, 3,3 → 6,60; Skala siehe PLAN.md).
+  Ein erster Lauf mit schlecht steckendem Draht zeigte Rail-to-Rail-Rauschen und wäre als „PWM“
+  fehlzudeuten gewesen — ohne Glättung messen und die Verdrahtung prüfen.
+- **Nebenfund, gleich mitgefixt:** `AnalogInputSensor` rechnet mit Rohwerten 0–4095, der S2-Core
+  liest aber standardmäßig 13 Bit — die Anzeige lag auf doppelter Skala (DAC 3,3 V →
+  6,6). `begin()` setzt jetzt `analogReadResolution(12)` (ESP32 war schon 12 Bit). Erneut am S2
+  gemessen: 0 → 0,10, 0,825 → 1,05, 1,65 → 2,03, 2,475 → 3,00, 3,3 → 3,30 V; der Rest ist
+  ADC-Kennlinie (Offset unten, Sättigung oben), keine Skalenabweichung mehr.
+  Am LilyGo (S3) mit 4,7-kΩ-Teiler an GPIO 5 (≈1,65 V): vorher 1,66 V, nachher 1,66 V — der
+  S3-Core liest schon 12 Bit, der Fix ändert dort nichts.
+- **PLAN.md:** S2-DAC-Punkt raus.
+
+## 2026-10-09 — ESP-NOW: eingehende Pakete unter RegistryLock zustellen
+
+- **Root Cause:** `EspNowTransport::dispatchIncoming` lief im WiFi-Task und rief die
+  Subscriber-Callbacks direkt auf — für `/set` also `Actuator::write()` ohne `RegistryLock`,
+  parallel zu `registry.tick()`. Gleiches für `retained_`/`subs_` bei Retained-Requests.
+- **Umsetzung:** `dispatchIncoming` kopiert das Paket nur noch in eine begrenzte Queue
+  (16 Einträge, bei voll wird das neueste verworfen); `tick()` leert sie und ruft die
+  unveränderte Logik als `processIncoming_()` auf. `tick()` läuft in `loop()` unter dem Lock
+  (`tickTransports()`), wie bei MQTT/WebSocket.
+- **Prüfung:** Library 358/358 nativ, `esp32dev` und `lolin_s2_mini` bauen. Der Native-Stub hat
+  kein ESP-NOW, die Queue ist nur am Gerät prüfbar. Zwei S2 (`brewcontrol-lolin` mit
+  Test-DigitalOutput `entest` auf GPIO 5, `brewcontrol-brautomat` mit Remote-Aktor darauf, beide
+  per OTA): Retained-Sync nach Reboot (Discovery fand alle Items), `/set` 1/0/1/0 kam jeweils an
+  (Target + State folgen), 40 `/set` im Burst ohne Absturz (`resetReason` blieb `sw`). Den
+  TPO-Überschreib-Race selbst nicht gezielt provoziert. Test-Items danach gelöscht.
+## 2026-10-09 — Maischen-Tab Etappe 3c: Maischprofile
+
+Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit nach den Sudhäusern.
+
+- **Firmware:** `GET /api/mash-profiles`, `PUT`/`DELETE /api/mash-profiles/:id` über `JsonDocDir`
+  (`/mashprofiles/<id>.json`, nur SD, kein Index), Prüfung nur der `id`. Die Reglerprogramme
+  unter `/api/profiles` bleiben unberührt; im Code heißt das Ding `mashProfile`. `WebUI.h`,
+  `openapi.yaml` (Tag „Mash profiles“, Schema `MashProfile`) und `README.md` im selben Zug.
+- **Modell** (`web/src/mashProfiles.ts`): Name, Verfahren (freier Text), Beschreibung, `doughIn`
+  (Temperatur, Dauer) und `steps` (nur Rast/Zubrühen mit Name, Temperatur, Dauer). **Abweichung vom
+  Plan, bewusst:** Das feste Einmaischen gehört nicht als Schritt ins Profil, aber seine Temperatur
+  und Dauer sind die erste Rast der Folge (Weizen: 45 °C zuerst), sonst ließen sich Weizen- und
+  Eiweißrastprofile nicht abbilden. Laden setzt sie am festen Einmaischen und ersetzt alle weiteren
+  Schritte; Zubrühen kommt mit Siedepunkt-Wasser (`lead: 'temp'`). Die Einmaisch-Schritte weiterer
+  Schüttungen entfallen, die Bestätigung nennt sie.
+- **Mitgeliefert:** Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit
+  Eiweißrast, Kombirast 66 °C, im Web-UI eingebaut und schreibgeschützt, nicht auf der SD.
+  Die Werte sind Richtwerte aus gängiger Praxis und einem Artikel zu Hochkurz (`TODO(verify)`, PLAN.md).
+- **UI:** `MashProfileDialog.tsx` (Liste, Editor, Duplizieren, Löschen, „Plan als Profil
+  speichern“), im Maischeplan der Split-Button „Profile ▾“ (Pfeil lädt direkt, mit Bestätigung).
+  Fällt die SD aus, bleiben die mitgelieferten Profile ladbar, Speichern/Duplizieren sind gesperrt.
+- **Doku:** Konzept-Doc (Stand 3c, Ablage, Laden/Speichern), PLAN.md (3c erledigt; Backup der
+  Maischprofile beim Sudhaus-Backup-Punkt; Richtwerte der mitgelieferten Profile).
+- **Prüfung:** `pnpm test` (319, neu `mashProfiles.test.ts`: mitgelieferte Profile, Laden,
+  Speichern aus dem Plan, Round-Trip, API), `typecheck`, `build`, redocly (nur die bekannte
+  info-license-Warnung); `pio test -e native` (174), `pio run -e lilygo_t_display_s3_amoled`
+  (32,2 %) und `-e esp32dev` (**97,9 % Flash, 1 860 097 von 1 900 544 Byte, 40 447 Byte frei**,
+  prozentual unverändert gegenüber dem Stand vor 3c). Im Node-Mock: Laden mit Bestätigung,
+  Duplizieren, Speichern aus dem Plan, Löschen, 375 px ohne Querscrollen, SD-Fehlerfall. Am LilyGo
+  (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
+  DELETE → 404.
+
+## 2026-10-09 — Bus-Pins ändern, während Items daran hängen
+
+- **Vorher:** `PUT /api/buses/{id}` mit neuen Pins lieferte 409, sobald ein Item oder Gerät am Bus
+  hing. Die Bus-Id war aus den Pins abgeleitet und steckt in Item-Configs (`bus`), Geräten und
+  deren Ids (`mcp4728-i2c-4-5-60`); ein Pinwechsel hätte alles umschreiben und neu aufbauen
+  müssen, und regler-verdrahtete Items lassen sich nicht ersetzen.
+- **Umsetzung:** Die Id ist nur noch der Startwert beim Anlegen und bleibt bei Pinwechseln
+  stabil (`parseBusDef(..., fromStorage)` liest sie nur aus `registry.json`). `updateBus` prüft die
+  neuen Pins gegen alle anderen Nutzer (`checkPinUses` mit Selbst-Ausnahme) und pinnt den
+  laufenden Treiber um: `OneWireBus::repin` (`OneWire::begin`), `I2cBus::repin` (`Wire.end/begin`).
+  Die Items halten nur Referenzen und bleiben unberührt, Regler ebenso. Einzige Ausnahme SPI: die
+  MAX31865 kopieren die Pins im Konstruktor und werden per `replaceSensor` neu gebaut; hängt eine
+  an einem Regler, gibt es vorab 409 (`referencedByController`, aus `removeSensor` herausgezogen).
+  UI: Pin-Felder im Bus-Dialog nicht mehr gesperrt, Hinweis zum Umstecken. Löschen bleibt 409,
+  solange Nutzer dranhängen. Bekannte Kleinigkeit: ein neuer Bus mit den alten Pins kollidiert
+  mit der Id des umgepinnten (409 „already exists“).
+- **Doku:** OpenAPI (PUT /api/buses/{id}), README „Geteilte Busse“, PLAN.md-Punkt entfernt.
+- **Prüfung:** `pio test -e native` (175, neu `test_stored_id_survives_pin_change`),
+  `pnpm typecheck`, redocly. Live-Umpinnen am Gerät: noch offen.
+## 2026-10-09 — Link-Routing zentral (preact-router-Delegation)
+
+Der Plan-Punkt „Klick-Delegation ließ am Gerät einen Link durchrutschen" ist erledigt.
+Ein einziger Listener in `web/src/linkRouting.ts` (aus `main.tsx` installiert) routet alle
+internen Links selbst; der Sonderweg in `NavShell` entfällt.
+
+**Befund** (preact-router 4.1.2): Die Delegation hängt einmal auf `window`, sucht das `<a>`
+erst zur Bubble-Zeit über `parentNode` und lässt den Browser navigieren, sobald `route()`
+falsy liefert. Zwei Wege führen so zum echten Dokument-Load: das Klickziel wird von einem
+Element-`onClick` vorher aus dem DOM genommen, oder zum Klickzeitpunkt matcht kein
+registrierter Router. **Welcher davon am Gerät zutraf, ist nicht belegt** — der Fix macht
+das Routing von beiden unabhängig, beweist aber nicht die Ursache.
+
+**Umsetzung:** Capture-Listener löst den Link auf (vor jedem `onClick`), Bubble-Listener
+routet mit `preventDefault()` + `stopImmediatePropagation()` (keine doppelte
+History-Zeile); fällt `route()` durch, lädt `location.assign()` explizit. Nicht angefasst
+werden Modifier-/Mittelklick, `target`≠`_self`, `native`/`data-native`, `//…`, externe URLs und
+`/api/…` (Downloads). Reine Prüfung in `routableHref()`, Test `linkRouting.test.ts`.
+
+**Verifikation:** `pnpm typecheck` sauber, `pnpm test` 321 grün. Chromium gegen `pnpm dev`:
+Nav-Link ×2, Einstellungs-Karte und ein Link, der sich im `onClick` selbst entfernt, ergeben
+je genau einen History-Eintrag, `window`-Marker überlebt, ein Navigation-Entry; Ctrl-Klick
+schreibt keinen Eintrag. Nicht gemessen: Verhalten vor dem Fix für den Selbst-Entfern-Fall
+und das Gerät selbst.
+
+## 2026-10-09 — Maischen-Tab Etappe 3d: Dekoktion, Kochen im Maischbehälter, Profile mit Dekoktion
+
+Vierter und letzter PR der Etappe 3 (Branch `feat/maische-3d`), reine Web-UI- und Doku-Arbeit, die
+Firmware ist unverändert. Vor dem Start mit dem Nutzer geklärt (Plan `maische-etappe-3.md` gegen den
+Code geprüft, keine Widersprüche, aber Lücken):
+
+- **Entscheidungen:** Die Restmaische verliert während der Dekoktion den **Wärmeverlust des
+  Maischbehälters** (neues Behälterfeld `heatLossKPerH`, Vorgabe 0 = hält) statt der 0,2 K/min des
+  Abkühlens, die bei 45–90 min Dekoktion 9–18 K gekostet hätten. Die **Verdampfung** beim Kochen nimmt
+  die Rate des Behälters aus dem Sudhaus und wirkt in Wärme- und Wasserbilanz. **Profile** können jetzt
+  Dekoktionen und weitere Schüttungen tragen; neu mitgeliefert sind Ein-, Zwei- und
+  Dreimaischverfahren und **Earls Kochmaische**. Der **Dekoktionsbehälter** wird abgeleitet: nicht der
+  Maischbehälter, eigene Heizquelle, heizt nicht die Maische (HERMS-/Kettle-RIMS-/Aufguss-Behälter
+  halten Wasser), der erste in Prozessreihenfolge. Für Earl: Profile tragen Schüttungsanteile (Laden
+  teilt die erste Schüttung auf), und eine Rast am Siedepunkt kocht im direkt beheizten Maischbehälter.
+- **Eigene Abweichung vom Vorschlag in der Rückfrage:** Die Heizzeit der Teilmaische kommt zuerst aus
+  der Heizleistung für ihre Masse, die Heizrate des Schritts erst ohne Leistung, weil sie für den vollen
+  Behälter gilt.
+- **Rechnung** (`web/src/mashPlan.ts`): `walk()` führt Wasser und Malz getrennt. Dekoktion: Anteil am
+  Maischevolumen, dick mit bis zu 2,1 l/kg (`THICK_DECOCTION_L_PER_KG`, `TODO(verify)`), dünn nur
+  Flüssigkeit; Rasten und Kochen im Dekoktionsbehälter, Verdampfung, Restmaische mit Wärmeverlust,
+  Mischtemperatur beim Zurückführen; führt die Temperatur, sucht eine Bisektion den Anteil. Eine dünne
+  Dekoktion ohne Verlust und Verdampfung ergibt genau Troesters Faustformel (Test). Kochrast: Ziel ab
+  Siedepunkt, Verdampfung des Maischbehälters, Hinweis außer bei direkter Heizung. Ohne
+  Dekoktionsbehälter zählt eine Dekoktion als Rast, ein Hinweis nennt alle.
+- **Wasser/Effizienz:** `mashEvaporationL` zählt zum Gesamtwasser (Nachguss, sonst Hauptguss),
+  `calcWater` bekommt dafür optional die Brauerei (Siedepunkt); der erste Ablauf im Läutermodell ist um
+  die Verdampfung kleiner.
+- **Profile** (`web/src/mashProfiles.ts`): Schritt-Arten `decoction` und `doughIn` (`sharePct`),
+  Zubrühen mit `waterTempC`; `applyMashProfile` arbeitet auf dem Rezept (Schüttungen, Zutaten),
+  `profileLoadEffects` speist die Bestätigung, `profileOfPlan` speichert Dekoktionen und
+  Schüttungsanteile. `splitCharge` aus `addCharge` herausgezogen. Earls Zubrühziel nach einem
+  Probelauf auf 62 °C gesetzt (bei 66 °C hätte die Maltoserast wieder abkühlen müssen).
+- **UI:** Dekoktion im Menü und in der Art-Auswahl (gesperrt ohne Dekoktionsbehälter), Felder Anteil,
+  dick/dünn, Volumen, darunter Rasten, Kochdauer, Restmaische und Verdampfung; zweite, gestrichelte
+  Linie im Temperaturverlauf; „Dekoktionen durch Rasten ersetzen“ in Übersicht und Maischen-Tab;
+  Profil-Editor mit allen vier Arten; im Sudhaus „Wärmeverlust (K/h)“ am Maischbehälter und
+  „Verdampfung“ auch am Dekoktionsbehälter und am direkt beheizten Maischbehälter.
+- **Doku:** Konzept-Doc (Stand 3d), `openapi.yaml` (`BrewhouseVessel.heatLossKPerH`, Schritte von
+  `MashProfile`), PLAN.md (3d raus; Näherungen der Dekoktion beim Punkt „Maischeplan rechnet mit
+  Näherungen“; Quellen der neuen Richtwerte).
+- **Prüfung:** `pnpm test` (347, neu u. a. Dekoktion und Kochrast in `mashPlan.test.ts`,
+  `decoctionVesselOf`, Wasserbilanz, Läutermodell, Profile mit Schüttungen und Round-Trip,
+  `MashCurve.test.ts`), `typecheck`, `build`, redocly (nur die bekannte info-license-Warnung). Im
+  Node-Mock: Dreimaischverfahren auf „Pfanne + Läuterbottich“ (Anteile 28/28/32 %, 3:13 h, zweite
+  Linie), Anteil ↔ Temperatur umschalten, Wasser-Tab mit 1,5 l Verdampfung beim Maischen, Wechsel auf
+  2-Kessel-HERMS mit Warnung und Ersetzen, Earl auf dem Ein-Topf in 500 m (Aufteilung 80/20, Kochen bei
+  98,3 °C, 0,8 l verdampft), Profil speichern mit Dekoktion und Schüttung, 3 K/h Wärmeverlust (Anteile
+  32,8 → 36,3 %), 375 px ohne Querscrollen. Kein Gerätetest nötig, das Profil-JSON ist für die Firmware
+  opak.
+
+## 2026-10-10 — Maischprofil Weizen nach Herrmann (Maltaserast)
+
+Kleiner Nachtrag zu Etappe 3d (Branch `feat/maische-herrmann`): ein weiteres mitgeliefertes Profil, ohne
+Dekoktion, damit es auch ohne zweiten beheizten Behälter läuft. Das Modell trug es schon (Aufbau wie Earls
+Kochmaische), es ist nur ein Eintrag in `BUILTIN_MASH_PROFILES`.
+
+- **Ablauf:** erste Hälfte der Schüttung 62 °C 30 min, 72 °C 20 min; kaltes Wasser (12 °C) auf 46 °C; zweite
+  Hälfte (50 %) dazu; Maltaserast 45 °C 40 min; 72 °C 20 min; 76 °C 5 min.
+- **Quellen:** Die Quellen widersprechen sich in den Einzelwerten (Einmaischen bei 38, 43 oder 62 °C, mit
+  oder ohne zwei Dekoktionen). Ablauf nach brewingforward.com „Maltase mash“ (Kunze, Esslinger),
+  Aufteilung 50:50 nach edelstoffquest.wordpress.com. Herrmanns Dissertation (TU München, mediaTUM) wurde
+  bewusst nicht gelesen (Nutzer-Entscheidung, zu umfangreich); Richtwerte mit `TODO(verify)`, PLAN.md.
+- **Probelauf:** 5 kg (3 kg Weizen, 2 kg Pils), Pfanne + Läuterbottich: 9,5 l Wasser vorlegen, 8,0 l kaltes
+  Wasser, nach der zweiten Schüttung 44,5 °C, Maltaserast heizt 0,5 K nach, 2:24 h; Ein-Topf (Vollguss):
+  11,7 l kaltes Wasser, 45,0 °C. Keine Abkühl-Hinweise.
+- **Prüfung:** `pnpm test` (350, neu: Aufbau des Herrmann-Profils, Round-Trip), `typecheck`, `build`.
+
+## 2026-10-10 — Temperaturverlauf ohne Sudhaus
+
+Am LilyGo fehlte der Temperaturverlauf im Maischen-Tab, im Mock nicht: Die Karte erschien nur mit Plan,
+und `calcMash` braucht ein Sudhaus; die Rezepte auf dem Gerät hatten keins gewählt (vom Nutzer selbst
+gefunden). Entscheidung: ohne Sudhaus ein vereinfachter Verlauf (Branch `feat/maische-verlauf-ohne-sudhaus`).
+
+- **`outlineMash`** (`web/src/mashPlan.ts`): Zieltemperaturen und Haltezeiten ab dem Einmaischen, jeder
+  Übergang ein Sprung, kein Wasser vorlegen; weitere Schüttungen und Rasten ohne Ziel behalten die vorige
+  Temperatur, eine Kochrast endet am Siedepunkt der Brauerei, eine Dekoktion springt ohne eigene Linie.
+- **UI:** Die Karte erscheint immer, ohne Sudhaus mit dem Hinweis „Ohne Sudhaus nur Zieltemperaturen
+  und Haltezeiten, Übergänge als Sprung.“ `MashCurve`/`curveOf` nehmen dafür Zeilen statt des Plans.
+- **Prüfung:** `pnpm test` (354, neu `outlineMash` und die Kurve ohne Sudhaus), `typecheck`, `build`; im
+  Node-Mock Earls Kochmaische ohne Sudhaus (Stufen 62/72/100, Sprung durch das kalte Wasser, Punkt bei
+  der zweiten Schüttung) und mit Sudhaus unverändert.
+- **Nebenbefund:** Die Plantabelle ragt bei rund 800 px Fensterbreite über ihre Karte hinaus, offen in
+  PLAN.md.

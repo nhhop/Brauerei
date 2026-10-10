@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { inp } from '../../ui';
+import { btnSecondary, inp } from '../../ui';
 
 export function Card({ title, action, children }: {
   title: string; action?: ComponentChildren; children: ComponentChildren;
@@ -60,5 +60,25 @@ export function OptNum({ value, onChange, placeholder, class: cls = 'w-24' }: {
         if (t.trim() === '') onChange(undefined);
         else if (!Number.isNaN(n)) onChange(n);
       }} />
+  );
+}
+
+// A recipe value over the brewhouse's: the placeholder shows the brewhouse
+// value, the button drops the override.
+export function Override({ label, value, brewhouse, onChange }: {
+  label: string; value: number | undefined; brewhouse: number; onChange: (n: number | undefined) => void;
+}) {
+  return (
+    <div class="flex items-end gap-1">
+      <Field label={label}>
+        <OptNum value={value} placeholder={String(brewhouse)} onChange={onChange} />
+      </Field>
+      {value !== undefined && (
+        <button type="button" class={btnSecondary} title={`Sudhaus-Wert ${String(brewhouse).replace('.', ',')}`}
+          onClick={() => onChange(undefined)}>
+          Sudhaus-Wert
+        </button>
+      )}
+    </div>
   );
 }

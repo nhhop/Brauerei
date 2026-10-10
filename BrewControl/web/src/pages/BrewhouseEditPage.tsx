@@ -4,7 +4,7 @@ import { route } from 'preact-router';
 import { Check, Plus, Trash2 } from 'lucide-preact';
 import {
   CHILLER_TYPES, DEFAULT_GRAIN_ABSORPTION, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
-  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
+  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, decoctionVesselOf, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
   newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
 } from '../brewhouse';
@@ -271,13 +271,22 @@ function GeneralSection({ bh, set }: SectionProps) {
       <div class={`${card} grid gap-3 sm:grid-cols-2`}>
         <Field label="Name"><TextInput value={bh.name} onChange={(name) => set({ ...bh, name })} /></Field>
         <div class="flex flex-wrap gap-4">
-          <Field label="Maische-Effizienz (%)">
+          <Field label="Konversion (%)">
             <NumInput value={bh.mashEfficiencyPct} onChange={(n) => set({ ...bh, mashEfficiencyPct: n })} />
           </Field>
           <Field label="Abkühlschwund (%)">
             <NumInput value={bh.coolingShrinkPct} onChange={(n) => set({ ...bh, coolingShrinkPct: n })} />
           </Field>
+          <Field label="Läutereffizienz Fly Sparge (%)">
+            <OptNum value={bh.lauterEfficiencyPct} placeholder="geschätzt"
+              onChange={(n) => set({ ...bh, lauterEfficiencyPct: n })} />
+          </Field>
         </div>
+        <p class="text-xs text-muted sm:col-span-2">
+          Konversion: Anteil des Extraktpotenzials, der sich in der Maische löst (gut sind 95–100 %).
+          Die Läutereffizienz rechnet das Rezept aus Vollguss oder Batch Sparge; für Fly Sparge gibt es kein Modell,
+          ohne Festwert gilt Batch Sparge mit 2 Gaben.
+        </p>
         <div class="sm:col-span-2">
           <Field label="Beschreibung">
             <textarea class={`${inp} w-full`} rows={2} value={bh.description}
@@ -310,6 +319,10 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
   const steps = stepsOf(bh, v.id);
   const preset = vesselPreset(bh, v);
   const patch = (p: Partial<Vessel>) => set({ ...bh, vessels: bh.vessels.map((x) => (x.id === v.id ? { ...x, ...p } : x)) });
+  // The vessel boils: the wort, a decoction, or the mash itself when it is
+  // heated directly (Kochrast).
+  const boils = steps.includes('boil') || decoctionVesselOf(bh)?.vessel.id === v.id
+    || (steps.includes('mash') && heatingOf(bh, 'mash').direct);
 
   // A preset only ticks steps; steps ticked elsewhere move here.
   function applyPreset(i: number) {
@@ -330,9 +343,14 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
       <div class="mb-3 flex flex-wrap gap-4">
         <Field label="Volumen (l)"><NumInput value={v.volumeL} onChange={(volumeL) => patch({ volumeL })} /></Field>
         <Field label="Totraum (l)"><NumInput value={v.deadSpaceL} onChange={(deadSpaceL) => patch({ deadSpaceL })} /></Field>
-        {steps.includes('boil') && (
+        {boils && (
           <Field label="Verdampfung (l/h)">
             <OptNum value={v.evaporationLPerH} onChange={(evaporationLPerH) => patch({ evaporationLPerH })} />
+          </Field>
+        )}
+        {steps.includes('mash') && (
+          <Field label="Wärmeverlust (K/h)">
+            <OptNum value={v.heatLossKPerH} placeholder="0" onChange={(heatLossKPerH) => patch({ heatLossKPerH })} />
           </Field>
         )}
         {steps.includes('lauter') && (
