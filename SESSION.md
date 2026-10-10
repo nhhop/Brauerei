@@ -1951,3 +1951,22 @@ gefunden). Entscheidung: ohne Sudhaus ein vereinfachter Verlauf (Branch `feat/ma
   der zweiten Schüttung) und mit Sudhaus unverändert.
 - **Nebenbefund:** Die Plantabelle ragt bei rund 800 px Fensterbreite über ihre Karte hinaus, offen in
   PLAN.md.
+
+## 2026-10-10 — Maischplan: Raster nach Kartenbreite statt Fensterbreite
+
+Die Plantabelle ragte bei rund 800 px Fensterbreite über ihre Karte hinaus (aus PLAN.md, dort entfernt).
+Im Node-Mock bestätigt: Das Raster in `MashTab.tsx` (`GRID`) brauchte 860 px, die Karte war aber nur 696 px
+(Seitenleiste eingeklappt) bzw. 512 px (ausgeklappt) breit, Überstand 198 bzw. 382 px.
+
+- **Ursache anders als vermutet:** Nicht nur `md` ist zu früh. Die Karte hängt von der Seitenleiste
+  (3,5 rem eingeklappt, 15 rem ausgeklappt) und von der Breitenkappung der `PageShell` (`max-w-4xl`) ab; mit
+  ausgeklappter Seitenleiste lief das Raster auch bei 1024 px noch 158 px über (Karte 736 px). Ein Wechsel
+  auf `lg` hätte diesen Fall offen gelassen.
+- **Umsetzung:** Die Zeilenliste ist ein `@container`, alle Zeilenklassen (`GRID`, `StepRow`,
+  `DecoctionCourse`) schalten bei 53,75 rem Kartenbreite (Mindestbreiten der Spalten plus Abstände) statt ab
+  `md`: `md:` → `@[53.75rem]:`, `max-md:` → `@max-[53.75rem]:`. Darunter gilt der umgebrochene Fallback.
+- **Prüfung:** `pnpm test` (354), `typecheck`, `build`; im Node-Mock (Rezepte „Dekoktion“ mit
+  Zweimaischverfahren auf Pfanne + Läuterbottich und „Ohne Sudhaus“) bei 375, 800, 1024 und 1440 px, jeweils
+  Seitenleiste ein- und ausgeklappt: `documentElement` und Inhaltsbereich ohne waagerechten Überstand, kein
+  Element in `[data-step]` rechts über der Karte. Raster bei 896 px Karte (inklusive Dekoktions-Unterzeile),
+  Umbruch bei 696 px und darunter.

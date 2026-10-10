@@ -293,7 +293,10 @@ function SplitDialog({ recipe, onChange, onClose }: {
 
 // ── Mash plan ──────────────────────────────────────────────────────────────────
 
-const GRID = 'md:grid md:grid-cols-[1rem_6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_5rem_5.5rem_6.5rem_2.75rem_2rem] md:items-center md:gap-2';
+// The grid needs 53.75rem (its column minimums plus gaps) of the plan card's own
+// width, so rows switch on that container, not on the window: the sidebar and
+// the page cap change how much of the window the card gets.
+const GRID = '@[53.75rem]:grid @[53.75rem]:grid-cols-[1rem_6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_5rem_5.5rem_6.5rem_2.75rem_2rem] @[53.75rem]:items-center @[53.75rem]:gap-2';
 
 function PlanCard({ recipe, onChange, plan, boilC }: {
   recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number;
@@ -397,7 +400,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           <SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />
         </div>
       }>
-      <div ref={listRef} class="text-sm">
+      <div ref={listRef} class="@container text-sm">
         <div class={`hidden border-b border-border pb-1 text-xs text-muted ${GRID}`}>
           <span />
           <span>Schritt</span>
@@ -511,7 +514,7 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
   const tempResult = s.kind === 'decoction' && s.decoction?.lead === 'share';
   return (
     <div data-step class={`flex flex-wrap items-center gap-2 border-b border-border py-2 ${GRID} ${dragging ? 'opacity-50' : ''} ${indicator}`}>
-      <span class="max-md:hidden">
+      <span class="@max-[53.75rem]:hidden">
         {!fixed && (
           <button type="button" title="Ziehen zum Verschieben" aria-label="Ziehen zum Verschieben" {...grip}
             class="flex cursor-grab touch-none items-center text-faint hover:text-fg">
@@ -519,7 +522,7 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
           </button>
         )}
       </span>
-      <span class="w-28 md:w-auto">
+      <span class="w-28 @[53.75rem]:w-auto">
         {fixed || s.kind === 'doughIn' || !CHANGEABLE.includes(s.kind) ? (
           <span class="text-xs text-muted">{MASH_KIND_LABEL[s.kind]}</span>
         ) : (
@@ -540,9 +543,9 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
           </select>
         )}
       </span>
-      <input class={`${inp} min-w-0 flex-1 basis-40 md:basis-auto`} value={s.name} placeholder={MASH_KIND_LABEL[s.kind]}
+      <input class={`${inp} min-w-0 flex-1 basis-40 @[53.75rem]:basis-auto`} value={s.name} placeholder={MASH_KIND_LABEL[s.kind]}
         aria-label="Bezeichnung" onInput={(e) => patch({ name: e.currentTarget.value })} />
-      <span class={`basis-full text-xs md:basis-auto ${s.kind === 'rest' && !row?.waterL && !row?.evaporatedL ? 'max-md:hidden' : ''}`}>
+      <span class={`basis-full text-xs @[53.75rem]:basis-auto ${s.kind === 'rest' && !row?.waterL && !row?.evaporatedL ? '@max-[53.75rem]:hidden' : ''}`}>
         {addition}
       </span>
       <span class="flex items-center gap-1 text-xs text-muted">
@@ -566,14 +569,14 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
       <span class="text-xs text-muted" title={row?.transition.kind === 'cool' ? 'geschätzt' : undefined}>
         {row?.transition.text ?? '—'}
       </span>
-      <span class="text-right text-xs tabular-nums md:text-sm">{row ? fmtClock(row.startMin) : '—'}</span>
-      <span class="ml-auto flex items-center gap-1 md:ml-0">
+      <span class="text-right text-xs tabular-nums @[53.75rem]:text-sm">{row ? fmtClock(row.startMin) : '—'}</span>
+      <span class="ml-auto flex items-center gap-1 @[53.75rem]:ml-0">
         {!fixed && (
           <>
-            <button type="button" title="Nach oben" disabled={k === 2} onClick={() => onMove(-1)} class={`${iconBtn} md:hidden`}>
+            <button type="button" title="Nach oben" disabled={k === 2} onClick={() => onMove(-1)} class={`${iconBtn} @[53.75rem]:hidden`}>
               <ArrowUp size={14} />
             </button>
-            <button type="button" title="Nach unten" disabled={k === count - 1} onClick={() => onMove(1)} class={`${iconBtn} md:hidden`}>
+            <button type="button" title="Nach unten" disabled={k === count - 1} onClick={() => onMove(1)} class={`${iconBtn} @[53.75rem]:hidden`}>
               <ArrowDown size={14} />
             </button>
             <button type="button" title="Entfernen" onClick={onDelete}
@@ -622,7 +625,7 @@ function DecoctionCourse({ step, row, patch }: {
     set({ rests: d.rests.map((r, k) => (k === i ? { ...r, ...p } : r)) });
   const dr = row?.decoction;
   return (
-    <div class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted md:col-span-6 md:col-start-3">
+    <div class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted @[53.75rem]:col-span-6 @[53.75rem]:col-start-3">
       <span>Teilmaische{dr ? ` in ${dr.vessel}` : ''}:</span>
       {d.rests.map((r, i) => (
         <span key={i} class="flex items-center gap-1">
