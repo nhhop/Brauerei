@@ -78,6 +78,26 @@ void test_summary_line_carries_the_version_fields() {
                            recipeSummaryLine(doc, "k9x2").c_str());
 }
 
+void test_brew_summary_line_keeps_the_occupancy_fields() {
+  JsonDocument doc;
+  deserializeJson(doc,
+      "{\"status\":\"planned\",\"id\":\"b1\",\"number\":7,\"name\":\"Pils\",\"recipeId\":\"k9x2\","
+      "\"rootId\":\"abc\",\"version\":2,\"brewDate\":\"2026-10-20\",\"fermenterId\":\"f1\","
+      "\"occupiedFrom\":\"2026-10-20\",\"occupiedUntil\":\"2026-11-03\",\"updatedAt\":5,"
+      "\"frozen\":{\"entries\":[]},\"booked\":[]}");
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"id\":\"b1\",\"number\":7,\"name\":\"Pils\",\"recipeId\":\"k9x2\",\"rootId\":\"abc\",\"version\":2,"
+      "\"status\":\"planned\",\"brewDate\":\"2026-10-20\",\"fermenterId\":\"f1\","
+      "\"occupiedFrom\":\"2026-10-20\",\"occupiedUntil\":\"2026-11-03\",\"updatedAt\":5}",
+      brewSummaryLine(doc, "b1").c_str());
+}
+
+void test_brew_summary_line_leaves_out_fields_the_brew_lacks() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"id\":\"b2\",\"number\":1,\"style\":\"Pils\"}");
+  TEST_ASSERT_EQUAL_STRING("{\"id\":\"b2\",\"number\":1}", brewSummaryLine(doc, "b2").c_str());
+}
+
 void test_index_line_is_matched_by_the_whole_id() {
   TEST_ASSERT_TRUE(recipeLineHasId("{\"id\":\"abc\",\"name\":\"x\"}", "abc"));
   TEST_ASSERT_TRUE(recipeLineHasId("{\"id\":\"abc\"}", "abc"));
@@ -132,6 +152,8 @@ int main(int, char**) {
   RUN_TEST(test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id);
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
   RUN_TEST(test_summary_line_carries_the_version_fields);
+  RUN_TEST(test_brew_summary_line_keeps_the_occupancy_fields);
+  RUN_TEST(test_brew_summary_line_leaves_out_fields_the_brew_lacks);
   RUN_TEST(test_index_line_is_matched_by_the_whole_id);
   RUN_TEST(test_splice_adds_replaces_and_removes_one_line);
   RUN_TEST(test_splice_drops_blank_lines_and_copes_with_a_missing_final_newline);

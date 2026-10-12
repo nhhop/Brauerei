@@ -4,7 +4,8 @@ Stand: 2026-10-12. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), da
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
-und der Gärkeller (Gärplätze und Gebinde, ohne Belegungsplan); der Sud folgt (5a, 5b). Das UI ist
+der Gärkeller (Gärplätze und Gebinde) und das Gerüst des Suds (5a); es folgen der Brautag (5b) und Gärung,
+Reifung und Abfüllung mit Belegungsplan (5c). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -718,10 +719,10 @@ Wiki-Artikel „Understanding Efficiency“ (braukaiser.com); Namen wie bei Malz
     Form (Dolde, T90, T45, Lupulin, Extrakt), die Aufnahme in ml/g ist eine Konstante je Form.
 
 ### Sude (Tab im Rezept)
-- Knopf „Neuer Sud aus diesem Rezept“, bei Entwürfen gesperrt.
-- Tabelle der Sude mit Version, Status, Stammwürze Soll/Ist, Maische- und Gesamteffizienz und abgefüllter
-  Menge.
-- Diagramm der Effizienz über die Sude.
+- Knopf „Neuer Sud aus diesem Rezept“, bei Entwürfen und ungespeicherten Änderungen gesperrt.
+- Tabelle der Sude aller Versionen mit Nr., Version, Brautag und Status (seit 5a). Mit 5b kommen
+  Stammwürze Soll/Ist, Maische- und Gesamteffizienz und abgefüllte Menge dazu, dazu ein Diagramm der
+  Effizienz über die Sude.
 
 ## Anlage (Einstellungen › Brauanlage)
 
@@ -841,8 +842,9 @@ mehrere Wochen (belegt, frei, reserviert für geplante Sude) kommt mit dem Sud, 
   Brauerei: `brewery.json` trägt Standortwerte und Wasserprofile, wird von jedem Rezept beim Rechnen geladen
   und teilt sich mit ihnen das Body-Limit von 16 KB. Pro Objekt eine Datei vermeidet zudem, dass zwei Browser
   einander überschreiben. Die Firmware prüft nur die `id`, neue Felder kommen optional dazu, es gibt keine
-  Schemaversion. Der Gärplatz hält **keine Belegung**: Sie wird später eine eigene Sammlung (`/bookings`)
-  mit `fermenterId` und Zeitraum, der Sud kopiert den Gärplatz wie das Sudhaus am Brautag.
+  Schemaversion. Der Gärplatz hält **keine Belegung**: Sie steht im Sud (`fermenterId`, belegt ab/bis) und
+  in dessen Index-Zeile (Entscheidung 2026-10-12, statt einer eigenen Sammlung `/bookings`); der Sud kopiert
+  den Gärplatz wie das Sudhaus beim Start.
 - **Gärplatz:** Name, Bauart (Eimer/Fass, Glasballon, Edelstahl konisch, Druckgärtank, Keg, Sonstiges;
   beschreibend), Volumen, Trubverlust (leer = die Annahme des Rezepts gilt), druckfest bis (bar Überdruck,
   leer = nicht druckfest) und Temperierung: ohne, kühlen, heizen, kühlen und heizen. Ist sie nicht „ohne“,
@@ -871,6 +873,39 @@ mehrere Wochen (belegt, frei, reserviert für geplante Sude) kommt mit dem Sud, 
   im Backup; sie kommen gemeinsam mit den übrigen Dokumenten der Brauanlage in einen Export (PLAN.md).
 
 ## Sud
+
+**Etappen** (Entscheidung 2026-10-12): **5a Gerüst** (umgesetzt, Stand unten), **5b Brautag** (Vorbereitung,
+Maischen, Würzekochen mit Soll/Ist-Messwerten, Abhaken, Kochtimer), **5c Gärung, Reifung, Abfüllung** mit
+Belegungsplan.
+
+**Stand 5a (2026-10-12, `web/src/brews.ts`, `brewStart.ts`, `pages/BrewsPage.tsx`, `pages/BrewPage.tsx`):**
+- **Ablage:** eine Datei je Sud, `/brews/<id>.json`, mit Index `/brews/index.jsonl` wie die Rezepte
+  (`/api/brews`, nur SD-Boards; `RecipeStore` mit Verzeichnis-Parameter). Die Index-Zeile (`brewSummaryLine`)
+  trägt Nr., Name, Rezeptversion, Status, Brautag, Gärplatz und belegt ab/bis. Der Belegungsplan (5c) liest
+  nur die Liste. Weil die Firmware die Index-Felder festlegt, stehen sie schon jetzt vollständig drin.
+- **Status:** geplant → läuft (Brautag gestartet) → abgeschlossen. Bis zum Start rechnet der Sud mit dem
+  aktuellen Sudhaus, Gärplatz und Katalog.
+- **Anlegen** nur aus einem fertigen, gespeicherten Rezept (Tab „Sude“). Nr. = höchste + 1, Name = Rezept,
+  Brautag heute, Sudhaus aus dem Rezept, belegt ab Brautag für die Summe der Gärphasen. Ein neuer Brautag
+  verschiebt den Zeitraum mit; überschneidet er sich mit einem anderen Sud auf demselben Gärplatz, steht ein
+  Hinweis im Kopf.
+- **Brautag starten** („⋯“, nur gespeichert): Der Dialog zeigt je Lagerposten der Rezeptzeilen
+  (`stockLotId`) Menge und Bestand, jede Zeile lässt sich abwählen. Abgebucht wird höchstens bis 0, der Sud
+  merkt sich die tatsächlich abgezogene Menge (`booked`). Dann kopiert er Sudhaus, Brauerei, Gärplatz und
+  die Einträge seiner Zutaten (`frozen`, ohne Beschreibungstexte; Lagerposten mit ihren Werten, `entryOf`
+  arbeitet direkt auf der Kopie). Bricht der Start ab, bleibt das schon Abgebuchte vermerkt und wird beim
+  nächsten Versuch nicht doppelt gebucht.
+- **Rezept:** Der Sud verweist auf die Version, kopiert sie aber nicht. Eine Version mit Suden legt beim
+  Speichern eine neue Version (Entwurf) an und lässt sich nicht löschen; ein Rezept, aus dem Sude angelegt
+  wurden, ebenso nicht. Das Auswahlfeld der Versionen nennt die Sude je Version.
+- **Löschen:** Mit Abbuchungen bietet die Rückfrage „Löschen und Lager zurückbuchen“; die Mengen gehen an
+  die Posten zurück, die es noch gibt.
+- **Kopf:** Name, Rezeptversion (Link), Brautag, Sudhaus, Gärplatz, belegt ab/bis, Notizen; nach dem Start
+  zeigen Sudhaus und Gärplatz die Kopie. Die Phasen-Tabs sind angelegt und noch leer.
+- **Sicherung:** eigener Export/Import auf „Backup & Restore“ (`brewcontrol-brews`); der Lagerbestand
+  bleibt dabei unverändert.
+- **Größe:** Die Kopien brauchen einige KB von 16 KB je Dokument. Messreihen der Gärung (5c) gehören nicht
+  ins Sud-Dokument.
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.

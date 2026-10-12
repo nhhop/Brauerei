@@ -412,6 +412,9 @@ wurden, lädt die Rezeptseite beim ersten Öffnen einmalig aufs Gerät hoch. Das
 Browser lädt alle Rezepte über `/api/recipes` zu einer Datei `brewcontrol-recipes-<datum>.json`
 (`{type:"brewcontrol-recipes", version:1, recipes:[…]}`) zusammen und spielt sie beim Import einzeln
 per `PUT` zurück (gleiche ID wird überschrieben, kein Neustart).
+Sude (`/brews/<id>.json`, Index `/brews/index.jsonl`, `/api/brews`) liegen genauso und haben auf
+„Backup & Restore“ einen eigenen Export/Import (`brewcontrol-brews`); der Lagerbestand bleibt dabei
+unverändert.
 
 ## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
 
@@ -782,6 +785,8 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
 | `/api/recipes` | GET | Rezeptliste (Kopfdaten), nur SD-Boards |
 | `/api/recipes/<id>` | GET, PUT, DELETE | Rezept lesen / anlegen oder ersetzen / löschen (`/recipes/<id>.json` auf der SD) |
+| `/api/brews` | GET | alle Sude, nur die Index-Felder inkl. Gärplatz und Belegung (`/brews/index.jsonl`), nur SD-Boards |
+| `/api/brews/<id>` | GET, PUT, DELETE | Sud lesen / anlegen oder ersetzen / löschen (`/brews/<id>.json`) |
 | `/api/brewhouses` | GET | alle Sudhäuser, vollständig (`/brewhouses/<id>.json`, kein Index), nur SD-Boards |
 | `/api/brewhouses/<id>` | PUT, DELETE | Sudhaus anlegen oder ersetzen / löschen |
 | `/api/mash-profiles` | GET | alle eigenen Maischprofile, vollständig (`/mashprofiles/<id>.json`, kein Index), nur SD-Boards; die mitgelieferten stehen im Web-UI |
