@@ -71,6 +71,13 @@ void test_summary_line_leaves_out_fields_the_recipe_lacks() {
   TEST_ASSERT_EQUAL_STRING("{\"id\":\"abc\",\"name\":\"Pils\"}", recipeSummaryLine(doc, "abc").c_str());
 }
 
+void test_summary_line_carries_the_version_fields() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"id\":\"k9x2\",\"name\":\"Pils\",\"rootId\":\"abc\",\"version\":2,\"mash\":[]}");
+  TEST_ASSERT_EQUAL_STRING("{\"id\":\"k9x2\",\"name\":\"Pils\",\"rootId\":\"abc\",\"version\":2}",
+                           recipeSummaryLine(doc, "k9x2").c_str());
+}
+
 void test_index_line_is_matched_by_the_whole_id() {
   TEST_ASSERT_TRUE(recipeLineHasId("{\"id\":\"abc\",\"name\":\"x\"}", "abc"));
   TEST_ASSERT_TRUE(recipeLineHasId("{\"id\":\"abc\"}", "abc"));
@@ -124,6 +131,7 @@ int main(int, char**) {
   RUN_TEST(test_body_must_carry_the_id_of_the_url);
   RUN_TEST(test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id);
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
+  RUN_TEST(test_summary_line_carries_the_version_fields);
   RUN_TEST(test_index_line_is_matched_by_the_whole_id);
   RUN_TEST(test_splice_adds_replaces_and_removes_one_line);
   RUN_TEST(test_splice_drops_blank_lines_and_copes_with_a_missing_final_newline);

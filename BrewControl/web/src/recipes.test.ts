@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  addCharge, chargeIdOf, chargesOf, deleteRecipe, exportRecipes, getRecipe, importLocalRecipes, importRecipes, listRecipes,
-  newRecipe, normalizeMash, removeCharge, replaceDecoctions, saveRecipe, splitCharge,
+  addCharge, chargeIdOf, chargesOf, deleteRecipe, deleteRecipeVersions, duplicateRecipe, exportRecipes, getRecipe,
+  groupVersions, importLocalRecipes, importRecipes, listRecipes, newRecipe, newVersion, normalizeMash, parseRecipeBundle,
+  removeCharge, replaceDecoctions, rootOf, saveRecipe, splitCharge, versionOf,
   type Ingredient, type MashStep, type Recipe,
 } from './recipes';
 
@@ -13,8 +14,8 @@ function mockDevice(initial: Recipe[] = []) {
     const method = init?.method ?? 'GET';
     calls.push(`${method} ${url}`);
     if (url === '/api/recipes') {
-      return new Response(JSON.stringify([...files.values()].map(({ id, name, style, volumeL, status, updatedAt }) =>
-        ({ id, name, style, volumeL, status, updatedAt }))));
+      return new Response(JSON.stringify([...files.values()].map(({ id, name, style, volumeL, status, rootId, version, updatedAt }) =>
+        ({ id, name, style, volumeL, status, rootId, version, updatedAt }))));
     }
     const id = decodeURIComponent(url.slice('/api/recipes/'.length));
     if (method === 'PUT') { files.set(id, JSON.parse(init!.body as string)); return new Response(null, { status: 204 }); }
@@ -111,6 +112,54 @@ describe('recipe backup file', () => {
     const text = JSON.stringify({ type: 'brewcontrol-recipes', version: 1, recipes: [recipe('a'), recipe('b'), recipe('c')] });
     await expect(importRecipes(text)).rejects.toThrow('1 von 3');
     expect(puts).toBe(2);
+  });
+});
+
+describe('versions', () => {
+  it('counts a recipe without version fields as version 1 of itself', () => {
+    const r = recipe('old');
+    expect(rootOf(r)).toBe('old');
+    expect(versionOf(r)).toBe(1);
+  });
+
+  it('groups by recipe and orders each group by version, old and new data mixed', () => {
+    const groups = groupVersions([
+      recipe('b3', { rootId: 'b', version: 3 }), recipe('a'), recipe('b'), recipe('b2', { rootId: 'b', version: 2 }),
+    ]);
+    expect(groups.map((g) => g.map((r) => r.id))).toEqual([['b', 'b2', 'b3'], ['a']]);
+  });
+
+  it('newVersion copies any version as the next number, a draft with its own id', () => {
+    const v1 = recipe('a', { status: 'final', ingredients: [{ id: 'i', kind: 'hop', name: 'Saaz', amount: 30, timing: 'boil' }] });
+    const v3 = recipe('a3', { rootId: 'a', version: 3, status: 'final' });
+    const v = newVersion(v1, [v1, v3]);
+    expect(v).toMatchObject({ rootId: 'a', version: 4, status: 'draft', name: 'a' });
+    expect(v.id).not.toBe('a');
+    expect(v.ingredients).toEqual(v1.ingredients);
+    expect(v.ingredients).not.toBe(v1.ingredients);
+    expect(newVersion(v3, [v3]).version).toBe(4);
+  });
+
+  it('duplicateRecipe starts a recipe of its own as version 1', () => {
+    const d = duplicateRecipe(recipe('a2', { rootId: 'a', version: 2, status: 'final', name: 'Pils' }));
+    expect(d).toMatchObject({ name: 'Pils (Kopie)', status: 'draft' });
+    expect(d.rootId).toBeUndefined();
+    expect(d.version).toBeUndefined();
+    expect(versionOf(d)).toBe(1);
+  });
+
+  it('lists the version fields and deletes every version', async () => {
+    const { files } = mockDevice([recipe('a'), recipe('a2', { rootId: 'a', version: 2 }), recipe('x')]);
+    const list = await listRecipes();
+    expect(list.find((r) => r.id === 'a2')).toMatchObject({ rootId: 'a', version: 2 });
+    await deleteRecipeVersions(groupVersions(list).find((g) => rootOf(g[0]) === 'a')!);
+    expect([...files.keys()]).toEqual(['x']);
+  });
+
+  it('exports only the given versions in the backup format', async () => {
+    mockDevice([recipe('a'), recipe('a2', { rootId: 'a', version: 2 }), recipe('x')]);
+    const text = await exportRecipes([{ id: 'a' }, { id: 'a2' }]);
+    expect(parseRecipeBundle(text).map((r) => [r.id, versionOf(r)])).toEqual([['a', 1], ['a2', 2]]);
   });
 });
 

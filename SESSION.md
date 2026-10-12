@@ -1951,3 +1951,38 @@ gefunden). Entscheidung: ohne Sudhaus ein vereinfachter Verlauf (Branch `feat/ma
   der zweiten Schüttung) und mit Sudhaus unverändert.
 - **Nebenbefund:** Die Plantabelle ragt bei rund 800 px Fensterbreite über ihre Karte hinaus, offen in
   PLAN.md.
+
+## 2026-10-10 — Rezeptversionen Etappe 4a: Ablage, Liste, Auswahl, Menü
+
+Erster PR der Etappe Versionen (Branch `feat/rezept-versionen`), ohne den Vergleichsdialog (4b). Vor dem
+Start mit dem Nutzer geklärt:
+
+- **Entscheidungen:** Jede Version ist ein **eigenes Rezept** mit eigener Datei, verknüpft über `rootId`
+  (id der v1) und `version`; eingebettet ins Rezept-JSON wäre die 16-KB-Body-Grenze (`kMaxBodyBytes`) nach
+  zwei, drei Versionen erreicht. Rezepte ohne die Felder sind v1, **keine Migration**. Bis zum Sud löst nur
+  der Menüpunkt „Neue Version als Entwurf“ (bei fertigen Versionen) eine Version aus; 5a ergänzt die
+  Konzept-Regel „Version mit Suden ändern = neue Version“. **Ältere Versionen sind bearbeitbar** (Vorschlag
+  im Konzept war nur ansehen). Liste zeigt die neueste Version mit Abzeichen ab v2. Menü: Neue Version,
+  Duplizieren, Exportieren (JSON), Diese Version löschen; BeerJSON statt BeerXML als offener Punkt.
+- **Firmware:** `recipeSummaryLine` (`RecipeFiles.h`) übernimmt `rootId` und `version` in den Listenindex,
+  keine neuen Routen. `openapi.yaml`: `RecipeSummary` um beide Felder, Beschreibungen von Tag, Liste und
+  `Recipe`.
+- **Web-UI:** `recipes.ts` mit `rootOf`/`versionOf`, `groupVersions`, `newVersion` (kopiert die geöffnete
+  Version als nächste Nummer, Entwurf), `duplicateRecipe`, `deleteRecipeVersions`; `exportRecipes` nimmt
+  optional nur bestimmte Versionen. Liste gruppiert, Löschen nimmt alle Versionen (Rückfrage nennt die
+  Zahl). Editor-Kopf: Auswahlfeld ab zwei Versionen (Nummer, Datum des letzten Speicherns, Status), Wechsel
+  fragt bei ungespeicherten Änderungen, „⋯“-Menü (Kopieren/Exportieren bei ungespeicherten Änderungen
+  gesperrt). Übersicht: Karte „Versionen“ (`pages/recipe/Versions.tsx`). `MenuItem` aus `MashTab.tsx` nach
+  `fields.tsx`, `saveJson` aus `BackupPage.tsx` nach `api.ts` (je zweiter Nutzer).
+- **Doku:** Konzept-Doc (Stand 4a, ältere Versionen bearbeitbar, BeerJSON), PLAN.md (4a da, 4b als
+  nächster Schritt, Regel für 5a, BeerJSON-Export).
+- **Prüfung:** `pnpm test` (360, neu: Altbestand als v1, Gruppierung, `newVersion` auch von älterer
+  Version, Duplizieren, Index-Felder und Löschen aller Versionen, Export einzelner Versionen), `typecheck`,
+  `build`, redocly (nur die bekannte info-license-Warnung). Firmware: PlatformIO-Registry war in dieser
+  Umgebung gesperrt, `test_recipe_files` deshalb von Hand mit g++, ArduinoJson 7.4.2 und Unity gebaut
+  (10/10, neu `test_summary_line_carries_the_version_fields`); **`pio test -e native` und die Builds
+  `lilygo_t_display_s3_amoled`/`esp32dev` stehen noch aus**, ebenso der Gerätetest am LilyGo. Im Node-Mock
+  mit Playwright: Liste mit v2-Abzeichen, Altrezept ohne Auswahlfeld, neue Version aus fertigem Rezept,
+  Wechsel mit Rückfrage, v1 bearbeiten und speichern, Duplizieren, Export beider Versionen, Version löschen
+  (danach öffnet die neueste), Rezept mit allen Versionen löschen, 375 px ohne Querscrollen (dabei den
+  Kopf umbrechend gemacht, sonst lief das Status-Abzeichen rechts aus dem Bild).

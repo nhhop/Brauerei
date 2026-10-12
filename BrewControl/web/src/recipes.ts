@@ -135,6 +135,8 @@ export interface Recipe {
   brewhouseId?: string;   // unset = no brewhouse chosen yet
   water?: RecipeWater;
   status: 'draft' | 'final';
+  rootId?: string;        // id of version 1; unset = this is version 1
+  version?: number;       // unset = 1
   updatedAt: number;
   ingredients: Ingredient[];
   mash: MashStep[];
@@ -298,7 +300,35 @@ export function replaceDecoctions(mash: MashStep[], resultC?: (s: MashStep) => n
 }
 
 // What the list shows; GET /api/recipes returns only these fields.
-export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'updatedAt'>;
+export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'rootId' | 'version' | 'updatedAt'>;
+
+// ── Versions ─────────────────────────────────────────────────────────────────────
+// Every version is a recipe file of its own, linked by `rootId` (the id of
+// version 1) and numbered by `version`. A recipe without either is version 1 of
+// itself, so recipes from before versions need no migration.
+type Versioned = Pick<Recipe, 'id' | 'rootId' | 'version'>;
+
+export const rootOf = (r: Versioned) => r.rootId ?? r.id;
+export const versionOf = (r: Versioned) => r.version ?? 1;
+
+// The list grouped by recipe, each group ordered by version (newest last).
+export function groupVersions<T extends Versioned>(list: T[]): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const r of list) groups.set(rootOf(r), [...(groups.get(rootOf(r)) ?? []), r]);
+  return [...groups.values()].map((g) => g.sort((a, b) => versionOf(a) - versionOf(b)));
+}
+
+// A copy of `r` (any version) as the next version of its recipe, a draft.
+export function newVersion(r: Recipe, versions: Versioned[]): Recipe {
+  const next = Math.max(versionOf(r), ...versions.map(versionOf)) + 1;
+  return { ...structuredClone(r), id: uid(), rootId: rootOf(r), version: next, status: 'draft' };
+}
+
+// A recipe of its own from `r`, version 1, a draft.
+export function duplicateRecipe(r: Recipe): Recipe {
+  const { rootId: _r, version: _v, ...rest } = structuredClone(r);
+  return { ...rest, id: uid(), name: `${r.name} (Kopie)`, status: 'draft' };
+}
 
 const BASE = '/api/recipes';
 const urlOf = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
@@ -357,6 +387,11 @@ export async function deleteRecipe(id: string): Promise<void> {
   if (!r.ok) await failed(r);
 }
 
+// Deletes every version of a recipe, one request at a time.
+export async function deleteRecipeVersions(versions: Versioned[]): Promise<void> {
+  for (const v of versions) await deleteRecipe(v.id);
+}
+
 // ── Backup file ─────────────────────────────────────────────────────────────────
 // GET /api/backup covers /config only; recipes get their own file, built and
 // replayed here one request at a time (the SD read/write costs ~60 ms per recipe).
@@ -365,9 +400,10 @@ const BUNDLE_TYPE = 'brewcontrol-recipes';
 // The firmware's isValidRecipeId (RecipeFiles.h): the id becomes a file name.
 export const VALID_ID = /^[0-9a-zA-Z_-]{1,32}$/;
 
-export async function exportRecipes(): Promise<string> {
+// All recipes, or only the given ones (the versions of one recipe).
+export async function exportRecipes(only?: Versioned[]): Promise<string> {
   const recipes: Recipe[] = [];
-  for (const { id } of await fetchList()) {
+  for (const { id } of only ?? await fetchList()) {
     const r = await getRecipe(id);
     if (r) recipes.push(r);
   }

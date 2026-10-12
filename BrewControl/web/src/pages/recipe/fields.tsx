@@ -82,3 +82,16 @@ export function Override({ label, value, brewhouse, onChange }: {
     </div>
   );
 }
+
+// One entry of a drop-down menu (role="menu").
+export function MenuItem({ label, sub, disabled, onClick }: {
+  label: string; sub?: string; disabled?: boolean; onClick?: () => void;
+}) {
+  return (
+    <button type="button" role="menuitem" disabled={disabled} onClick={onClick}
+      class="flex w-full items-baseline justify-between gap-3 rounded px-2.5 py-2 text-left text-sm hover:bg-fg/5 disabled:text-faint disabled:hover:bg-transparent">
+      <span>{label}</span>
+      {sub && <span class="text-xs text-muted">{sub}</span>}
+    </button>
+  );
+}

@@ -126,6 +126,8 @@ tags:
       Brewing recipes, one file each on the SD card. Only on boards with an SD
       slot — the LittleFS boards answer 404 for every route here. The firmware
       stores a recipe as the web UI sent it and interprets nothing but its `id`.
+      Every version of a recipe is a recipe of its own, linked by `rootId` and
+      `version`; the web UI groups them and deletes a recipe version by version.
   - name: Brewhouse
     description: |
       The brewing system the recipe package calculates with: brewhouses (one
@@ -2318,7 +2320,8 @@ paths:
         the index `/recipes/index.jsonl` that the firmware keeps with every
         `PUT` and `DELETE` (opening every recipe took ~60 ms each on the SD
         card). A recipe file put on the card by hand is not listed until it is
-        saved through `PUT`. A missing card or index gives `[]`.
+        saved through `PUT`. A missing card or index gives `[]`. Each version
+        is its own entry; `rootId` and `version` let the client group them.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "200":
@@ -4962,6 +4965,11 @@ components:
         style: { type: string }
         volumeL: { type: number }
         status: { type: string, enum: [draft, final] }
+        rootId:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,32}$"
+          description: Id of version 1 of this recipe; unset = this is version 1.
+        version: { type: integer, minimum: 1, description: "Version number; unset = 1." }
         updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
 
     Recipe:
@@ -4972,7 +4980,8 @@ components:
         volume, status, brewhouse (`brewhouseId`), water settings, ingredients,
         mash, boil and fermentation. The firmware
         keeps whatever it is given, so only `id` is fixed here; a recipe larger
-        than the 16 KB body limit cannot be saved.
+        than the 16 KB body limit cannot be saved. `rootId` and `version` (see
+        `RecipeSummary`) go into the list index.
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       additionalProperties: true
