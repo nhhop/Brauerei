@@ -5,15 +5,15 @@ import type { TimeSettings } from '../../types';
 import { badgeAccent, badgeSuccess, inp } from '../../ui';
 import { Card } from './fields';
 
-function useTimeSettings(): TimeSettings | undefined {
+export function useTimeSettings(): TimeSettings | undefined {
   const [time, setTime] = useState<TimeSettings>();
   useEffect(() => { loadTimeSettings().then(setTime).catch(() => {}); }, []);
   return time;
 }
 
-const statusText = (v: RecipeSummary) => (v.status === 'draft' ? 'Entwurf' : 'Fertig');
+export const statusText =(v: RecipeSummary) => (v.status === 'draft' ? 'Entwurf' : 'Fertig');
 // The date of a version is its last save; older versions stay editable.
-const dateOf = (v: RecipeSummary, time?: TimeSettings) => formatDate(v.updatedAt / 1000, time);
+export const dateOf =(v: RecipeSummary, time?: TimeSettings) => formatDate(v.updatedAt / 1000, time);
 
 // Version picker in the editor head, shown from version 2 on. `versions` is
 // ordered oldest first.
@@ -36,12 +36,13 @@ export function VersionSelect({ versions, current, onOpen }: {
 }
 
 // "Versionen" on the overview, newest first.
-export function VersionsCard({ versions, current, onOpen }: {
-  versions: RecipeSummary[]; current: string; onOpen: (id: string) => void;
+export function VersionsCard({ versions, current, onOpen, onCompare }: {
+  versions: RecipeSummary[]; current: string; onOpen: (id: string) => void; onCompare: () => void;
 }) {
   const time = useTimeSettings();
   return (
-    <Card title="Versionen">
+    <Card title="Versionen"
+      action={<button type="button" class="text-sm text-accent hover:underline" onClick={onCompare}>Vergleichen</button>}>
       <ul class="divide-y divide-border">
         {[...versions].reverse().map((v) => (
           <li key={v.id}>

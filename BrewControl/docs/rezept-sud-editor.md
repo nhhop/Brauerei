@@ -1,10 +1,10 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-10. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-12. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
-Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d) und die Versionen ohne Vergleich (4a);
-der Vergleich der Versionen (4b), Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d) und die Versionen (4a) mit ihrem Vergleich (4b);
+Sud und Gärkeller folgen (Sud 5a, Gärkeller, Sud 5b). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -40,8 +40,8 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
   die sie nutzen.
 - **Versionen vergleichen:** Ein Dialog stellt zwei wählbare Versionen gegenüber, gruppiert nach Bereich.
   Unterschiede sind als neu, geändert oder entfernt markiert, berechnete Werte stehen dabei. Ein Schalter
-  „Nur Unterschiede“ blendet gleiche Zeilen aus. Mit „vX in den Entwurf übernehmen“ holt man eine ältere
-  Version zurück.
+  „Nur Unterschiede“ blendet gleiche Zeilen aus. Eine Funktion „vX übernehmen“ gibt es nicht
+  (Entscheidung 2026-10-12): Eine ältere Version holt man über „Neue Version als Entwurf“ zurück.
 - Der Abschnitt „Versionen“ steht auf der Übersicht, nicht im Tab Sude.
 - **Speichern** erfolgt **explizit** über einen Knopf, der ungespeicherte Änderungen mit einem Punkt anzeigt.
   Es gibt kein automatisches Speichern.
@@ -69,8 +69,41 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
     Kopieren und Exportieren nehmen den gespeicherten Stand und sind bei ungespeicherten Änderungen
     gesperrt. BeerJSON und Brauzettel fehlen noch.
   - **Übersicht:** Karte „Versionen“ an der Stelle der Stil-Karte (darunter), ab zwei Versionen, neueste
-    oben. Der Vergleich kommt mit 4b.
+    oben. Der Link „Vergleichen“ kam mit 4b.
   - **Backup:** Die Rezept-Sicherung geht über die Liste und erfasst damit jede Version.
+- **Stand 4b (2026-10-12, `web/src/recipeDiff.ts`, `pages/recipe/VersionCompareDialog.tsx`):** Vergleich.
+  - **Aufruf:** Link „Vergleichen“ in der Karte „Versionen“. Vorgewählt sind links der Vorgänger und rechts
+    die geöffnete Version (bei v1: v1 gegen v2); beide Seiten sind frei wählbar, dieselbe Version auf
+    beiden Seiten ist gesperrt. „Neu“ heißt nur rechts vorhanden, „entfernt“ nur links.
+  - **Geöffnete Version:** Sie geht mit dem Stand des Editors in den Vergleich, ungespeicherte Änderungen
+    eingeschlossen; ihr Eintrag im Auswahlfeld trägt dann „ungespeichert“. Die anderen Versionen lädt der
+    Dialog gespeichert von der SD.
+  - **Zuordnung:** Zutaten erst über die Zeilen-id (eine neue Version kopiert die ids mit), der Rest über
+    Art, Katalogzutat (bei Freitext der Name) und Zeitpunkt in Listenreihenfolge. So zählt auch eine
+    gelöschte und neu angelegte Gabe und jede Gabe der Wasser-Automatik als geändert. Maischschritte,
+    Gärphasen und Teilschüttungen nur über die id; ein geladenes Maischprofil erscheint deshalb als
+    entfernt und neu. Anzeige in der Reihenfolge der rechten Version, Entferntes an seiner alten Stelle.
+    Eine umsortierte Zeile ist geändert und nennt ihre Position; eingefügte oder entfernte Zeilen
+    verschieben die übrigen nicht.
+  - **Geändert** ist ein Wert, wenn sein angezeigter, gerundeter Text abweicht. Bei Zahlen steht die
+    Differenz dahinter. Ein Feld, das auf einer Seite nicht gilt (Nachgusstemperatur ohne Nachguss), zeigt
+    dort „—“.
+  - **Bereiche:** Rezept (Name, Stil, Ausschlagmenge, Eingabe der Effizienz-Grundlage, Sudhaus, Status,
+    Beschreibung; berechnet Stammwürze, Restextrakt, Alkohol, Bittere, Farbe und die Effizienz-Kette),
+    Zutaten nach Art (Menge, Zeitpunkt, Konzentration, Schüttung, sobald eine Seite mehrere hat), Wasser
+    (Nachguss, Hauptguss-Verhältnis, Nachgusstemperatur, Läutern, Gaben, Verdampfung, Treberverlust,
+    Ausgangswasser je Wasser mit Verschnitt, Verschnitt/High Gravity, Ziel-pH, Zielprofil mit eigenen
+    Ionen; berechnet Hauptguss, Nachguss, Pfannevoll), Maischen (Teilschüttungen mit Malzmenge, Schritte
+    mit Art, Temperatur, Dauer, Schüttung, Zubrühen und Dekoktion; berechnet Maischdauer), Würzekochen,
+    Gärung. Jede Zutat steht einmal, im Bereich Zutaten. Ionen und pH nach der Aufbereitung zeigt der
+    Vergleich nicht.
+  - **Rechenwerte** beider Seiten kommen aus dem heutigen Sudhaus, der heutigen Brauerei und dem heutigen
+    Katalog (dieselbe Kette wie die Übersicht). Ohne Katalog oder Sudhaus bleiben sie leer. Die Hinweise
+    der Rechnungen zeigt der Dialog nicht.
+  - **„Nur Unterschiede“** (beim Öffnen aus) blendet gleiche Zeilen aus, bei geänderten Einträgen auch
+    deren gleiche Felder; ein Bereich ohne Unterschied sagt das.
+  - **Handy:** Unter 768 px steht die Bezeichnung in einer eigenen Zeile über den beiden Werten; die
+    beiden Auswahlfelder bleiben als Spaltenkopf oben stehen.
 
 ### Tabs
 Übersicht · Zutaten · Wasser · Maischen · Würzekochen · Gärung · Sude (Anzahl).
@@ -108,8 +141,7 @@ Die Übersicht ist Steckbrief und Zusammenfassung. Prozessparameter stehen in de
   Bereichsbalken mit dem Rezeptwert, dazu „x von 5 im Stil“, BU:GU, Endvergärungsgrad und CO₂-Ziel in
   g/l. Abweichungen stehen als Abzeichen direkt hinter dem Parameternamen, damit die Werte rechtsbündig
   bleiben. Mit „Ändern“ öffnet sich der Stil-Dialog; das Stilfeld im Formular gibt es nicht mehr.
-- **Versionen:** Liste unter der Stil-Karte mit Link zum Vergleichsdialog (siehe oben). Seit 4a ohne den
-  Link, er kommt mit dem Vergleich.
+- **Versionen:** Liste unter der Stil-Karte mit Link zum Vergleichsdialog (siehe oben).
 - Eine Zeitleiste vom Brautag bis „trinkfertig“ wurde erwogen, aber vorerst nicht übernommen.
 
 ### Stil-Auswahl (Dialog) — *wird später noch besprochen*
