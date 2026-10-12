@@ -739,6 +739,18 @@ export async function downloadBackup(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+// Offers `text` as a JSON file download.
+export function saveJson(text: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Posts the raw backup file text; on 200 the device reboots to apply.
 export async function restoreBackup(text: string): Promise<void> {
   const r = await fetch('/api/backup', {

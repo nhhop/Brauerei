@@ -17,7 +17,7 @@ import {
   type Decoction, type Infusion, type MashStep, type MashStepKind, type Recipe,
 } from '../../recipes';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
-import { Card, Field, NumInput } from './fields';
+import { Card, Field, MenuItem, NumInput } from './fields';
 import { IngredientCard, type IngredientGroup } from './IngredientCard';
 import { MashCurve } from './MashCurve';
 import { MashProfileDialog } from './MashProfileDialog';
@@ -133,18 +133,6 @@ function SplitButton({ label, onMain, onArrow, arrowTitle, menu, plain }: {
         </>
       )}
     </div>
-  );
-}
-
-function MenuItem({ label, sub, disabled, onClick }: {
-  label: string; sub?: string; disabled?: boolean; onClick?: () => void;
-}) {
-  return (
-    <button type="button" role="menuitem" disabled={disabled} onClick={onClick}
-      class="flex w-full items-baseline justify-between gap-3 rounded px-2.5 py-2 text-left text-sm hover:bg-fg/5 disabled:text-faint disabled:hover:bg-transparent">
-      <span>{label}</span>
-      {sub && <span class="text-xs text-muted">{sub}</span>}
-    </button>
   );
 }
 

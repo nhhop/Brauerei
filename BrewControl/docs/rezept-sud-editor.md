@@ -1,9 +1,10 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-09. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-10. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
-Effizienz-Kette (3b), die Maischprofile (3c) und die Dekoktion (3d); Versionen, Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
+Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d) und die Versionen ohne Vergleich (4a);
+der Vergleich der Versionen (4b), Gärkeller und Sud folgen in dieser Reihenfolge. Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -44,9 +45,32 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
 - Der Abschnitt „Versionen“ steht auf der Übersicht, nicht im Tab Sude.
 - **Speichern** erfolgt **explizit** über einen Knopf, der ungespeicherte Änderungen mit einem Punkt anzeigt.
   Es gibt kein automatisches Speichern.
-- **„⋯“-Menü:** Duplizieren, Brauzettel drucken, Exportieren (BeerXML, JSON), bei fertigen Rezepten
+- **„⋯“-Menü:** Duplizieren, Brauzettel drucken, Exportieren (BeerJSON, JSON), bei fertigen Rezepten
   „Neue Version als Entwurf“, Löschen.
-- **Offen:** Was passiert beim Öffnen einer älteren Version? Vorschlag: nur ansehen, nicht bearbeiten.
+- **Ältere Versionen** lassen sich öffnen und bearbeiten wie die neueste (Entscheidung 2026-10-10). Mit dem
+  Sud gilt die Regel oben: Eine Version, aus der Sude angelegt wurden, legt beim Ändern eine neue an.
+- **Stand 4a (2026-10-10, `web/src/recipes.ts`, `pages/recipe/Versions.tsx`):** Versionen ohne Vergleich.
+  - **Ablage:** Jede Version ist ein Rezept mit eigener Datei `/recipes/<id>.json`, verknüpft über `rootId`
+    (id der v1) und `version`. Eingebettet ins Rezept-JSON wäre die 16-KB-Grenze für Request-Bodies nach
+    zwei, drei Versionen erreicht, und jedes Speichern schriebe alle Versionen mit. Rezepte ohne die Felder
+    sind v1 ihrer selbst, eine Migration gibt es nicht. Die Firmware übernimmt beide Felder in den
+    Listenindex (`recipeSummaryLine`), neue Routen gibt es nicht. Eine ältere Firmware ließe sie im Index
+    weg, die Liste zeigte die Versionen dann als eigene Rezepte; Web-UI und Firmware kommen zusammen.
+  - **Auslöser bis zum Sud:** nur „⋯ › Neue Version als Entwurf“ bei fertigen Versionen. Es kopiert die
+    geöffnete Version (auch eine ältere) als nächste Nummer. Fertige Versionen bleiben bis dahin direkt
+    bearbeitbar; „Zurück zu Entwurf“ bleibt.
+  - **Liste:** eine Zeile je Rezept mit der neuesten Version; ab v2 trägt sie das Abzeichen „vN“. Löschen
+    entfernt alle Versionen, die Rückfrage nennt ihre Zahl.
+  - **Kopf:** Auswahlfeld ab zwei Versionen, je Version Nummer, Datum (letztes Speichern) und Status; die
+    Sude kommen mit dem Sud. Bei ungespeicherten Änderungen fragt der Wechsel nach.
+  - **„⋯“-Menü:** Neue Version als Entwurf, Duplizieren (eigenes Rezept, v1, Entwurf, „(Kopie)“),
+    Exportieren (JSON, alle Versionen im Format der Rezept-Sicherung, über die Sicherungsseite wieder
+    einspielbar), Diese Version löschen (ab zwei Versionen; danach öffnet die neueste verbliebene).
+    Kopieren und Exportieren nehmen den gespeicherten Stand und sind bei ungespeicherten Änderungen
+    gesperrt. BeerJSON und Brauzettel fehlen noch.
+  - **Übersicht:** Karte „Versionen“ an der Stelle der Stil-Karte (darunter), ab zwei Versionen, neueste
+    oben. Der Vergleich kommt mit 4b.
+  - **Backup:** Die Rezept-Sicherung geht über die Liste und erfasst damit jede Version.
 
 ### Tabs
 Übersicht · Zutaten · Wasser · Maischen · Würzekochen · Gärung · Sude (Anzahl).
@@ -84,7 +108,8 @@ Die Übersicht ist Steckbrief und Zusammenfassung. Prozessparameter stehen in de
   Bereichsbalken mit dem Rezeptwert, dazu „x von 5 im Stil“, BU:GU, Endvergärungsgrad und CO₂-Ziel in
   g/l. Abweichungen stehen als Abzeichen direkt hinter dem Parameternamen, damit die Werte rechtsbündig
   bleiben. Mit „Ändern“ öffnet sich der Stil-Dialog; das Stilfeld im Formular gibt es nicht mehr.
-- **Versionen:** Liste unter der Stil-Karte mit Link zum Vergleichsdialog (siehe oben).
+- **Versionen:** Liste unter der Stil-Karte mit Link zum Vergleichsdialog (siehe oben). Seit 4a ohne den
+  Link, er kommt mit dem Vergleich.
 - Eine Zeitleiste vom Brautag bis „trinkfertig“ wurde erwogen, aber vorerst nicht übernommen.
 
 ### Stil-Auswahl (Dialog) — *wird später noch besprochen*

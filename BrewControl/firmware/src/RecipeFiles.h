@@ -38,7 +38,7 @@ inline bool recipeBodyMatchesId(JsonVariantConst body, const char* id) {
 inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
   JsonDocument summary;
   summary["id"] = id;
-  for (const char* key : {"name", "style", "volumeL", "status", "updatedAt"}) {
+  for (const char* key : {"name", "style", "volumeL", "status", "rootId", "version", "updatedAt"}) {
     if (!recipe[key].isNull()) summary[key] = recipe[key];
   }
   std::string line;

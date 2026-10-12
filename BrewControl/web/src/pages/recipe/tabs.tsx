@@ -6,7 +6,8 @@ import { calcTreatment } from '../../recipeTreatment';
 import { calcMash, fmtClock } from '../../mashPlan';
 import { calcWater } from '../../recipeWater';
 import {
-  KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, replaceDecoctions, type Ingredient, type Recipe, type Scope,
+  KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, replaceDecoctions, type Ingredient, type Recipe,
+  type RecipeSummary, type Scope,
 } from '../../recipes';
 import { badgeAccent, inp } from '../../ui';
 import { Card, Field, NumInput, Override } from './fields';
@@ -14,6 +15,7 @@ import { IngredientCard } from './IngredientCard';
 import { PhaseList } from './PhaseList';
 import { StyleCard } from './StyleCard';
 import { StylePicker } from './StylePicker';
+import { VersionsCard } from './Versions';
 import { STYLE_COMPARISON } from '../../styleSource';
 
 export interface TabProps {
@@ -21,6 +23,8 @@ export interface TabProps {
   onChange: (patch: Partial<Recipe>) => void;
   brewhouses: Brewhouse[] | null;  // null = the list did not load
   brewery: Brewery | null;         // null = not loaded (yet)
+  versions?: RecipeSummary[];      // this recipe's versions, oldest first (overview only)
+  onOpenVersion?: (id: string) => void;
 }
 
 export function Stat({ label, value, unit, digits, sub }: {
@@ -56,7 +60,7 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewe
   );
 }
 
-export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
+export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, onOpenVersion }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : null;
@@ -133,6 +137,9 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
         </Card>
       )}
       {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
+      {versions && versions.length > 1 && onOpenVersion && (
+        <VersionsCard versions={versions} current={recipe.id} onOpen={onOpenVersion} />
+      )}
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">
           <li>{recipe.ingredients.length} Zutat{recipe.ingredients.length === 1 ? '' : 'en'}</li>
