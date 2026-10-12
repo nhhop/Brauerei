@@ -2,6 +2,9 @@
 // (SD boards only); the functions at the bottom are the only persistence surface.
 
 import { failed } from './api';
+import { importBundle, makeBundle, parseBundle, type BundleKind } from './docBundle';
+
+export { VALID_ID } from './docBundle';
 import type { TargetIons } from './waterChem';
 
 export type IngredientKind = 'fermentable' | 'hop' | 'yeast' | 'aroma' | 'auxiliary';
@@ -394,12 +397,10 @@ export async function deleteRecipeVersions(versions: Versioned[]): Promise<void>
 }
 
 // ── Backup file ─────────────────────────────────────────────────────────────────
-// GET /api/backup covers /config only; recipes get their own file, built and
-// replayed here one request at a time (the SD read/write costs ~60 ms per recipe).
-const BUNDLE_TYPE = 'brewcontrol-recipes';
-
-// The firmware's isValidRecipeId (RecipeFiles.h): the id becomes a file name.
-export const VALID_ID = /^[0-9a-zA-Z_-]{1,32}$/;
+// GET /api/backup covers /config only; recipes get their own file (docBundle.ts).
+const BUNDLE: BundleKind = {
+  type: 'brewcontrol-recipes', key: 'recipes', backup: 'Rezept-Sicherung', list: 'Rezeptliste', one: 'Rezept', many: 'Rezepten',
+};
 
 // All recipes, or only the given ones (the versions of one recipe).
 export async function exportRecipes(only?: Versioned[]): Promise<string> {
@@ -408,35 +409,11 @@ export async function exportRecipes(only?: Versioned[]): Promise<string> {
     const r = await getRecipe(id);
     if (r) recipes.push(r);
   }
-  return JSON.stringify({ type: BUNDLE_TYPE, version: 1, recipes });
+  return makeBundle(BUNDLE, recipes);
 }
 
-export function parseRecipeBundle(text: string): Recipe[] {
-  let bundle: { type?: unknown; version?: unknown; recipes?: unknown };
-  try { bundle = JSON.parse(text); } catch { throw new Error('keine gültige JSON-Datei'); }
-  if (bundle?.type !== BUNDLE_TYPE) throw new Error('keine Rezept-Sicherung');
-  if (bundle.version !== 1) throw new Error('nicht unterstützte Version');
-  if (!Array.isArray(bundle.recipes)) throw new Error('Rezeptliste fehlt');
-  for (const r of bundle.recipes as Recipe[]) {
-    if (typeof r?.id !== 'string' || !VALID_ID.test(r.id)) throw new Error('Rezept mit ungültiger ID');
-  }
-  return bundle.recipes as Recipe[];
-}
+export const parseRecipeBundle = (text: string) => parseBundle<Recipe>(BUNDLE, text);
 
-// Same id → overwritten, updatedAt kept. Stops at the first failure; running it
-// again is safe, so the message says how far it got.
-export async function importRecipes(
-  text: string, onProgress?: (done: number, total: number) => void,
-): Promise<number> {
-  const recipes = parseRecipeBundle(text);
-  let done = 0;
-  onProgress?.(0, recipes.length);
-  for (const r of recipes) {
-    try { await put(r); } catch (e) {
-      throw new Error(`${done} von ${recipes.length} Rezepten eingespielt, dann: ${e}`);
-    }
-    done++;
-    onProgress?.(done, recipes.length);
-  }
-  return done;
-}
+// Same id → overwritten, updatedAt kept.
+export const importRecipes = (text: string, onProgress?: (done: number, total: number) => void) =>
+  importBundle<Recipe>(BUNDLE, text, put, onProgress);

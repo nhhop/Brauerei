@@ -69,6 +69,8 @@ constexpr size_t kMaxBodyBytes = 16384;
 // Brewhouse configuration of the recipe package (SD boards only).
 constexpr const char* kBrewhouseDir = "/brewhouses";
 constexpr const char* kBreweryFile = "/brewery.json";
+// Brews ("Sude"), one file each plus an index like the recipes.
+constexpr const char* kBrewDir = "/brews";
 // Mash profiles (rest sequences of the recipe editor), not the controller programs.
 constexpr const char* kMashProfileDir = "/mashprofiles";
 // The user's own ingredients and stock lots (ingredient page of the recipe package).
@@ -1881,6 +1883,57 @@ void WebUI::begin(bool serve) {
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/recipes/"));
         if (!RecipeStore::remove(fs_, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // ── Brews ───────────────────────────────────────────────────────────────────
+  // One file per brew in /brews, with its own index (RecipeStore.h, brewSummaryLine).
+  server_.on(AsyncURIMatcher::exact("/api/brews"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", RecipeStore::list(fs_, kBrewDir).c_str());
+  });
+
+  // GET /api/brews/:id
+  server_.addHandler(new GetPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/brews/"));
+        std::string body;
+        if (!RecipeStore::read(fs_, id.c_str(), body, kBrewDir)) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(200, "application/json", body.c_str());
+      }));
+
+  // PUT /api/brews/:id — create or replace; the id is chosen by the client
+  server_.addHandler(new PutJsonPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(strlen("/api/brews/"));
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!RecipeStore::write(fs_, id.c_str(), body, brewSummaryLine(json, id.c_str()), kBrewDir)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // DELETE /api/brews/:id
+  server_.addHandler(new DeletePrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/brews/"));
+        if (!RecipeStore::remove(fs_, id.c_str(), kBrewDir)) {
           req->send(404, "text/plain", "not found");
           return;
         }

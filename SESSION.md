@@ -2157,3 +2157,33 @@ Belegungsplan kommt mit dem Sud. Entscheidungen und Begründung stehen in `rezep
   und die Gärkeller-Routen); wie viel davon der Gärkeller ist, ist nicht getrennt gemessen. Die
   Gärkeller-Routen stehen im SD-Block und gehören nicht ins `esp32dev`-Image; ob `/api/fermenters` im ELF
   fehlt, ist nicht geprüft. Offen bleibt alles am Gerät; Punkt unter „Hardware-Verifikation offen“ in PLAN.md.
+## 2026-10-12 — Sud 5a: das Gerüst
+
+Der Sud ist in drei Etappen geteilt (5a Gerüst, 5b Brautag mit Messwerten, 5c Gärung, Reifung, Abfüllung mit
+Belegungsplan). 5a legt das Datenmodell fest. Entscheidungen des Nutzers: Der Sud verweist auf die
+Rezeptversion und kopiert beim Start Sudhaus, Brauerei, Gärplatz und die Werte seiner Zutaten; abgebucht wird
+beim Start über einen Dialog; die Belegung steht im Sud-Index statt in `/bookings`; die Sicherung kommt schon
+jetzt (Branch `feat/sud-geruest`, eigener Worktree).
+
+- **Firmware:** `GET /api/brews`, `GET|PUT|DELETE /api/brews/{id}` mit Index wie die Rezepte. `RecipeStore`
+  bekam einen Verzeichnis-Parameter (Standard `/recipes`), `RecipeFiles.h` den Helfer `summaryLineOf`;
+  `recipeSummaryLine` nutzt ihn unverändert, neu `brewSummaryLine` mit allen Feldern, die der Belegungsplan
+  braucht. `openapi.yaml` (Tag Brews, `BrewSummary`, `Brew`) und README im selben Zug.
+- **Web:** `brews.ts` (Modell, Daten, Nummer, Belegung und Überschneidung, Speicher, Sicherung) und
+  `brewStart.ts` (Kopien, Lagerplan, Abbuchen, Start), getrennt, damit die Sicherungsseite den Katalogcode
+  nicht ins Hauptbundle zieht (der Sud-Export lädt per `import()`). `docBundle.ts`: gemeinsames Format für
+  Rezept- und Sud-Sicherung, `recipes.ts` reicht durch. Seiten `BrewsPage` (`/sude`, Menüpunkt „Sude“),
+  `BrewPage` (Kopf, Phasen-Tabs leer, „⋯“ mit Brautag starten, Abschließen, Löschen mit Zurückbuchen),
+  `brew/StartBrewDialog`; im Rezept der Tab „Sude“ und die Versionsregel (Speichern einer Version mit Suden
+  legt eine neue an, Löschen gesperrt, auch in der Rezeptliste; ohne geladene Sude ist Speichern gesperrt).
+  `BackupPage`: die Rezept-Karten wurden zur Komponente `DocBackup`, die Sude nutzen sie mit.
+- **Prüfung:** `pnpm test` (449, neu `brews.test.ts` mit 13 Tests), `typecheck`, `build` (Hauptbundle
+  +1,3 KB, Sud-Export als eigener 2,7-KB-Chunk), redocly (bekannte info-license-Warnung). `RecipeFiles.h`
+  samt neuen Tests mit g++ und Unity (von GitHub) außerhalb von PlatformIO gebaut: 12/12 grün;
+  `RecipeStore.cpp` mit Stub-Headern auf Syntax geprüft. Im Browser gegen einen Wegwerf-Mock: Sud aus
+  fertigem Rezept, Gärplatz wählen und speichern, Start bucht 30 g Motueka ab (250 → 220) und schreibt die
+  Kopien, Rezept speichern legt v2 an, v1 und das Rezept lassen sich nicht löschen, Löschen mit Zurückbuchen
+  (220 → 250), Sud-Export, 390 px ohne Querscrollen, Konsole ohne Fehler. **Nicht geprüft:**
+  Firmware-Compile und `pio test` (PlatformIO-Registry in der Cloud-Umgebung gesperrt), alles am Gerät
+  (PLAN.md).
+

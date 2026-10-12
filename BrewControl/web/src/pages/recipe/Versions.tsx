@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { brewsOfVersion, type BrewSummary } from '../../brews';
 import { versionOf, type RecipeSummary } from '../../recipes';
 import { formatDate, loadTimeSettings } from '../../time';
 import type { TimeSettings } from '../../types';
@@ -17,9 +18,13 @@ export const dateOf =(v: RecipeSummary, time?: TimeSettings) => formatDate(v.upd
 
 // Version picker in the editor head, shown from version 2 on. `versions` is
 // ordered oldest first.
-export function VersionSelect({ versions, current, onOpen }: {
-  versions: RecipeSummary[]; current: string; onOpen: (id: string) => void;
+export function VersionSelect({ versions, current, onOpen, brews = [] }: {
+  versions: RecipeSummary[]; current: string; onOpen: (id: string) => void; brews?: BrewSummary[];
 }) {
+  const brewCount = (id: string) => {
+    const n = brewsOfVersion(brews, id).length;
+    return n === 0 ? '' : n === 1 ? ' · 1 Sud' : ` · ${n} Sude`;
+  };
   const time = useTimeSettings();
   return (
     <select class={`${inp} py-1 text-sm`} value={current} aria-label="Version"
@@ -29,7 +34,7 @@ export function VersionSelect({ versions, current, onOpen }: {
         onOpen(id);
       }}>
       {versions.map((v) => (
-        <option key={v.id} value={v.id}>v{versionOf(v)} · {dateOf(v, time)} · {statusText(v)}</option>
+        <option key={v.id} value={v.id}>v{versionOf(v)} · {dateOf(v, time)} · {statusText(v)}{brewCount(v.id)}</option>
       ))}
     </select>
   );

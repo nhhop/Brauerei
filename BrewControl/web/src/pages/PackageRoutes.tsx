@@ -42,6 +42,13 @@ export function RecipesRoute({ id }: { path?: string; id?: string }) {
   return id ? <r.mod.RecipeEditPage id={id} /> : <r.mod.RecipesPage />;
 }
 
+// Route for /sude and /sude/:id.
+export function BrewsRoute({ id }: { path?: string; id?: string }) {
+  const r = usePackage('Sude', 'Die Sudverwaltung ist');
+  if ('page' in r) return r.page;
+  return id ? <r.mod.BrewPage id={id} /> : <r.mod.BrewsPage />;
+}
+
 // Route for /zutaten and /zutaten/:tab.
 export function IngredientsRoute({ tab }: { path?: string; tab?: string }) {
   const r = usePackage('Zutaten', 'Die Zutatenverwaltung ist');

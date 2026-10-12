@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <string.h>
 
+#include <initializer_list>
 #include <string>
 
 namespace BrewControl {
@@ -34,16 +35,29 @@ inline bool recipeBodyMatchesId(JsonVariantConst body, const char* id) {
 // fields the recipe list shows, and listing reads that single file.
 
 // One index line: the id first (recipeLineHasId relies on it), then whichever of
-// the list fields the recipe has. Compact JSON, so it never contains a newline.
-inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
+// `keys` the document has. Compact JSON, so it never contains a newline.
+inline std::string summaryLineOf(JsonVariantConst doc, const char* id,
+                                 std::initializer_list<const char*> keys) {
   JsonDocument summary;
   summary["id"] = id;
-  for (const char* key : {"name", "style", "volumeL", "status", "rootId", "version", "updatedAt"}) {
-    if (!recipe[key].isNull()) summary[key] = recipe[key];
+  for (const char* key : keys) {
+    if (!doc[key].isNull()) summary[key] = doc[key];
   }
   std::string line;
   serializeJson(summary, line);
   return line;
+}
+
+inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
+  return summaryLineOf(recipe, id, {"name", "style", "volumeL", "status", "rootId", "version", "updatedAt"});
+}
+
+// Brews (/brews) use the same index. Their line also carries the fermenter and
+// its booked period, so the occupancy plan needs nothing but the list. A field
+// missing here takes a firmware update, hence the whole set up front.
+inline std::string brewSummaryLine(JsonVariantConst brew, const char* id) {
+  return summaryLineOf(brew, id, {"number", "name", "recipeId", "rootId", "version", "status", "brewDate",
+                                  "fermenterId", "occupiedFrom", "occupiedUntil", "updatedAt"});
 }
 
 inline bool recipeLineHasId(const std::string& line, const char* id) {
