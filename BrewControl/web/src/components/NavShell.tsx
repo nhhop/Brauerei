@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { useRouter } from 'preact-router';
 import { useModule } from '../optionalModules';
-import { LayoutDashboard, ListChecks, ChartLine, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, ChartLine, BookOpen, Wheat, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -34,6 +34,7 @@ const mainItems: NavItem[] = [
   { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
   { href: '/logs', label: 'Logs & Charts', icon: ChartLine, match: (p) => p.startsWith('/logs') },
   { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes' },
+  { href: '/zutaten', label: 'Zutaten', icon: Wheat, match: (p) => p.startsWith('/zutaten'), module: 'recipes' },
   { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner'), module: 'recipes' },
 ];
 const footerItems: NavItem[] = [

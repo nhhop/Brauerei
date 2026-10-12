@@ -67,13 +67,13 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
   const [comparing, setComparing] = useState(false);
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
-  const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : null;
-  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery).extractKg : undefined, brewery).water;
+  const stats = catalog ? calcStats(recipe, catalog.entries, bh, brewery) : null;
+  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.entries, bh, brewery).extractKg : undefined, brewery).water;
   const mash = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   // Picking a brewhouse without a decoction vessel leaves the plan's decoctions
   // to be counted as rests; offer to turn them into rests for good.
   const stranded = !!mash && !mash.decoction && recipe.mash.some((s) => s.kind === 'decoction');
-  const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.ingredients ?? null).columns[0].after.so4Cl;
+  const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.entries ?? null).columns[0].after.so4Cl;
   return (
     <>
       <Card title="Rezept">

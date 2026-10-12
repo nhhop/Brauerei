@@ -190,6 +190,11 @@ class WebUI {
   // the length of a network round trip (it serves every request and the SSE
   // stream). Same deferral as rebootAtMs_ below.
   void runPendingPairing_();
+#ifndef BREWCTL_USE_LITTLEFS
+  // Registers GET <base> and PUT/DELETE <base>/:id over the SD directory `dir`
+  // (one JSON document per id, JsonDocDir.h). `dir` must outlive the server.
+  void serveJsonDocDir_(const char* base, const char* dir);
+#endif
   // Emergency-stop latch, persisted to /config/estop.json so a reboot can't
   // quietly undo a stop. loadEstop_() runs from begin(), i.e. after
   // registry.begin() has put every item into its default state, and disables

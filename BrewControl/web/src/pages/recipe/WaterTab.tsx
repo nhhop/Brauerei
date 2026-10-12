@@ -24,7 +24,7 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
     return <Card title="Wassermenge"><p class="text-sm text-muted">Sudhäuser nicht geladen, Wassermengen nicht verfügbar.</p></Card>;
   }
   const bh = brewhouses.find((b) => b.id === recipe.brewhouseId);
-  const wort = catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery) : undefined;
+  const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
   const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg, brewery);
   const lauter = wort?.efficiency.lauter;
   if (!w || !bh) {
@@ -112,7 +112,7 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
           </p>
         )}
       </Card>
-      <TreatmentCard recipe={recipe} onChange={onChange} w={w} brewery={brewery} catalog={catalog?.ingredients ?? null} />
+      <TreatmentCard recipe={recipe} onChange={onChange} w={w} brewery={brewery} catalog={catalog?.entries ?? null} />
     </>
   );
 }

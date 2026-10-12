@@ -174,7 +174,7 @@
 
   "userIngredients": [
     {
-      "id": "user:mein-honig",
+      "id": "user-mein-honig",
       "kind": "fermentable",
       "owner": "user",
       "type": "sugar",
@@ -189,7 +189,7 @@
 
   "stock": [
     {
-      "id": "lot:2024-001",
+      "id": "2024-001",
       "ref": "hop:beispiel-aroma",
       "cropYear": 2024,
       "form": "t90",

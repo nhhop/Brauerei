@@ -42,6 +42,13 @@ export function RecipesRoute({ id }: { path?: string; id?: string }) {
   return id ? <r.mod.RecipeEditPage id={id} /> : <r.mod.RecipesPage />;
 }
 
+// Route for /zutaten and /zutaten/:tab.
+export function IngredientsRoute({ tab }: { path?: string; tab?: string }) {
+  const r = usePackage('Zutaten', 'Die Zutatenverwaltung ist');
+  if ('page' in r) return r.page;
+  return <r.mod.IngredientsPage tab={tab} />;
+}
+
 // Route for /rechner and /rechner/:calc.
 export function RechnerRoute({ calc }: { path?: string; calc?: string }) {
   const r = usePackage('Rechner', 'Die Rechner sind');
