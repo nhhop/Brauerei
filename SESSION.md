@@ -2187,3 +2187,13 @@ jetzt (Branch `feat/sud-geruest`, eigener Worktree).
   `pio test` (178) nach dem Merge lokal vom Nutzer grün; in der Cloud-Umgebung ist die PlatformIO-Registry
   gesperrt. **Nicht geprüft:** alles am Gerät (PLAN.md).
 
+## 2026-10-13 — Rohstoffverwaltung: Entwurf im Design-Canvas
+
+Im Canvas des Rezept- und Sud-Editors gibt es eine neue Reihe „Zutaten & Lager“: Lager-Übersicht, Katalog,
+Einkaufsliste, Buchungs-Journal, dazu die Dialoge Lagerposten und Buchen sowie ein neuer Punkt in der
+Navigationsleiste. Rezept › Zutaten und Übersicht zeigen Bestand, Fehlmengen und Zutatenkosten, Sud ›
+Vorbereitung die gewählten Posten. Der Entwurf ist frei neu aufgebaut (eine Tabelle über alle Arten statt
+eines Tabs je Art) und ergänzt Buchungen mit Verlauf, Reservierung, Meldebestand mit Einkaufsliste sowie
+Preise und Kosten; es bleibt bei einem Lager. Die Vorschläge und offenen Punkte stehen in
+`BrewControl/docs/rezept-sud-editor.md` › „Entwurf Rohstoffverwaltung“. **Nur Entwurf:** kein Code geändert,
+die Seiten sind mit dem Nutzer noch nicht im Detail durchgesprochen und wurden nicht gerendert geprüft.

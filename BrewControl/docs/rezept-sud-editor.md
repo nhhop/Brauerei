@@ -266,6 +266,49 @@ die Override-Felder von der Art abhängen; die Gesamtsicht kam auf Wunsch dazu).
   (`web/src/ingredientFields.ts`); Lagerposten überschreiben nur Messwerte, nicht Art oder Kategorie.
 - Abbuchen beim Brauen kommt mit dem Sud (PLAN.md).
 
+#### Entwurf Rohstoffverwaltung (Canvas, 2026-10-13)
+Frei neu entworfen im Design-Canvas (Reihe „Zutaten & Lager“), **noch nicht umgesetzt** und im Detail noch
+nicht mit dem Nutzer durchgesprochen. Der Entwurf weicht vom gebauten Stand oben ab und ergänzt vier
+Funktionen: Buchungen mit Verlauf, Abgleich mit Rezept und Sud, Meldebestand mit Einkaufsliste, Preise und
+Kosten. Es bleibt bei **einem Lager** ohne Lagerorte (Entscheidung 2026-10-12).
+
+Aufbau: Menüpunkt „Zutaten“, eine Seite mit vier Tabs statt eines Tabs je Art.
+
+| Tab | Inhalt |
+|---|---|
+| Lager | Kennzahlen (Lagerwert, fehlt für geplante Sude, unter Meldebestand, Haltbarkeit). Eine Tabelle über alle Arten, nach Art gruppiert, mit Suche und Filtern (Art; fehlt, knapp, läuft ab, reserviert). Zeile je Zutat mit Bestand gegen Meldebestand, reserviert, verfügbar, haltbar bis, Wert; aufklappbar auf die Posten. |
+| Katalog | Katalog und eigene Zutaten, Liste links, Details rechts. Je Zutat die Lagerhaltung: Meldebestand, übliches Gebinde, Lieferant, letzter Preis. „Ins Lager“, „Eigene Zutat“, „Als eigene Zutat kopieren“. |
+| Einkauf | Einkaufsliste, gruppiert nach Lieferant oder Anlass, mit Bestellmenge, Gebinde, letztem Preis und Summe. Abhaken führt zu „Zugang buchen“. |
+| Buchungen | Journal, je Vorgang (Lieferung, Sud, Inventur, Abgang) aufklappbar auf die einzelnen Buchungen mit Menge, Bestand danach und Wert. |
+
+Dialoge: **Lagerposten** (Daten des Postens, Einkauf, eigene Werte, rechts der Bestandsverlauf mit
+Reservierung) und **Buchen** (Umschalter Zugang · Abgang · Inventur, jeweils mit „Bestand danach“).
+
+Vorschläge, die der Entwurf zeigt:
+- **Bestand ändert sich nur über Buchungen.** Die Menge am Posten ist kein Eingabefeld mehr; eine
+  abweichende Zählung ist eine Inventur, gebucht wird die Differenz als Korrektur. Buchungen sind nicht
+  änderbar, Fehler werden gegengebucht.
+- **Zugang** legt einen neuen Posten an (eigene Charge, eigene Werte) oder erhöht einen bestehenden.
+  Der Preis steht am Posten; aus Preis gesamt und Menge ergibt sich der Preis je Einheit.
+- **Reserviert** sind die Mengen geplanter Sude. Verfügbar = Bestand − reserviert; wird das negativ, fehlt
+  die Zutat. Vorgeschlagen wird je Zutat der Posten, der zuerst abläuft; eine Gabe kann sich so auf zwei
+  Posten verteilen.
+- **Abbuchen** je Gabe beim Bestätigen im Sud, mit der Ist-Menge. **Abweichung vom gebauten Stand:** Sud 5a
+  bucht beim Start des Suds die Rezeptmenge ab. Welcher Weg bleibt, ist offen.
+- **Meldebestand** gilt je Zutat, nicht je Posten. Die Einkaufsliste schlägt vor, was geplanten Suden
+  fehlt, plus das Auffüllen bis zum Meldebestand, aufgerundet auf das übliche Gebinde; abgelaufene Posten
+  zählen dabei nicht als Bestand.
+- **Kosten:** Das Rezept rechnet mit dem letzten Einkaufspreis je Zutat (Übersicht: Karte „Lager &
+  Kosten“ mit Summe, Preis je Liter und Aufteilung nach Art). Der Sud rechnet mit den Preisen der gewählten
+  Posten. Zutaten ohne Preis werden gezählt, nicht geschätzt.
+- **Im Rezept** zeigt jede Zutatenzeile den Bestand der Zutat (Punkt und Menge, rot bei Fehlmenge), darüber
+  eine Zeile mit Fehlmengen, Kosten und Link zur Einkaufsliste. **Im Sud** (Vorbereitung) steht je Zutat
+  der gewählte Posten.
+
+Offen: alle Details der Seiten (Durchsicht steht aus), ob Tabs je Art oder die eine Tabelle, Umgang mit
+angebrochenen Gebinden und Einheiten (Hefe in Päckchen), Reservierung über mehrere geplante Sude,
+Lieferanten als eigene Liste oder Freitext, Mobile.
+
 ### Wasser
 - **Stand:** Wassermengen seit Etappe 2a (2026-10-06, `web/src/recipeWater.ts`), Aufbereitung von Hand und
   High Gravity seit Etappe 2b-1 (2026-10-07, `web/src/waterChem.ts`, `web/src/recipeTreatment.ts`), pH von
