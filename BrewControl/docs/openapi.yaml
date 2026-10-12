@@ -143,6 +143,15 @@ tags:
       an SD slot — the LittleFS boards answer 404 for every route here. Not the
       controller programs and step templates under `/api/profiles`. The
       shipped profiles are built into the web UI; only own ones are stored.
+  - name: Cellar
+    description: |
+      The fermentation cellar of the recipe package: fermenters (Gärplätze,
+      `/fermenters/<id>.json`) and containers (Gebinde, `/containers/<id>.json`),
+      one file each on the SD card. Only on boards with an SD slot — the
+      LittleFS boards answer 404 for every route here. The documents are owned
+      by the web UI; the firmware checks their `id` and nothing else. A fermenter
+      holds no occupancy: the booking plan will be a collection of its own that
+      refers to a fermenter by id.
   - name: Ingredients
     description: |
       The user's own ingredients (`/ingredients/<id>.json`) and stock lots
@@ -2669,6 +2678,126 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ── Fermentation cellar ────────────────────────────────────────────────────
+  /api/fermenters:
+    get:
+      tags: [Cellar]
+      operationId: listFermenters
+      summary: List the fermenters
+      description: |
+        Every `/fermenters/<id>.json`, complete, in no particular order. There is no
+        index: the list needs the full objects anyway. Temp files of an
+        interrupted save and other names are skipped. A missing card or
+        directory gives `[]`.
+        Deleting one does not touch recipes or brews that refer to it.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All stored fermenters, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Fermenter" }
+
+  /api/fermenters/{id}:
+    parameters: [{ $ref: "#/components/parameters/FermenterId" }]
+    put:
+      tags: [Cellar]
+      operationId: putFermenter
+      summary: Create or replace a fermenter
+      description: |
+        The client picks the id. Written to `/fermenters/<id>.json` via a temporary
+        file, so a power cut during the save leaves the previous version. The
+        body is re-serialized, not byte-for-byte; the 16 KB body limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Fermenter" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Cellar]
+      operationId: deleteFermenter
+      summary: Delete a fermenter
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/containers:
+    get:
+      tags: [Cellar]
+      operationId: listContainers
+      summary: List the containers
+      description: |
+        Every `/containers/<id>.json`, complete, in no particular order. There is no
+        index: the list needs the full objects anyway. Temp files of an
+        interrupted save and other names are skipped. A missing card or
+        directory gives `[]`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All stored containers, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Container" }
+
+  /api/containers/{id}:
+    parameters: [{ $ref: "#/components/parameters/ContainerId" }]
+    put:
+      tags: [Cellar]
+      operationId: putContainer
+      summary: Create or replace a container
+      description: |
+        The client picks the id. Written to `/containers/<id>.json` via a temporary
+        file, so a power cut during the save leaves the previous version. The
+        body is re-serialized, not byte-for-byte; the 16 KB body limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Container" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Cellar]
+      operationId: deleteContainer
+      summary: Delete a container
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/brewery:
     get:
       tags: [Brewhouse]
@@ -3554,6 +3683,20 @@ components:
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       description: Mash profile id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+    FermenterId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Fermenter id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+    ContainerId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Container id, chosen by the client; it becomes the file name.
       example: mgx4k2a1b2c3d4
     IngredientId:
       name: id
@@ -5238,6 +5381,68 @@ components:
             A target profile: compared with and treated towards in the recipe's
             water tab, never a source water. Unset = an analysis.
       additionalProperties: true
+
+    Fermenter:
+      type: object
+      required: [id]
+      description: |
+        Owned by the web UI (`web/src/cellar.ts`, type `Fermenter`). The firmware
+        checks only `id`; the other fields are documented for clients and stay
+        optional on read (no schema version). The links are registry ids
+        (snapshot ids). A device on another board is linked through a Remote
+        sensor or actuator on this board; a controller of another board cannot be
+        linked, because there is no remote controller proxy.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        name: { type: string }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
+        kind:
+          type: string
+          enum: [bucket, carboy, conical, pressure, keg, other]
+          description: Type of vessel, descriptive only.
+        volumeL: { type: number, description: "Volume, litres." }
+        trubLossL:
+          type: number
+          description: |
+            Wort left behind in the fermenter, litres. Unset = the recipe's
+            assumption holds.
+        maxPressureBar:
+          type: number
+          description: Rated for this gauge pressure, bar. Unset = not pressure-rated.
+        tempering:
+          type: string
+          enum: [none, cool, heat, both]
+          description: What the place can do to the temperature.
+        manual:
+          type: boolean
+          description: |
+            `true` ("von Hand", the default) = no registry link. Only counts with a
+            tempering other than `none`; connected needs `controller` or `actuator`.
+        controller: { type: string, description: "Controller id in this board's registry." }
+        actuator: { type: string, description: "Actuator id in this board's registry." }
+        sensor: { type: string, description: "Temperature probe id, with or without tempering." }
+
+    Container:
+      type: object
+      required: [id]
+      description: |
+        Owned by the web UI (`web/src/cellar.ts`, type `Container`). The firmware
+        checks only `id`. A bottle size or a keg the brew is filled into.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
+        kind: { type: string, enum: [bottle, keg] }
+        name:
+          type: string
+          description: 'Shown instead of the generated label such as "Flasche 0,5 l".'
+        sizeL: { type: number, description: "Size of one container, litres." }
+        count: { type: integer, minimum: 0, description: How many there are. }
+        fillLossL:
+          type: number
+          description: Lost per filling, litres. Unset = 0.
+        maxPressureBar:
+          type: number
+          description: Rated for this gauge pressure, bar.
 
     UserIngredient:
       type: object

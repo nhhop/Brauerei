@@ -74,6 +74,9 @@ constexpr const char* kMashProfileDir = "/mashprofiles";
 // The user's own ingredients and stock lots (ingredient page of the recipe package).
 constexpr const char* kIngredientDir = "/ingredients";
 constexpr const char* kStockDir = "/stock";
+// The fermentation cellar: fermenters (Gärplätze) and containers (Gebinde).
+constexpr const char* kFermenterDir = "/fermenters";
+constexpr const char* kContainerDir = "/containers";
 #endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
@@ -1966,6 +1969,10 @@ void WebUI::begin(bool serve) {
   // ── Own ingredients and stock ───────────────────────────────────────────────
   serveJsonDocDir_("/api/ingredients", kIngredientDir);
   serveJsonDocDir_("/api/stock", kStockDir);
+
+  // ── Fermentation cellar ─────────────────────────────────────────────────────
+  serveJsonDocDir_("/api/fermenters", kFermenterDir);
+  serveJsonDocDir_("/api/containers", kContainerDir);
 
   // ── Brewery ─────────────────────────────────────────────────────────────────
   // Site values shared by all brewhouses, one file; opaque to the firmware.

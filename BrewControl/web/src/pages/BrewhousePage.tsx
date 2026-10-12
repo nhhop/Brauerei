@@ -12,15 +12,18 @@ import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { BASIS_LABEL, DEFAULT_BASIS, basisOf, type EfficiencyBasis } from '../efficiency';
 import { DEFAULT_PH_MODEL, type PhModel } from '../mashPh';
+import type { Snapshot } from '../types';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
+import { CellarSection } from './CellarSection';
 import { Field, NumInput } from './recipe/fields';
 import { WaterProfilesSection } from './WaterProfiles';
 
 const editUrl = (id: string) => `/settings/anlage/sudhaus/${encodeURIComponent(id)}`;
 
-// Settings › Brauanlage: the brewery's site values, then the brewhouses. A new
-// or duplicated brewhouse opens in the editor as an unsaved draft.
-export function BrewhousePage(_: { path?: string }) {
+// Settings › Brauanlage: the brewery's site values, then the brewhouses and the
+// fermentation cellar. A new or duplicated brewhouse opens in the editor as an
+// unsaved draft.
+export function BrewhousePage({ snap }: { path?: string; snap: Snapshot | null }) {
   const [brewhouses, setBrewhouses] = useState<Brewhouse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -97,6 +100,8 @@ export function BrewhousePage(_: { path?: string }) {
           ))}
         </div>
       )}
+
+      <CellarSection snap={snap} />
 
       {picking && <TemplateDialog onClose={() => setPicking(false)} />}
 

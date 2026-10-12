@@ -3,8 +3,8 @@
 Stand: 2026-10-12. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
-Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d) und die Versionen (4a) mit ihrem Vergleich (4b);
-Sud und Gärkeller folgen (Sud 5a, Gärkeller, Sud 5b). Das UI ist
+Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
+und der Gärkeller (Gärplätze und Gebinde, ohne Belegungsplan); der Sud folgt (5a, 5b). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -832,10 +832,43 @@ SD-Boards und im Paket `recipes`. Rezepte wählen ihr Sudhaus seit Etappe 2a in 
   Gärung › Abfüllmenge. Der Treberverlust ist eine Vorgabe am Läuterbehälter (siehe Wasser).
 
 ### Gärkeller
-- Gärplätze mit Name, Bauart, Volumen, Trubverlust, druckfest bis, Temperierung und verknüpftem
-  Regler/Gerät, oft auf einem anderen Board.
-- Belegungsplan über mehrere Wochen mit belegt, frei und reserviert für geplante Sude.
-- Gebinde für die Abfüllung: Flasche/Keg, Größe, Anzahl, Abfüllverlust, druckfest bis.
+Umgesetzt seit 2026-10-12 (`web/src/cellar.ts`, `pages/CellarSection.tsx`, `/api/fermenters`,
+`/api/containers`), nur auf SD-Boards und im Paket `recipes`: Gärplätze und Gebinde. Der Belegungsplan über
+mehrere Wochen (belegt, frei, reserviert für geplante Sude) kommt mit dem Sud, weil er dessen Daten braucht.
+
+- **Ablage:** zwei Sammlungen, je Objekt eine Datei auf der SD (`/fermenters/<id>.json`,
+  `/containers/<id>.json`, ohne Index, `JsonDocDir`), wie die Sudhäuser. Eigene Objekte statt Teil der
+  Brauerei: `brewery.json` trägt Standortwerte und Wasserprofile, wird von jedem Rezept beim Rechnen geladen
+  und teilt sich mit ihnen das Body-Limit von 16 KB. Pro Objekt eine Datei vermeidet zudem, dass zwei Browser
+  einander überschreiben. Die Firmware prüft nur die `id`, neue Felder kommen optional dazu, es gibt keine
+  Schemaversion. Der Gärplatz hält **keine Belegung**: Sie wird später eine eigene Sammlung (`/bookings`)
+  mit `fermenterId` und Zeitraum, der Sud kopiert den Gärplatz wie das Sudhaus am Brautag.
+- **Gärplatz:** Name, Bauart (Eimer/Fass, Glasballon, Edelstahl konisch, Druckgärtank, Keg, Sonstiges;
+  beschreibend), Volumen, Trubverlust (leer = die Annahme des Rezepts gilt), druckfest bis (bar Überdruck,
+  leer = nicht druckfest) und Temperierung: ohne, kühlen, heizen, kühlen und heizen. Ist sie nicht „ohne“,
+  steht die Steuerung auf „von Hand“ (Vorgabe) oder „angeschlossen“; angeschlossen braucht einen **Regler
+  oder Aktor**, wie die Heizquelle im Sudhaus. Ein **Temperaturfühler** ist immer wählbar, auch für einen
+  Gärplatz nur mit Thermometer. „Ohne Temperierung“ verwirft Regler und Aktor, der Fühler bleibt.
+- **Gerät auf einem anderen Board:** Remote-Sensoren und -Aktoren sind lokale Proxys und stehen im Snapshot
+  wie lokale Items; die Verknüpfung trägt sie ohne Änderung. Einen **Remote-Regler gibt es nicht**
+  (`Discovery.h`: „no remote controller proxy exists“), ein Regler, der nur auf dem anderen Board läuft,
+  lässt sich nicht verknüpfen. Ausweg: dort einen Remote-Sensor und -Aktor anlegen, der Regler läuft auf dem
+  Board mit der Brauanlage (`DynamicItems` baut Regler über `findSensor`/`findActuator`). Der Editor sagt
+  das am Feld. Ein Remote-Regler-Proxy in der Library steht in PLAN.md.
+- **Gebinde:** Flasche oder Keg, Größe in l, Anzahl (vorhandene Stückzahl, wird nicht geprüft),
+  Abfüllverlust je Füllung (leer = 0), druckfest bis. Ohne Namen heißt es „Flasche 0,5 l“ bzw. „Keg 19 l“.
+  Die Abfüllmenge im Gärung-Tab liest Größe und Abfüllverlust später.
+- **Prüfung:** *Fehler sperren das Speichern:* Gärplatz ohne Namen, Volumen ≤ 0, Trubverlust negativ oder
+  nicht kleiner als das Volumen, negativer Druck, „angeschlossen“ ohne Regler oder Aktor; Gebinde mit
+  Größe ≤ 0, Anzahl keine ganze Zahl ab 0, Abfüllverlust negativ oder nicht kleiner als die Größe, negativem
+  Druck. *Hinweise sperren nicht:* Regler, Aktor oder Fühler fehlt im Snapshot; Fühler oder Reglereingang misst
+  nicht in °C; Keg ohne Druckangabe; Anzahl 0. Querbezüge zum Rezept („Rezept verlangt Druck, Gärplatz ist
+  nicht druckfest“) gehören zum Sud.
+- **Editor:** Abschnitt „Gärkeller“ auf der Seite Brauanlage unter den Sudhäusern, getrennt in Gärplätze und
+  Gebinde. Jedes Objekt wird in einem Dialog bearbeitet und für sich gespeichert (flaches Objekt, daher kein
+  eigener Editor mit Tabs); Prüfung und Hinweise stehen im Dialog.
+- **Backup:** `/fermenters` und `/containers` liegen wie `/brewhouses` außerhalb von `/config` und sind nicht
+  im Backup; sie kommen gemeinsam mit den übrigen Dokumenten der Brauanlage in einen Export (PLAN.md).
 
 ## Sud
 

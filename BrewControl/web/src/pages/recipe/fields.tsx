@@ -95,3 +95,34 @@ export function MenuItem({ label, sub, disabled, onClick }: {
     </button>
   );
 }
+
+export function TextInput({ value, onChange, placeholder, list, class: cls = 'w-full' }: {
+  value: string; onChange: (s: string) => void; placeholder?: string; list?: string; class?: string;
+}) {
+  return (
+    <input class={`${inp} ${cls}`} value={value} placeholder={placeholder} list={list}
+      onInput={(e) => onChange(e.currentTarget.value)} />
+  );
+}
+
+export type Opt = { value: string; text: string };
+
+// A <select> over `groups`; a value that is not among them stays selectable as
+// "<value> (fehlt)", like the program editor's columns.
+export function Select({ value, groups, onChange, empty = '— keins —', missing, class: cls = 'w-full' }: {
+  value: string; groups: { label?: string; opts: Opt[] }[]; onChange: (v: string) => void;
+  empty?: string | null; missing?: string; class?: string;
+}) {
+  const listed = groups.some((g) => g.opts.some((o) => o.value === value));
+  return (
+    <select class={`${inp} ${cls}`} value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+      {empty !== null && <option value="">{empty}</option>}
+      {value !== '' && !listed && <option value={value}>{missing ?? `${value} (fehlt)`}</option>}
+      {groups.map((g, i) => g.opts.length === 0 ? null : g.label
+        ? <optgroup key={i} label={g.label}>{g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>)}</optgroup>
+        : g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>))}
+    </select>
+  );
+}
+
+export const itemText = (item: { id: string; label?: string }) => (item.label ? `${item.label} (${item.id})` : item.id);
