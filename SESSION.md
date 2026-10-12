@@ -2118,3 +2118,37 @@ Katalog- und eigene Zutaten als Lagerposten mit Menge, Jahrgang, Form, MHD und e
   wie in Hosoms Hop Freshness Calculator) und „Alpha-Wert vom“, die Zeile zeigt z. B. „−18 °C ·
   vakuumiert“. Noch ohne Rechnung; Modell und Faktoren für die spätere Alterung in PLAN.md.
 
+
+## 2026-10-12 — Gärkeller: Gärplätze und Gebinde (Branch `feat/gaerkeller`)
+
+Vor dem Sud (5a), damit er den Gärplatz später aus echten Daten wählen kann. Nur die Stammdaten; der
+Belegungsplan kommt mit dem Sud. Entscheidungen und Begründung stehen in `rezept-sud-editor.md` › Gärkeller.
+
+- **Ablage (Nutzerentscheidung):** zwei Sammlungen, je Objekt eine Datei, `/fermenters/<id>.json` und
+  `/containers/<id>.json`, Routen `/api/fermenters` und `/api/containers` (GET, PUT/DELETE `/<id>`). Keine
+  neue Firmware-Logik: zwei Konstanten und zwei Aufrufe der von der Zutaten-Session eingeführten
+  `WebUI::serveJsonDocDir_`, im SD-Block (`#ifndef BREWCTL_USE_LITTLEFS`). `openapi.yaml` (Tag Cellar, Schemas
+  `Fermenter`/`Container`), README-Routentabelle und der Routenkommentar in `WebUI.h` im selben Zug.
+- **Remote (Nutzerentscheidung):** Remote-Sensoren und -Aktoren sind lokale Proxys im Snapshot, die
+  Verknüpfung trägt sie schon. Einen Remote-Regler gibt es nicht (`Discovery.h`); der Regler läuft auf dem
+  Board mit der Brauanlage, der Editor sagt das am Feld. Der Proxy steht als Punkt in PLAN.md.
+- **Web:** `web/src/cellar.ts` (rein: Modell, `checkFermenter`/`checkContainer`, `setTempering`, Normalisierung,
+  API) und `pages/CellarSection.tsx` (Listen und Dialoge) auf der Seite Brauanlage. Verknüpfung am Gärplatz:
+  Temperierung (ohne, kühlen, heizen, beides), „von Hand“ oder angeschlossen mit Regler oder Aktor, dazu ein
+  Temperaturfühler. Trubverlust und Abfüllverlust sind ohne Wert „wie im Rezept“ bzw. 0, es gibt keine erfundene
+  Vorgabe. `Select`, `TextInput`, `Opt` und `itemText` sind aus `BrewhouseEditPage.tsx` nach `recipe/fields.tsx`
+  gezogen (reine Verschiebung).
+- **Backup (Nutzerentscheidung):** gemeinsam später; der Punkt in PLAN.md nennt Gärplätze und Gebinde.
+- **Prüfung:** `pnpm test` 436 (neu `cellar.test.ts`, 27 Fälle: jeder Fehler- und Hinweisfall, Wechsel der
+  Temperierung, Normalisierung, API mit `fetch`-Stub), `typecheck`, `build`, redocly (nur die bekannte
+  info-license-Warnung). Bundle: Gärkeller-Code nur im Paket-Chunk (250,3 statt 238,9 kB, gzip 78,6 statt 75,7);
+  das Basis-Bundle blieb bei 469,72 kB (gzip 147,48 statt 147,47, der Unterschied ist der Hash des Chunk-Namens),
+  gebaut gegen den unveränderten `dev`-Stand. Im Browser (Playwright gegen einen Wegwerf-Mock): Speichern
+  gesperrt ohne Namen und Volumen und bei „angeschlossen“ ohne Verknüpfung, Einheitenhinweis (Regler auf kg)
+  sperrt nicht, Anlegen, Bearbeiten (Wechsel auf „ohne Temperierung“ verwirft den Regler, der Fühler bleibt),
+  Keg-Hinweis, Bruchzahl als Anzahl gesperrt, Löschen, `PUT`/`DELETE` auf der gespeicherten ID, 375 px ohne
+  Querscrollen.
+- **Nicht geprüft:** Firmware-Compile und native Tests (176) — PlatformIO ist in der Cloud-Umgebung nicht
+  installiert, die Registry gesperrt. Zu erwarten, weil nur der SD-Block und eine schon genutzte Hilfsfunktion
+  berührt sind: `esp32dev` bleibt bei 1 860 097 Byte (97,9 %). Alles am Gerät; Punkt unter „Hardware-Verifikation
+  offen“ in PLAN.md.

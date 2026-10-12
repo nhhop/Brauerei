@@ -786,6 +786,10 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/brewhouses/<id>` | PUT, DELETE | Sudhaus anlegen oder ersetzen / löschen |
 | `/api/mash-profiles` | GET | alle eigenen Maischprofile, vollständig (`/mashprofiles/<id>.json`, kein Index), nur SD-Boards; die mitgelieferten stehen im Web-UI |
 | `/api/mash-profiles/<id>` | PUT, DELETE | Maischprofil anlegen oder ersetzen / löschen (nicht die Reglerprogramme unter `/api/profiles`) |
+| `/api/fermenters` | GET | alle Gärplätze, vollständig (`/fermenters/<id>.json`, kein Index), nur SD-Boards |
+| `/api/fermenters/<id>` | PUT, DELETE | Gärplatz anlegen oder ersetzen / löschen |
+| `/api/containers` | GET | alle Gebinde, vollständig (`/containers/<id>.json`, kein Index), nur SD-Boards |
+| `/api/containers/<id>` | PUT, DELETE | Gebinde anlegen oder ersetzen / löschen |
 | `/api/ingredients` | GET | alle eigenen Zutaten, vollständig (`/ingredients/<id>.json`, kein Index), nur SD-Boards; der Katalog steht im Web-UI |
 | `/api/ingredients/<id>` | PUT, DELETE | eigene Zutat anlegen oder ersetzen / löschen |
 | `/api/stock` | GET | alle Lagerposten, vollständig (`/stock/<id>.json`, kein Index), nur SD-Boards |

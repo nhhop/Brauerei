@@ -16,7 +16,7 @@ import { TabBtn } from '../components/TabBtn';
 import type { Snapshot } from '../types';
 import { badgeAccent, badgeCaution, badgeCritical, btnPrimary, inp } from '../ui';
 import { BrewhouseSchema } from './BrewhouseSchema';
-import { Card, Field, NumInput, OptNum } from './recipe/fields';
+import { Card, Field, NumInput, OptNum, Select, TextInput, itemText, type Opt } from './recipe/fields';
 
 const LIST_URL = '/settings/anlage';
 const LAUTER_METHODS = ['Senkboden', 'Schlitzrohr', 'Malzrohr', 'Malzkorb', 'Sack', 'Ablassen in Zwischenbehälter'];
@@ -199,37 +199,6 @@ function tabOf(at: string): TabId {
 type SectionProps = { bh: Brewhouse; set: (bh: Brewhouse) => void };
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────
-
-function TextInput({ value, onChange, placeholder, list, class: cls = 'w-full' }: {
-  value: string; onChange: (s: string) => void; placeholder?: string; list?: string; class?: string;
-}) {
-  return (
-    <input class={`${inp} ${cls}`} value={value} placeholder={placeholder} list={list}
-      onInput={(e) => onChange(e.currentTarget.value)} />
-  );
-}
-
-type Opt = { value: string; text: string };
-
-// A <select> over `groups`; a value that is not among them stays selectable as
-// "<value> (fehlt)", like the program editor's columns.
-function Select({ value, groups, onChange, empty = '— keins —', missing, class: cls = 'w-full' }: {
-  value: string; groups: { label?: string; opts: Opt[] }[]; onChange: (v: string) => void;
-  empty?: string | null; missing?: string; class?: string;
-}) {
-  const listed = groups.some((g) => g.opts.some((o) => o.value === value));
-  return (
-    <select class={`${inp} ${cls}`} value={value} onChange={(e) => onChange(e.currentTarget.value)}>
-      {empty !== null && <option value="">{empty}</option>}
-      {value !== '' && !listed && <option value={value}>{missing ?? `${value} (fehlt)`}</option>}
-      {groups.map((g, i) => g.opts.length === 0 ? null : g.label
-        ? <optgroup key={i} label={g.label}>{g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>)}</optgroup>
-        : g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>))}
-    </select>
-  );
-}
-
-const itemText = (item: { id: string; label?: string }) => (item.label ? `${item.label} (${item.id})` : item.id);
 
 function RemoveButton({ title, onClick }: { title: string; onClick: () => void }) {
   return (

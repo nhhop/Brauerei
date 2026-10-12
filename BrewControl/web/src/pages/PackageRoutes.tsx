@@ -65,5 +65,5 @@ export function AnlageRoute({ id, vorlage, von, snap }: {
   if ('page' in r) return r.page;
   return id
     ? <r.mod.BrewhouseEditPage id={id} vorlage={vorlage} von={von} snap={snap} />
-    : <r.mod.BrewhousePage />;
+    : <r.mod.BrewhousePage snap={snap} />;
 }
