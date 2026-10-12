@@ -272,7 +272,6 @@ function BusEditor({ state, info, pins, full, onChange, onClose, onSaved }: {
   const [riskyWarn, setRiskyWarn] = useState<string[]>([]);
 
   const isNew = state.bus === null;
-  const pinsLocked = !isNew && state.bus!.users.length > 0;
   const keys = info.types.find((t) => t.type === state.type)?.pins ?? [];
   const selfId = state.bus?.id;
 
@@ -339,20 +338,19 @@ function BusEditor({ state, info, pins, full, onChange, onClose, onSaved }: {
             {keys.map((k) => (
               <div key={k}>
                 <label class={lbl}>{pinLabel(k)} (GPIO)</label>
-                <input type="number" value={state.pins[k] ?? ''} disabled={pinsLocked} class={inp}
+                <input type="number" value={state.pins[k] ?? ''} class={inp}
                   onInput={(e) => setPin(k, (e.target as HTMLInputElement).value)} required />
-                {!pinsLocked && (
-                  <PinHint pins={pins} value={state.pins[k] ?? ''} selfId={selfId}
-                    output={OUTPUT_PINS.has(k)} suggest exclude={picked(k)}
-                    onPick={(g) => setPin(k, String(g))} />
-                )}
+                <PinHint pins={pins} value={state.pins[k] ?? ''} selfId={selfId}
+                  output={OUTPUT_PINS.has(k)} suggest exclude={picked(k)}
+                  onPick={(g) => setPin(k, String(g))} />
               </div>
             ))}
           </div>
-          {pinsLocked && (
+          {!isNew && state.bus!.users.length > 0 && (
             <p class="text-xs text-caution">
-              An diesem Bus hängen {state.bus!.users.join(', ')} — die Pins lassen sich erst
-              ändern, wenn kein Gerät mehr daran hängt. Der Name geht jederzeit.
+              An diesem Bus hängen {state.bus!.users.join(', ')} — neue Pins gelten sofort, die
+              Verkabelung muss danach folgen.
+              {state.type === 'spi' && ' Die MAX31865 werden dabei neu aufgebaut.'}
             </p>
           )}
 

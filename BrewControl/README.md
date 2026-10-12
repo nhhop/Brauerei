@@ -276,9 +276,13 @@ Die Id ergibt sich aus Typ und Pins:
   braucht, die am Board-Bus schon belegt ist. esp32dev/lolin_s2_mini haben keine festen Busse.
 
 Bus-Pins gehören exklusiv dem Bus: `GET /api/pins` führt den Bus als Nutzer (`bus: true`),
-ein Item oder zweiter Bus auf derselben Leitung ist ein **409**. Die Pins eines Busses
-lassen sich nur ändern und der Bus nur löschen, solange kein Item daran hängt (**409**,
-die Meldung nennt die Items); das Label geht immer. Die I2C-**Adresse** prüft
+ein Item oder zweiter Bus auf derselben Leitung ist ein **409**. Ein Bus lässt sich nur
+löschen, solange kein Item daran hängt (**409**, die Meldung nennt die Items). Seine Pins
+lassen sich jederzeit ändern: die Bus-Id bleibt, der laufende Treiber wird an Ort und
+Stelle umgepinnt (OneWire/I2C), nur die MAX31865 an einem SPI-Bus baut `PUT` neu auf —
+hängt eine an einem Regler, gibt es **409**. Die Id ist nach einem Pinwechsel kein
+Spiegel der Pins mehr; ein neuer Bus mit den alten Pins kollidiert mit ihr (**409**
+„already exists“). Die I2C-**Adresse** prüft
 `I2cAddressMap.h` je Bus: zwei Items auf demselben Bus dürfen nie dieselbe Adresse haben,
 auf zwei Bussen schon; reservierte Adressen gelten nur für den festen Bus — beides nur beim
 Anlegen/Ersetzen (409), nicht in `GET /api/pins`.

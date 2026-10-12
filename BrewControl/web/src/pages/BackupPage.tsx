@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { downloadBackup, restoreBackup } from '../api';
+import { downloadBackup, restoreBackup, saveJson } from '../api';
 import { useModule } from '../optionalModules';
 import { exportRecipes, importRecipes } from '../recipes';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -10,17 +10,6 @@ import { Breadcrumb } from '../components/Breadcrumb';
 import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnSecondary } from '../ui';
 import { TriangleAlert, Download, Upload } from 'lucide-preact';
-
-function saveJson(text: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
 
 export function BackupPage(_: { path?: string }) {
   const hasRecipes = useModule('recipes');

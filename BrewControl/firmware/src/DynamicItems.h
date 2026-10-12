@@ -66,6 +66,8 @@ class DynamicItems {
   // True if a dynamic controller drives this actuator (the check removeActuator
   // refuses on).
   bool drivenByController(const char* actuatorId) const;
+  // Same for a sensor (or one of its channels) as a controller's input.
+  bool referencedByController(const char* sensorId) const;
 
   // Copies each controller's live tunable parameters (gains, deadband,
   // hysteresis, differentials, cycle limits, changeover, rate limit) into its
@@ -81,12 +83,14 @@ class DynamicItems {
   void acquireBoardI2cBus();
 
   // Bus definitions (BusConfig.h), GET/POST/PUT/DELETE /api/buses. A bus is
-  // defined with its pins; items reference it by id. Pins may only change,
-  // and the bus may only go, while no item uses it; fixed buses never change
-  // (conflict). newId receives the id derived from type and pins. Errors
-  // point into busError_ (valid until the next call).
+  // defined with its pins; items reference it by id. The bus may only go
+  // while no item uses it; fixed buses never change (conflict). newId
+  // receives the id derived from type and pins. updateBus keeps the id and
+  // re-pins the running driver; on SPI the MAX31865s on it are rebuilt, which
+  // a controller reference blocks. Errors point into busError_ (valid until
+  // the next call).
   Result addBus(const JsonObject& def, std::string& newId);
-  Result updateBus(const char* id, const JsonObject& def, std::string& newId);
+  Result updateBus(const char* id, const JsonObject& def, SensActCtrl::Registry& reg);
   Result removeBus(const char* id);
   const BusDef* findBus(const char* id) const;
   // {buses: [definition + fixed/note/reserved/users], types: [...]}.

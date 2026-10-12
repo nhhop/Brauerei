@@ -53,9 +53,10 @@ export interface Vessel {
   name: string;
   volumeL: number;
   deadSpaceL: number;
-  evaporationLPerH?: number;  // only shown/checked while the vessel boils
+  evaporationLPerH?: number;  // shown while the vessel boils, decocts or mashes heated directly (Kochrast)
   lauterMethod?: string;      // descriptive (false bottom, bag …), only while it lauters
   grainAbsorptionLPerKg?: number; // wort the spent grain holds back, only while it lauters
+  heatLossKPerH?: number;     // the resting mash, unheated (during a decoction); unset = 0, it holds
 }
 
 // Default conversion of new brewhouses (Troester calls 95–100 % excellent;
@@ -260,6 +261,27 @@ export function heatingOf(bh: Brewhouse, step: StepKey): Heating {
   return { heater, direct: false, via, viaVessel };
 }
 
+// Decoction: a part of the mash boils in a second vessel with its own heater.
+// The vessel that heats the mash indirectly (HERMS, Kettle-RIMS, Aufguss) holds
+// water while mashing, so it does not count. The first one in process order.
+// `stepRateKPerMin` is the heat rate of a step that heater has, for a full vessel.
+export interface DecoctionVessel { vessel: Vessel; heater: Device; stepRateKPerMin?: number }
+
+export function decoctionVesselOf(bh: Brewhouse): DecoctionVessel | undefined {
+  const mashVesselId = bh.steps.mash?.vesselId;
+  if (!mashVesselId) return undefined;
+  const busy = heatingOf(bh, 'mash').viaVessel?.id;
+  for (const vessel of processOrder(bh)) {
+    if (vessel.id === mashVesselId || vessel.id === busy) continue;
+    const heater = bh.devices.find((d) => d.kind === 'heater' && d.vesselId === vessel.id);
+    if (!heater) continue;
+    const stepRateKPerMin = STEPS.map((s) => bh.steps[s.key])
+      .find((c) => c?.vesselId === vessel.id && c.heaterId === heater.id && c.heatRateKPerMin)?.heatRateKPerMin;
+    return { vessel, heater, stepRateKPerMin };
+  }
+  return undefined;
+}
+
 // Whether the heating only works with the recirculation pump of the step.
 export const needsPump = (h: Heating) => !!h.heater && !h.direct && h.via !== 'infusion';
 
@@ -306,14 +328,19 @@ export interface SchemaEdge {
 
 const litres = (n: number) => `${String(n).replace('.', ',')} l`;
 
-export function schemaOf(bh: Brewhouse): { nodes: string[]; edges: SchemaEdge[] } {
+// Vessels by their first step; one without steps comes last.
+function processOrder(bh: Brewhouse): Vessel[] {
   const firstStep = (v: Vessel) => {
     const s = stepsOf(bh, v.id);
     return s.length ? STEPS.findIndex((x) => x.key === s[0]) : STEPS.length;
   };
-  const nodes = bh.vessels.map((v, i) => ({ v, i }))
+  return bh.vessels.map((v, i) => ({ v, i }))
     .sort((a, b) => firstStep(a.v) - firstStep(b.v) || a.i - b.i)
-    .map(({ v }) => v.id);
+    .map(({ v }) => v);
+}
+
+export function schemaOf(bh: Brewhouse): { nodes: string[]; edges: SchemaEdge[] } {
+  const nodes = processOrder(bh).map((v) => v.id);
   const isVessel = (id: string | undefined) => bh.vessels.some((v) => v.id === id);
   const deviceName = (id: string | undefined) => {
     const d = bh.devices.find((x) => x.id === id);

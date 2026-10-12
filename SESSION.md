@@ -1823,6 +1823,211 @@ Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit 
   (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
   DELETE → 404.
 
+## 2026-10-09 — Bus-Pins ändern, während Items daran hängen
+
+- **Vorher:** `PUT /api/buses/{id}` mit neuen Pins lieferte 409, sobald ein Item oder Gerät am Bus
+  hing. Die Bus-Id war aus den Pins abgeleitet und steckt in Item-Configs (`bus`), Geräten und
+  deren Ids (`mcp4728-i2c-4-5-60`); ein Pinwechsel hätte alles umschreiben und neu aufbauen
+  müssen, und regler-verdrahtete Items lassen sich nicht ersetzen.
+- **Umsetzung:** Die Id ist nur noch der Startwert beim Anlegen und bleibt bei Pinwechseln
+  stabil (`parseBusDef(..., fromStorage)` liest sie nur aus `registry.json`). `updateBus` prüft die
+  neuen Pins gegen alle anderen Nutzer (`checkPinUses` mit Selbst-Ausnahme) und pinnt den
+  laufenden Treiber um: `OneWireBus::repin` (`OneWire::begin`), `I2cBus::repin` (`Wire.end/begin`).
+  Die Items halten nur Referenzen und bleiben unberührt, Regler ebenso. Einzige Ausnahme SPI: die
+  MAX31865 kopieren die Pins im Konstruktor und werden per `replaceSensor` neu gebaut; hängt eine
+  an einem Regler, gibt es vorab 409 (`referencedByController`, aus `removeSensor` herausgezogen).
+  UI: Pin-Felder im Bus-Dialog nicht mehr gesperrt, Hinweis zum Umstecken. Löschen bleibt 409,
+  solange Nutzer dranhängen. Bekannte Kleinigkeit: ein neuer Bus mit den alten Pins kollidiert
+  mit der Id des umgepinnten (409 „already exists“).
+- **Doku:** OpenAPI (PUT /api/buses/{id}), README „Geteilte Busse“, PLAN.md-Punkt entfernt.
+- **Prüfung:** `pio test -e native` (175, neu `test_stored_id_survives_pin_change`),
+  `pnpm typecheck`, redocly. Live-Umpinnen am Gerät: noch offen.
+## 2026-10-09 — Link-Routing zentral (preact-router-Delegation)
+
+Der Plan-Punkt „Klick-Delegation ließ am Gerät einen Link durchrutschen" ist erledigt.
+Ein einziger Listener in `web/src/linkRouting.ts` (aus `main.tsx` installiert) routet alle
+internen Links selbst; der Sonderweg in `NavShell` entfällt.
+
+**Befund** (preact-router 4.1.2): Die Delegation hängt einmal auf `window`, sucht das `<a>`
+erst zur Bubble-Zeit über `parentNode` und lässt den Browser navigieren, sobald `route()`
+falsy liefert. Zwei Wege führen so zum echten Dokument-Load: das Klickziel wird von einem
+Element-`onClick` vorher aus dem DOM genommen, oder zum Klickzeitpunkt matcht kein
+registrierter Router. **Welcher davon am Gerät zutraf, ist nicht belegt** — der Fix macht
+das Routing von beiden unabhängig, beweist aber nicht die Ursache.
+
+**Umsetzung:** Capture-Listener löst den Link auf (vor jedem `onClick`), Bubble-Listener
+routet mit `preventDefault()` + `stopImmediatePropagation()` (keine doppelte
+History-Zeile); fällt `route()` durch, lädt `location.assign()` explizit. Nicht angefasst
+werden Modifier-/Mittelklick, `target`≠`_self`, `native`/`data-native`, `//…`, externe URLs und
+`/api/…` (Downloads). Reine Prüfung in `routableHref()`, Test `linkRouting.test.ts`.
+
+**Verifikation:** `pnpm typecheck` sauber, `pnpm test` 321 grün. Chromium gegen `pnpm dev`:
+Nav-Link ×2, Einstellungs-Karte und ein Link, der sich im `onClick` selbst entfernt, ergeben
+je genau einen History-Eintrag, `window`-Marker überlebt, ein Navigation-Entry; Ctrl-Klick
+schreibt keinen Eintrag. Nicht gemessen: Verhalten vor dem Fix für den Selbst-Entfern-Fall
+und das Gerät selbst.
+
+## 2026-10-09 — Maischen-Tab Etappe 3d: Dekoktion, Kochen im Maischbehälter, Profile mit Dekoktion
+
+Vierter und letzter PR der Etappe 3 (Branch `feat/maische-3d`), reine Web-UI- und Doku-Arbeit, die
+Firmware ist unverändert. Vor dem Start mit dem Nutzer geklärt (Plan `maische-etappe-3.md` gegen den
+Code geprüft, keine Widersprüche, aber Lücken):
+
+- **Entscheidungen:** Die Restmaische verliert während der Dekoktion den **Wärmeverlust des
+  Maischbehälters** (neues Behälterfeld `heatLossKPerH`, Vorgabe 0 = hält) statt der 0,2 K/min des
+  Abkühlens, die bei 45–90 min Dekoktion 9–18 K gekostet hätten. Die **Verdampfung** beim Kochen nimmt
+  die Rate des Behälters aus dem Sudhaus und wirkt in Wärme- und Wasserbilanz. **Profile** können jetzt
+  Dekoktionen und weitere Schüttungen tragen; neu mitgeliefert sind Ein-, Zwei- und
+  Dreimaischverfahren und **Earls Kochmaische**. Der **Dekoktionsbehälter** wird abgeleitet: nicht der
+  Maischbehälter, eigene Heizquelle, heizt nicht die Maische (HERMS-/Kettle-RIMS-/Aufguss-Behälter
+  halten Wasser), der erste in Prozessreihenfolge. Für Earl: Profile tragen Schüttungsanteile (Laden
+  teilt die erste Schüttung auf), und eine Rast am Siedepunkt kocht im direkt beheizten Maischbehälter.
+- **Eigene Abweichung vom Vorschlag in der Rückfrage:** Die Heizzeit der Teilmaische kommt zuerst aus
+  der Heizleistung für ihre Masse, die Heizrate des Schritts erst ohne Leistung, weil sie für den vollen
+  Behälter gilt.
+- **Rechnung** (`web/src/mashPlan.ts`): `walk()` führt Wasser und Malz getrennt. Dekoktion: Anteil am
+  Maischevolumen, dick mit bis zu 2,1 l/kg (`THICK_DECOCTION_L_PER_KG`, `TODO(verify)`), dünn nur
+  Flüssigkeit; Rasten und Kochen im Dekoktionsbehälter, Verdampfung, Restmaische mit Wärmeverlust,
+  Mischtemperatur beim Zurückführen; führt die Temperatur, sucht eine Bisektion den Anteil. Eine dünne
+  Dekoktion ohne Verlust und Verdampfung ergibt genau Troesters Faustformel (Test). Kochrast: Ziel ab
+  Siedepunkt, Verdampfung des Maischbehälters, Hinweis außer bei direkter Heizung. Ohne
+  Dekoktionsbehälter zählt eine Dekoktion als Rast, ein Hinweis nennt alle.
+- **Wasser/Effizienz:** `mashEvaporationL` zählt zum Gesamtwasser (Nachguss, sonst Hauptguss),
+  `calcWater` bekommt dafür optional die Brauerei (Siedepunkt); der erste Ablauf im Läutermodell ist um
+  die Verdampfung kleiner.
+- **Profile** (`web/src/mashProfiles.ts`): Schritt-Arten `decoction` und `doughIn` (`sharePct`),
+  Zubrühen mit `waterTempC`; `applyMashProfile` arbeitet auf dem Rezept (Schüttungen, Zutaten),
+  `profileLoadEffects` speist die Bestätigung, `profileOfPlan` speichert Dekoktionen und
+  Schüttungsanteile. `splitCharge` aus `addCharge` herausgezogen. Earls Zubrühziel nach einem
+  Probelauf auf 62 °C gesetzt (bei 66 °C hätte die Maltoserast wieder abkühlen müssen).
+- **UI:** Dekoktion im Menü und in der Art-Auswahl (gesperrt ohne Dekoktionsbehälter), Felder Anteil,
+  dick/dünn, Volumen, darunter Rasten, Kochdauer, Restmaische und Verdampfung; zweite, gestrichelte
+  Linie im Temperaturverlauf; „Dekoktionen durch Rasten ersetzen“ in Übersicht und Maischen-Tab;
+  Profil-Editor mit allen vier Arten; im Sudhaus „Wärmeverlust (K/h)“ am Maischbehälter und
+  „Verdampfung“ auch am Dekoktionsbehälter und am direkt beheizten Maischbehälter.
+- **Doku:** Konzept-Doc (Stand 3d), `openapi.yaml` (`BrewhouseVessel.heatLossKPerH`, Schritte von
+  `MashProfile`), PLAN.md (3d raus; Näherungen der Dekoktion beim Punkt „Maischeplan rechnet mit
+  Näherungen“; Quellen der neuen Richtwerte).
+- **Prüfung:** `pnpm test` (347, neu u. a. Dekoktion und Kochrast in `mashPlan.test.ts`,
+  `decoctionVesselOf`, Wasserbilanz, Läutermodell, Profile mit Schüttungen und Round-Trip,
+  `MashCurve.test.ts`), `typecheck`, `build`, redocly (nur die bekannte info-license-Warnung). Im
+  Node-Mock: Dreimaischverfahren auf „Pfanne + Läuterbottich“ (Anteile 28/28/32 %, 3:13 h, zweite
+  Linie), Anteil ↔ Temperatur umschalten, Wasser-Tab mit 1,5 l Verdampfung beim Maischen, Wechsel auf
+  2-Kessel-HERMS mit Warnung und Ersetzen, Earl auf dem Ein-Topf in 500 m (Aufteilung 80/20, Kochen bei
+  98,3 °C, 0,8 l verdampft), Profil speichern mit Dekoktion und Schüttung, 3 K/h Wärmeverlust (Anteile
+  32,8 → 36,3 %), 375 px ohne Querscrollen. Kein Gerätetest nötig, das Profil-JSON ist für die Firmware
+  opak.
+
+## 2026-10-10 — Maischprofil Weizen nach Herrmann (Maltaserast)
+
+Kleiner Nachtrag zu Etappe 3d (Branch `feat/maische-herrmann`): ein weiteres mitgeliefertes Profil, ohne
+Dekoktion, damit es auch ohne zweiten beheizten Behälter läuft. Das Modell trug es schon (Aufbau wie Earls
+Kochmaische), es ist nur ein Eintrag in `BUILTIN_MASH_PROFILES`.
+
+- **Ablauf:** erste Hälfte der Schüttung 62 °C 30 min, 72 °C 20 min; kaltes Wasser (12 °C) auf 46 °C; zweite
+  Hälfte (50 %) dazu; Maltaserast 45 °C 40 min; 72 °C 20 min; 76 °C 5 min.
+- **Quellen:** Die Quellen widersprechen sich in den Einzelwerten (Einmaischen bei 38, 43 oder 62 °C, mit
+  oder ohne zwei Dekoktionen). Ablauf nach brewingforward.com „Maltase mash“ (Kunze, Esslinger),
+  Aufteilung 50:50 nach edelstoffquest.wordpress.com. Herrmanns Dissertation (TU München, mediaTUM) wurde
+  bewusst nicht gelesen (Nutzer-Entscheidung, zu umfangreich); Richtwerte mit `TODO(verify)`, PLAN.md.
+- **Probelauf:** 5 kg (3 kg Weizen, 2 kg Pils), Pfanne + Läuterbottich: 9,5 l Wasser vorlegen, 8,0 l kaltes
+  Wasser, nach der zweiten Schüttung 44,5 °C, Maltaserast heizt 0,5 K nach, 2:24 h; Ein-Topf (Vollguss):
+  11,7 l kaltes Wasser, 45,0 °C. Keine Abkühl-Hinweise.
+- **Prüfung:** `pnpm test` (350, neu: Aufbau des Herrmann-Profils, Round-Trip), `typecheck`, `build`.
+
+## 2026-10-10 — Temperaturverlauf ohne Sudhaus
+
+Am LilyGo fehlte der Temperaturverlauf im Maischen-Tab, im Mock nicht: Die Karte erschien nur mit Plan,
+und `calcMash` braucht ein Sudhaus; die Rezepte auf dem Gerät hatten keins gewählt (vom Nutzer selbst
+gefunden). Entscheidung: ohne Sudhaus ein vereinfachter Verlauf (Branch `feat/maische-verlauf-ohne-sudhaus`).
+
+- **`outlineMash`** (`web/src/mashPlan.ts`): Zieltemperaturen und Haltezeiten ab dem Einmaischen, jeder
+  Übergang ein Sprung, kein Wasser vorlegen; weitere Schüttungen und Rasten ohne Ziel behalten die vorige
+  Temperatur, eine Kochrast endet am Siedepunkt der Brauerei, eine Dekoktion springt ohne eigene Linie.
+- **UI:** Die Karte erscheint immer, ohne Sudhaus mit dem Hinweis „Ohne Sudhaus nur Zieltemperaturen
+  und Haltezeiten, Übergänge als Sprung.“ `MashCurve`/`curveOf` nehmen dafür Zeilen statt des Plans.
+- **Prüfung:** `pnpm test` (354, neu `outlineMash` und die Kurve ohne Sudhaus), `typecheck`, `build`; im
+  Node-Mock Earls Kochmaische ohne Sudhaus (Stufen 62/72/100, Sprung durch das kalte Wasser, Punkt bei
+  der zweiten Schüttung) und mit Sudhaus unverändert.
+- **Nebenbefund:** Die Plantabelle ragt bei rund 800 px Fensterbreite über ihre Karte hinaus, offen in
+  PLAN.md.
+
+## 2026-10-10 — Maischplan: Raster nach Kartenbreite statt Fensterbreite
+
+Die Plantabelle ragte bei rund 800 px Fensterbreite über ihre Karte hinaus (aus PLAN.md, dort entfernt).
+Im Node-Mock bestätigt: Das Raster in `MashTab.tsx` (`GRID`) brauchte 860 px, die Karte war aber nur 696 px
+(Seitenleiste eingeklappt) bzw. 512 px (ausgeklappt) breit, Überstand 198 bzw. 382 px.
+
+- **Ursache anders als vermutet:** Nicht nur `md` ist zu früh. Die Karte hängt von der Seitenleiste
+  (3,5 rem eingeklappt, 15 rem ausgeklappt) und von der Breitenkappung der `PageShell` (`max-w-4xl`) ab; mit
+  ausgeklappter Seitenleiste lief das Raster auch bei 1024 px noch 158 px über (Karte 736 px). Ein Wechsel
+  auf `lg` hätte diesen Fall offen gelassen.
+- **Umsetzung:** Die Zeilenliste ist ein `@container`, alle Zeilenklassen (`GRID`, `StepRow`,
+  `DecoctionCourse`) schalten bei 53,75 rem Kartenbreite (Mindestbreiten der Spalten plus Abstände) statt ab
+  `md`: `md:` → `@[53.75rem]:`, `max-md:` → `@max-[53.75rem]:`. Darunter gilt der umgebrochene Fallback.
+- **Prüfung:** `pnpm test` (354), `typecheck`, `build`; im Node-Mock (Rezepte „Dekoktion“ mit
+  Zweimaischverfahren auf Pfanne + Läuterbottich und „Ohne Sudhaus“) bei 375, 800, 1024 und 1440 px, jeweils
+  Seitenleiste ein- und ausgeklappt: `documentElement` und Inhaltsbereich ohne waagerechten Überstand, kein
+  Element in `[data-step]` rechts über der Karte. Raster bei 896 px Karte (inklusive Dekoktions-Unterzeile),
+  Umbruch bei 696 px und darunter.
+
+## 2026-10-10 — Rezeptversionen Etappe 4a: Ablage, Liste, Auswahl, Menü
+
+Erster PR der Etappe Versionen (Branch `feat/rezept-versionen`), ohne den Vergleichsdialog (4b). Vor dem
+Start mit dem Nutzer geklärt:
+
+- **Entscheidungen:** Jede Version ist ein **eigenes Rezept** mit eigener Datei, verknüpft über `rootId`
+  (id der v1) und `version`; eingebettet ins Rezept-JSON wäre die 16-KB-Body-Grenze (`kMaxBodyBytes`) nach
+  zwei, drei Versionen erreicht. Rezepte ohne die Felder sind v1, **keine Migration**. Bis zum Sud löst nur
+  der Menüpunkt „Neue Version als Entwurf“ (bei fertigen Versionen) eine Version aus; 5a ergänzt die
+  Konzept-Regel „Version mit Suden ändern = neue Version“. **Ältere Versionen sind bearbeitbar** (Vorschlag
+  im Konzept war nur ansehen). Liste zeigt die neueste Version mit Abzeichen ab v2. Menü: Neue Version,
+  Duplizieren, Exportieren (JSON), Diese Version löschen; BeerJSON statt BeerXML als offener Punkt.
+- **Firmware:** `recipeSummaryLine` (`RecipeFiles.h`) übernimmt `rootId` und `version` in den Listenindex,
+  keine neuen Routen. `openapi.yaml`: `RecipeSummary` um beide Felder, Beschreibungen von Tag, Liste und
+  `Recipe`.
+- **Web-UI:** `recipes.ts` mit `rootOf`/`versionOf`, `groupVersions`, `newVersion` (kopiert die geöffnete
+  Version als nächste Nummer, Entwurf), `duplicateRecipe`, `deleteRecipeVersions`; `exportRecipes` nimmt
+  optional nur bestimmte Versionen. Liste gruppiert, Löschen nimmt alle Versionen (Rückfrage nennt die
+  Zahl). Editor-Kopf: Auswahlfeld ab zwei Versionen (Nummer, Datum des letzten Speicherns, Status), Wechsel
+  fragt bei ungespeicherten Änderungen, „⋯“-Menü (Kopieren/Exportieren bei ungespeicherten Änderungen
+  gesperrt). Übersicht: Karte „Versionen“ (`pages/recipe/Versions.tsx`). `MenuItem` aus `MashTab.tsx` nach
+  `fields.tsx`, `saveJson` aus `BackupPage.tsx` nach `api.ts` (je zweiter Nutzer).
+- **Doku:** Konzept-Doc (Stand 4a, ältere Versionen bearbeitbar, BeerJSON), PLAN.md (4a da, 4b als
+  nächster Schritt, Regel für 5a, BeerJSON-Export).
+- **Prüfung:** `pnpm test` (360, neu: Altbestand als v1, Gruppierung, `newVersion` auch von älterer
+  Version, Duplizieren, Index-Felder und Löschen aller Versionen, Export einzelner Versionen), `typecheck`,
+  `build`, redocly (nur die bekannte info-license-Warnung). Firmware: PlatformIO-Registry war in dieser
+  Umgebung gesperrt, `test_recipe_files` deshalb von Hand mit g++, ArduinoJson 7.4.2 und Unity gebaut
+  (10/10, neu `test_summary_line_carries_the_version_fields`); `pio test -e native`, die Builds
+  `lilygo_t_display_s3_amoled`/`esp32dev` und der Gerätetest am LilyGo sind am 2026-10-12 nachgeholt
+  (Nachtrag unten). Im Node-Mock
+  mit Playwright: Liste mit v2-Abzeichen, Altrezept ohne Auswahlfeld, neue Version aus fertigem Rezept,
+  Wechsel mit Rückfrage, v1 bearbeiten und speichern, Duplizieren, Export beider Versionen, Version löschen
+  (danach öffnet die neueste), Rezept mit allen Versionen löschen, 375 px ohne Querscrollen (dabei den
+  Kopf umbrechend gemacht, sonst lief das Status-Abzeichen rechts aus dem Bild).
+- **Nachtrag 2026-10-12, Firmware und Gerät:** `pio test -e native` 176/176 (darunter
+  `test_summary_line_carries_the_version_fields`), `pio run -e lilygo_t_display_s3_amoled` (32,2 %,
+  2 109 873 von 6 553 600 Byte), `pio run -e esp32dev` (**98,0 % Flash, 1 861 753 von 1 900 544 Byte,
+  38 791 Byte frei**). Gegenüber 3c (1 860 097 Byte) sind das 1 656 Byte mehr; ein Build des Stands
+  direkt vor 4a (`1275ba8`) ergibt dieselben 1 861 753 Byte. 4a kostet auf esp32dev also nichts (die
+  Rezeptrouten liegen hinter `#ifndef BREWCTL_USE_LITTLEFS`), der Zuwachs stammt aus dem ESP-NOW-Fix
+  (#83) und dem Umpinnen von Bussen (#86). **Am LilyGo** (Firmware per OTA, `v0.5.0-78-ga5aff3e`; UI per
+  `webui-full.tar` an `POST /api/update/assets`, mit `VITE_STYLE_COMPARISON=1` gebaut, damit der
+  Stilvergleich auf dem Gerät bleibt):
+  - Als Wurzel diente ein eigenes Testrezept (`hwtest4av1`) statt eines vorhandenen, damit das Löschen
+    am Ende kein echtes Rezept trifft. `PUT /api/recipes/hwtest4av2` mit `rootId: hwtest4av1` und
+    `version: 2` → 204.
+  - `GET /api/recipes` führt `rootId` und `version` nur an diesem Eintrag, die drei älteren Einträge
+    haben die Felder nicht.
+  - Nach einem Neustart (`POST /api/network` mit unverändertem Hostnamen) unverändert. UI: eine Zeile
+    „HW-Test 4a“ mit Abzeichen „v2“; im Editor das Auswahlfeld (v1 Fertig, v2 Entwurf) und die Karte
+    „Versionen“.
+  - „⋯ › Diese Version löschen“ entfernt Datei und Indexzeile der v2; „Rezept löschen“ in der Liste
+    danach die v1. Beide `GET` liefern 404, `/recipes` enthält nur noch die zwei vorhandenen Rezepte.
+  - Nebenbefund: Der erste UI-Upload scheiterte mit einem SD-Schreibfehler, der zweite lief durch
+    (PLAN.md).
+
 ## 2026-10-12 — Log-Charts: umschaltbare Zeitachse
 
 Bei langen Aufzeichnungen gingen die jüngsten Änderungen im Chart unter. Die Zeitachse lässt sich

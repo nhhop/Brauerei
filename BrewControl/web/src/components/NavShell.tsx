@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
-import { route, useRouter } from 'preact-router';
+import { useRouter } from 'preact-router';
 import { useModule } from '../optionalModules';
 import { LayoutDashboard, ListChecks, ChartLine, BookOpen, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
@@ -72,19 +72,6 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
     req.catch(() => { /* denied by the browser — nothing to recover */ });
   }
 
-  // preact-router normally picks links up through a delegated click listener on
-  // document. On the device that delegation did not take the "/" link: no
-  // pushState, the browser performed a real document load instead, which reset
-  // the SPA and dropped fullscreen with it. Routing here removes that dependency.
-  function navigate(e: MouseEvent, href: string) {
-    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button) return;
-    e.preventDefault();
-    // Keep it away from document, or preact-router routes a second time and
-    // pushes a duplicate history entry.
-    e.stopPropagation();
-    route(href);
-  }
-
   function toggle() {
     if (mobileOpen) { setMobileOpen(false); return; }
     setExpanded((e) => {
@@ -99,7 +86,7 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
     const Icon = item.icon;
     return (
       <a key={item.href} href={item.href} title={item.label}
-        onClick={(e) => { setMobileOpen(false); navigate(e, item.href); }}
+        onClick={() => setMobileOpen(false)}
         class={`relative flex items-center gap-3 rounded px-3 py-2 text-sm transition-colors active:bg-subtle-pressed ${
           active ? 'bg-subtle-hover font-medium text-fg' : 'text-muted hover:bg-subtle-hover hover:text-fg'
         }`}>

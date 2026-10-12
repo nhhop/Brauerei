@@ -6,7 +6,8 @@ import { calcTreatment } from '../../recipeTreatment';
 import { calcMash, fmtClock } from '../../mashPlan';
 import { calcWater } from '../../recipeWater';
 import {
-  KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, type Ingredient, type Recipe, type Scope,
+  KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, replaceDecoctions, type Ingredient, type Recipe,
+  type RecipeSummary, type Scope,
 } from '../../recipes';
 import { badgeAccent, inp } from '../../ui';
 import { Card, Field, NumInput, Override } from './fields';
@@ -14,6 +15,7 @@ import { IngredientCard } from './IngredientCard';
 import { PhaseList } from './PhaseList';
 import { StyleCard } from './StyleCard';
 import { StylePicker } from './StylePicker';
+import { VersionsCard } from './Versions';
 import { STYLE_COMPARISON } from '../../styleSource';
 
 export interface TabProps {
@@ -21,6 +23,8 @@ export interface TabProps {
   onChange: (patch: Partial<Recipe>) => void;
   brewhouses: Brewhouse[] | null;  // null = the list did not load
   brewery: Brewery | null;         // null = not loaded (yet)
+  versions?: RecipeSummary[];      // this recipe's versions, oldest first (overview only)
+  onOpenVersion?: (id: string) => void;
 }
 
 export function Stat({ label, value, unit, digits, sub }: {
@@ -56,12 +60,15 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewe
   );
 }
 
-export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
+export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, onOpenVersion }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : null;
-  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery).extractKg : undefined).water;
+  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery).extractKg : undefined, brewery).water;
   const mash = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
+  // Picking a brewhouse without a decoction vessel leaves the plan's decoctions
+  // to be counted as rests; offer to turn them into rests for good.
+  const stranded = !!mash && !mash.decoction && recipe.mash.some((s) => s.kind === 'decoction');
   const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.ingredients ?? null).columns[0].after.so4Cl;
   return (
     <>
@@ -85,6 +92,15 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
           <EfficiencyField recipe={recipe} onChange={onChange} bh={bh} brewery={brewery} />
           <Field label="Sudhaus">
             <BrewhouseSelect recipe={recipe} onChange={onChange} brewhouses={brewhouses} />
+            {stranded && (
+              <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-caution">
+                <span>„{bh!.name}“ hat keinen zweiten beheizten Behälter, die Dekoktionen im Maischeplan zählen als Rasten.</span>
+                <button type="button" class="rounded-md border border-border px-2 py-0.5 text-muted hover:bg-fg/10"
+                  onClick={() => onChange({ mash: replaceDecoctions(recipe.mash, (s) => mash?.rows.find((r) => r.step.id === s.id)?.tempC) })}>
+                  Durch Rasten ersetzen
+                </button>
+              </div>
+            )}
           </Field>
           <div class="md:col-span-2">
             <Field label="Beschreibung">
@@ -121,6 +137,9 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery }: TabProps)
         </Card>
       )}
       {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
+      {versions && versions.length > 1 && onOpenVersion && (
+        <VersionsCard versions={versions} current={recipe.id} onOpen={onOpenVersion} />
+      )}
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">
           <li>{recipe.ingredients.length} Zutat{recipe.ingredients.length === 1 ? '' : 'en'}</li>

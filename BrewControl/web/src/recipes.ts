@@ -83,7 +83,7 @@ export interface Ingredient {
 // Mash plan (tab "Maischen", mashPlan.ts computes it). Every step has a target
 // temperature and a hold; the kind only sets how the mash gets there. The plan
 // always starts with `strike` and the first `doughIn`, which stay in place.
-export type MashStepKind = 'strike' | 'doughIn' | 'rest' | 'infusion' | 'decoction';  // decoction: stage 3d
+export type MashStepKind = 'strike' | 'doughIn' | 'rest' | 'infusion' | 'decoction';
 
 export interface MashStep {
   id: string;
@@ -93,11 +93,23 @@ export interface MashStep {
   durationMin?: number; // hold at tempC
   chargeId?: string;    // doughIn: the charge it adds; unset = the first
   infusion?: Infusion;
+  decoction?: Decoction;
 }
 
 // Water added to the mash. Volume and water temperature depend on each other;
 // `lead` names the one edited last. Ice melts at 0 °C and always leads by temperature.
 export interface Infusion { lead: 'volume' | 'temp'; volumeL?: number; waterTempC?: number; ice?: boolean }
+
+// Part of the mash boiled in a second vessel and put back (tempC: the mash after
+// that). Share and that temperature depend on each other; `lead` names the one
+// edited last. Thick takes mostly grain, thin only liquid.
+export interface Decoction {
+  lead: 'share' | 'temp';
+  sharePct?: number;    // of the mash volume, while it leads
+  thin?: boolean;       // unset = thick
+  rests: { tempC: number; durationMin: number }[];  // in the decoction vessel, before the boil
+  boilMin: number;
+}
 
 // A share of the grist that is mashed in by its own doughIn step. Without
 // `Recipe.charges` there is exactly one, implicit.
@@ -123,6 +135,8 @@ export interface Recipe {
   brewhouseId?: string;   // unset = no brewhouse chosen yet
   water?: RecipeWater;
   status: 'draft' | 'final';
+  rootId?: string;        // id of version 1; unset = this is version 1
+  version?: number;       // unset = 1
   updatedAt: number;
   ingredients: Ingredient[];
   mash: MashStep[];
@@ -223,19 +237,27 @@ export const isMashGrain = (i: Ingredient) => i.kind === 'fermentable' && i.timi
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-// Adds a charge and its doughIn step after `afterStepId` (unset = at the end).
-// With `fromId` and `pct`, that share of every grain of charge `fromId` moves
-// into it, so the kg per malt stay the same.
-export function addCharge(r: Recipe, opts: { fromId?: string; pct?: number; afterStepId?: string } = {}): Partial<Recipe> {
+// A new charge, named after the next free number, and the ingredients with
+// `pct` % of every grain of charge `fromId` moved into it (the kg per malt stay
+// the same). Without `fromId` or `pct` the charge is empty.
+export function splitCharge(r: Pick<Recipe, 'charges' | 'ingredients'>, fromId?: string, pct?: number): { charge: Charge; ingredients: Ingredient[] } {
   const charges = chargesOf(r);
   let n = charges.length + 1;
   while (charges.some((c) => c.name === `Schüttung ${n}`)) n++;
   const charge: Charge = { id: uid(), name: `Schüttung ${n}` };
   const ingredients = r.ingredients.flatMap((i) => {
-    if (!opts.fromId || !opts.pct || !isMashGrain(i) || chargeIdOf(i, charges) !== opts.fromId) return [i];
-    const move = round3((i.amount * opts.pct) / 100);
+    if (!fromId || !pct || !isMashGrain(i) || chargeIdOf(i, charges) !== fromId) return [i];
+    const move = round3((i.amount * pct) / 100);
     return [{ ...i, amount: round3(i.amount - move) }, { ...i, id: uid(), amount: move, chargeId: charge.id, auto: undefined }];
   });
+  return { charge, ingredients };
+}
+
+// Adds a charge and its doughIn step after `afterStepId` (unset = at the end),
+// splitting `pct` % off charge `fromId` (splitCharge).
+export function addCharge(r: Recipe, opts: { fromId?: string; pct?: number; afterStepId?: string } = {}): Partial<Recipe> {
+  const charges = chargesOf(r);
+  const { charge, ingredients } = splitCharge(r, opts.fromId, opts.pct);
   const step: MashStep = { id: uid(), kind: 'doughIn', name: `${charge.name} zugeben`, durationMin: 10, chargeId: charge.id };
   const at = r.mash.findIndex((s) => s.id === opts.afterStepId);
   const mash = at < 0 ? [...r.mash, step] : [...r.mash.slice(0, at + 1), step, ...r.mash.slice(at + 1)];
@@ -265,8 +287,48 @@ export function removeCharge(r: Recipe, id: string): Partial<Recipe> {
   };
 }
 
+// The plan with every decoction turned into a rest to the same temperature and
+// hold, for a brewhouse without a decoction vessel. `resultC` gives the
+// temperature a decoction led by its share reaches (the plan's row).
+export function replaceDecoctions(mash: MashStep[], resultC?: (s: MashStep) => number | undefined): MashStep[] {
+  return mash.map((s) => {
+    if (s.kind !== 'decoction') return s;
+    const { decoction, ...rest } = s;
+    const tempC = decoction?.lead === 'share' ? resultC?.(s) ?? s.tempC : s.tempC;
+    return { ...rest, kind: 'rest', tempC: tempC === undefined ? undefined : Math.round(tempC * 10) / 10 };
+  });
+}
+
 // What the list shows; GET /api/recipes returns only these fields.
-export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'updatedAt'>;
+export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'rootId' | 'version' | 'updatedAt'>;
+
+// ── Versions ─────────────────────────────────────────────────────────────────────
+// Every version is a recipe file of its own, linked by `rootId` (the id of
+// version 1) and numbered by `version`. A recipe without either is version 1 of
+// itself, so recipes from before versions need no migration.
+type Versioned = Pick<Recipe, 'id' | 'rootId' | 'version'>;
+
+export const rootOf = (r: Versioned) => r.rootId ?? r.id;
+export const versionOf = (r: Versioned) => r.version ?? 1;
+
+// The list grouped by recipe, each group ordered by version (newest last).
+export function groupVersions<T extends Versioned>(list: T[]): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const r of list) groups.set(rootOf(r), [...(groups.get(rootOf(r)) ?? []), r]);
+  return [...groups.values()].map((g) => g.sort((a, b) => versionOf(a) - versionOf(b)));
+}
+
+// A copy of `r` (any version) as the next version of its recipe, a draft.
+export function newVersion(r: Recipe, versions: Versioned[]): Recipe {
+  const next = Math.max(versionOf(r), ...versions.map(versionOf)) + 1;
+  return { ...structuredClone(r), id: uid(), rootId: rootOf(r), version: next, status: 'draft' };
+}
+
+// A recipe of its own from `r`, version 1, a draft.
+export function duplicateRecipe(r: Recipe): Recipe {
+  const { rootId: _r, version: _v, ...rest } = structuredClone(r);
+  return { ...rest, id: uid(), name: `${r.name} (Kopie)`, status: 'draft' };
+}
 
 const BASE = '/api/recipes';
 const urlOf = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
@@ -325,6 +387,11 @@ export async function deleteRecipe(id: string): Promise<void> {
   if (!r.ok) await failed(r);
 }
 
+// Deletes every version of a recipe, one request at a time.
+export async function deleteRecipeVersions(versions: Versioned[]): Promise<void> {
+  for (const v of versions) await deleteRecipe(v.id);
+}
+
 // ── Backup file ─────────────────────────────────────────────────────────────────
 // GET /api/backup covers /config only; recipes get their own file, built and
 // replayed here one request at a time (the SD read/write costs ~60 ms per recipe).
@@ -333,9 +400,10 @@ const BUNDLE_TYPE = 'brewcontrol-recipes';
 // The firmware's isValidRecipeId (RecipeFiles.h): the id becomes a file name.
 export const VALID_ID = /^[0-9a-zA-Z_-]{1,32}$/;
 
-export async function exportRecipes(): Promise<string> {
+// All recipes, or only the given ones (the versions of one recipe).
+export async function exportRecipes(only?: Versioned[]): Promise<string> {
   const recipes: Recipe[] = [];
-  for (const { id } of await fetchList()) {
+  for (const { id } of only ?? await fetchList()) {
     const r = await getRecipe(id);
     if (r) recipes.push(r);
   }

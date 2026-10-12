@@ -152,3 +152,12 @@ describe('efficiency chain', () => {
     expect(conversion.notes).toContain('Mit der Grundlage Konversion braucht die Stammwürze ein Sudhaus (Läutereffizienz).');
   });
 });
+
+describe('lauter efficiency and mash evaporation', () => {
+  it('water boiled off while mashing does not run off', () => {
+    const w = { sparge: false, strikeL: 30, spargeL: 0, absorptionL: 5, wortLossL: 0 };
+    const l = lauterEfficiency({ ...w, mashEvaporationL: 2 }, 4);
+    expect(l.runOffsL[0]).toBeCloseTo(23, 9);
+    expect(l.pct).toBeLessThan(lauterEfficiency(w, 4).pct);
+  });
+});

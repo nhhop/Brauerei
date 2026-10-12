@@ -1097,12 +1097,11 @@ void WebUI::begin(bool serve) {
   server_.addHandler(new PutJsonPrefixHandler("/api/buses/",
       [this, busDone](AsyncWebServerRequest* req, JsonVariant& json) {
         const String oldId = req->url().substring(strlen("/api/buses/"));
-        std::string id;
         DynamicItems::Result r{false};
         if (!underRegistryLock(req, r, [&] {
-              return items_.updateBus(oldId.c_str(), json.as<JsonObject>(), id);
+              return items_.updateBus(oldId.c_str(), json.as<JsonObject>(), reg_);
             })) return;
-        busDone(req, r, id, 200);
+        busDone(req, r, oldId.c_str(), 200);
       }));
 
   server_.addHandler(new DeletePrefixHandler("/api/buses/",

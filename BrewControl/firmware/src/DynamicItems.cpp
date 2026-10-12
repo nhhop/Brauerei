@@ -23,6 +23,8 @@ class OneWireBus : public Peripheral {
  public:
   explicit OneWireBus(int pin) : ow(pin) {}
   const char* type() const override { return "onewire"; }
+  // The DS18B20s hold a reference to ow, so moving the pin needs no rebuild.
+  void repin(int pin) { ow.begin(pin); }
   OneWire ow;
 };
 
@@ -32,7 +34,10 @@ class SpiBus : public Peripheral {
  public:
   SpiBus(int clk, int miso, int mosi) : clk(clk), miso(miso), mosi(mosi) {}
   const char* type() const override { return "spi"; }
-  const int clk, miso, mosi;
+  // The MAX31865s copied the pins into their constructors: the caller has to
+  // rebuild them (DynamicItems::updateBus).
+  void repin(int c, int mi, int mo) { clk = c; miso = mi; mosi = mo; }
+  int clk, miso, mosi;
 };
 
 // One of the chip's two I2C controllers (Wire or Wire1) on the bus's pins.
@@ -50,6 +55,11 @@ class I2cBus : public Peripheral {
   const char* type() const override { return "i2c"; }
   void end() override {
     if (!keepRunning_) wire.end();
+  }
+  // The devices hold a reference to wire; the controller (port) stays.
+  void repin(int sda, int scl) {
+    wire.end();
+    wire.begin(sda, scl);
   }
   TwoWire& wire;
 
@@ -155,7 +165,7 @@ DynamicItems::Result DynamicItems::addBus(const JsonObject& def, std::string& ne
 }
 
 DynamicItems::Result DynamicItems::updateBus(const char* id, const JsonObject& def,
-                                             std::string& newId) {
+                                             Registry& reg) {
   BusDef* old = nullptr;
   for (BusDef& b : buses_) if (b.id == id) old = &b;
   if (!old) return busFail("bus not found", false);
@@ -164,18 +174,44 @@ DynamicItems::Result DynamicItems::updateBus(const char* id, const JsonObject& d
   std::string err;
   if (!parseBusDef(def, d, err)) return busFail(err, false);
   if (d.type != old->type) return busFail("bus type cannot change", false);
-  if (d.id != old->id) {
-    const std::vector<std::string> users = busUsers(old->id);
-    if (!users.empty()) return busFail("bus " + old->id + " is used by " + joined(users), true);
-    if (findBus(d.id.c_str())) return busFail("bus " + d.id + " already exists", true);
+  // The id stays: items and devices refer to it, and the drivers they hold
+  // are re-pinned below instead of rebuilt.
+  d.id = old->id;
+  d.port = old->port;
+  const bool repin = !std::equal(d.pins, d.pins + kMaxBusPins, old->pins);
+  std::vector<std::string> rebuild;  // MAX31865s copy the SPI pins at construction
+  if (repin) {
     std::vector<PinUse> mine;
     busPinUses(d, mine);
     const PinCheck c = checkPinUses(currentBoard(), pinUses(), mine, old->id.c_str());
     if (!c.ok) return busFail(c.error, c.status == 409);
+    if (strcmp(d.type->type, "spi") == 0) {
+      for (const std::string& u : busUsers(old->id)) {
+        if (referencedByController(u.c_str()))
+          return busFail("sensor " + u + " is referenced by a controller", true);
+        rebuild.push_back(u);
+      }
+    }
   }
-  d.port = old->port;
   *old = d;
-  newId = d.id;
+  if (!repin) return {true};
+
+  // A bus without running users has no driver yet; it starts on the new pins.
+  Peripheral* live = peripherals_.find(d.id);
+  if (live) {
+    const char* t = d.type->type;
+    if (strcmp(t, "onewire") == 0) static_cast<OneWireBus*>(live)->repin(d.pins[0]);
+    else if (strcmp(t, "spi") == 0) static_cast<SpiBus*>(live)->repin(d.pins[0], d.pins[1], d.pins[2]);
+    else static_cast<I2cBus*>(live)->repin(d.pins[0], d.pins[1]);
+  }
+  for (const std::string& u : rebuild) {
+    SensorEntry* e = findSensorEntry(u.c_str());
+    if (!e) continue;
+    JsonDocument doc;
+    deserializeJson(doc, e->cfgJson);
+    const Result r = replaceSensor(u.c_str(), doc.as<JsonObject>(), reg);
+    if (!r.ok) return busFail("bus " + d.id + " re-pinned, but " + u + " failed: " + r.error, true);
+  }
   return {true};
 }
 
@@ -1185,15 +1221,20 @@ DynamicItems::Result DynamicItems::addController(const JsonObject& cfg,
 
 // ── Remove ────────────────────────────────────────────────────────────────
 
-DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
-  for (auto& e : controllers_) {
-    // sensorId may name a channel ("tank.derived") of the sensor being removed.
-    const size_t n = strlen(id);
-    if (e->sensorId == id ||
-        (e->sensorId.compare(0, n, id) == 0 && e->sensorId.size() > n &&
+bool DynamicItems::referencedByController(const char* sensorId) const {
+  for (const auto& e : controllers_) {
+    // sensorId may name a channel ("tank.derived") of the sensor.
+    const size_t n = strlen(sensorId);
+    if (e->sensorId == sensorId ||
+        (e->sensorId.compare(0, n, sensorId) == 0 && e->sensorId.size() > n &&
          e->sensorId[n] == '.'))
-      return {false, "sensor is referenced by a controller"};
+      return true;
   }
+  return false;
+}
+
+DynamicItems::Result DynamicItems::removeSensor(const char* id, Registry& reg) {
+  if (referencedByController(id)) return {false, "sensor is referenced by a controller"};
   for (auto it = sensors_.begin(); it != sensors_.end(); ++it) {
     if ((*it)->id == id) {
       reg.remove((*it)->ptr.get());
@@ -1567,7 +1608,7 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   for (JsonObject def : doc["buses"].as<JsonArray>()) {
     BusDef d;
     std::string err;
-    if (!parseBusDef(def, d, err) || findBus(d.id.c_str())) {
+    if (!parseBusDef(def, d, err, true) || findBus(d.id.c_str())) {
       Serial.printf("[buses] skipping bus %s (%s)\n", (const char*)(def["id"] | "?"),
                     err.empty() ? "duplicate" : err.c_str());
       continue;

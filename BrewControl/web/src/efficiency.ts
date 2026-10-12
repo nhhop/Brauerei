@@ -63,10 +63,11 @@ export interface Lauter {
 // wort held back: grain absorption and the dead spaces before the boil, plus
 // the volume of the dissolved extract (the water tab's absorption is the water
 // lost; the wort held back carries extract as well). Sparge additions are equal.
+// Water boiled off while mashing does not run off.
 // Fly sparging has no model: it counts as batch sparging with two additions
 // unless the brewhouse fixes a value from its own brews.
 export function lauterEfficiency(
-  w: Pick<Water, 'sparge' | 'strikeL' | 'spargeL' | 'absorptionL' | 'wortLossL'>,
+  w: Pick<Water, 'sparge' | 'strikeL' | 'spargeL' | 'absorptionL' | 'wortLossL'> & { mashEvaporationL?: number },
   dissolvedKg: number,
   opts: { method?: 'batch' | 'fly'; batches?: number; fixedPct?: number } = {},
 ): Lauter {
@@ -74,7 +75,7 @@ export function lauterEfficiency(
   const method: LauterMethod = w.sparge ? opts.method ?? 'batch' : 'full';
   const batches = method === 'full' ? 0 : method === 'fly' ? 2 : Math.max(1, Math.round(opts.batches ?? 1));
   const runOffsL = [
-    Math.max(w.strikeL - w.absorptionL - w.wortLossL, 0),
+    Math.max(w.strikeL - w.absorptionL - w.wortLossL - (w.mashEvaporationL ?? 0), 0),
     ...Array<number>(batches).fill(Math.max(w.spargeL, 0) / batches),
   ];
   if (method === 'fly' && opts.fixedPct !== undefined) {
@@ -139,7 +140,7 @@ export function resolveEfficiency(
   const w = recipe.water;
   for (let i = 0, l = 0.8; bh && i < 20; i++) {
     const eta = basis === 'conversion' ? input * l : mash;
-    const water = calcWater(recipe, bh, eta === undefined ? undefined : grist.otherExtractKg + eta * grist.grainExtractKg).water;
+    const water = calcWater(recipe, bh, eta === undefined ? undefined : grist.otherExtractKg + eta * grist.grainExtractKg, brewery).water;
     if (!water) break;
     const conversion = basis === 'conversion' ? input : (eta ?? 0) / l;
     lauter = lauterEfficiency(water, conversion * grist.grainExtractKg,
