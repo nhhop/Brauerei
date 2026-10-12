@@ -2148,7 +2148,12 @@ Belegungsplan kommt mit dem Sud. Entscheidungen und Begründung stehen in `rezep
   sperrt nicht, Anlegen, Bearbeiten (Wechsel auf „ohne Temperierung“ verwirft den Regler, der Fühler bleibt),
   Keg-Hinweis, Bruchzahl als Anzahl gesperrt, Löschen, `PUT`/`DELETE` auf der gespeicherten ID, 375 px ohne
   Querscrollen.
-- **Nicht geprüft:** Firmware-Compile und native Tests (176) — PlatformIO ist in der Cloud-Umgebung nicht
-  installiert, die Registry gesperrt. Zu erwarten, weil nur der SD-Block und eine schon genutzte Hilfsfunktion
-  berührt sind: `esp32dev` bleibt bei 1 860 097 Byte (97,9 %). Alles am Gerät; Punkt unter „Hardware-Verifikation
-  offen“ in PLAN.md.
+- **Nicht in der Cloud geprüft** (PlatformIO ist dort nicht installiert, die Registry gesperrt), **nach dem
+  Merge (#93) lokal vom Nutzer:** Firmware kompiliert, alle nativen Tests grün. `esp32dev`: Flash 98,0 %
+  (1 862 805 von 1 900 544 Byte, 37 739 Byte frei), RAM 18,7 % (61 176 von 327 680 Byte). Die Erwartung
+  „bleibt bei 1 860 097 Byte“ aus dem PR war falsch gestellt: Die Zahl stammte vom Stand vor mehreren
+  Merges, und der letzte gemessene Wert vor #93 war 1 861 753 Byte (PLAN.md, esp32dev-Flash). Der Zuwachs von
+  1 052 Byte gilt für alles, was seither in `dev` kam (u. a. die Zeitachsen-Route der Log-Charts, die Zutaten-
+  und die Gärkeller-Routen); wie viel davon der Gärkeller ist, ist nicht getrennt gemessen. Die
+  Gärkeller-Routen stehen im SD-Block und gehören nicht ins `esp32dev`-Image; ob `/api/fermenters` im ELF
+  fehlt, ist nicht geprüft. Offen bleibt alles am Gerät; Punkt unter „Hardware-Verifikation offen“ in PLAN.md.
