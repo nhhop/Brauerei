@@ -251,9 +251,13 @@ die Override-Felder von der Art abhängen; die Gesamtsicht kam auf Wunsch dazu).
 - **Eigene Zutaten** haben das Katalog-Schema mit `owner: 'user'` und Ids `user-…` (die Id ist ein
   Dateiname, ein Doppelpunkt ginge nicht). Gespeichert auf der SD-Karte unter `/api/ingredients`.
 - **Lagerposten** (`StockLot`, `/api/stock`): Menge in der Einheit der Art (Hilfsstoffe: ihre
-  `defaultUnit`), Jahrgang, beim Hopfen die Form, MHD, Notizen und **eigene Werte** (`overrides`) aus
+  `defaultUnit`), Jahrgang, MHD, Notizen und **eigene Werte** (`overrides`) aus
   dem Datenblatt der Charge, z. B. das Alpha des Hopfenjahrgangs. Leere Felder behalten den Wert der Zutat.
   Gruppen wie `oilComposition` werden eine Ebene tief gemischt (`web/src/stockLots.ts`).
+- **Beim Hopfen** zusätzlich Form, Lagertemperatur, Verpackung (fünf Stufen wie in J.-P. Hosoms Hop
+  Freshness Calculator: Stickstoff professionell, Schutzgas selbst, vakuumiert, eingewickelt, lose) und
+  „Alpha-Wert vom“ (`valuesDate`, Analyse- oder Abpackdatum). Gerechnet wird damit noch nicht; sie sind
+  für die Hopfenalterung in der IBU gedacht (PLAN.md).
 - **Im Rezept** bietet das Namensfeld die passenden Posten zuerst an („Lager“). Die Zeile speichert dann
   `ingredientId` der Zutat und `stockLotId`; alle Rechnungen holen ihren Eintrag über `entryOf` und nehmen
   die Werte des Postens. Ist der Posten gelöscht, rechnet die Zeile mit der Zutat weiter.

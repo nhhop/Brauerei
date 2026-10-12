@@ -2,7 +2,7 @@
 // form for own ingredients, the overrides of a stock lot and the detail view
 // all read this one table. Values only; name, manufacturer, origin and notes
 // are common to every kind and handled by the form itself.
-import type { CatalogIngredient, Range } from './ingredientCatalog';
+import type { CatalogIngredient, HopPackaging, Range } from './ingredientCatalog';
 
 export type FieldType = 'range' | 'number' | 'enum';
 
@@ -78,6 +78,14 @@ export const INGREDIENT_FIELDS: Record<CatalogIngredient['kind'], FieldDef[]> = 
     { key: 'defaultUnit', label: 'Einheit', type: 'enum', required: true, options: opts({ g: 'g', ml: 'ml' }) },
     { key: 'acidStrengthPct', label: 'Konzentration', type: 'number', unit: '%' },
   ],
+};
+
+export const HOP_PACKAGING_LABEL: Record<HopPackaging, string> = {
+  nitrogen: 'Stickstoff, professionell gespült',
+  'inert-gas': 'Schutzgas, selbst gespült',
+  vacuum: 'vakuumiert',
+  wrapped: 'eingewickelt / verschlossen',
+  loose: 'lose',
 };
 
 // The fields that apply to `c` (its kind, and `when`).

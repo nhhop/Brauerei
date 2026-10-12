@@ -5260,8 +5260,10 @@ components:
         one lot of an ingredient the user owns. `ref` is the catalog or own
         ingredient id, `amount` the stock in the ingredient's unit, `cropYear`
         the harvest year; `overrides` holds values from the lot's data sheet that
-        replace the ingredient's (a hop's alpha acids of this crop, say). The
-        firmware checks only `id`.
+        replace the ingredient's (a hop's alpha acids of this crop, say). Hop
+        lots also carry `storageTempC`, `packaging` (nitrogen, inert-gas,
+        vacuum, wrapped, loose) and `valuesDate`, the date the values hold for.
+        The firmware checks only `id`.
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       additionalProperties: true

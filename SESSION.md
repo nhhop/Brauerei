@@ -2114,4 +2114,7 @@ Katalog- und eigene Zutaten als Lagerposten mit Menge, Jahrgang, Form, MHD und e
   die Bittere steigt von 23 auf 31 IBU (Katalog 6,5–7,5 %); 390 px Breite ohne Querscrollen der Seite.
   **Nicht geprüft:** Firmware-Compile und native Tests — PlatformIO ließ sich installieren, aber die
   Registry (`api.registry.nm1.platformio.org`) ist in der Cloud-Umgebung gesperrt; alles am Gerät.
+- **Nachtrag Hopfenlagerung:** Hopfen-Lagerposten erfassen Lagertemperatur, Verpackung (fünf Stufen
+  wie in Hosoms Hop Freshness Calculator) und „Alpha-Wert vom“, die Zeile zeigt z. B. „−18 °C ·
+  vakuumiert“. Noch ohne Rechnung; Modell und Faktoren für die spätere Alterung in PLAN.md.
 

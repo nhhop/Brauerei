@@ -218,6 +218,9 @@ export interface Auxiliary extends IngredientBase {
 
 export type CatalogIngredient = Fermentable | Hop | Culture | Aroma | Auxiliary;
 
+// How a hop lot is packed, from best to worst protection against oxygen.
+export type HopPackaging = 'nitrogen' | 'inert-gas' | 'vacuum' | 'wrapped' | 'loose';
+
 // A stock item ("Lagerposten"): one lot of an ingredient the user actually owns.
 // Its values override the catalog's; the effective values are the catalog entry
 // with `overrides` laid on top (stockLots.ts). Stored on the SD card
@@ -229,6 +232,12 @@ export interface StockLot {
   form?: string;                                  // hops: 'cone' | 't90' | 't45' | 'lupulin' | 'extract'
   amount: number;                                 // current stock, in the ingredient's unit
   bestBefore?: string;                            // ISO date
+  // Hops: storage conditions and the date the lot's values hold for, for a
+  // later alpha decay in the bitterness (Garetz, packaging classes as in
+  // J.-P. Hosom's hop freshness calculator; PLAN.md). Not used yet.
+  storageTempC?: number;
+  packaging?: HopPackaging;
+  valuesDate?: string;                            // ISO date of the analysis / packing
   overrides?: Partial<CatalogIngredient>;         // exact values from the data sheet
   source?: Source;                                // e.g. the data sheet the values come from
   notes?: string;

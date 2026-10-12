@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
-import type { CatalogIngredient, StockLot } from '../../ingredientCatalog';
-import { fieldsOf, getField, isLotField, setField } from '../../ingredientFields';
+import type { CatalogIngredient, HopPackaging, StockLot } from '../../ingredientCatalog';
+import { HOP_PACKAGING_LABEL, fieldsOf, getField, isLotField, setField } from '../../ingredientFields';
 import { recipeKindOf, unitOfEntry } from '../../ingredientSource';
 import { btnPrimary, btnSecondary, inp, linkDanger } from '../../ui';
 import { Field, NumInput, OptNum } from '../recipe/fields';
@@ -62,6 +62,20 @@ export function StockLotForm({ initial, entry, onSave, onDelete, onClose }: {
             </select>
           </Field>
         )}
+        {entry.kind === 'hop' && (
+          <>
+            <Field label="Lagertemperatur (°C)">
+              <OptNum value={lot.storageTempC} onChange={(n) => patch('storageTempC', n)} />
+            </Field>
+            <Field label="Verpackung">
+              <select class={`${inp} w-full`} value={lot.packaging ?? ''}
+                onChange={(e) => patch('packaging', (e.currentTarget.value || undefined) as HopPackaging | undefined)}>
+                <option value="">–</option>
+                {Object.entries(HOP_PACKAGING_LABEL).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </Field>
+          </>
+        )}
         <Field label="Mindestens haltbar bis">
           <input type="date" class={`${inp} w-full`} value={lot.bestBefore ?? ''}
             onInput={(e) => patch('bestBefore', e.currentTarget.value || undefined)} />
@@ -72,6 +86,15 @@ export function StockLotForm({ initial, entry, onSave, onDelete, onClose }: {
         <>
           <h3 class="mb-1 mt-5 text-sm font-semibold">Eigene Werte</h3>
           <p class="mb-3 text-xs text-muted">Aus dem Datenblatt dieser Charge. Leer gelassen gilt der Wert der Zutat.</p>
+          {entry.kind === 'hop' && (
+            <div class="mb-3">
+              <Field label="Alpha-Wert vom (Analyse- oder Abpackdatum)">
+                <input type="date" class={inp} value={lot.valuesDate ?? ''}
+                  onInput={(e) => patch('valuesDate', e.currentTarget.value || undefined)} />
+              </Field>
+              <p class="mt-1 text-xs text-muted">Ab hier zählt später die Alterung. Leer: Schätzung aus dem Erntejahr.</p>
+            </div>
+          )}
           <div class="grid gap-3 sm:grid-cols-2">
             {overridable.map((f) => (
               <FieldInput key={f.key} def={f} value={getField(lot.overrides, f.key)} placeholder={getField(entry, f.key)}

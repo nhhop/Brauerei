@@ -6,6 +6,7 @@ import {
   CATALOG_KIND, deleteStockLot, deleteUserIngredient, findIngredients, loadCatalog, lotSummary, recipeKindOf,
   reloadCatalog, saveStockLot, saveUserIngredient, useCatalog, type Catalog,
 } from '../ingredientSource';
+import { HOP_PACKAGING_LABEL } from '../ingredientFields';
 import { KINDS, uid, type IngredientKind } from '../recipes';
 import { PageShell } from '../components/PageShell';
 import { TabBtn } from '../components/TabBtn';
@@ -274,11 +275,17 @@ function LotRow({ lot, entry, onEdit, onDelete }: {
   onDelete: (lot: StockLot, entry: CatalogIngredient) => void;
 }) {
   const expired = lot.bestBefore !== undefined && lot.bestBefore < today();
+  // Hops: "−18 °C · vakuumiert"
+  const storage = [
+    lot.storageTempC !== undefined && `${String(lot.storageTempC).replace('.', ',').replace('-', '−')} °C`,
+    lot.packaging && HOP_PACKAGING_LABEL[lot.packaging],
+  ].filter(Boolean).join(' · ');
   return (
     <div class="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
       <button type="button" class="min-w-0 flex-1 basis-48 text-left" onClick={() => onEdit(lot, entry)}>
         <span class="text-sm">{entry.name}</span>
         <span class="ml-2 text-xs text-muted">{lotSummary(lot, entry)}</span>
+        {storage && <span class="ml-2 text-xs text-muted">{storage}</span>}
         {lot.overrides && <span class={`ml-2 ${badgeAccent}`}>eigene Werte</span>}
         {lot.bestBefore && (
           <span class={`ml-2 ${expired ? badgeCaution : 'text-xs text-muted'}`}>
