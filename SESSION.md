@@ -1999,9 +1999,31 @@ Start mit dem Nutzer geklärt:
   Version, Duplizieren, Index-Felder und Löschen aller Versionen, Export einzelner Versionen), `typecheck`,
   `build`, redocly (nur die bekannte info-license-Warnung). Firmware: PlatformIO-Registry war in dieser
   Umgebung gesperrt, `test_recipe_files` deshalb von Hand mit g++, ArduinoJson 7.4.2 und Unity gebaut
-  (10/10, neu `test_summary_line_carries_the_version_fields`); **`pio test -e native` und die Builds
-  `lilygo_t_display_s3_amoled`/`esp32dev` stehen noch aus**, ebenso der Gerätetest am LilyGo. Im Node-Mock
+  (10/10, neu `test_summary_line_carries_the_version_fields`); `pio test -e native`, die Builds
+  `lilygo_t_display_s3_amoled`/`esp32dev` und der Gerätetest am LilyGo sind am 2026-10-12 nachgeholt
+  (Nachtrag unten). Im Node-Mock
   mit Playwright: Liste mit v2-Abzeichen, Altrezept ohne Auswahlfeld, neue Version aus fertigem Rezept,
   Wechsel mit Rückfrage, v1 bearbeiten und speichern, Duplizieren, Export beider Versionen, Version löschen
   (danach öffnet die neueste), Rezept mit allen Versionen löschen, 375 px ohne Querscrollen (dabei den
   Kopf umbrechend gemacht, sonst lief das Status-Abzeichen rechts aus dem Bild).
+- **Nachtrag 2026-10-12, Firmware und Gerät:** `pio test -e native` 176/176 (darunter
+  `test_summary_line_carries_the_version_fields`), `pio run -e lilygo_t_display_s3_amoled` (32,2 %,
+  2 109 873 von 6 553 600 Byte), `pio run -e esp32dev` (**98,0 % Flash, 1 861 753 von 1 900 544 Byte,
+  38 791 Byte frei**). Gegenüber 3c (1 860 097 Byte) sind das 1 656 Byte mehr; ein Build des Stands
+  direkt vor 4a (`1275ba8`) ergibt dieselben 1 861 753 Byte. 4a kostet auf esp32dev also nichts (die
+  Rezeptrouten liegen hinter `#ifndef BREWCTL_USE_LITTLEFS`), der Zuwachs stammt aus dem ESP-NOW-Fix
+  (#83) und dem Umpinnen von Bussen (#86). **Am LilyGo** (Firmware per OTA, `v0.5.0-78-ga5aff3e`; UI per
+  `webui-full.tar` an `POST /api/update/assets`, mit `VITE_STYLE_COMPARISON=1` gebaut, damit der
+  Stilvergleich auf dem Gerät bleibt):
+  - Als Wurzel diente ein eigenes Testrezept (`hwtest4av1`) statt eines vorhandenen, damit das Löschen
+    am Ende kein echtes Rezept trifft. `PUT /api/recipes/hwtest4av2` mit `rootId: hwtest4av1` und
+    `version: 2` → 204.
+  - `GET /api/recipes` führt `rootId` und `version` nur an diesem Eintrag, die drei älteren Einträge
+    haben die Felder nicht.
+  - Nach einem Neustart (`POST /api/network` mit unverändertem Hostnamen) unverändert. UI: eine Zeile
+    „HW-Test 4a“ mit Abzeichen „v2“; im Editor das Auswahlfeld (v1 Fertig, v2 Entwurf) und die Karte
+    „Versionen“.
+  - „⋯ › Diese Version löschen“ entfernt Datei und Indexzeile der v2; „Rezept löschen“ in der Liste
+    danach die v1. Beide `GET` liefern 404, `/recipes` enthält nur noch die zwei vorhandenen Rezepte.
+  - Nebenbefund: Der erste UI-Upload scheiterte mit einem SD-Schreibfehler, der zweite lief durch
+    (PLAN.md).
