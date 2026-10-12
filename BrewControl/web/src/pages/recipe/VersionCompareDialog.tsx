@@ -47,8 +47,8 @@ export function VersionCompareDialog({ versions, recipe, dirty, brewhouses, brew
   const a = sideOf(left), b = sideOf(right);
   const ready = !!a && !!b && a !== 'error' && b !== 'error';
   const sections = ready
-    ? diffRecipes(a, b, deriveRecipe(a, catalog?.ingredients ?? null, brewhouses, brewery),
-      deriveRecipe(b, catalog?.ingredients ?? null, brewhouses, brewery), { brewhouses, brewery })
+    ? diffRecipes(a, b, deriveRecipe(a, catalog?.entries ?? null, brewhouses, brewery),
+      deriveRecipe(b, catalog?.entries ?? null, brewhouses, brewery), { brewhouses, brewery })
     : [];
   const count = sections.reduce((n, s) => n + s.groups.reduce((m, g) => m + g.rows.filter((r) => r.state !== 'same').length, 0), 0);
 

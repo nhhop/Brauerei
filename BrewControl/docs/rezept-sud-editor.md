@@ -242,6 +242,25 @@ Erlaubte Zeitpunkte je Art (der Zeitpunkt-Select bietet nur diese an):
 Der Auswahl-Dialog für Zutaten ist für alle fünf Arten gleich aufgebaut: Suche, Filter-Chips je Art,
 Liste und Detailansicht.
 
+### Zutaten und Lager (Menü „Zutaten“, seit 2026-10-12)
+Eigener Hauptmenüpunkt `/zutaten` im Rezeptpaket. **Ein Tab je Art** (Slugs `vergaerbares`, `hopfen`,
+`hefen`, `aroma`, `hilfsstoffe`): oben „Im Lager“ mit den Posten dieser Art, darunter „Katalog & eigene“ mit
+Suche, Details, „Ins Lager“ und bei eigenen Zutaten Bearbeiten/Löschen. Dazu der Tab **„Lager gesamt“**
+über alle Arten (Entscheidung 2026-10-12: je Art statt „Übersicht / Lager“, weil man nach Art sucht und
+die Override-Felder von der Art abhängen; die Gesamtsicht kam auf Wunsch dazu).
+- **Eigene Zutaten** haben das Katalog-Schema mit `owner: 'user'` und Ids `user-…` (die Id ist ein
+  Dateiname, ein Doppelpunkt ginge nicht). Gespeichert auf der SD-Karte unter `/api/ingredients`.
+- **Lagerposten** (`StockLot`, `/api/stock`): Menge in der Einheit der Art (Hilfsstoffe: ihre
+  `defaultUnit`), Jahrgang, beim Hopfen die Form, MHD, Notizen und **eigene Werte** (`overrides`) aus
+  dem Datenblatt der Charge, z. B. das Alpha des Hopfenjahrgangs. Leere Felder behalten den Wert der Zutat.
+  Gruppen wie `oilComposition` werden eine Ebene tief gemischt (`web/src/stockLots.ts`).
+- **Im Rezept** bietet das Namensfeld die passenden Posten zuerst an („Lager“). Die Zeile speichert dann
+  `ingredientId` der Zutat und `stockLotId`; alle Rechnungen holen ihren Eintrag über `entryOf` und nehmen
+  die Werte des Postens. Ist der Posten gelöscht, rechnet die Zeile mit der Zutat weiter.
+- Welche Werte Formular, Overrides und Detailansicht zeigen, steht in einer Tabelle
+  (`web/src/ingredientFields.ts`); Lagerposten überschreiben nur Messwerte, nicht Art oder Kategorie.
+- Abbuchen beim Brauen kommt mit dem Sud (PLAN.md).
+
 ### Wasser
 - **Stand:** Wassermengen seit Etappe 2a (2026-10-06, `web/src/recipeWater.ts`), Aufbereitung von Hand und
   High Gravity seit Etappe 2b-1 (2026-10-07, `web/src/waterChem.ts`, `web/src/recipeTreatment.ts`), pH von

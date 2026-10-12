@@ -71,6 +71,9 @@ constexpr const char* kBrewhouseDir = "/brewhouses";
 constexpr const char* kBreweryFile = "/brewery.json";
 // Mash profiles (rest sequences of the recipe editor), not the controller programs.
 constexpr const char* kMashProfileDir = "/mashprofiles";
+// The user's own ingredients and stock lots (ingredient page of the recipe package).
+constexpr const char* kIngredientDir = "/ingredients";
+constexpr const char* kStockDir = "/stock";
 #endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
@@ -1960,6 +1963,10 @@ void WebUI::begin(bool serve) {
         req->send(204);
       }));
 
+  // ── Own ingredients and stock ───────────────────────────────────────────────
+  serveJsonDocDir_("/api/ingredients", kIngredientDir);
+  serveJsonDocDir_("/api/stock", kStockDir);
+
   // ── Brewery ─────────────────────────────────────────────────────────────────
   // Site values shared by all brewhouses, one file; opaque to the firmware.
   server_.on(AsyncURIMatcher::exact("/api/brewery"), HTTP_GET,
@@ -2617,6 +2624,48 @@ void WebUI::begin(bool serve) {
   HeapDiag::mark("routes");
   server_.begin();
 }
+
+#ifndef BREWCTL_USE_LITTLEFS
+// GET <base>, PUT and DELETE <base>/:id over one JsonDocDir, the same contract
+// as /api/brewhouses: the id is chosen by the client and must match the body.
+void WebUI::serveJsonDocDir_(const char* base, const char* dir) {
+  String prefix = String(base) + "/";
+  server_.on(AsyncURIMatcher::exact(base), HTTP_GET,
+             [this, dir](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", JsonDocDir::list(fs_, dir).c_str());
+  });
+
+  server_.addHandler(new PutJsonPrefixHandler(prefix.c_str(),
+      [this, dir, prefix](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(prefix.length());
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, dir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  server_.addHandler(new DeletePrefixHandler(prefix.c_str(),
+      [this, dir, prefix](AsyncWebServerRequest* req) {
+        String id = req->url().substring(prefix.length());
+        if (!JsonDocDir::remove(fs_, dir, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+}
+#endif
 
 // Drives another board's POST /api/settings so it connects to our hub. Runs
 // from tick(), i.e. loopTask: HTTPClient is synchronous, and blocking the

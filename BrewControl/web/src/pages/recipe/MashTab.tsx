@@ -48,10 +48,10 @@ const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, dura
 export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
-  const wort = catalog ? wortExtract(recipe, catalog.ingredients, bh, brewery) : undefined;
+  const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
   const water = bh ? calcWater(recipe, bh, wort?.extractKg, brewery).water : undefined;
   const plan = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
-  const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : undefined;
+  const stats = catalog ? calcStats(recipe, catalog.entries, bh, brewery) : undefined;
   return (
     <>
       <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />

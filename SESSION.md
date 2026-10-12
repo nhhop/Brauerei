@@ -2085,3 +2085,33 @@ jetzt je Log umschalten: **Linear** (wie bisher), **Log** (`−ln(1 + a/60 s)`) 
   liefert die Uhrzeit unter dem Cursor, die Route wird mit dem richtigen Body aufgerufen.
   **Nicht geprüft:** Firmware-Compile (`pio` ist in der Cloud-Umgebung nicht installiert), Flash-Größe
   des esp32dev (97,9 %, ~40 KB Luft; die Änderung ist klein) und alles am Gerät.
+## 2026-10-12 — Zutaten-Seite mit eigenen Zutaten und Lager
+
+Bisher gab es Zutaten nur als Vorschläge im Namensfeld des Rezepteditors, aus dem statischen Katalog.
+Neu ist der Menüpunkt **Zutaten** (`/zutaten/<tab>`, Rezeptpaket): ein Tab je Art mit dem Lager dieser Art
+oben und Katalog + eigenen Zutaten darunter, dazu „Lager gesamt“. Eigene Zutaten lassen sich anlegen,
+Katalog- und eigene Zutaten als Lagerposten mit Menge, Jahrgang, Form, MHD und eigenen Datenblattwerten
+übernehmen. Rezeptzeilen können auf einen Posten zeigen und rechnen dann mit dessen Werten (Branch
+`zutaten-lager`, eigener Worktree).
+
+- **Firmware:** zwei neue Sammlungen nach dem Muster der Sudhäuser, `/api/ingredients` (`/ingredients`)
+  und `/api/stock` (`/stock`), über eine Hilfsfunktion `WebUI::serveJsonDocDir_` (nur SD-Boards). Die
+  Routen der Sudhäuser und Maischprofile sind gleich gebaut und könnten sie ebenfalls nutzen, sind aber
+  unverändert. `openapi.yaml` (Tag Ingredients, Schemas `UserIngredient`/`StockLot`) und
+  README-Routentabelle im selben Zug.
+- **Web:** `ingredientSource.ts` lädt Katalog, eigene Zutaten und Lager (ohne Gerät bleibt der Katalog
+  nutzbar, `storeFailed`) und hat `reloadCatalog()` für die Seite; das Lesen aus `localStorage`
+  (`bc.userIngredients`, nie geschrieben) entfällt. `stockLots.ts` (rein): `effectiveIngredient`,
+  `withLotEntries`, `entryOf`; `Catalog.entries` hängt je Posten einen effektiven Eintrag mit der Id der
+  Zutat an, darum finden einfache Id-Suchen weiter die Zutat. `Ingredient.stockLotId`, Rechnungen
+  (`recipeStats`, `mashPh`, `recipeTreatment`, `IngredientCard`) über `entryOf`. Feldtabelle
+  `ingredientFields.ts`; Seite `pages/IngredientsPage.tsx`, Dialoge in `pages/ingredients/`.
+  Ids eigener Zutaten `user-…` statt `user:…` (Dateiname), Beispiel-JSON angepasst.
+- **Prüfung:** `pnpm test` (409, neu `stockLots.test.ts`, Speicherzugriff und Lager-Suche in
+  `ingredientSource.test.ts`, IBU mit Lagerposten in `recipeStats.test.ts`), `typecheck`, `build`,
+  redocly (nur die bekannte info-license-Warnung). Im Browser gegen einen Wegwerf-Mock der Sammlungen:
+  Motueka ins Lager mit Alpha 9,2, eigene Zutat angelegt, „Lager gesamt“, im Rezept den Posten gewählt —
+  die Bittere steigt von 23 auf 31 IBU (Katalog 6,5–7,5 %); 390 px Breite ohne Querscrollen der Seite.
+  **Nicht geprüft:** Firmware-Compile und native Tests — PlatformIO ließ sich installieren, aber die
+  Registry (`api.registry.nm1.platformio.org`) ist in der Cloud-Umgebung gesperrt; alles am Gerät.
+

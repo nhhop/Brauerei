@@ -1,10 +1,11 @@
 import { Plus, Trash2 } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import {
-  KINDS, TIMING_LABEL, allowedTimings, defaultTiming, uid, unitOf,
+  KINDS, TIMING_LABEL, allowedTimings, defaultTiming, uid,
   type Ingredient, type IngredientKind, type Scope,
 } from '../../recipes';
-import { useCatalog } from '../../ingredientSource';
+import { unitOfEntry, useCatalog } from '../../ingredientSource';
+import { entryOf } from '../../stockLots';
 import { agentOf } from '../../recipeTreatment';
 import { inp } from '../../ui';
 import { Card, NumInput } from './fields';
@@ -37,12 +38,9 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
   mark?: (i: Ingredient) => string | undefined;
 }) {
   const rows = all.filter(match);
-  const catalog = useCatalog()?.ingredients ?? null;
+  const catalog = useCatalog()?.entries ?? null;
   // An auxiliary measures in its catalog unit (acids in ml).
-  const unitFor = (i: Ingredient) => {
-    const c = catalog?.find((x) => x.id === i.ingredientId);
-    return c?.kind === 'auxiliary' ? c.defaultUnit : unitOf(i.kind);
-  };
+  const unitFor = (i: Ingredient) => unitOfEntry(i.kind, entryOf(i, catalog));
   const kinds = KINDS.filter((k) => allowedTimings(k.id, scope).length > 0);
 
   function patch(id: string, p: Partial<Ingredient>) {
@@ -51,7 +49,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
 
   function changeKind(i: Ingredient, k: IngredientKind) {
     const timings = allowedTimings(k, scope);
-    patch(i.id, { kind: k, ingredientId: undefined, timeMin: undefined, timing: timings.includes(i.timing) ? i.timing : timings[0] });
+    patch(i.id, { kind: k, ingredientId: undefined, stockLotId: undefined, timeMin: undefined, timing: timings.includes(i.timing) ? i.timing : timings[0] });
   }
 
   function add(init: Partial<Ingredient> = {}) {

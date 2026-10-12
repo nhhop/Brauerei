@@ -72,6 +72,7 @@ export interface Ingredient {
   kind: IngredientKind;
   name: string;
   ingredientId?: string; // catalog/user ingredient this row points to; unset = free text
+  stockLotId?: string;   // stock lot of that ingredient whose values count; unset or gone = the ingredient's
   amount: number;
   timing: Timing;
   timeMin?: number; // hops at "Kochen": minutes before the end of the boil; unset = whole boil

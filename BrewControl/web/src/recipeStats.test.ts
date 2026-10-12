@@ -3,6 +3,7 @@ import { TEMPLATES } from './brewhouse';
 import { calcStats, rangeValue, wortExtract } from './recipeStats';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 import type { CatalogIngredient } from './ingredientCatalog';
+import { withLotEntries } from './stockLots';
 
 const catalog = [
   { id: 'malt:pils', kind: 'fermentable', type: 'malt', name: 'Pilsner', colorEbc: [2.5, 4.5], extractDryPct: [80.5, null], moisturePct: [null, 5] },
@@ -93,6 +94,15 @@ describe('calcStats', () => {
       const s = calcStats(recipeWith([pils, hop({ timing: 'primary' })]), catalog);
       expect(s.ibu).toBeUndefined();
       expect(s.notes.some((x) => x.startsWith('1 Hopfengaben'))).toBe(true);
+    });
+
+    it('takes the alpha of a linked stock lot, and the catalog\'s once the lot is gone', () => {
+      const entries = withLotEntries(catalog, [{ id: 'lot1', ref: 'hop:motueka', amount: 100, overrides: { alphaPct: [14, 14] } }]);
+      const linked = hop({ stockLotId: 'lot1' });
+      const plain = calcStats(recipeWith([pils, linked]), catalog).ibu!;
+      expect(calcStats(recipeWith([pils, linked]), entries).ibu).toBeCloseTo(plain * 2, 6);
+      expect(calcStats(recipeWith([pils, hop({ stockLotId: 'gone' })]), entries).ibu).toBeCloseTo(plain, 9);
+      expect(calcStats(recipeWith([pils, hop({})]), entries).ibu).toBeCloseTo(plain, 9);
     });
 
     it('needs a wort strength', () => {

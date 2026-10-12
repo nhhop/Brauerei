@@ -8,6 +8,7 @@ import { resolveEfficiency, type Efficiency } from './efficiency';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient, Range } from './ingredientCatalog';
 import { resolveDilution, type DilutionResult } from './recipeWater';
+import { entryOf } from './stockLots';
 import type { Recipe } from './recipes';
 
 export interface RecipeStats {
@@ -38,11 +39,10 @@ export interface WortPart { id: string; kg: number; ebc: number; extractKg: numb
 export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse, brewery?: Brewery | null): {
   extractKg?: number; colors: WortPart[]; note?: string; efficiency: Efficiency;
 } {
-  const byId = new Map(catalog.map((c) => [c.id, c]));
   const worts = recipe.ingredients.filter(
     (i) => i.kind === 'fermentable' && (i.timing === 'mash' || i.timing === 'boil'));
   const fermentables = worts.flatMap((i) => {
-    const c = i.ingredientId ? byId.get(i.ingredientId) : undefined;
+    const c = entryOf(i, catalog);
     return c?.kind === 'fermentable' ? [{ id: i.id, kg: i.amount, c }] : [];
   });
   const note = fermentables.length < worts.length
@@ -78,8 +78,6 @@ export function beerEbc(colors: { kg: number; ebc: number }[], volumeL: number, 
 // `bh` is the recipe's brewhouse; it only matters for a dilution in the fermenter.
 // The brewery's altitude sets the boiling point for the bitterness.
 export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse, brewery?: Brewery | null): RecipeStats {
-  const byId = new Map(catalog.map((c) => [c.id, c]));
-  const find = (ingredientId?: string) => (ingredientId ? byId.get(ingredientId) : undefined);
   const volumeL = recipe.volumeL;
   const notes: string[] = [];
   const stats: RecipeStats = { notes };
@@ -100,7 +98,7 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
   // Alcohol: first yeast with a catalog link that states an attenuation.
   const yeast = recipe.ingredients
     .filter((i) => i.kind === 'yeast')
-    .map((i) => find(i.ingredientId))
+    .map((i) => entryOf(i, catalog))
     .find((c) => c?.kind === 'culture' && 'attenuationPct' in c);
   if (stats.ogPlato !== undefined) {
     if (yeast && 'attenuationPct' in yeast) {
@@ -120,7 +118,7 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
     notes.push(`${hops.length - counted.length} Hopfengaben (Hop Back, Dip, Maische, Gärung) nicht in der Bittere`);
   }
   const bitter = counted.flatMap((i) => {
-    const c = find(i.ingredientId);
+    const c = entryOf(i, catalog);
     return c?.kind === 'hop' ? [{ i, c }] : [];
   });
   if (bitter.length < counted.length) {

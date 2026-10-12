@@ -1,4 +1,4 @@
-// Ingredient catalog schema (draft). Types only, nothing consumes them yet.
+// Ingredient catalog schema (draft): catalog entries, own ingredients and stock lots.
 //
 // Units are fixed per field and never stored with the value; FIELD_UNITS at the
 // bottom is the single place that names them. A source that delivers another
@@ -33,7 +33,7 @@ export interface Flavor {
 }
 
 export interface IngredientBase {
-  id: string;                                     // catalog: "malt:…", user: "user:…"
+  id: string;                                     // catalog: "malt:…", user: "user-…" (a file name on the SD card)
   kind: 'fermentable' | 'hop' | 'culture' | 'aroma' | 'auxiliary';
   owner: 'catalog' | 'user';
   name: string;
@@ -220,8 +220,8 @@ export type CatalogIngredient = Fermentable | Hop | Culture | Aroma | Auxiliary;
 
 // A stock item ("Lagerposten"): one lot of an ingredient the user actually owns.
 // Its values override the catalog's; the effective values are the catalog entry
-// with `overrides` laid on top. Stored with the user's data, not in the catalog.
-// Types only — the stock itself is not built yet.
+// with `overrides` laid on top (stockLots.ts). Stored on the SD card
+// (/api/stock), not in the catalog; the id becomes a file name.
 export interface StockLot {
   id: string;
   ref: string;                                    // catalog or user ingredient id
