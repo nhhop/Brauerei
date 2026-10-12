@@ -1,3 +1,4 @@
+import type { TimeAxisMode } from './timeAxis';
 // Wire format of GET /api/snapshot and the "snapshot" SSE event.
 // Mirrors SensActCtrl/src/core/RegistrySnapshot.cpp 1:1.
 
@@ -447,6 +448,7 @@ export interface LogConfig {
   maxGapSec: number;      // safety point: force a row after this gap (s)
   enabled: boolean;       // background logging on/off
   bindEnableTo?: string;  // controller id; if set, enabled follows it
+  timeAxis?: TimeAxisMode; // chart x-axis: older values compressed (default linear)
   session?: number;       // start epoch (s) of the current session, if any
 }
 

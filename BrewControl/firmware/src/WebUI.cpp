@@ -1425,6 +1425,7 @@ void WebUI::begin(bool serve) {
 
   // POST /api/logs/:id           — update config (resets session)
   // POST /api/logs/:id/enable    — {"enabled":bool} toggle logging
+  // POST /api/logs/:id/timeaxis  — {"timeAxis":"linear|log|sqrt"} chart x-axis (no session reset)
   // POST /api/logs/:id/clear     — close current session, start a fresh one
   server_.addHandler(new BodyPrefixHandler("/api/logs/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
@@ -1438,6 +1439,15 @@ void WebUI::begin(bool serve) {
           String id = tail.substring(0, tail.length() - strlen("/enable"));
           bool en = doc["enabled"] | true;
           if (!logs_.setEnabled(id.c_str(), en)) { req->send(404); return; }
+          logs_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (tail.endsWith("/timeaxis")) {
+          String id = tail.substring(0, tail.length() - strlen("/timeaxis"));
+          const char* mode = doc["timeAxis"] | "";
+          if (!LogStore::isTimeAxis(mode)) { req->send(400, "text/plain", "timeAxis must be linear, log or sqrt"); return; }
+          if (!logs_.setTimeAxis(id.c_str(), mode)) { req->send(404); return; }
           logs_.saveToSD(fs_);
           req->send(204);
           return;

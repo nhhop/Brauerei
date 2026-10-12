@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Snapshot, LogConfig } from '../types';
-import { getLogs, createLog, updateLog, deleteLog, logDownloadUrl, setLogEnabled, clearLog } from '../api';
+import { getLogs, createLog, updateLog, deleteLog, logDownloadUrl, setLogEnabled, setLogTimeAxis, clearLog } from '../api';
 
 type SaveCfg = Omit<LogConfig, 'id' | 'session'>;
 import { ChartCard } from '../components/ChartCard';
+import { TimeAxisSwitch } from '../components/TimeAxisSwitch';
+import { parseTimeAxis, type TimeAxisMode } from '../timeAxis';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { LogEditorModal } from '../components/LogEditorModal';
@@ -31,6 +33,11 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
     const next = !log.enabled;
     setLogs((ls) => ls.map((l) => l.id === log.id ? { ...l, enabled: next } : l));
     setLogEnabled(log.id, next).catch(() => {});
+  }
+
+  function changeTimeAxis(log: LogConfig, mode: TimeAxisMode) {
+    setLogs((ls) => ls.map((l) => l.id === log.id ? { ...l, timeAxis: mode } : l));
+    setLogTimeAxis(log.id, mode).catch(() => {});
   }
 
   async function doClear(log: LogConfig) {
@@ -106,6 +113,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                       <span class={log.enabled ? 'text-fg' : 'text-muted'}>Aktiv</span>
                     </span>
                   )}
+                  <TimeAxisSwitch value={parseTimeAxis(log.timeAxis)} onChange={(m) => changeTimeAxis(log, m)} />
                   <a href={`/logs/${log.id}/archive`}
                     class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">
                     Archiv
@@ -129,7 +137,7 @@ export function LogsPage({ snap }: { snap: Snapshot | null; path?: string }) {
                   </button>
                 </div>
               </div>
-              <ChartCard key={versions.get(log.id) ?? 0} log={log} snap={snap} />
+              <ChartCard key={versions.get(log.id) ?? 0} log={log} snap={snap} timeAxis={parseTimeAxis(log.timeAxis)} />
             </div>
           ))}
         </div>

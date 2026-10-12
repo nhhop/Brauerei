@@ -1610,6 +1610,36 @@ paths:
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
+  /api/logs/{id}/timeaxis:
+    parameters: [{ $ref: "#/components/parameters/HexId" }]
+    post:
+      tags: [Data Logs]
+      operationId: setLogTimeAxis
+      summary: Set the chart time axis of a log
+      description: |
+        Display setting only. Unlike `POST /api/logs/{id}` it does not reset the
+        current session. `log` and `sqrt` compress older values so the newest
+        ones keep their width.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timeAxis]
+              properties:
+                timeAxis: { $ref: "#/components/schemas/TimeAxis" }
+            example: { timeAxis: log }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: Body is `invalid JSON` or `timeAxis must be linear, log or sqrt`.
+          content:
+            text/plain: { schema: { type: string } }
+        "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+
   /api/logs/{id}/clear:
     parameters: [{ $ref: "#/components/parameters/HexId" }]
     post:
@@ -4510,6 +4540,17 @@ components:
           description: |
             Id of a controller or program whose run state gates logging. Empty
             to unbind.
+        timeAxis:
+          allOf: [{ $ref: "#/components/schemas/TimeAxis" }]
+          description: Kept unchanged when absent.
+
+    TimeAxis:
+      type: string
+      enum: [linear, log, sqrt]
+      default: linear
+      description: |
+        Chart x-axis of a log. `log` and `sqrt` compress older values (by their
+        age); `linear` shows the whole session evenly.
 
     LogConfig:
       type: object
@@ -4522,6 +4563,7 @@ components:
         maxGapSec: { type: integer }
         enabled: { type: boolean }
         bindEnableTo: { type: string, description: Omitted when unbound. }
+        timeAxis: { $ref: "#/components/schemas/TimeAxis" }
         series: { type: array, items: { $ref: "#/components/schemas/LogSeries" } }
         session:
           type: integer

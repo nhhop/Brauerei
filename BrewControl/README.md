@@ -751,6 +751,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/logs` | GET, POST | Log-Konfigurationen auflisten / anlegen |
 | `/api/logs/<id>` | POST, DELETE | Log-Konfiguration ändern / löschen |
 | `/api/logs/<id>/enable` | POST | Logging an-/abschalten |
+| `/api/logs/<id>/timeaxis` | POST | Zeitachse des Charts (linear/log/sqrt), ohne Session-Reset |
 | `/api/logs/<id>/clear` | POST | Laufende Session schließen, neue beginnen |
 | `/api/logs/<id>/sessions` | GET | Aufgezeichnete Sessions auflisten |
 | `/api/logs/<id>/sessions/<start>` | DELETE | Eine Session löschen |

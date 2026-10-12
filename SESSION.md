@@ -1822,3 +1822,27 @@ Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit 
   Duplizieren, Speichern aus dem Plan, Löschen, 375 px ohne Querscrollen, SD-Fehlerfall. Am LilyGo
   (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
   DELETE → 404.
+
+## 2026-10-12 — Log-Charts: umschaltbare Zeitachse
+
+Bei langen Aufzeichnungen gingen die jüngsten Änderungen im Chart unter. Die Zeitachse lässt sich
+jetzt je Log umschalten: **Linear** (wie bisher), **Log** (`−ln(1 + a/60 s)`) und **Quadr.**
+(`−√a`), mit `a` = Alter gegenüber dem neuesten Punkt, der damit immer rechts steht und am breitesten ist.
+
+- **Umsetzung Web:** `web/src/timeAxis.ts` (reine Funktionen: `makeScale`, `ageSplits`, `ageLabel`) und
+  `ChartCard.tsx` mit einer uPlot-Skala `distr: 100` (`fwd`/`bwd`). Die Daten bleiben in Epoch-Sekunden,
+  deshalb brauchten `cursorX`, `interpAt` und `isZoomed` keine Änderung. Ticks stehen in den nichtlinearen
+  Modi bei runden Altern und tragen Beschriftungen wie „−2 h“. Umschalter `TimeAxisSwitch.tsx` im Kopf der
+  Karte (Dashboard, Logs-Seite), das Archiv zeigt den gespeicherten Modus ohne Schalter.
+  **Falle:** `distr: 100` erbt uPlots Tick-Filter der Log-Achse (`sc.log == 10`), der die meisten Splits
+  auf `null` setzt — die Achse braucht ein eigenes `filter`.
+- **Ablage:** pro Log auf dem Gerät (`LogConfig.timeAxis`, Default `linear`). Eigene Route
+  `POST /api/logs/{id}/timeaxis` statt des normalen Updates, weil `LogStore::update()` die Session
+  zurücksetzt; `fillFromJson` behält den gespeicherten Wert, wenn der Body keinen mitbringt.
+  `openapi.yaml` (Schema `TimeAxis`) und README-Routentabelle im selben Zug.
+- **Prüfung:** `pnpm test` (331, neu `timeAxis.test.ts`: Umkehrbarkeit, Monotonie, Splits),
+  `typecheck`, `build`, redocly (nur die bekannte info-license-Warnung). Im Browser gegen einen
+  Wegwerf-Mock: 3 Tage Daten mit schnellem Anstieg in den letzten 10 min, alle drei Modi, Legende
+  liefert die Uhrzeit unter dem Cursor, die Route wird mit dem richtigen Body aufgerufen.
+  **Nicht geprüft:** Firmware-Compile (`pio` ist in der Cloud-Umgebung nicht installiert), Flash-Größe
+  des esp32dev (97,9 %, ~40 KB Luft; die Änderung ist klein) und alles am Gerät.

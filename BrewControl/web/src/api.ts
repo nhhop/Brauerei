@@ -1,4 +1,5 @@
 import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo, PeripheralsInfo } from './types';
+import type { TimeAxisMode } from './timeAxis';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -328,6 +329,10 @@ export async function deleteLog(id: string): Promise<void> {
 
 export function setLogEnabled(id: string, enabled: boolean): Promise<void> {
   return postJson(`/api/logs/${encodeURIComponent(id)}/enable`, { enabled });
+}
+
+export function setLogTimeAxis(id: string, timeAxis: TimeAxisMode): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}/timeaxis`, { timeAxis });
 }
 
 export function clearLog(id: string): Promise<void> {
