@@ -2183,7 +2183,7 @@ jetzt (Branch `feat/sud-geruest`, eigener Worktree).
   `RecipeStore.cpp` mit Stub-Headern auf Syntax geprüft. Im Browser gegen einen Wegwerf-Mock: Sud aus
   fertigem Rezept, Gärplatz wählen und speichern, Start bucht 30 g Motueka ab (250 → 220) und schreibt die
   Kopien, Rezept speichern legt v2 an, v1 und das Rezept lassen sich nicht löschen, Löschen mit Zurückbuchen
-  (220 → 250), Sud-Export, 390 px ohne Querscrollen, Konsole ohne Fehler. **Nicht geprüft:**
-  Firmware-Compile und `pio test` (PlatformIO-Registry in der Cloud-Umgebung gesperrt), alles am Gerät
-  (PLAN.md).
+  (220 → 250), Sud-Export, 390 px ohne Querscrollen, Konsole ohne Fehler. Firmware-Compile und
+  `pio test` (178) nach dem Merge lokal vom Nutzer grün; in der Cloud-Umgebung ist die PlatformIO-Registry
+  gesperrt. **Nicht geprüft:** alles am Gerät (PLAN.md).
 
