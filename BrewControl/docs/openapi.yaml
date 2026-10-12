@@ -5417,9 +5417,11 @@ components:
         Owned by the web UI (`web/src/brews.ts`, type `Brew`). Besides the index
         fields of `BrewSummary`: `brewhouseId`, `startedAt`, `frozen` (copies
         of brewhouse, brewery, fermenter and ingredient values taken at the
-        start), `booked` (amounts taken from stock lots) and `notes`. The
-        firmware keeps whatever it is given, so only `id` is fixed here; the
-        16 KB body limit applies.
+        start), `booked` (amounts taken from stock lots), `notes` and the
+        brew day values `measurements`, `checked`, `rowAmounts` and
+        `phaseNotes`. The UI saves those one at a time onto a freshly read copy
+        (read, change, `PUT`). The firmware keeps whatever it is given, so only
+        `id` is fixed here; the 16 KB body limit applies.
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       additionalProperties: true

@@ -6,7 +6,7 @@
 // stock lots' amounts from stock (`booked`). Brews live on the device's SD card
 // behind /api/brews, with an index like the recipes (RecipeFiles.h).
 import { failed } from './api';
-import type { Brewery, Brewhouse } from './brewhouse';
+import type { Brewery, Brewhouse, MeasureKey } from './brewhouse';
 import type { Fermenter } from './cellar';
 import { importBundle, makeBundle, type BundleKind } from './docBundle';
 import type { CatalogIngredient } from './ingredientCatalog';
@@ -25,6 +25,13 @@ export const PHASES = [
   { id: 'maturation', label: 'Reifung' },
   { id: 'bottling', label: 'Abfüllung' },
 ] as const;
+
+export type PhaseId = (typeof PHASES)[number]['id'];
+
+// A brew day value: the brewhouse's measurements plus the mash pH after the
+// acid (5b-2). Gravities in °P. `src` is the sensor it was taken from.
+export type MeasureId = MeasureKey | 'mashPhAcid';
+export interface Measurement { v: number; at: number; src?: string }
 
 export interface Frozen {
   brewhouse?: Brewhouse;
@@ -55,6 +62,11 @@ export interface Brew {
   frozen?: Frozen;
   booked?: Booking[];
   notes?: string;
+  // Brew day (5b). Saved one field at a time on a fresh copy (patchBrew).
+  measurements?: Partial<Record<MeasureId, Measurement>>;
+  checked?: string[];                    // ticked keys, e.g. `row:<group>`, `dose:<column>:<row id>`
+  rowAmounts?: Record<string, number>;   // amount actually used per recipe row, in the row's unit
+  phaseNotes?: Partial<Record<PhaseId, string>>;
 }
 
 // What GET /api/brews returns: the firmware's brewSummaryLine.
@@ -123,6 +135,40 @@ export function occupancyOverlaps(brew: BrewSummary, all: BrewSummary[]): BrewSu
     && !!b.occupiedFrom && !!b.occupiedUntil && b.occupiedFrom <= until && from <= b.occupiedUntil);
 }
 
+// ── Brew day edits ──────────────────────────────────────────────────────────────
+// Each sets one field, so two devices editing different fields keep both.
+
+export function setMeasurement(b: Brew, key: MeasureId, m: Measurement | undefined): Brew {
+  const measurements = { ...b.measurements };
+  if (m) measurements[key] = m; else delete measurements[key];
+  return { ...b, measurements };
+}
+
+export function setChecked(b: Brew, key: string, on: boolean): Brew {
+  const rest = (b.checked ?? []).filter((k) => k !== key);
+  return { ...b, checked: on ? [...rest, key] : rest };
+}
+
+export function setRowAmount(b: Brew, rowId: string, amount: number | undefined): Brew {
+  const rowAmounts = { ...b.rowAmounts };
+  if (amount === undefined) delete rowAmounts[rowId]; else rowAmounts[rowId] = amount;
+  return { ...b, rowAmounts };
+}
+
+// The fields the page edits in a draft and saves with "Speichern".
+export const HEAD_FIELDS = [
+  'name', 'brewDate', 'brewhouseId', 'fermenterId', 'occupiedFrom', 'occupiedUntil', 'notes', 'phaseNotes',
+] as const satisfies readonly (keyof Brew)[];
+
+export const headOf = (b: Brew): Partial<Brew> => Object.fromEntries(HEAD_FIELDS.map((k) => [k, b[k]]));
+
+// `fresh` with the head fields of `draft`; an unset field is removed.
+export function withHead(fresh: Brew, draft: Brew): Brew {
+  const out: Record<string, unknown> = { ...fresh, ...headOf(draft) };
+  for (const k of HEAD_FIELDS) if (out[k] === undefined) delete out[k];
+  return out as unknown as Brew;
+}
+
 export const brewsOfVersion = <T extends Pick<BrewSummary, 'recipeId'>>(all: T[], recipeId: string) =>
   all.filter((b) => b.recipeId === recipeId);
 export const brewsOfRoot = <T extends Pick<BrewSummary, 'rootId'>>(all: T[], rootId: string) =>
@@ -165,6 +211,14 @@ export async function saveBrew(b: Brew): Promise<Brew> {
   const saved = { ...b, updatedAt: Date.now() };
   await put(saved);
   return saved;
+}
+
+// Loads the brew fresh, changes it and writes it back, so what another device
+// saved in the meantime stays.
+export async function patchBrew(id: string, change: (b: Brew) => Brew | Promise<Brew>): Promise<Brew> {
+  const fresh = await getBrew(id);
+  if (!fresh) throw new Error('Sud nicht gefunden');
+  return saveBrew(await change(fresh));
 }
 
 export async function deleteBrew(id: string): Promise<void> {

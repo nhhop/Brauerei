@@ -2197,3 +2197,32 @@ eines Tabs je Art) und ergänzt Buchungen mit Verlauf, Reservierung, Meldebestan
 Preise und Kosten; es bleibt bei einem Lager. Die Vorschläge und offenen Punkte stehen in
 `BrewControl/docs/rezept-sud-editor.md` › „Entwurf Rohstoffverwaltung“. **Nur Entwurf:** kein Code geändert,
 die Seiten sind mit dem Nutzer noch nicht im Detail durchgesprochen und wurden nicht gerendert geprüft.
+
+## 2026-10-13 — Sud 5b-1: Messwerte und Vorbereitung
+
+Plan 5b (Brautag in vier Teil-Etappen, je Session und PR) ist jetzt in `BrewControl/docs/rezept-sud-editor.md`
+› „Plan 5b“ eingetragen; der Doku-Commit der Planungssession fehlte. 5b-1 legt das Muster für alle
+Brautag-Tabs. Entscheidungen des Nutzers: neuer Sudhaus-Messwert `strikeTemp`; Ist-Menge je Gabe unter der
+Gruppe aus Zutat und Posten; Soll für Haupt- und Nachguss ist die Einfüllmenge; Branch `feat/sud-5b-1` mit
+PR.
+
+- **Rechnung:** `brewDay.ts` mit `brewTargets` (Kette der Rezept-Tabs auf den Kopien, mit dem Sudhaus des
+  Suds), neu die Stammwürze vor dem Kochen (ohne Kochzucker) und die Vorderwürze nach Troesters Mash Gravity
+  Test (`TODO(verify)`); `measuredEfficiency` als exakte Umkehrung (Maischeeffizienz, Sudhausausbeute,
+  Konversion, Läutereffizienz); `deviation` mit den Toleranzen an einer Stelle. `wortExtract` gibt dafür
+  Grist und `boilOtherKg` zurück.
+- **Modell und Speichern:** `measurements`, `checked`, `rowAmounts`, `phaseNotes` am Sud, ohne Migration.
+  `patchBrew` lädt frisch, setzt ein Feld und schreibt; auch das Kopf-Speichern setzt nur die Kopf-Felder,
+  „Abschließen“ ebenso. `rebook`/`lotTarget`/`withBooking` in `brewStart.ts`.
+- **UI:** `MeasureRow` (Soll, Ist, Abzeichen, Live-Wert eines verknüpften Fühlers mit „übernehmen“,
+  Stammwürze in °P/SG/°Bx), `PrepTab` (Wasser mit Dosen zum Abhaken, Zutaten nach Art mit Ist-Mengen und
+  Lagerwarnung, Notiz der Phase). Der Snapshot wird an die Sud-Seite durchgereicht.
+- **Prüfung:** `pnpm test` (469, neu `brewDay.test.ts` mit 11 Tests, `brews.test.ts` +9), `typecheck`,
+  `build` (Hauptbundle 471,03 kB, +0,03; Rezeptpaket +10,9 kB, gzip +3,8 kB), redocly (bekannte Warnung).
+  Im Browser gegen einen Wegwerf-Mock (Vorlage `herms3`, Fühler für Hauptgusstemperatur und Spindel):
+  Sollwerte vor dem Start, Start bucht ab, Messwert von Hand und per „übernehmen“, zwei Tabs setzen
+  verschiedene Felder und behalten beide, Kopf-Speichern danach lässt die Messwerte stehen, Reload zeigt den
+  Wert, Ist-Mengen buchen nach (5 → 5,4 kg) und zurück (→ 4,5 kg), Hopfen über den Bestand hinaus bleibt bei
+  der Buchung mit Hinweis, 390 px ohne Querscrollen, Konsole ohne Fehler. **Größe:** 29 Rezeptzeilen, alle
+  21 Messwerte, Haken, Ist-Mengen und Notiz: 9 539 Byte (Kopien 5,5 KB bei 8 eingefrorenen Zutaten; je
+  weitere Zutat etwa 0,4 KB). Firmware unverändert. **Nicht geprüft:** alles am Gerät (PLAN.md).

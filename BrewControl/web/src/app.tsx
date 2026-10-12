@@ -191,8 +191,8 @@ export function App() {
         <ProfilesPage path="/profiles" snap={snap} />
         <RecipesRoute path="/rezepte" />
         <RecipesRoute path="/rezepte/:id" />
-        <BrewsRoute path="/sude" />
-        <BrewsRoute path="/sude/:id" />
+        <BrewsRoute path="/sude" snap={snap} />
+        <BrewsRoute path="/sude/:id" snap={snap} />
         <IngredientsRoute path="/zutaten/:tab?" />
         <RechnerRoute path="/rechner" />
         <RechnerRoute path="/rechner/:calc" />

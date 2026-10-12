@@ -63,6 +63,28 @@ export function unbookStock(lot: StockLot, taken: number): StockLot {
   return { ...lot, amount: round3(lot.amount + taken) };
 }
 
+// Brings what a lot gave to the brew (`booked`) to `target`: takes more, down
+// to 0 at most, or gives back. `booked` comes back as what the brew now holds.
+export function rebook(lot: StockLot, booked: number, target: number): { lot: StockLot; booked: number } {
+  const diff = round3(Math.max(target, 0) - booked);
+  if (diff >= 0) {
+    const { lot: next, taken } = bookStock(lot, diff);
+    return { lot: next, booked: round3(booked + taken) };
+  }
+  return { lot: unbookStock(lot, -diff), booked: round3(booked + diff) };
+}
+
+// What the brew uses of a lot: per row the amount used, else the recipe's.
+export function lotTarget(recipe: Pick<Recipe, 'ingredients'>, rowAmounts: Record<string, number> | undefined, lotId: string): number {
+  return round3(recipe.ingredients
+    .filter((i) => i.stockLotId === lotId)
+    .reduce((s, i) => s + (rowAmounts?.[i.id] ?? i.amount), 0));
+}
+
+export function withBooking(booked: Booking[] | undefined, lotId: string, amount: number): Booking[] {
+  return [...(booked ?? []).filter((b) => b.lotId !== lotId), { lotId, amount }];
+}
+
 export function startBrew(brew: Brew, frozen: Frozen, booked: Booking[], now = Date.now()): Brew {
   return { ...brew, status: 'active', startedAt: now, frozen, booked, brewhouseId: frozen.brewhouse?.id ?? brew.brewhouseId };
 }

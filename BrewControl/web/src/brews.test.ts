@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, todayIso,
-  type Brew, type BrewSummary,
+  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, setChecked,
+  setMeasurement, setRowAmount, todayIso, withHead, type Brew, type BrewSummary,
 } from './brews';
-import { bookStock, freezeEntries, startBrew, stockPlan, unbookStock } from './brewStart';
+import { bookStock, freezeEntries, lotTarget, rebook, startBrew, stockPlan, unbookStock, withBooking } from './brewStart';
 import type { CatalogIngredient, Hop, StockLot } from './ingredientCatalog';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 import { withLotEntries } from './stockLots';
@@ -132,5 +132,67 @@ describe('brew backup file', () => {
   it('rejects a recipe backup', async () => {
     vi.stubGlobal('fetch', vi.fn());
     await expect(importBrews(JSON.stringify({ type: 'brewcontrol-recipes', version: 1, recipes: [] }))).rejects.toThrow('keine Sud-Sicherung');
+  });
+});
+
+describe('brew day edits', () => {
+  const base = { ...newBrew(recipe(), [], '2026-10-20'), measurements: { strikePh: { v: 7.2, at: 1 } }, checked: ['row:a'] };
+
+  it('sets one field and keeps the others', () => {
+    const b = setMeasurement(base, 'mashPh', { v: 5.4, at: 2, src: 'ph1' });
+    expect(b.measurements).toEqual({ strikePh: { v: 7.2, at: 1 }, mashPh: { v: 5.4, at: 2, src: 'ph1' } });
+    expect(setMeasurement(b, 'strikePh', undefined).measurements).toEqual({ mashPh: { v: 5.4, at: 2, src: 'ph1' } });
+    expect(base.measurements).toEqual({ strikePh: { v: 7.2, at: 1 } });
+  });
+
+  it('ticks idempotently, so two devices ticking the same key agree', () => {
+    expect(setChecked(setChecked(base, 'row:b', true), 'row:b', true).checked).toEqual(['row:a', 'row:b']);
+    expect(setChecked(base, 'row:a', false).checked).toEqual([]);
+  });
+
+  it('keeps an amount per recipe row', () => {
+    const b = setRowAmount(setRowAmount(base, 'r1', 4.2), 'r2', 30);
+    expect(b.rowAmounts).toEqual({ r1: 4.2, r2: 30 });
+    expect(setRowAmount(b, 'r1', undefined).rowAmounts).toEqual({ r2: 30 });
+  });
+
+  it('saves the head of a draft onto a fresh copy', () => {
+    const fresh = setMeasurement(base, 'mashPh', { v: 5.4, at: 2 });
+    const draft = { ...base, name: 'Neu', notes: undefined, measurements: {} };
+    const out = withHead(fresh, draft);
+    expect(out.name).toBe('Neu');
+    expect(out.measurements).toEqual(fresh.measurements);
+    expect('notes' in out).toBe(false);
+  });
+});
+
+describe('rebook', () => {
+  const lot = (amount: number): StockLot => ({ id: 'l1', ref: 'hop:motueka', amount });
+
+  it('takes the difference when more was used', () => {
+    expect(rebook(lot(100), 50, 60)).toEqual({ lot: lot(90), booked: 60 });
+  });
+
+  it('takes down to 0 at most', () => {
+    expect(rebook(lot(4), 50, 60)).toEqual({ lot: lot(0), booked: 54 });
+  });
+
+  it('gives back when less was used', () => {
+    expect(rebook(lot(10), 50, 42.5)).toEqual({ lot: lot(17.5), booked: 42.5 });
+    expect(rebook(lot(0.3), 0.2, 0.1).lot.amount).toBe(0.4);
+  });
+
+  it('sums the rows of a lot, with the amounts used where given', () => {
+    const r = recipe({ ingredients: [
+      row({ id: 'a', amount: 20, stockLotId: 'l1' }), row({ id: 'b', amount: 10, stockLotId: 'l1' }), row({ id: 'c', amount: 5 }),
+    ] });
+    expect(lotTarget(r, undefined, 'l1')).toBe(30);
+    expect(lotTarget(r, { b: 12.5, c: 99 }, 'l1')).toBe(32.5);
+  });
+
+  it('replaces a lot\'s booking or adds it', () => {
+    expect(withBooking([{ lotId: 'l1', amount: 5 }, { lotId: 'l2', amount: 1 }], 'l1', 7))
+      .toEqual([{ lotId: 'l2', amount: 1 }, { lotId: 'l1', amount: 7 }]);
+    expect(withBooking(undefined, 'l3', 2)).toEqual([{ lotId: 'l3', amount: 2 }]);
   });
 });

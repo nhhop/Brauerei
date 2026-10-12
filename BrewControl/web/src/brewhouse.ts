@@ -138,7 +138,7 @@ export const DRIVES: { value: Transfer['drive']; label: string }[] = [
 ];
 
 export type MeasureKey =
-  | 'grainTemp' | 'tapWaterTemp' | 'strikeVolume' | 'strikePh'
+  | 'grainTemp' | 'tapWaterTemp' | 'strikeVolume' | 'strikeTemp' | 'strikePh'
   | 'mashTemp' | 'mashPh' | 'firstWortGravity'
   | 'spargeVolume' | 'spargeTemp' | 'spargePh'
   | 'preBoilVolume' | 'preBoilGravity' | 'preBoilPh' | 'postBoilVolume' | 'postBoilGravity' | 'postBoilPh'
@@ -150,6 +150,7 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
   { key: 'grainTemp', step: 'strike', label: 'Malztemperatur', unit: '°C' },
   { key: 'tapWaterTemp', step: 'strike', label: 'Leitungswassertemperatur', unit: '°C' },
   { key: 'strikeVolume', step: 'strike', label: 'Hauptgussmenge', unit: 'l' },
+  { key: 'strikeTemp', step: 'strike', label: 'Hauptgusstemperatur', unit: '°C' },
   { key: 'strikePh', step: 'strike', label: 'pH Hauptguss', unit: 'pH' },
   { key: 'mashTemp', step: 'mash', label: 'Maischetemperatur', unit: '°C' },
   { key: 'mashPh', step: 'mash', label: 'pH Maische', unit: 'pH' },

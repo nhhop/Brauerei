@@ -43,10 +43,10 @@ export function RecipesRoute({ id }: { path?: string; id?: string }) {
 }
 
 // Route for /sude and /sude/:id.
-export function BrewsRoute({ id }: { path?: string; id?: string }) {
+export function BrewsRoute({ id, snap }: { path?: string; id?: string; snap: Snapshot | null }) {
   const r = usePackage('Sude', 'Die Sudverwaltung ist');
   if ('page' in r) return r.page;
-  return id ? <r.mod.BrewPage id={id} /> : <r.mod.BrewsPage />;
+  return id ? <r.mod.BrewPage id={id} snap={snap} /> : <r.mod.BrewsPage />;
 }
 
 // Route for /zutaten and /zutaten/:tab.
