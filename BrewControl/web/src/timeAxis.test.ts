@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ageLabel, ageSplits, makeScale, parseTimeAxis } from './timeAxis';
+import { ageLabel, ageSplits, makeScale, parseTimeAxis, tickLabel } from './timeAxis';
 
 const T_MAX = 1_700_000_000;
 const modes = ['log', 'sqrt'] as const;
@@ -71,5 +71,25 @@ describe('labels and parsing', () => {
     expect(parseTimeAxis('log')).toBe('log');
     expect(parseTimeAxis(undefined)).toBe('linear');
     expect(parseTimeAxis('exp')).toBe('linear');
+  });
+});
+
+describe('tickLabel', () => {
+  const time = (ts: number) => `T${ts}`;
+  const date = (ts: number) => `D${ts}`;
+  // Midday, so +-1 h never crosses a day boundary in any time zone.
+  const noon = new Date(2026, 9, 12, 12, 0, 0).getTime() / 1000;
+
+  it('shows age and time on the same day', () => {
+    expect(tickLabel(noon - 3600, noon, time, date)).toBe(`-1 h\nT${noon - 3600}`);
+  });
+
+  it('labels the newest tick', () => {
+    expect(tickLabel(noon, noon, time, date)).toBe(`jetzt\nT${noon}`);
+  });
+
+  it('adds the date on another day', () => {
+    const t = noon - 3 * 86400;
+    expect(tickLabel(t, noon, time, date)).toBe(`-3 d\nT${t}\nD${t}`);
   });
 });

@@ -2037,7 +2037,9 @@ jetzt je Log umschalten: **Linear** (wie bisher), **Log** (`−ln(1 + a/60 s)`) 
 - **Umsetzung Web:** `web/src/timeAxis.ts` (reine Funktionen: `makeScale`, `ageSplits`, `ageLabel`) und
   `ChartCard.tsx` mit einer uPlot-Skala `distr: 100` (`fwd`/`bwd`). Die Daten bleiben in Epoch-Sekunden,
   deshalb brauchten `cursorX`, `interpAt` und `isZoomed` keine Änderung. Ticks stehen in den nichtlinearen
-  Modi bei runden Altern und tragen Beschriftungen wie „−2 h“. Umschalter `TimeAxisSwitch.tsx` im Kopf der
+  Modi bei runden Altern und tragen mehrzeilige Beschriftungen: Alter („−2 h“), Uhrzeit und, wenn der Tick
+  an einem anderen Tag liegt als der neueste Punkt, das Datum. uPlots x-Achse hat feste 50 px, darum
+  wächst sie über `axis.size` mit der Zeilenzahl. Umschalter `TimeAxisSwitch.tsx` im Kopf der
   Karte (Dashboard, Logs-Seite), das Archiv zeigt den gespeicherten Modus ohne Schalter.
   **Falle:** `distr: 100` erbt uPlots Tick-Filter der Log-Achse (`sc.log == 10`), der die meisten Splits
   auf `null` setzt — die Achse braucht ein eigenes `filter`.

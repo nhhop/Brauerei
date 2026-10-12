@@ -83,3 +83,15 @@ export function ageLabel(a: number): string {
   if (s < 86400) return `-${Math.round(s / 3600)} h`;
   return `-${Math.round(s / 86400)} d`;
 }
+
+// Multi-line tick label for the compressed modes: age on top, clock time below,
+// and the date as a third line when the tick lies on another day than the newest
+// point (otherwise "-1 d" and "-3 d" would read the same).
+export function tickLabel(
+  t: number, tMax: number,
+  fmtTime: (ts: number) => string, fmtDate: (ts: number) => string,
+): string {
+  const lines = [ageLabel(tMax - t), fmtTime(t)];
+  if (new Date(t * 1000).toDateString() !== new Date(tMax * 1000).toDateString()) lines.push(fmtDate(t));
+  return lines.join('\n');
+}

@@ -4,8 +4,8 @@ import 'uplot/dist/uPlot.min.css';
 import type { Snapshot, LogConfig, TimeSettings } from '../types';
 import { getLogData, getSnapshot, resolveRef } from '../api';
 import { unitOf } from '../refs';
-import { formatTime, formatDateTime, loadTimeSettings } from '../time';
-import { ageLabel, ageSplits, makeScale, type TimeAxisMode } from '../timeAxis';
+import { formatTime, formatDate, formatDateTime, loadTimeSettings } from '../time';
+import { ageSplits, tickLabel, makeScale, type TimeAxisMode } from '../timeAxis';
 
 // Distinct line colors, reused cyclically across series.
 const PALETTE = [
@@ -154,11 +154,14 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost, 
           {
             stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: gridColor },
             ...(scale ? {
-              // Round ages before "now", labelled as ages, instead of clock times.
+              // Round ages before "now", labelled with the age plus the clock time.
               // distr 100 would inherit uPlot's log-axis tick filter, which nulls most splits.
               filter: (_u: uPlot, splits: number[]) => splits,
+              // uPlot's x axis has a fixed 50 px; grow it by 18 px per extra label line.
+              size: (_u: uPlot, values: string[] | null) =>
+                32 + 18 * Math.max(2, ...(values ?? []).map((v) => v.split('\n').length)),
               splits: (u: uPlot) => ageSplits(u.scales.x.min!, u.scales.x.max!, tMax(), scale.fwd),
-              values: (_u: uPlot, splits: number[]) => splits.map((t) => ageLabel(tMax() - t)),
+              values: (_u: uPlot, splits: number[]) => splits.map((t) => tickLabel(t, tMax(), (x) => formatTime(x, tset), (x) => formatDate(x, tset))),
             } : {
               // Use the configured time format (with seconds) instead of uPlot's default.
               values: (_u: uPlot, splits: number[]) => splits.map((t) => formatTime(t, tset)),
