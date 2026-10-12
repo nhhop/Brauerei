@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { LogConfig, LogSession, TimeSettings } from '../types';
 import { getLogs, getLogSessions, deleteLogSession, logDownloadUrl, getSettings } from '../api';
 import { ChartCard } from '../components/ChartCard';
+import { parseTimeAxis } from '../timeAxis';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { formatDateTime } from '../time';
@@ -92,7 +93,7 @@ export function ArchivePage({ id }: { id?: string; path?: string }) {
       {log && selected !== null && (
         <div class="mt-4 rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8">
           <div class="mb-2 text-sm font-medium">{formatDateTime(selected, time)}</div>
-          <ChartCard log={log} snap={null} session={selected} />
+          <ChartCard log={log} snap={null} session={selected} timeAxis={parseTimeAxis(log.timeAxis)} />
         </div>
       )}
     </PageShell>

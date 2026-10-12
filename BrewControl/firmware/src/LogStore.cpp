@@ -76,6 +76,7 @@ void LogStore::loadFromSD(fs::FS& sd) {
     l.maxGapSec    = obj["maxGapSec"] | 600;
     l.enabled      = obj["enabled"] | true;
     l.bindEnableTo = obj["bindEnableTo"] | "";
+    if (LogStore::isTimeAxis(obj["timeAxis"] | "")) l.timeAxis = obj["timeAxis"].as<const char*>();
     l.reconfigure();
     // Resume the session that was open at the last shutdown instead of starting a
     // fresh CSV on every boot — a reboot is not a session boundary.
@@ -111,6 +112,7 @@ String LogStore::serialize() const {
     obj["maxGapSec"] = l.maxGapSec;
     obj["enabled"]   = l.enabled;
     if (!l.bindEnableTo.empty()) obj["bindEnableTo"] = l.bindEnableTo.c_str();
+    obj["timeAxis"] = l.timeAxis.c_str();
     JsonArray sarr = obj["series"].to<JsonArray>();
     for (const auto& s : l.series) {
       JsonObject so = sarr.add<JsonObject>();
@@ -149,6 +151,8 @@ void LogStore::fillFromJson(LogCfg& l, const JsonObject& cfg) {
   l.maxGapSec    = cfg["maxGapSec"] | 600;
   l.enabled      = cfg["enabled"] | true;
   l.bindEnableTo = cfg["bindEnableTo"] | "";
+  // Display-only: keep the stored mode when the body doesn't carry one.
+  if (LogStore::isTimeAxis(cfg["timeAxis"] | "")) l.timeAxis = cfg["timeAxis"].as<const char*>();
   l.reconfigure();
 }
 
@@ -181,6 +185,18 @@ bool LogStore::remove(const char* id) {
   ScopedLock lk(mutex_);
   for (auto it = logs_.begin(); it != logs_.end(); ++it) {
     if (it->id == id) { logs_.erase(it); return true; }
+  }
+  return false;
+}
+
+bool LogStore::isTimeAxis(const char* mode) {
+  return mode && (strcmp(mode, "linear") == 0 || strcmp(mode, "log") == 0 || strcmp(mode, "sqrt") == 0);
+}
+
+bool LogStore::setTimeAxis(const char* id, const char* mode) {
+  ScopedLock lk(mutex_);
+  for (auto& l : logs_) {
+    if (l.id == id) { l.timeAxis = mode; return true; }
   }
   return false;
 }

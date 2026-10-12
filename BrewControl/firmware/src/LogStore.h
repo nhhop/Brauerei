@@ -46,6 +46,9 @@ class LogStore {
   // Enables/disables background logging without touching the session. False if
   // id not found. Persist with saveToSD afterwards.
   bool setEnabled(const char* id, bool enabled);
+  // Chart x-axis mode (display only, does not touch the session). false: unknown id.
+  bool setTimeAxis(const char* id, const char* mode);
+  static bool isTimeAxis(const char* mode);
 
   // Closes the current session so the next sample starts a fresh timestamped
   // file. Does not delete anything. False if id not found.
@@ -85,6 +88,7 @@ class LogStore {
     uint32_t    maxGapSec = 600;   // safety point: force a row after this gap
     bool        enabled   = true;  // background logging on/off
     std::string bindEnableTo;      // controller id; if set, enabled follows it
+    std::string timeAxis = "linear";  // chart x-axis: linear | log | sqrt (display only)
     // Runtime state (not persisted):
     time_t        sessionStart = 0;  // 0 = no session file opened yet
     uint32_t      lastSampleMs = 0;

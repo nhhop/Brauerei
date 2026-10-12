@@ -4,7 +4,7 @@ import type { LayoutNode, Sensor, Snapshot, ItemConfig, DashboardConfig, LogConf
 import {
   resetSensor, calibrateSensor, getConfig,
   getDashboards, createDashboard, updateDashboard, deleteDashboard, moveDashboard,
-  getLogs,
+  getLogs, setLogTimeAxis,
   getPrograms, createProgram, updateProgram, deleteProgram,
   getTimers, createTimer, updateTimer, deleteTimer,
   getProfiles, createProfile,
@@ -16,6 +16,8 @@ import { levelChannels } from '../levelBubble';
 import { ActuatorCard } from '../components/ActuatorCard';
 import { ControllerCard } from '../components/ControllerCard';
 import { ChartCard } from '../components/ChartCard';
+import { TimeAxisSwitch } from '../components/TimeAxisSwitch';
+import { parseTimeAxis, type TimeAxisMode } from '../timeAxis';
 import { SkeletonList } from '../components/Skeleton';
 import { ProgramCard } from '../components/ProgramCard';
 import { TimerCard } from '../components/TimerCard';
@@ -74,11 +76,18 @@ function ChartRow({ log, snap, isDesktop, editMode, onRemove }: {
   log: LogConfig; snap: Snapshot | null; isDesktop: boolean; editMode: boolean; onRemove: () => void;
 }) {
   const [legendHost, setLegendHost] = useState<HTMLDivElement | null>(null);
+  const [timeAxis, setTimeAxis] = useState<TimeAxisMode>(parseTimeAxis(log.timeAxis));
+  useEffect(() => setTimeAxis(parseTimeAxis(log.timeAxis)), [log.timeAxis]);
+  function changeTimeAxis(mode: TimeAxisMode) {
+    setTimeAxis(mode);
+    setLogTimeAxis(log.id, mode).catch(() => {});
+  }
   return (
     <div class="flex flex-col rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8 lg:min-h-0 lg:flex-1">
       <div class="mb-2 flex shrink-0 items-center gap-2">
         <span class="shrink-0 text-sm font-medium">{log.name}</span>
         <div ref={setLegendHost} class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap" />
+        <TimeAxisSwitch value={timeAxis} onChange={changeTimeAxis} />
         {editMode && (
           <button type="button" onClick={onRemove}
             title="Aus Dashboard entfernen"
@@ -86,7 +95,7 @@ function ChartRow({ log, snap, isDesktop, editMode, onRemove }: {
         )}
       </div>
       <div class="lg:min-h-0 lg:flex-1">
-        <ChartCard log={log} snap={snap} fill={isDesktop} legendHost={isDesktop ? legendHost : null} />
+        <ChartCard log={log} snap={snap} fill={isDesktop} legendHost={isDesktop ? legendHost : null} timeAxis={timeAxis} />
       </div>
     </div>
   );
