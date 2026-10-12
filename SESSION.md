@@ -2028,6 +2028,38 @@ Start mit dem Nutzer geklärt:
   - Nebenbefund: Der erste UI-Upload scheiterte mit einem SD-Schreibfehler, der zweite lief durch
     (PLAN.md).
 
+## 2026-10-12 — Rezeptversionen Etappe 4b: Vergleich
+
+Zweiter PR der Etappe Versionen (Branch `feat/rezept-versionen-vergleich`, ab `dev`): der Vergleichsdialog.
+Reine Web-UI-Arbeit, Firmware und `openapi.yaml` unverändert. Vor dem Start mit dem Nutzer geklärt:
+
+- **Entscheidungen:** Zutaten erst über die Zeilen-id zuordnen, den Rest über Art, Katalogzutat (Freitext:
+  Name) und Zeitpunkt; Maischschritte, Gärphasen und Teilschüttungen nur über die id. Wasser zeigt Eingaben
+  und Mengen, keine Ionen und keinen pH nach der Aufbereitung. Zutaten stehen einmal, nach Art. Am Handy
+  die Bezeichnung über zwei Werten nebeneinander. Vorgewählt Vorgänger gegen geöffnete Version. Geändert
+  ist, was im angezeigten Text abweicht, Zahlen mit Differenz. **„vX übernehmen“ entfällt.** Die geöffnete
+  Version geht mit dem Editor-Stand in den Vergleich („ungespeichert“).
+- **Web-UI:** `recipeDiff.ts` (pur): `matchRows` (id, dann Schlüssel; Reihenfolge der rechten Seite,
+  Entferntes hinter seinem Vorgänger), Umsortierung über die längste Folge in gleicher Reihenfolge, damit
+  eingefügte Zeilen nichts verschieben, `deriveRecipe` (dieselbe Kette wie die Übersicht: `calcStats`,
+  `calcWater`, `calcMash`), `diffRecipes` mit den sechs Bereichen. `pages/recipe/VersionCompareDialog.tsx`
+  nach dem Muster von `MashProfileDialog` (`dialogScrim`/`dialogFrame`/`dialogSheet`), lädt die nicht
+  geöffneten Versionen per `getRecipe` und hält sie im Dialog. `VersionsCard` mit Link „Vergleichen“,
+  `OverviewTab` öffnet den Dialog, `RecipeEditPage` reicht `dirty` durch (`TabProps.dirty`).
+- **Abweichungen vom Plan:** Die Konversion als eigene Zeile gibt es nur, wenn sie die Grundlage der
+  Brauerei ist (sonst rechnet das Rezept nicht mit `conversionPct`). Sobald eine Seite mehrere
+  Teilschüttungen hat, nennen beide Seiten die Schüttung (die ungeteilte „Schüttung 1“), sonst wäre jedes
+  Malz allein deshalb geändert. „Nur Unterschiede“ kürzt geänderte Einträge auf ihre geänderten Felder.
+- **Doku:** Konzept-Doc (Stand 4b, „Übernehmen“ gestrichen), PLAN.md (4b raus, nächster Schritt Sud 5a).
+- **Prüfung:** `pnpm test` (378, neu 18 in `recipeDiff.test.ts`: Zuordnung über id und Schlüssel, gleiche
+  Gaben in Listenreihenfolge, Reihenfolge mit Entferntem, Rundung, Differenztext, eingefügter und
+  umsortierter Maischschritt, Teilschüttung nur rechts, fehlendes Sudhaus, alle Bereiche), `typecheck`,
+  `build`. Im Node-Mock (Sudhaus aus der Vorlage „Maische-/Würzepfanne + Läuterbottich“, Brauerei mit zwei
+  Wässern, ein Rezept mit v1 bis v3 und Unterschieden in jedem Bereich): v2 gegen v3 und v1 gegen v3 mit
+  neu, geändert, entfernt und den Rechenwerten je Bereich; Auswahl sperrt die Version der anderen Seite;
+  Ausschlagmenge im Editor ungespeichert geändert, der Dialog zeigt den Wert und „ungespeichert“; „Nur
+  Unterschiede“ mit „Keine Unterschiede“ beim Würzekochen; 375 px ohne Querscrollen, Auswahlfelder bleiben
+  oben stehen; Konsole ohne Fehler. Kein Gerätetest (die Firmware ist unverändert).
 ## 2026-10-12 — Log-Charts: umschaltbare Zeitachse
 
 Bei langen Aufzeichnungen gingen die jüngsten Änderungen im Chart unter. Die Zeitachse lässt sich

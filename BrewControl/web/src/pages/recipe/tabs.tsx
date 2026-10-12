@@ -1,3 +1,4 @@
+import { useState } from 'preact/hooks';
 import { DEFAULT_CONVERSION, type Brewery, type Brewhouse } from '../../brewhouse';
 import { BASIS_LABEL, basisOf, efficiencyInput, lauterText, type Efficiency, type EfficiencyBasis } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
@@ -15,6 +16,7 @@ import { IngredientCard } from './IngredientCard';
 import { PhaseList } from './PhaseList';
 import { StyleCard } from './StyleCard';
 import { StylePicker } from './StylePicker';
+import { VersionCompareDialog } from './VersionCompareDialog';
 import { VersionsCard } from './Versions';
 import { STYLE_COMPARISON } from '../../styleSource';
 
@@ -25,6 +27,7 @@ export interface TabProps {
   brewery: Brewery | null;         // null = not loaded (yet)
   versions?: RecipeSummary[];      // this recipe's versions, oldest first (overview only)
   onOpenVersion?: (id: string) => void;
+  dirty?: boolean;                 // the recipe has unsaved edits (overview only)
 }
 
 export function Stat({ label, value, unit, digits, sub }: {
@@ -60,7 +63,8 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewe
   );
 }
 
-export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, onOpenVersion }: TabProps) {
+export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, onOpenVersion, dirty }: TabProps) {
+  const [comparing, setComparing] = useState(false);
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const stats = catalog ? calcStats(recipe, catalog.ingredients, bh, brewery) : null;
@@ -138,7 +142,11 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
       )}
       {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
       {versions && versions.length > 1 && onOpenVersion && (
-        <VersionsCard versions={versions} current={recipe.id} onOpen={onOpenVersion} />
+        <VersionsCard versions={versions} current={recipe.id} onOpen={onOpenVersion} onCompare={() => setComparing(true)} />
+      )}
+      {comparing && versions && versions.length > 1 && (
+        <VersionCompareDialog versions={versions} recipe={recipe} dirty={!!dirty} brewhouses={brewhouses} brewery={brewery}
+          onClose={() => setComparing(false)} />
       )}
       <Card title="Brauplan">
         <ul class="space-y-1 text-sm text-muted">

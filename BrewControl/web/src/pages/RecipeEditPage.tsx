@@ -183,7 +183,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
       </div>
 
       <View recipe={draft} onChange={(patch) => setDraft({ ...draft, ...patch })} brewhouses={brewhouses} brewery={brewery}
-        versions={versions} onOpenVersion={openVersion} />
+        versions={versions} onOpenVersion={openVersion} dirty={dirty} />
 
       <ConfirmModal open={typeof confirm === 'object' && confirm !== null} title="Änderungen verwerfen?"
         confirmLabel="Verwerfen" destructive
