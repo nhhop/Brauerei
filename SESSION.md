@@ -2260,3 +2260,37 @@ Session war daran gebunden), kein eigener PR.
   weiter, „Timer abbrechen“ und „Abschließen“ löschen das Programm, 390 px ohne Querscrollen, Konsole ohne
   Fehler. Gefunden und behoben: Der Name der Schüttung stand auch bei nur einer im Schritt.
 - **Nicht geprüft:** `pio test -e native` (erwartet 184), `pio run -e esp32dev` und alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Sud 5b-3: Würzekochen
+
+Umsetzung von „Plan 5b › 5b-3“ in `BrewControl/docs/rezept-sud-editor.md` (Stand 5b-3 dort). Entscheidungen des
+Nutzers: „Kochen starten“ beim Anheizen (Vorderwürze und Kochbeginn mit „Weiter“), das Programm führt den
+Whirlpool mit, „min vor Kochende“ im Rezept für jede Kochgabe. Branch `feat/sud-5b-3`.
+
+- **Web:** `brewPrograms.ts` mit `boilAdditions`, `boilTimerProgram` und `boilProgress`; `brewDay.ts` mit
+  `withResults`, Soll für pH der Würze (nur mit Würze-Gabe) und Luftdruck. Neu `pages/brew/BoilTab.tsx`
+  (Kochtimer mit Kopfzeile, Messwerte vor/nach dem Kochen mit Maischeeffizienz und Sudhausausbeute, Gaben
+  mit Haken, Uhrzeit und Ist-Menge, Würze abzweigen) und `BrewTimer.tsx` (aus dem Rasten-Timer gezogen, von
+  beiden Tabs genutzt). Sud-Felder `boilProgramId`, `addedAt`, Messwerte `speiseVolume`/`dipWortVolume`,
+  Ergebnisfelder `ogPlato`, `ogActual`, `mashEffPct`, `yieldPct`, `bottledL`. Rezept-Tab „Sude“ mit Spalten
+  und `EfficiencyChart.tsx`. `IngredientCard` zeigt das Zeitfeld für alle Kochgaben.
+- **Firmware:** `brewSummaryLine` trägt die fünf Ergebnisfelder; `AlarmStore::setField` schneidet über
+  `utf8PrefixLen` (`ProgramEvents.h`) an einer Zeichengrenze. OpenAPI: `BrewSummary` und die Beschreibung von
+  `Brew`.
+- **Beim Prüfen gefunden und behoben:** Zwei schnell hintereinander gestartete Feld-Speicherungen derselben
+  Seite überschrieben einander (jede liest den Sud frisch); die Sud-Seite reiht sie jetzt auf. Betraf auch
+  5b-1/5b-2. Die Haken im neuen Tab lasen die Checkbox erst beim Speichern und blieben leer.
+- **Prüfung:** `pnpm test` (497; `brewPrograms.test.ts` +10, `brewDay.test.ts` +5, `brews.test.ts` +2,
+  `EfficiencyChart.test.ts` 1), `typecheck`, `build` (Hauptbundle 471,59 kB, +0,01; Rezeptpaket 295,77 kB,
+  +10,3, gzip +3,6), redocly (bekannte Warnung). Firmware: `pio test -e native` 186 grün (neu je ein Test in
+  `test_recipe_files` und `test_program_events`), `pio run -e esp32dev` übersetzt, Flash 98,1 %
+  (1 864 169 von 1 900 544 Byte, 36 375 frei). Damit sind auch die bei 5b-2 offenen lokalen Läufe erledigt.
+  Im Browser gegen einen Wegwerf-Mock (Vorlage `herms3`, Programm-Uhr 20-fach): Start bucht ab, „Kochen
+  starten“ legt sieben Schritte an (Vorderwürze und Kochbeginn mit `confirm`, „Noch 10 min“ mit drei Gaben
+  und `notify`, Kochende, Whirlpool), „Weiter“ startet die Kochuhr, die Kopfzeile zählt Kochende und nächste
+  Gabe, vier Haken auf einmal bleiben mit Uhrzeit, Ist-Menge 18 → 21 g bucht nach (Lager 82 → 79), Messwerte
+  ergeben 72,2 % Maischeeffizienz und 55,2 % Sudhausausbeute, die Index-Zeile trägt die Ergebnisse, der
+  Maischen-Timer läuft nach dem Umzug, „Timer abbrechen“ und „Abschließen“ löschen die Programme, der
+  Rezept-Tab „Sude“ zeigt Spalten und Diagramm, 390 px ohne Querscrollen, Konsole ohne Fehler. Sud im Mock
+  am Ende 5 672 Byte.
+- **Nicht geprüft:** alles am Gerät (PLAN.md).

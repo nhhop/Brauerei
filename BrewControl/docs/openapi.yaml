@@ -5424,6 +5424,11 @@ components:
         occupiedFrom: { type: string, format: date, description: First day the fermenter is booked. }
         occupiedUntil: { type: string, format: date, description: Last day the fermenter is booked. }
         updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
+        ogPlato: { type: number, description: "Gravity after the boil the recipe expects, °P." }
+        ogActual: { type: number, description: "Gravity after the boil as measured, °P." }
+        mashEffPct: { type: number, description: "Mash efficiency as measured, percent." }
+        yieldPct: { type: number, description: "Brewhouse yield (Sudhausausbeute) as measured, percent." }
+        bottledL: { type: number, description: "Bottled volume in litres (not written yet)." }
 
     Brew:
       type: object
@@ -5433,9 +5438,12 @@ components:
         fields of `BrewSummary`: `brewhouseId`, `startedAt`, `frozen` (copies
         of brewhouse, brewery, fermenter and ingredient values taken at the
         start), `booked` (amounts taken from stock lots), `notes` and the
-        brew day values `measurements`, `checked`, `rowAmounts` and
-        `phaseNotes`. The UI saves those one at a time onto a freshly read copy
-        (read, change, `PUT`). The firmware keeps whatever it is given, so only
+        brew day values `measurements`, `checked`, `rowAmounts`, `restTemps`,
+        `addedAt` and `phaseNotes`, and the ids of the brew's programs on the
+        device (`mashProgramId`, `boilProgramId`). The UI saves those one at a
+        time onto a freshly read copy (read, change, `PUT`) and writes the
+        results of `BrewSummary` with every save. The firmware keeps whatever
+        it is given, so only
         `id` is fixed here; the 16 KB body limit applies.
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }

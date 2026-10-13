@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { route } from 'preact-router';
 import { Ellipsis } from 'lucide-preact';
 import { deleteProgram } from '../api';
 import {
   PHASES, STATUS_LABEL, deleteBrew, getBrew, headOf, listBrews, moveBrewDate, occupancyOverlaps, patchBrew, saveBrew,
-  withHead, type Brew, type BrewSummary,
+  summaryOf, withHead, type Brew, type BrewSummary,
 } from '../brews';
-import { brewInputs, brewTargets } from '../brewDay';
+import { brewInputs, brewTargets, withResults } from '../brewDay';
 import { unbookStock } from '../brewStart';
 import { getBrewery, listBrewhouses, type Brewery, type Brewhouse } from '../brewhouse';
 import { listFermenters, type Fermenter } from '../cellar';
@@ -19,16 +19,12 @@ import { PageShell } from '../components/PageShell';
 import { TabBtn } from '../components/TabBtn';
 import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Card, Field, MenuItem } from './recipe/fields';
+import { BoilTab } from './brew/BoilTab';
 import { MashTab } from './brew/MashTab';
 import { PrepTab, type Patch } from './brew/PrepTab';
 import { StartBrewDialog } from './brew/StartBrewDialog';
 import { formatIsoDate } from './brew/format';
 import { statusBadge } from './BrewsPage';
-
-const summaryOf = (b: Brew): BrewSummary => {
-  const { id, number, name, recipeId, rootId, version, status, brewDate, fermenterId, occupiedFrom, occupiedUntil, updatedAt } = b;
-  return { id, number, name, recipeId, rootId, version, status, brewDate, fermenterId, occupiedFrom, occupiedUntil, updatedAt };
-};
 
 // One brew. The head stays in a draft until "Speichern", as in the recipe
 // editor; brew day values save at once. Both write onto a fresh copy of the
@@ -50,6 +46,9 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const catalog = useCatalog();
+  // Brew day saves of this page run one after the other: each reads the brew
+  // fresh, so two started together would drop the first one's change.
+  const saving = useRef<Promise<void>>(Promise.resolve());
   // The recipe chain is heavy; the page re-renders with every live snapshot.
   const day = useMemo(() => {
     if (!recipe || !saved) return undefined;
@@ -97,8 +96,11 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
   const brewhouse = brewhouses?.find((b) => b.id === saved.brewhouseId);
   const fermenter = fermenters?.find((f) => f.id === saved.fermenterId);
 
+  // Every save carries the results the lists show (the brew's index line).
+  const results = (b: Brew) => (day ? withResults(b, day.targets) : b);
+
   async function persist(b: Brew) {
-    const s = await saveBrew(b);
+    const s = await saveBrew(results(b));
     setSaved(s);
     setDraft(s);
     setAll((l) => [...l.filter((x) => x.id !== s.id), summaryOf(s)]);
@@ -111,9 +113,12 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
     setAll((l) => [...l.filter((x) => x.id !== s.id), summaryOf(s)]);
   }
 
-  const patch: Patch = async (change) => {
-    setError(null);
-    try { adopt(await patchBrew(saved.id, change)); } catch { setError('Speichern fehlgeschlagen.'); }
+  const patch: Patch = (change) => {
+    saving.current = saving.current.then(async () => {
+      setError(null);
+      try { adopt(await patchBrew(saved.id, async (b) => results(await change(b)))); } catch { setError('Speichern fehlgeschlagen.'); }
+    });
+    return saving.current;
   };
 
   const save = () => patch((fresh) => withHead(fresh, draft!));
@@ -128,7 +133,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
 
   // The brew's programs on the device go with it; one already gone is fine.
   const dropPrograms = async () => {
-    if (saved.mashProgramId) await deleteProgram(saved.mashProgramId).catch(() => {});
+    for (const id of [saved.mashProgramId, saved.boilProgramId]) if (id) await deleteProgram(id).catch(() => {});
   };
 
   // Gives the taken amounts back to lots that still exist, then deletes.
@@ -181,8 +186,8 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
                       onClick={() => run(async () => {
                         await dropPrograms();
                         adopt(await patchBrew(saved.id, (b) => {
-                          const { mashProgramId: _, ...rest } = b;
-                          return { ...rest, status: 'done' };
+                          const { mashProgramId: _, boilProgramId: __, ...rest } = b;
+                          return results({ ...rest, status: 'done' });
                         }));
                       }, 'Abschließen fehlgeschlagen.')} />
                   )}
@@ -279,11 +284,14 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
             liveEntries={catalog?.entries ?? null} snap={snap} editable={!planned} patch={patch}
             notes={draft.phaseNotes?.mash} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, mash: t } })} />
         )
+      ) : tab === 'boil' ? (
+        !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
+          <BoilTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets}
+            snap={snap} editable={!planned} patch={patch}
+            notes={draft.phaseNotes?.boil} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, boil: t } })} />
+        )
       ) : (
-        <p class="text-sm text-muted">
-          {{ boil: 'Inhalt folgt mit Etappe 5b-3: Messwerte vor und nach dem Kochen, Hopfengaben, Kochtimer.' }[tab]
-            ?? 'Inhalt folgt mit Gärung, Reifung und Abfüllung (Etappe 5c), dazu der Belegungsplan.'}
-        </p>
+        <p class="text-sm text-muted">Inhalt folgt mit Gärung, Reifung und Abfüllung (Etappe 5c), dazu der Belegungsplan.</p>
       )}
 
       {dialog === 'start' && recipe && brewery && (

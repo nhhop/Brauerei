@@ -6,6 +6,7 @@
 
 using BrewControl::describeProgramAlert;
 using BrewControl::notifiesOnEntry;
+using BrewControl::utf8PrefixLen;
 
 namespace {
 
@@ -58,8 +59,25 @@ void test_done(void) {
   TEST_ASSERT_EQUAL_STRING("Sud #3 Maischen ist durchgelaufen.", b.c_str());
 }
 
+// An alert keeps 39 bytes of the step's name.
+void test_a_long_step_name_is_cut_between_characters(void) {
+  TEST_ASSERT_EQUAL(5, utf8PrefixLen("Kochen", 5));
+  TEST_ASSERT_EQUAL(6, utf8PrefixLen("Kochen", 39));
+  // "ü" is two bytes, "–" three: a cut inside drops the whole character.
+  TEST_ASSERT_EQUAL(1, utf8PrefixLen("küh", 2));
+  TEST_ASSERT_EQUAL(3, utf8PrefixLen("küh", 3));
+  TEST_ASSERT_EQUAL(1, utf8PrefixLen("a–b", 2));
+  TEST_ASSERT_EQUAL(1, utf8PrefixLen("a–b", 3));
+  TEST_ASSERT_EQUAL(4, utf8PrefixLen("a–b", 4));
+  TEST_ASSERT_EQUAL(0, utf8PrefixLen("", 39));
+  const char* step = "Vorderwürze: 100 g Hallertau Mittelfrüh zugeben";
+  TEST_ASSERT_EQUAL_STRING("Vorderwürze: 100 g Hallertau Mittelfr",
+                           std::string(step, utf8PrefixLen(step, 39)).c_str());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_a_long_step_name_is_cut_between_characters);
   RUN_TEST(test_notify_on_first_forward_entry);
   RUN_TEST(test_no_repeat_after_prev);
   RUN_TEST(test_awaiting_names_the_step);

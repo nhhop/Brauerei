@@ -78,7 +78,7 @@ export interface Ingredient {
   stockLotId?: string;   // stock lot of that ingredient whose values count; unset or gone = the ingredient's
   amount: number;
   timing: Timing;
-  timeMin?: number; // hops at "Kochen": minutes before the end of the boil; unset = whole boil
+  timeMin?: number; // at "Kochen": minutes before the end of the boil; unset = whole boil
   strengthPct?: number; // acid or solution: concentration of this addition; unset = the catalog's
   auto?: true;          // laid out by the water automation; a run replaces it, editing by hand drops the mark
   chargeId?: string;    // fermentable in the mash: its charge (Schüttung); unset = the first

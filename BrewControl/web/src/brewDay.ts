@@ -2,7 +2,7 @@
 // of the tabs (recipeStats → recipeWater → mashPlan → recipeTreatment) on the
 // brew's frozen copies, the efficiencies counted back from what was measured,
 // and how far a value is off. Pure, like recipeStats.ts.
-import { platoFromExtract } from './brewMath';
+import { platoFromExtract, pressureAtAltitudeHpa } from './brewMath';
 import { MEASUREMENTS, breweryBoilC, type Brewery, type Brewhouse, type MeasureKey } from './brewhouse';
 import type { Brew, MeasureId } from './brews';
 import type { Efficiency, Grist } from './efficiency';
@@ -88,6 +88,10 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries }: BrewInputs
   values.mashPh = col('mash')?.ph?.before;
   values.mashPhAcid = r.water?.targetPh?.mash ?? DEFAULT_MASH_PH;
   values.preBoilVolume = water.preBoilL;
+  // The wort has a model pH only where something goes in.
+  values.preBoilPh = col('preBoil')?.ph?.after;
+  values.postBoilPh = col('knockOut')?.ph?.after;
+  values.airPressure = pressureAtAltitudeHpa(brewery?.altitudeM ?? 0);
   // Measured at the end of the boil, before a dilution in the kettle.
   const d = water.dilution;
   values.postBoilVolume = d.kettleL;
@@ -177,6 +181,25 @@ export function measuredEfficiency(m: Partial<Record<MeasureId, number>>, ctx: E
   return out;
 }
 
+export const measuredValues = (brew: Pick<Brew, 'measurements'>): Partial<Record<MeasureId, number>> =>
+  Object.fromEntries(Object.entries(brew.measurements ?? {}).map(([k, x]) => [k, x!.v]));
+
+// The brew with its results for the list (brews.ts): the gravity after the
+// boil as target and as measured, and the measured efficiencies. With a
+// dilution that gravity is the one before it. A value that does not follow is
+// removed.
+export function withResults(brew: Brew, t: BrewTargets): Brew {
+  const m = measuredValues(brew);
+  const e = t.ctx ? measuredEfficiency(m, t.ctx) : {};
+  const round = (n: number | undefined) => (n === undefined || !Number.isFinite(n) ? undefined : Math.round(n * 100) / 100);
+  const out: Brew = {
+    ...brew, ogPlato: round(t.values.postBoilGravity), ogActual: round(m.postBoilGravity),
+    mashEffPct: round(e.mashPct), yieldPct: round(e.yieldPct),
+  };
+  for (const k of ['ogPlato', 'ogActual', 'mashEffPct', 'yieldPct'] as const) if (out[k] === undefined) delete out[k];
+  return out;
+}
+
 // ── Deviation ──────────────────────────────────────────────────────────────────
 
 // Assumed tolerances of the brew day (Plan 5b): beyond them a value is marked.
@@ -184,7 +207,8 @@ export function measuredEfficiency(m: Partial<Record<MeasureId, number>>, ctx: E
 export const TOLERANCE: Record<string, number> = { '°P': 0.2, l: 2.5, pH: 0.1, '°C': 1, '%': 2 };
 
 export const unitOfMeasure = (key: MeasureId): string =>
-  key === 'mashPhAcid' ? 'pH' : MEASUREMENTS.find((x) => x.key === (key as MeasureKey))?.unit ?? '';
+  key === 'mashPhAcid' ? 'pH' : key === 'speiseVolume' || key === 'dipWortVolume' ? 'l'
+    : MEASUREMENTS.find((x) => x.key === (key as MeasureKey))?.unit ?? '';
 
 const signed = (n: number, digits: number) =>
   `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n).toFixed(digits).replace('.', ',')}`;

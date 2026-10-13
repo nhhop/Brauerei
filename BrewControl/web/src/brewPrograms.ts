@@ -3,8 +3,12 @@
 // (confirm), or one that reports itself when it begins (notify). The program
 // keeps running with the page closed and through a reboot. Pure.
 import { heatingOf, type Brewhouse } from './brewhouse';
+import type { CatalogIngredient } from './ingredientCatalog';
+import { unitOfEntry } from './ingredientSource';
 import type { MashRow } from './mashPlan';
-import type { ProgramStep } from './types';
+import type { Ingredient, Recipe } from './recipes';
+import { entryOf } from './stockLots';
+import type { ProgramConfig, ProgramStep } from './types';
 
 // A temperature counts as reached this close to the target. An assumption for
 // a mash heated by hand.
@@ -74,4 +78,100 @@ export function mashTimerProgram(brewNumber: number, rows: MashRow[], sensors: T
     }
   }
   return { name: `Sud #${brewNumber} Maischen`, steps };
+}
+
+// ── Boil ─────────────────────────────────────────────────────────────────────
+
+// What goes into the wort from the first wort to the knock-out, plus the dip
+// hops, whose wort is drawn off then.
+export const BOIL_GROUPS = ['firstWort', 'boil', 'whirlpool', 'hopBack', 'kettleSour', 'dip'] as const;
+export type BoilGroup = (typeof BOIL_GROUPS)[number];
+
+export interface BoilAddition {
+  row: Ingredient;
+  amount: number;   // as used (rowAmounts), else the recipe's
+  unit: string;
+  group: BoilGroup;
+  atMin?: number;   // group boil: minutes before the end, within the boil
+}
+
+// The additions in the order they go in: by group, in the boil the longest first.
+export function boilAdditions(
+  recipe: Pick<Recipe, 'ingredients' | 'boil'>, entries: CatalogIngredient[] | null, rowAmounts?: Record<string, number>,
+): BoilAddition[] {
+  const total = Math.max(recipe.boil.durationMin, 0);
+  const out: BoilAddition[] = [];
+  for (const group of BOIL_GROUPS) {
+    const rows = recipe.ingredients.filter((i) => i.timing === group).map((row): BoilAddition => ({
+      row, group, amount: rowAmounts?.[row.id] ?? row.amount, unit: unitOfEntry(row.kind, entryOf(row, entries)),
+      ...(group === 'boil' && { atMin: Math.min(Math.max(row.timeMin ?? total, 0), total) }),
+    }));
+    out.push(...(group === 'boil' ? rows.sort((a, b) => b.atMin! - a.atMin!) : rows));
+  }
+  return out;
+}
+
+const qty = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', ',');
+const listOf = (adds: BoilAddition[]) => adds.map((a) => `${qty(a.amount)} ${a.unit} ${a.row.name}`).join(', ');
+
+// The boil timer, started when the kettle is heated: first wort additions and
+// the start of the boil wait for "Weiter". Then one step per moment something
+// goes in, as long as the time to the next one; it reports itself and the clock
+// keeps running, so a late brewer does not shift what follows. The end of the
+// boil waits again, then the whirlpool. Hop back, kettle sour and dip are not
+// the timer's.
+export function boilTimerProgram(brewNumber: number, boil: Recipe['boil'], additions: BoilAddition[]): { name: string; steps: ProgramStep[] } {
+  const of = (g: BoilGroup) => additions.filter((a) => a.group === g);
+  const steps: ProgramStep[] = [];
+  const firstWort = of('firstWort');
+  if (firstWort.length > 0) steps.push(act(`Vorderwürze: ${listOf(firstWort)} zugeben`));
+  steps.push(act('Aufheizen – Weiter bei Kochbeginn'));
+
+  const total = Math.max(boil.durationMin, 0);
+  const inBoil = of('boil');
+  const times = total > 0 ? [...new Set([total, ...inBoil.map((a) => a.atMin!).filter((t) => t > 0)])].sort((a, b) => b - a) : [];
+  times.forEach((t, i) => {
+    const adds = inBoil.filter((a) => a.atMin === t);
+    steps.push({
+      name: adds.length > 0 ? `Noch ${fmt(t)} min: ${listOf(adds)} zugeben` : `Kochen · ${fmt(t)} min`,
+      targets: {}, holdSec: Math.round((t - (times[i + 1] ?? 0)) * 60),
+      // The first follows "Weiter": the brewer is at the kettle.
+      ...(i > 0 && { notify: true }),
+    });
+  });
+  const atEnd = inBoil.filter((a) => a.atMin === 0);
+  steps.push(act(`Kochende: Heizung aus${atEnd.length > 0 ? `, ${listOf(atEnd)} zugeben` : ''}`));
+
+  const whirlpool = of('whirlpool');
+  if (whirlpool.length > 0) {
+    steps.push(act(boil.whirlpoolTempC < 100
+      ? `Auf ${fmtC(boil.whirlpoolTempC)} kühlen, ${listOf(whirlpool)} zugeben` : `Whirlpool: ${listOf(whirlpool)} zugeben`));
+  }
+  if (boil.whirlpoolMin > 0) {
+    steps.push({ name: `Whirlpool · ${fmt(boil.whirlpoolMin)} min`, targets: {}, holdSec: Math.round(boil.whirlpoolMin * 60) });
+  }
+  return { name: `Sud #${brewNumber} Kochen`, steps };
+}
+
+// Where a running boil timer stands: the time left until the brewer is asked
+// again (the end of the boil) or, in the whirlpool, until the program ends, and
+// the step that follows the current one.
+export interface BoilProgress {
+  phase: 'boil' | 'whirlpool';
+  remainingSec: number;
+  next?: { name: string; inSec: number };
+}
+
+export function boilProgress(p: Pick<ProgramConfig, 'steps' | 'status' | 'currentStep' | 'stepRemainingSec'>): BoilProgress | undefined {
+  const cur = p.steps[p.currentStep];
+  if (p.status !== 'running' || !cur || cur.confirm || cur.end === 'sensor') return undefined;
+  const inSec = p.stepRemainingSec ?? cur.holdSec;
+  let remainingSec = inSec;
+  let j = p.currentStep + 1;
+  for (; j < p.steps.length && !p.steps[j].confirm; j++) remainingSec += p.steps[j].holdSec;
+  const next = p.steps[p.currentStep + 1];
+  return {
+    phase: j < p.steps.length ? 'boil' : 'whirlpool', remainingSec,
+    ...(next && { next: { name: next.name ?? '', inSec } }),
+  };
 }

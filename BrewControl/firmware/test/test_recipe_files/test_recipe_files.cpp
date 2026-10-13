@@ -92,6 +92,17 @@ void test_brew_summary_line_keeps_the_occupancy_fields() {
       brewSummaryLine(doc, "b1").c_str());
 }
 
+void test_brew_summary_line_carries_the_results() {
+  JsonDocument doc;
+  deserializeJson(doc,
+      "{\"id\":\"b3\",\"number\":2,\"ogPlato\":12.5,\"ogActual\":12.3,\"mashEffPct\":71.5,"
+      "\"yieldPct\":57.2,\"bottledL\":18,\"measurements\":{\"mashPh\":{\"v\":5.4,\"at\":1}}}");
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"id\":\"b3\",\"number\":2,\"ogPlato\":12.5,\"ogActual\":12.3,\"mashEffPct\":71.5,"
+      "\"yieldPct\":57.2,\"bottledL\":18}",
+      brewSummaryLine(doc, "b3").c_str());
+}
+
 void test_brew_summary_line_leaves_out_fields_the_brew_lacks() {
   JsonDocument doc;
   deserializeJson(doc, "{\"id\":\"b2\",\"number\":1,\"style\":\"Pils\"}");
@@ -153,6 +164,7 @@ int main(int, char**) {
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
   RUN_TEST(test_summary_line_carries_the_version_fields);
   RUN_TEST(test_brew_summary_line_keeps_the_occupancy_fields);
+  RUN_TEST(test_brew_summary_line_carries_the_results);
   RUN_TEST(test_brew_summary_line_leaves_out_fields_the_brew_lacks);
   RUN_TEST(test_index_line_is_matched_by_the_whole_id);
   RUN_TEST(test_splice_adds_replaces_and_removes_one_line);

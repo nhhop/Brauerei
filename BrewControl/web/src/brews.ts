@@ -29,8 +29,9 @@ export const PHASES = [
 export type PhaseId = (typeof PHASES)[number]['id'];
 
 // A brew day value: the brewhouse's measurements plus the mash pH after the
-// acid (5b-2). Gravities in °P. `src` is the sensor it was taken from.
-export type MeasureId = MeasureKey | 'mashPhAcid';
+// acid (5b-2) and the wort drawn off at the knock-out (5b-3). Gravities in °P.
+// `src` is the sensor it was taken from.
+export type MeasureId = MeasureKey | 'mashPhAcid' | 'speiseVolume' | 'dipWortVolume';
 export interface Measurement { v: number; at: number; src?: string }
 
 export interface Frozen {
@@ -69,12 +70,29 @@ export interface Brew {
                                          // (`mashPh:<entry id>`: an acid or base the recipe does not have)
   restTemps?: Record<string, Measurement>;  // temperature measured per mash step id
   mashProgramId?: string;                // the rest timer on the device (brewPrograms.ts)
+  boilProgramId?: string;                // the boil timer with its additions
+  addedAt?: Record<string, number>;      // when a boil addition went in, per recipe row id
   phaseNotes?: Partial<Record<PhaseId, string>>;
+  // Results for the list (brewDay.withResults), set whenever the brew is saved.
+  ogPlato?: number;          // gravity after the boil: target
+  ogActual?: number;         // ... and measured
+  mashEffPct?: number;       // measured
+  yieldPct?: number;
+  bottledL?: number;         // 5c
 }
 
 // What GET /api/brews returns: the firmware's brewSummaryLine.
 export type BrewSummary = Pick<Brew, 'id' | 'number' | 'name' | 'recipeId' | 'rootId' | 'version' | 'status'
-  | 'brewDate' | 'fermenterId' | 'occupiedFrom' | 'occupiedUntil' | 'updatedAt'>;
+  | 'brewDate' | 'fermenterId' | 'occupiedFrom' | 'occupiedUntil' | 'updatedAt'
+  | 'ogPlato' | 'ogActual' | 'mashEffPct' | 'yieldPct' | 'bottledL'>;
+
+export const SUMMARY_FIELDS = [
+  'id', 'number', 'name', 'recipeId', 'rootId', 'version', 'status', 'brewDate', 'fermenterId', 'occupiedFrom',
+  'occupiedUntil', 'updatedAt', 'ogPlato', 'ogActual', 'mashEffPct', 'yieldPct', 'bottledL',
+] as const satisfies readonly (keyof BrewSummary)[];
+
+export const summaryOf = (b: Brew): BrewSummary =>
+  Object.fromEntries(SUMMARY_FIELDS.filter((k) => b[k] !== undefined).map((k) => [k, b[k]])) as unknown as BrewSummary;
 
 // ── Dates ────────────────────────────────────────────────────────────────────────
 // ISO dates (YYYY-MM-DD) compare as strings; arithmetic goes through UTC so a
@@ -156,6 +174,13 @@ export function setRestTemp(b: Brew, stepId: string, m: Measurement | undefined)
 export function setChecked(b: Brew, key: string, on: boolean): Brew {
   const rest = (b.checked ?? []).filter((k) => k !== key);
   return { ...b, checked: on ? [...rest, key] : rest };
+}
+
+// Ticks a boil addition with the time it went in.
+export function setAddedAt(b: Brew, rowId: string, at: number | undefined): Brew {
+  const addedAt = { ...b.addedAt };
+  if (at === undefined) delete addedAt[rowId]; else addedAt[rowId] = at;
+  return { ...b, addedAt };
 }
 
 export function setRowAmount(b: Brew, rowId: string, amount: number | undefined): Brew {
