@@ -2294,3 +2294,39 @@ Whirlpool mit, „min vor Kochende“ im Rezept für jede Kochgabe. Branch `feat
   Rezept-Tab „Sude“ zeigt Spalten und Diagramm, 390 px ohne Querscrollen, Konsole ohne Fehler. Sud im Mock
   am Ende 5 672 Byte.
 - **Nicht geprüft:** alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Sud 5b-4: Maischverlauf und Geräte
+
+Umsetzung von „Plan 5b › 5b-4“ in `BrewControl/docs/rezept-sud-editor.md` (Stand 5b-4 dort). Entscheidungen des
+Nutzers, abweichend vom Plan: Zeitanker ist das Einmaischen (Knopf „Eingemaischt“); das Diagramm steht in
+jedem Maischen-Tab, nicht nur bei Regelung; die Liste zeigt Geräte statt Transfers, dazu Rührwerk, Ventile,
+Kühler und Kondensator; Laufzeit und Menge werden nicht gespeichert; Läutern und Nachguss stehen in beiden
+Tabs. Branch `feat/sud-5b-4` von `dev`. Nur Web, Firmware unverändert.
+
+- **Web:** Neu `pages/brew/MashCourse.tsx` (Karte „Verlauf“: `sollCourse` legt die Maische-Linie aus
+  `curveOf` am Einmaischen auf die Uhr, `pickLog` schlägt das Log mit dem Maischefühler vor, `sessionFor`
+  wählt die Log-Session, `istCourse` schneidet Temperatur und Heizleistung auf das Fenster, `heatActuatorOf`
+  findet den Aktor über den Regler der Heizquelle; uPlot mit `uPlot.join`, Live-Punkte alle 5 s),
+  `brewDevices.ts` (Geräte der Schritte und Transfer-Pumpen, je Gerät eine Zeile) und
+  `pages/brew/DeviceList.tsx` (Karte „Pumpen & Geräte“ mit Hauptschalter, Zustand und Sperre nach
+  `ownership.ts`). Sud-Felder `logId` und `phaseStartedAt` mit `setPhaseStart`. `outputPct` aus
+  `ControllerCard.tsx` exportiert. `MashTab` und `BoilTab` binden beides ein; der 5b-4-Hinweis bei
+  geregelter Maische ist ersetzt. OpenAPI: Beschreibung von `Brew`.
+- **Beim Prüfen gefunden und behoben:** Fehlte eine Spalte im Log, las `istCourse` die Zeitspalte als
+  Temperatur (Test). Das Feld „Eingemaischt um“ las beim Verlassen den Wert aus dem Zustand statt aus dem
+  Feld und konnte eine Eingabe verlieren. Die Legende zeigte als Soll den nächsten Eckpunkt des Plans; jetzt
+  liest sie ihn linear dazwischen (`fillLinear`).
+- **Prüfung:** `pnpm test` (510; neu `MashCourse.test.ts` 8, `brewDevices.test.ts` 4, `brews.test.ts` +1),
+  `typecheck`, `build` (Hauptbundle 471,68 kB, +0,09; Rezeptpaket 304,33 kB, +8,6, gzip 96,06 kB), redocly
+  (bekannte Warnung). Im Browser gegen einen Wegwerf-Mock (Vorlage `herms3` mit Regler an der Heizung,
+  Pumpen, Rührwerk und Kühler auf Aktoren, Log mit einer Maische, die vor 50 min begann, Snapshot per SSE):
+  Das Log mit dem Maischefühler ist vorgeschlagen, „Eingemaischt“ speichert Anker und `logId`, die auf
+  −50 min geänderte Zeit legt die Soll-Kurve auf die Messung (63 °C, Rampe, 72 °C), Heizleistung aus der
+  CSV, Live-Punkte laufen nach, die Legende liest Soll, Ist und Heizleistung; ein Log ohne Aktor bzw. ohne
+  Fühler ergibt den jeweiligen Hinweis. Geräte: Pumpe 2 schaltet (`{"enabled":true}`), das Rührwerk auf
+  seinem Minimum bekommt erst `{"v":100}`, Pumpe 1 ist durch einen Regler gesperrt, der Kühler im Koch-Tab
+  durch ein Programm, ein Aktor, den es nicht gibt, steht als Hinweis da; Läutern und Nachguss in beiden
+  Tabs. Sudhaus von Hand: Diagramm ohne Heizleistung, Timer und Rasten wie bisher, keine Geräte-Karte.
+  390 px ohne Querscrollen, Konsole ohne Fehler. Sud im Mock 4 478 Byte, die beiden Felder kosten 59 Byte.
+- **Nicht geprüft:** alles am Gerät, auch ein abgeschlossener Sud mit archivierter Log-Session und das
+  Schalten bei eingerastetem Not-Aus (PLAN.md).

@@ -24,7 +24,7 @@ interface Props {
 
 // How far an actuator is driven, 0..100. The bar and the percentage read the
 // same number in every view, whatever the actuator's own range happens to be.
-function outputPct(a: Actuator | undefined): number | null {
+export function outputPct(a: Actuator | undefined): number | null {
   if (!a || a.state.v == null || !isFinite(a.state.v)) return null;
   const { min, max } = a.meta;
   if (max <= min) return null;

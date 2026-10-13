@@ -1,6 +1,6 @@
 import { deviation, mashAcidSuggestion, measuredEfficiency, type BrewInputs, type BrewTargets } from '../../brewDay';
 import { isRegulated, mashTimerProgram } from '../../brewPrograms';
-import { MEASUREMENTS, type MeasureKey } from '../../brewhouse';
+import { MEASUREMENTS, type MeasureKey, type StepKey } from '../../brewhouse';
 import { setMeasurement, setRestTemp, type Brew } from '../../brews';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { unitOfEntry } from '../../ingredientSource';
@@ -11,13 +11,19 @@ import { badgeCaution, badgeSuccess, btnSecondary, inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
 import { AmountInput, num, rowAmountChange } from './amounts';
 import { BrewTimer } from './BrewTimer';
+import { DeviceList } from './DeviceList';
+import { MashCourse } from './MashCourse';
 import { MeasureRow, fmtNum } from './MeasureRow';
 import type { Patch } from './PrepTab';
 
 const labelOf = (key: MeasureKey | 'mashPhAcid') => (key === 'mashPhAcid' ? 'pH nach der Säure' : MEASUREMENTS.find((m) => m.key === key)!.label);
 
-// Tab "Maischen": the mash pH with its acid in three steps, the first wort and,
-// for a mash heated by hand, the rests with their timer on the device.
+// Lautering and sparging lie between the tabs; their devices are in both.
+const DEVICE_STEPS: StepKey[] = ['strike', 'mash', 'lauter', 'sparge'];
+
+// Tab "Maischen": the course of the mash against the device log, the mash pH
+// with its acid in three steps, the first wort, for a mash heated by hand the
+// rests with their timer on the device, and the brewhouse's devices.
 export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, editable, patch, notes, onNotes }: {
   brew: Brew;                  // as saved; the page keeps the head's draft
   recipe: Recipe;
@@ -66,6 +72,7 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
   return (
     <>
       {!editable && <p class="mb-3 text-sm text-muted">Ist-Werte, Mengen und der Timer lassen sich ab dem Brautag-Start eintragen.</p>}
+      {mash && inputs.bh && <MashCourse brew={brew} rows={mash.rows} bh={inputs.bh} snap={snap} editable={editable} patch={patch} />}
       <Card title="pH und Säure">
         {row('mashPh', 'nach dem Einmaischen')}
         <div class="border-b border-border py-2">
@@ -130,7 +137,7 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
         {!mash ? (
           <p class="text-sm text-muted">{targets.notes[0] ?? 'Ohne Sudhaus kein Maischeplan.'}</p>
         ) : isRegulated(inputs.bh) ? (
-          <p class="text-sm text-muted">Die Maische wird geregelt; den Verlauf aus dem Gerätelog zeigt der Tab mit Etappe 5b-4.</p>
+          <p class="text-sm text-muted">Die Maische wird geregelt: Die Rasten stellst du am Regler, den Verlauf zeigt das Diagramm oben.</p>
         ) : (
           <>
             {mash.rows.filter((r) => r.step.kind !== 'strike').map((r) => (
@@ -148,6 +155,8 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
           </>
         )}
       </Card>
+
+      <DeviceList bh={inputs.bh} steps={DEVICE_STEPS} snap={snap} active={brew.status === 'active'} />
 
       <Card title="Notizen zum Maischen">
         <Field label="Gespeichert mit „Speichern“">

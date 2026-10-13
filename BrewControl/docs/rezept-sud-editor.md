@@ -4,9 +4,9 @@ Stand: 2026-10-13. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), da
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
-der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und vom Brautag die Vorbereitung (5b-1), das
-Maischen (5b-2) und das Würzekochen (5b-3); es folgen Maischverlauf und Pumpen (5b-4) und Gärung,
-Reifung und Abfüllung mit Belegungsplan (5c). Das UI ist
+der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und der Brautag: die Vorbereitung (5b-1), das
+Maischen (5b-2), das Würzekochen (5b-3) und der Maischverlauf mit den Geräten des Sudhauses (5b-4); es
+folgen das Maischprogramm für geregelte Maischen und Gärung, Reifung und Abfüllung mit Belegungsplan (5c). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -1008,7 +1008,7 @@ Belegungsplan.
 - **Vorderwürze:** Messwert mit Soll aus 5b-1, darunter die Konversion Ist (`measuredEfficiency`) gegen
   Soll mit Abweichung.
 - **Rasten** gibt es nur **ohne Regelung**: Die Heizquelle beim Maischen ist „von Hand“ oder hat keinen
-  Regler (`isRegulated`). Sonst steht ein Hinweis auf den Verlauf (5b-4).
+  Regler (`isRegulated`). Sonst steht dort nur ein Satz; den Verlauf zeigt das Diagramm (Stand 5b-4).
   - **Tabelle:** jede Zeile des Maischeplans außer Wasser vorlegen, mit Soll-Temperatur, Dauer, Übergang und
     Ist-Temperatur (`restTemps` je Schritt-ID, mit dem Wert des Maischefühlers).
   - **Timer** (`mashTimerProgram`): „Maischen starten“ legt ein Programm „Sud #n Maischen“ auf dem Gerät an
@@ -1089,6 +1089,48 @@ Belegungsplan.
 - **Größe:** Der Mock-Sud (12 Rezeptzeilen, 8 Messwerte, 3 Haken mit Uhrzeit, eine Ist-Menge) hat 5,7 KB;
   je Haken mit Uhrzeit kommen etwa 20 Byte dazu, die Ergebnisfelder zusammen etwa 70 Byte.
 
+**Stand 5b-4 (2026-10-13, `web/src/pages/brew/MashCourse.tsx`, `DeviceList.tsx`, `web/src/brewDevices.ts`; nur
+Web, Firmware unverändert):**
+- **Verlauf** (Karte oben im Tab Maischen, in **jedem** Sud mit Maischeplan, Entscheidung 2026-10-13): der
+  Maischeplan gegen die Temperatur aus einem Gerätelog.
+  - **Mit Regelung** steht das Diagramm mit Heizleistung da; Rasten-Tabelle und Programm-Karte gibt es dort
+    nicht, die Rasten stellt man am Regler. **Von Hand** bleiben Timer und Rasten-Tabelle aus 5b-2, das
+    Diagramm kommt dazu.
+  - **Zeitanker ist das Einmaischen** (Entscheidung 2026-10-13): „Eingemaischt“ setzt `phaseStartedAt.mash`
+    auf jetzt, das Feld „Eingemaischt um“ korrigiert die Zeit (beim Verlassen gespeichert, geleert nimmt es
+    den Anker wieder weg). Der erste Einmaisch-Schritt des Plans liegt auf dieser Zeit, das Heizen des
+    Hauptgusses links davon (`sollCourse`). Ohne Anker gibt es kein Diagramm.
+  - **Log:** vorgeschlagen ist das erste Log, das den Maischefühler aufzeichnet (Messung
+    „Maischetemperatur“ des Sudhauses, `pickLog`); der Sud merkt sich die Wahl in `logId`, spätestens mit
+    dem Anker. Enthält kein Log den Fühler, steht ein Hinweis (kein Anlegen aus dem Sud heraus).
+  - **Ist:** die Spalte des Fühlers aus der Log-Session, die vor dem Ende des Verlaufs begann
+    (`sessionFor`: die laufende am Brautag, eine archivierte bei einem alten Sud), von 15 min vor dem Plan
+    bis 30 min danach. Solange der Sud läuft, kommt alle 5 s ein Punkt aus dem Live-Snapshot dazu.
+  - **Heizleistung:** der Aktor des Reglers der Maisch-Heizquelle (`params.actuator` bzw. `heatActuator`),
+    ohne Regler der Aktor der Heizquelle, in Prozent seines Bereichs (`outputPct`). Sie kommt aus dem Log,
+    wenn es den Aktor aufzeichnet; sonst nur live bei offener Seite, mit Hinweis.
+  - **Legende:** Soll, Ist und Heizleistung an der Cursor-Position; der Soll wird zwischen den Eckpunkten
+    des Plans linear gelesen.
+- **Pumpen & Geräte** (Karte in den Tabs Maischen und Würzekochen): **eine Zeile je Gerät**, nicht je
+  Transfer (Entscheidung 2026-10-13), mit dem, wofür es gebraucht wird („Hauptguss HLT → MLT“, „Umwälzung
+  Maischen“).
+  - **Welche:** die Pumpen der Transfers mit Antrieb „Pumpe“ und die Geräte der Schritte (Umwälzpumpe,
+    Rührwerk, Ventile, Kühler oder Spirale, Kondensator), nur mit verknüpftem Aktor. Geräte „von Hand“ und
+    die Heizquelle fehlen; die Heizquelle bleibt beim Regler.
+  - **Tabs:** Maischen zeigt Hauptguss bereiten, Maischen, Läutern und Nachguss; Würzekochen zeigt Nachguss,
+    Läutern, Kochen, Whirlpool, Hop Back und Kühlen. Läutern und Nachguss stehen also in beiden.
+  - **Schalten:** der Hauptschalter des Aktors (`enableActuator`), weil ein Binary-Aktor keinen anderen hat.
+    Ein stufenloser Aktor, der auf seinem Minimum steht, wird beim Einschalten auf sein Maximum gesetzt
+    (Annahme). Daneben der Zustand aus dem Snapshot (an/aus oder Prozent).
+  - **Sperre:** Gehört der Aktor einem eingeschalteten Regler oder einem laufenden Programm
+    (`ownership.ts`), ist der Schalter gesperrt und nennt den Besitzer. Das Dashboard fragt in dem Fall nach,
+    der Sud nicht. Gesperrt ist er auch, solange der Sud nicht läuft.
+  - **Laufzeit und Menge** hält der Sud nicht fest (Entscheidung 2026-10-13): Die Mengen stehen als
+    Messwerte im Sud, und Durchfluss × Laufzeit wäre nur eine grobe Schätzung. `transfers` aus dem Plan gibt
+    es deshalb nicht.
+- **Nicht gebaut:** die Tabelle „Maischeplan“ aus dem Canvas mit Ist-Mittelwert und Ist-Dauer je Rast.
+- **Größe:** `logId` und `phaseStartedAt` kosten zusammen etwa 60 Byte (Mock-Sud 4,5 KB).
+
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.
 - **Messwerte** stehen überall als Zeile Messwert | Soll laut Rezept | Ist | Abweichung. Die Abweichung ist
@@ -1119,10 +1161,11 @@ Belegungsplan.
   - Karbonisierung, mit dem gemessenen Restextrakt neu berechnet
   - Stammwürze, Restextrakt und Volumen
   - Bilanz der Effizienzen und Volumen
-- **Pumpen in den Sud-Tabs:** Die Transfers aus dem Sudhaus erscheinen in ihrem Tab und lassen sich
-  **steuern** (Start/Stopp) oder zeigen nur den **Status**, mit Laufzeit und Menge. Die Besitzregeln wie in
-  `web/src/ownership.ts` gelten: Eine Pumpe, die gerade einem Regler oder Programm gehört, lässt sich nicht
-  schalten.
+- **Pumpen und Geräte in den Sud-Tabs:** Die Geräte des Sudhauses mit Aktor (Pumpen der Transfers und der
+  Umwälzung, Rührwerk, Ventile, Kühler, Kondensator) erscheinen in ihrem Tab und lassen sich **schalten**,
+  mit Live-Zustand. Die Besitzregeln wie in `web/src/ownership.ts` gelten: Ein Gerät, das gerade einem
+  Regler oder Programm gehört, lässt sich nicht schalten. Laufzeit und Menge je Transfer, wie im Canvas
+  gezeigt, gibt es nicht (Stand 5b-4).
 
 ### Plan 5b – Brautag (Vorbereitung, Maischen, Würzekochen)
 
@@ -1186,7 +1229,8 @@ Sollwerte kommen aus den vorhandenen Rechnungen auf den Kopien des Suds.
 wie im Maischeplan und Meldung „Rast 63 °C beendet“. Das ist der gewünschte Timer.
 
 Mit Regelung ließe sich daraus später ein Maischprogramm mit Sollwerten erzeugen (je Rast „aufheizen bis
-Fühler ≥ T“, dann „halten“). Das ist **nicht** Teil von 5b und steht als Punkt in PLAN.md.
+Fühler ≥ T“, dann „halten“). Das ist **nicht** Teil von 5b und steht als Punkt in PLAN.md. Mit ihm
+erscheint die Programm-Karte im Tab Maischen auch bei Regelung; bis dahin steht dort nur das Diagramm.
 
 #### Teil-Etappen (je ein PR)
 
@@ -1315,6 +1359,13 @@ Fühler ≥ T“, dann „halten“). Das ist **nicht** Teil von 5b und steht al
     zuordnet; der Grund steht am Knopf.
   - Laufzeit und Menge (`flowLPerMin` × Laufzeit) werden als `transfers[id] = {startedAt, stoppedAt}` im
     Sud gespeichert.
+- **Entscheidungen der Umsetzungssession (2026-10-13), Einzelheiten unter „Stand 5b-4“:**
+  - Der Zeitanker `phaseStartedAt.mash` ist das **Einmaischen**, gesetzt per Knopf.
+  - Das Diagramm steht in **jedem** Maischen-Tab, nicht nur bei Regelung.
+  - Die Liste zeigt **Geräte statt Transfers** (`DeviceList.tsx` statt `TransferList.tsx`), auch Rührwerk,
+    Ventile, Kühler und Kondensator; Läutern und Nachguss in beiden Tabs.
+  - **Keine** gespeicherte Laufzeit und Menge, also kein `transfers`.
+  - Geschaltet wird mit `enableActuator` statt `writeActuator`.
 - **Verifikation:**
   - Test der Soll-Kurve mit Zeitanker.
   - Im Mock mit Snapshot-Stub: Pumpe schalten, Sperre bei Regler-Besitz, Laufzeit.

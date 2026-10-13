@@ -5439,8 +5439,10 @@ components:
         of brewhouse, brewery, fermenter and ingredient values taken at the
         start), `booked` (amounts taken from stock lots), `notes` and the
         brew day values `measurements`, `checked`, `rowAmounts`, `restTemps`,
-        `addedAt` and `phaseNotes`, and the ids of the brew's programs on the
-        device (`mashProgramId`, `boilProgramId`). The UI saves those one at a
+        `addedAt`, `phaseNotes` and `phaseStartedAt` (epoch ms per phase;
+        `mash`: when the grain went in), the ids of the brew's programs on the
+        device (`mashProgramId`, `boilProgramId`) and of the device log the
+        mash course is drawn from (`logId`). The UI saves those one at a
         time onto a freshly read copy (read, change, `PUT`) and writes the
         results of `BrewSummary` with every save. The firmware keeps whatever
         it is given, so only
