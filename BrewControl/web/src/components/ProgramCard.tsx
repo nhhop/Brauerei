@@ -204,16 +204,17 @@ export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, 
           <FileText size={18} aria-hidden class="mt-0.5 shrink-0 text-muted" />
           <div class="min-w-0">
             <h3 class="truncate font-semibold text-fg">{name}</h3>
-            <div class="truncate text-xs text-muted">
+            {/* A program without targets (a brew's timer) only reports. */}
+            {ids.length > 0 && <div class="truncate text-xs text-muted">
               Steuert:{' '}
-              {ids.length === 0 ? '—' : ids.map((id, i) => (
+              {ids.map((id, i) => (
                 <span key={id}>
                   {i > 0 && ' · '}
                   <span class={`font-mono ${missing.includes(id) ? 'text-critical' : 'text-fg'}`}>{id}</span>
                   {missing.includes(id) && <span class="text-critical"> (fehlt)</span>}
                 </span>
               ))}
-            </div>
+            </div>}
           </div>
         </div>
         <div class="flex shrink-0 items-center gap-1">
@@ -338,6 +339,7 @@ export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, 
                 <span class={`block truncate ${done ? 'line-through' : ''}`}>
                   {s.name || `Schritt ${i + 1}`}
                   {s.confirm && <span class="ml-1 text-[10px] text-caution" title="Freigabe abwarten">✋</span>}
+                  {s.notify && <span class="ml-1 text-[10px]" title="Meldet beim Beginn">🔔</span>}
                 </span>
                 {what && <span class="block truncate text-[11px] font-normal text-faint">{what}</span>}
               </span>

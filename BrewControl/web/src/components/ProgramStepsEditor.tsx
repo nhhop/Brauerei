@@ -31,6 +31,7 @@ export interface StepRow {
   hold: string;
   holdUnit: HoldUnit;
   confirm: boolean;
+  notify: boolean;
   end: 'hold' | 'sensor';
   // Sensor-trigger condition (PR #35), strings like the other fields.
   ref: string;
@@ -57,7 +58,7 @@ function cellIsEmpty(c: Cell): boolean {
 function emptyRow(cols: number): StepRow {
   return {
     name: '', cells: Array.from({ length: cols }, emptyCell), hold: '', holdUnit: 'min',
-    confirm: false, end: 'hold', ref: '', op: 'gt', value: '', hyst: '0',
+    confirm: false, notify: false, end: 'hold', ref: '', op: 'gt', value: '', hyst: '0',
   };
 }
 
@@ -100,6 +101,7 @@ export function draftFromSteps(steps: ProgramStep[] | undefined): StepsDraft {
       hold: String(s.holdSec / holdUnitMultiplier(holdUnit)),
       holdUnit,
       confirm: s.confirm ?? false,
+      notify: s.notify ?? false,
       end: s.end ?? 'hold',
       ref: s.cond?.ref ?? '',
       op: s.cond?.op ?? 'gt',
@@ -123,6 +125,7 @@ export function stepsFromDraft(d: StepsDraft): ProgramStep[] {
       holdSec: Math.max(0, Math.round((num(r.hold) || 0) * holdUnitMultiplier(r.holdUnit))),
       confirm: r.confirm,
     };
+    if (r.notify) step.notify = true;
     if (r.end === 'sensor') {
       step.end = 'sensor';
       step.cond = { ref: r.ref, op: r.op, value: num(r.value), hyst: Math.max(0, num(r.hyst) || 0) };
@@ -423,6 +426,12 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
                   checked={r.confirm}
                   onChange={(e) => patchRow(i, { confirm: (e.target as HTMLInputElement).checked })} />
                 Freigabe abwarten
+              </label>
+              <label class="flex cursor-pointer items-center gap-1.5 text-xs text-fg" title="Beim Beginn des Schritts melden, ohne anzuhalten">
+                <input type="checkbox" class="accent-accent"
+                  checked={r.notify}
+                  onChange={(e) => patchRow(i, { notify: (e.target as HTMLInputElement).checked })} />
+                Melden
               </label>
             </div>
           </div>

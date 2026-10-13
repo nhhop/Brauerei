@@ -2226,3 +2226,37 @@ PR.
   der Buchung mit Hinweis, 390 px ohne Querscrollen, Konsole ohne Fehler. **Größe:** 29 Rezeptzeilen, alle
   21 Messwerte, Haken, Ist-Mengen und Notiz: 9 539 Byte (Kopien 5,5 KB bei 8 eingefrorenen Zutaten; je
   weitere Zutat etwa 0,4 KB). Firmware unverändert. **Nicht geprüft:** alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Sud 5b-2: Maischen
+
+Umsetzung von „Plan 5b › 5b-2“ in `BrewControl/docs/rezept-sud-editor.md` (Stand 5b-2 dort). Entscheidungen des
+Nutzers: Aufheizen wartet auf „Weiter“, mit verknüpftem Fühler endet es von selbst und meldet sich per
+`notify`; Säurevorschlag auch unter Kolbach; das Programm wird bei „Abschließen“/„Löschen“ des Suds und mit
+„Timer abbrechen“ gelöscht; der Timer zeigt die Programm-Karte des Dashboards. Gearbeitet auf `dev` (die
+Session war daran gebunden), kein eigener PR.
+
+- **Firmware:** `ProgramStep.notify` (lesen/schreiben in `ProgramSteps.*`, damit auch in Profilen und Backup).
+  `ProgramRunner::enterStep_` meldet beim ersten Vorwärts-Betreten (`notifiesOnEntry` in neuem header-only
+  `ProgramEvents.h`, dieselbe Regel wie die Impulse), der Status-Callback trägt den Schrittnamen; `awaiting`
+  nennt den aktuellen Schritt. `AlarmStore::Alert` hat `step[40]` (Ring ~7,4 KB statt ~5,8 KB), JSON `step`,
+  `onProgramStatus` kennt `notify` (Info). Die Push-Texte für Programme stehen jetzt in
+  `describeProgramAlert` (`ProgramEvents.h`). OpenAPI: `ProgramStep.notify`, `Alert.step`, `detail` `notify`.
+- **Web:** `brewDay.ts` mit `mashAcidSuggestion` (Säurehilfe auf der am Messwert verankerten Mash-Spalte),
+  Soll „pH Maische“ jetzt vor der Gabe nach pH-Messung, Soll „pH nach der Säure“ = Ziel-pH. Neu
+  `brewPrograms.ts` (`mashTimerProgram`, `isRegulated`) und `pages/brew/MashTab.tsx` (pH und Säure,
+  Vorderwürze mit Konversion, Rasten mit Ist-Temperatur, Timer mit `ProgramCard`). Ist-Mengen-Logik und
+  `AmountInput` aus `PrepTab` nach `pages/brew/amounts.tsx` gezogen. Sud-Felder `restTemps`,
+  `mashProgramId`. Meldungen zeigen den Schritt (`AlertCenter`), der Programm-Editor hat „Melden“, die
+  Karte 🔔 und lässt „Steuert“ ohne Ziele weg.
+- **Prüfung:** `pnpm test` (479; neu `brewPrograms.test.ts` 6, `brewDay.test.ts` +4), `typecheck`, `build`
+  (Hauptbundle 471,57 kB, +0,54, gzip +0,16; Rezeptpaket +9,5 kB, gzip +2,8), redocly (bekannte Warnung).
+  Firmware: `test_program_events` (6) und `test_program_targets` (14) mit g++, Unity und ArduinoJson 7.4.2 von
+  GitHub grün; `ProgramSteps.cpp`, `ProgramRunner.cpp`, `AlarmStore.cpp` mit Stub-Headern ohne Fehler
+  übersetzt, der Push-Zweig als Ausschnitt. Im Browser (Chromium per Skript) gegen einen Wegwerf-Mock
+  (Vorlage `herms3`, Heizung von Hand, Fühler für Maischetemperatur und pH): Start bucht ab, pH 5,62 ergibt
+  4,1 ml Milchsäure, „übernehmen“ bucht von 2 auf 4,1 ml nach (Lager 98 → 95,9), Vorderwürze ergibt die
+  Konversion mit Abweichung, Rast-Ist bleibt nach dem Neuladen, „Maischen starten“ legt sechs Schritte an
+  (Fühler-Ende und `notify` beim Aufheizen der Maische, `confirm` beim Hauptguss ohne Fühler), „Weiter“ geht
+  weiter, „Timer abbrechen“ und „Abschließen“ löschen das Programm, 390 px ohne Querscrollen, Konsole ohne
+  Fehler. Gefunden und behoben: Der Name der Schüttung stand auch bei nur einer im Schritt.
+- **Nicht geprüft:** `pio test -e native` (erwartet 184), `pio run -e esp32dev` und alles am Gerät (PLAN.md).

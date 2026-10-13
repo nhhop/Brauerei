@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <time.h>
 
+#include "ProgramEvents.h"
+
 namespace BrewControl {
 namespace {
 
@@ -157,13 +159,10 @@ void PushService::tick() {
 void PushService::describe_(const AlarmStore::Alert& a, String& title, String& body) {
   const String name = a.name[0] ? String(a.name) : String(a.src);
   if (strcmp(a.kind, "program") == 0) {
-    if (strcmp(a.detail, "awaiting") == 0) {
-      title = "Schritt bestätigen";
-      body  = name + " wartet auf die Freigabe.";
-    } else {
-      title = "Programm fertig";
-      body  = name + " ist durchgelaufen.";
-    }
+    std::string t, b;
+    describeProgramAlert(a.detail, name.c_str(), a.step, t, b);
+    title = t.c_str();
+    body  = b.c_str();
   } else if (strcmp(a.kind, "fault") == 0) {
     title = a.cleared ? "Störung behoben" : "Störung";
     body  = a.cleared ? name + " meldet wieder normal."

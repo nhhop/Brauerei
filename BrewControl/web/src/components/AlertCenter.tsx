@@ -82,7 +82,8 @@ export function alertText(a: Alert): { title: string; body: string } {
       return {
         title: who,
         body: a.detail === 'awaiting'
-          ? 'Programm wartet auf Freigabe'
+          ? (a.step ? `${a.step} – wartet auf Freigabe` : 'Programm wartet auf Freigabe')
+          : a.detail === 'notify' ? (a.step || 'Nächster Schritt')
           : 'Programm abgeschlossen',
       };
     case 'autotune':
