@@ -45,6 +45,27 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
+// Defined outside the card: a component declared inside it would be a new one
+// on every render, and the card renders with each snapshot — the buttons were
+// rebuilt every second and could swallow a tap that fell into that moment.
+function Btn({ action, label, icon: Icon, primary, title, disabled, onAct }: {
+  action: ProgramAction; label: string; icon: LucideIcon;
+  primary?: boolean; title?: string; disabled: boolean; onAct: (action: ProgramAction) => void;
+}) {
+  return (
+    <button type="button" disabled={disabled} title={title}
+      onClick={() => onAct(action)}
+      class={`flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors disabled:opacity-40 ` +
+        `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-bg ` +
+        (primary
+          ? 'bg-accent text-accent-fg hover:bg-accent/90 active:bg-accent/80 focus-visible:ring-accent'
+          : 'border border-border text-fg hover:bg-fg/5 active:bg-fg/10 focus-visible:ring-fg/30')}>
+      <Icon size={16} class="shrink-0" />
+      {label}
+    </button>
+  );
+}
+
 export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, onSheetHeight }: Props) {
   const { name, steps, status, currentStep, reachedStep } = program;
   // Everything the program drives; controls stay disabled while any of it is
@@ -163,23 +184,7 @@ export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, 
     return `${steps.length} Schritte`;
   }
 
-  function Btn({ action, label, icon: Icon, primary, title }: {
-    action: ProgramAction; label: string; icon: LucideIcon;
-    primary?: boolean; title?: string;
-  }) {
-    return (
-      <button type="button" disabled={busy || missing.length > 0} title={title}
-        onClick={() => act(action)}
-        class={`flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors disabled:opacity-40 ` +
-          `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-bg ` +
-          (primary
-            ? 'bg-accent text-accent-fg hover:bg-accent/90 active:bg-accent/80 focus-visible:ring-accent'
-            : 'border border-border text-fg hover:bg-fg/5 active:bg-fg/10 focus-visible:ring-fg/30')}>
-        <Icon size={16} class="shrink-0" />
-        {label}
-      </button>
-    );
-  }
+  const btn = { disabled: busy || missing.length > 0, onAct: act };
 
   return (
     <div ref={rootRef} class={`rounded-lg border border-card-border bg-card p-4 shadow-elev-2 transition-shadow duration-200 hover:shadow-elev-8
@@ -368,16 +373,16 @@ export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, 
 
       <div class={`mt-3 grid grid-flow-col auto-cols-fr gap-2 ${fill ? 'lg:mt-auto lg:pt-3' : ''}`}>
         {(status === 'idle' || status === 'done') && (
-          <Btn action="start" label="Start" icon={Play} primary />
+          <Btn {...btn} action="start" label="Start" icon={Play} primary />
         )}
-        {status === 'running' && <Btn action="pause" label="Pause" icon={Pause} />}
-        {status === 'paused' && <Btn action="resume" label="Fortsetzen" icon={Play} primary />}
-        {active && <Btn action="prev" label="Zurück" icon={SkipBack} title="vorigen Schritt" />}
+        {status === 'running' && <Btn {...btn} action="pause" label="Pause" icon={Pause} />}
+        {status === 'paused' && <Btn {...btn} action="resume" label="Fortsetzen" icon={Play} primary />}
+        {active && <Btn {...btn} action="prev" label="Zurück" icon={SkipBack} title="vorigen Schritt" />}
         {active && (
-          <Btn action="next" label="Weiter" icon={SkipForward} primary={status === 'awaiting'}
+          <Btn {...btn} action="next" label="Weiter" icon={SkipForward} primary={status === 'awaiting'}
             title="nächsten Schritt / Freigabe" />
         )}
-        {active && <Btn action="stop" label="Stop" icon={Square} />}
+        {active && <Btn {...btn} action="stop" label="Stop" icon={Square} />}
       </div>
 
       {missing.length > 0 && (

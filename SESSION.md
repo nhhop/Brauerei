@@ -2330,3 +2330,46 @@ Tabs. Branch `feat/sud-5b-4` von `dev`. Nur Web, Firmware unverändert.
   390 px ohne Querscrollen, Konsole ohne Fehler. Sud im Mock 4 478 Byte, die beiden Felder kosten 59 Byte.
 - **Nicht geprüft:** alles am Gerät, auch ein abgeschlossener Sud mit archivierter Log-Session und das
   Schalten bei eingerastetem Not-Aus (PLAN.md).
+
+## 2026-10-14 — Sud 5b am LilyGo geprüft, vier Korrekturen
+
+Die Prüfpunkte „Sud 5b-1 … 5b-4 am Gerät“ aus PLAN.md, am LilyGo (`v0.5.0-104-g43952e3`, Oberfläche aus
+`dev` mit Stilvergleich) mit dem Nutzer. Für Timer in Minuten liegt auf dem Board das Rezept „Gerätetest“
+(Rasten 23/26 °C je 1 min, 3 min Kochen mit Gaben bei 3/2/1/0 min), dazu die Sudhäuser „Gerätetest von Hand“
+und „Gerätetest geregelt“ (aus „Ein-Topf“, Maischefühler = `HLT`, Rührwerk = `agitator`, Umwälzpumpe =
+`kettle`) und die Sude #2 und #3; sie bleiben dort. Branch `fix/sud-5b-geraetepruefung`.
+
+- **5b-1:** Start bucht ab (Lagerposten 5 → 4 kg), Messwert von Hand und „übernehmen“ vom Fühler (mit `src`),
+  ein zweites Gerät, das zwischendurch ein anderes Feld schreibt, bleibt erhalten, die Ist-Menge bucht nach
+  (→ 3,8 kg). Ein Sud-Dokument von 15 956 Byte wird gespeichert und identisch zurückgelesen, 16 756 Byte
+  lehnt die Firmware mit 413 ab.
+- **5b-2:** „Maischen starten“ legt fünf Schritte an; der Heiz-Schritt endet von selbst, sobald `HLT` über
+  der Schwelle liegt (Fühler in der Hand), „Einmaischen“ wartet auf Freigabe. Fünf Meldungen mit
+  Schrittnamen, fünf Pushes am Desktop, je einmal. Drei Neustarts per API (in einer Rast, in einem
+  Fühler-Schritt, in einer Rast mit `notify`): Das Programm macht am selben Schritt weiter, die Uhr läuft
+  durch (59 s → 39 s), keine Meldung wiederholt sich.
+- **5b-3:** „Kochen starten“ legt acht Schritte an, ein Neustart mitten im Kochen ändert nichts. Lange
+  Schrittnamen enden in der Meldung sauber nach 39 Byte („… 2,5 g Irish Mos“). Vier Haken in 1,5 s bleiben
+  alle mit Uhrzeit, Ist-Menge und Messwerte bleiben; `ogPlato`, `ogActual`, `mashEffPct` und `yieldPct`
+  stehen in `/brews/index.jsonl` und im Rezept-Tab „Sude“. „Abschließen“ löscht beide Programme.
+- **5b-4:** Das Log mit dem Maischefühler ist vorgeschlagen, „Eingemaischt“ und die korrigierte Zeit legen
+  die Soll-Kurve richtig, Ist und Heizleistung kommen aus dem Log (934 KB), ein Punkt kurz nach dem Laden
+  stammt aus dem Live-Snapshot. Nach dem Leeren des Logs liest der Sud die archivierte Session
+  (`?session=…`, 3,6 s). `agitator` und `kettle` lassen sich schalten; ein laufendes Programm und ein
+  eingeschalteter Regler auf `kettle` sperren den Schalter mit Grund (beide Hilfsobjekte wieder gelöscht).
+- **Gefunden und behoben:**
+  - `ProgramCard` und `TimerCard` definierten ihre Knopf-Komponente `Btn` im Rumpf der Karte. Preact sah bei
+    jedem Neuzeichnen (jede Sekunde) eine neue Komponente und baute „Zurück/Weiter/Stop“ neu auf; ein Tipp
+    in diesem Moment konnte verloren gehen. `Btn` steht jetzt auf Modulebene. Am Gerät: dieselben Knoten
+    über 4 s.
+  - Ein Aktor im Intervall (`agitator`, 4 von 5 s) sprang in „Pumpen & Geräte“ zwischen 55 % und 0 %. Die
+    Zeile zeigt jetzt den Sollwert, das Intervall steht im Tooltip. Am Gerät: 7 s lang 55 %.
+  - Die Schwelle eines Fühler-Schritts war ungerundet („HLT > 22.76841“); jetzt auf 0,1 K (Test).
+  - Bei eingerastetem Not-Aus ließ sich `agitator` über „Pumpen & Geräte“ wieder einschalten. Die Karte
+    sperrt ihre Schalter jetzt („Not-Aus aktiv“, im Mock geprüft). Dass die Firmware die Freigabe annimmt
+    und das Dashboard nicht sperrt, steht in PLAN.md.
+- **Prüfung:** `pnpm test` (511, +1), `typecheck`, `build` (Hauptbundle 471,85 kB, +0,17).
+- **Danach am Gerät:** Not-Aus aufgehoben, `agitator` (55 %), `IDS1` und Regler `Maischen` wie vorher
+  eingeschaltet, `kettle` aus mit Sollwert 0,63. Lagerposten wieder 5 kg, die Abbuchungen aus den beiden
+  Test-Suden genommen. Das Log „Maischen“ hat seit 00:10 eine neue Session.
+- **Offen:** Beim Kochtimer sind vier von sieben Pushes bestätigt (PLAN.md).

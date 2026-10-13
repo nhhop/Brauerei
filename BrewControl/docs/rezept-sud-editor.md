@@ -1017,7 +1017,8 @@ Belegungsplan.
       Schüttung nur bei mehreren), Zubrühen, Eis, Dekoktion;
     - je Temperaturwechsel „Aufheizen/Abkühlen auf T“: ohne Fühler mit `confirm`, mit verknüpftem Fühler
       (Hauptgusstemperatur bzw. Maischetemperatur, der in der Registry stehen muss) endet er von selbst bei
-      T ∓ 0,5 K (`REACHED_MARGIN_K`, Annahme) und meldet sich per `notify` (Entscheidung 2026-10-13);
+      T ∓ 0,5 K (`REACHED_MARGIN_K`, Annahme; die Schwelle ist auf 0,1 K gerundet) und meldet sich per
+      `notify` (Entscheidung 2026-10-13);
     - je Rast „Rast T °C · m min“ mit der Haltezeit; nach einem Fühler-Ende meldet auch sie sich.
     - Das Ende der letzten Rast meldet die Firmware als „Programm fertig“.
   - **Anzeige:** die Programm-Karte des Dashboards (`ProgramCard`, Entscheidung 2026-10-13), Abfrage jede
@@ -1121,15 +1122,20 @@ Web, Firmware unverändert):**
     Läutern, Kochen, Whirlpool, Hop Back und Kühlen. Läutern und Nachguss stehen also in beiden.
   - **Schalten:** der Hauptschalter des Aktors (`enableActuator`), weil ein Binary-Aktor keinen anderen hat.
     Ein stufenloser Aktor, der auf seinem Minimum steht, wird beim Einschalten auf sein Maximum gesetzt
-    (Annahme). Daneben der Zustand aus dem Snapshot (an/aus oder Prozent).
+    (Annahme). Daneben der Zustand aus dem Snapshot (an/aus oder Prozent). Läuft der Aktor im Intervall
+    (z. B. 4 von 5 s), steht dort sein Sollwert und nicht der Momentanwert, der in jeder Pause auf 0 fiele.
   - **Sperre:** Gehört der Aktor einem eingeschalteten Regler oder einem laufenden Programm
     (`ownership.ts`), ist der Schalter gesperrt und nennt den Besitzer. Das Dashboard fragt in dem Fall nach,
-    der Sud nicht. Gesperrt ist er auch, solange der Sud nicht läuft.
+    der Sud nicht. Gesperrt ist er auch, solange der Sud nicht läuft, und bei eingerastetem Not-Aus (seit
+    2026-10-14; die Firmware würde die Freigabe annehmen, PLAN.md).
   - **Laufzeit und Menge** hält der Sud nicht fest (Entscheidung 2026-10-13): Die Mengen stehen als
     Messwerte im Sud, und Durchfluss × Laufzeit wäre nur eine grobe Schätzung. `transfers` aus dem Plan gibt
     es deshalb nicht.
 - **Nicht gebaut:** die Tabelle „Maischeplan“ aus dem Canvas mit Ist-Mittelwert und Ist-Dauer je Rast.
 - **Größe:** `logId` und `phaseStartedAt` kosten zusammen etwa 60 Byte (Mock-Sud 4,5 KB).
+- **Am Gerät geprüft (LilyGo, 2026-10-14):** 5b-1 bis 5b-4 mit einem Prüfrezept, dessen Timer in Minuten
+  laufen (SESSION.md). Die Testdaten liegen auf dem Board: Rezept „Gerätetest“, Sudhäuser „Gerätetest von
+  Hand“ und „Gerätetest geregelt“, Sude #2 und #3.
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.

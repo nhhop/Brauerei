@@ -47,6 +47,11 @@ describe('mashTimerProgram', () => {
     expect(rest72.notify).toBe(true);
   });
 
+  it('rounds the threshold of a computed temperature to 0.1 K', () => {
+    const p = mashTimerProgram(1, [mashRow('strike', 23.26841, 0)], { strike: 'hlt' });
+    expect(p.steps[0].cond?.value).toBe(22.8);
+  });
+
   it('names the charge only when there are several', () => {
     const two = [rows[1], mashRow('doughIn', 50, 0, { grainKg: 2, chargeName: 'Schüttung 2' })];
     expect(mashTimerProgram(1, [{ ...rows[1], chargeName: 'Schüttung 1' }], {}).steps[0].name).toBe('Einmaischen 5 kg');
