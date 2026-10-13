@@ -1,7 +1,7 @@
 import { boilingPointC } from '../../brewMath';
 import { deviation, measuredEfficiency, measuredValues, type BrewInputs, type BrewTargets } from '../../brewDay';
 import { BOIL_GROUPS, boilAdditions, boilProgress, boilTimerProgram, type BoilAddition, type BoilGroup } from '../../brewPrograms';
-import { MEASUREMENTS, type MeasureKey } from '../../brewhouse';
+import { MEASUREMENTS, type MeasureKey, type StepKey } from '../../brewhouse';
 import { setAddedAt, setChecked, setMeasurement, type Brew, type MeasureId } from '../../brews';
 import { fmtDuration } from '../../format';
 import { unitOfEntry } from '../../ingredientSource';
@@ -13,6 +13,7 @@ import { badgeCaution, badgeSuccess, inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
 import { AmountInput, num, rowAmountChange } from './amounts';
 import { BrewTimer } from './BrewTimer';
+import { DeviceList } from './DeviceList';
 import { MeasureRow, fmtNum } from './MeasureRow';
 import type { Patch } from './PrepTab';
 
@@ -23,6 +24,9 @@ const LABEL: Partial<Record<MeasureId, string>> = {
 const labelOf = (key: MeasureId) => LABEL[key] ?? MEASUREMENTS.find((m) => m.key === key)!.label;
 
 const GROUP_LABEL: Record<BoilGroup, string> = { ...TIMING_LABEL, dip: 'Dip Hopping' };
+
+// Lautering and sparging lie between the tabs; their devices are in both.
+const DEVICE_STEPS: StepKey[] = ['sparge', 'lauter', 'boil', 'whirlpool', 'hopback', 'chill'];
 
 const clock = (at: number) => new Date(at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
@@ -172,6 +176,8 @@ export function BoilTab({ brew, recipe, inputs, targets, snap, editable, patch, 
         {row('speiseVolume', 'beim Ausschlagen, einfrieren')}
         {row('dipWortVolume', 'beim Ausschlagen')}
       </Card>
+
+      <DeviceList bh={inputs.bh} steps={DEVICE_STEPS} snap={snap} active={brew.status === 'active'} />
 
       <Card title="Notizen zum Würzekochen">
         <Field label="Gespeichert mit „Speichern“">

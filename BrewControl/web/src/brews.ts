@@ -73,6 +73,8 @@ export interface Brew {
   boilProgramId?: string;                // the boil timer with its additions
   addedAt?: Record<string, number>;      // when a boil addition went in, per recipe row id
   phaseNotes?: Partial<Record<PhaseId, string>>;
+  logId?: string;                        // the device log the mash course is drawn from
+  phaseStartedAt?: Partial<Record<PhaseId, number>>;  // epoch ms; mash: when the grain went in
   // Results for the list (brewDay.withResults), set whenever the brew is saved.
   ogPlato?: number;          // gravity after the boil: target
   ogActual?: number;         // ... and measured
@@ -181,6 +183,12 @@ export function setAddedAt(b: Brew, rowId: string, at: number | undefined): Brew
   const addedAt = { ...b.addedAt };
   if (at === undefined) delete addedAt[rowId]; else addedAt[rowId] = at;
   return { ...b, addedAt };
+}
+
+export function setPhaseStart(b: Brew, phase: PhaseId, at: number | undefined): Brew {
+  const phaseStartedAt = { ...b.phaseStartedAt };
+  if (at === undefined) delete phaseStartedAt[phase]; else phaseStartedAt[phase] = at;
+  return { ...b, phaseStartedAt };
 }
 
 export function setRowAmount(b: Brew, rowId: string, amount: number | undefined): Brew {

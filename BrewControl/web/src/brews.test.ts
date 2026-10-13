@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, setAddedAt, setChecked,
-  setMeasurement, setRowAmount, summaryOf, todayIso, withHead, type Brew, type BrewSummary,
+  setMeasurement, setPhaseStart, setRowAmount, summaryOf, todayIso, withHead, type Brew, type BrewSummary,
 } from './brews';
 import { bookStock, freezeEntries, lotTarget, rebook, startBrew, stockPlan, unbookStock, withBooking } from './brewStart';
 import type { CatalogIngredient, Hop, StockLot } from './ingredientCatalog';
@@ -160,6 +160,12 @@ describe('brew day edits', () => {
     const b = setAddedAt(setAddedAt(base, 'h1', 100), 'h2', 200);
     expect(b.addedAt).toEqual({ h1: 100, h2: 200 });
     expect(setAddedAt(b, 'h1', undefined).addedAt).toEqual({ h2: 200 });
+  });
+
+  it('keeps when a phase began', () => {
+    const b = setPhaseStart(base, 'mash', 100);
+    expect(b.phaseStartedAt).toEqual({ mash: 100 });
+    expect(setPhaseStart(b, 'mash', undefined).phaseStartedAt).toEqual({});
   });
 
   it('gives the list the fields of the index line', () => {
