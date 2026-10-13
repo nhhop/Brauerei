@@ -1,0 +1,138 @@
+import { describe, expect, it } from 'vitest';
+import { brewInputs, brewTargets, deviation, measuredEfficiency, type BrewInputs } from './brewDay';
+import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
+import type { Brew, MeasureId } from './brews';
+import type { CatalogIngredient } from './ingredientCatalog';
+import { calcMash } from './mashPlan';
+import { calcStats, wortExtract } from './recipeStats';
+import { calcTreatment } from './recipeTreatment';
+import { calcWater } from './recipeWater';
+import { newRecipe, type Ingredient, type Recipe } from './recipes';
+
+const catalog = [
+  { id: 'malt:base', kind: 'fermentable', type: 'malt', name: 'Base', colorEbc: [3, 3], extractDryPct: [80, 80], moisturePct: [4, 4] },
+  { id: 'sugar:cane', kind: 'fermentable', type: 'sugar', name: 'Zucker', colorEbc: [0, 0], extractDryPct: [100, 100] },
+  { id: 'aux:gypsum', kind: 'auxiliary', name: 'Gips', category: 'water-salt', defaultUnit: 'g', waterAgent: 'gypsum' },
+  { id: 'aux:lactic', kind: 'auxiliary', name: 'Milchsäure', category: 'acid', defaultUnit: 'ml', waterAgent: 'lactic', acidStrengthPct: 80 },
+] as CatalogIngredient[];
+
+const herms = { ...TEMPLATES.find((t) => t.key === 'herms3')!.build(), id: 'bh-herms' };
+const brewery: Brewery = { grainTempC: 18, tapWaterTempC: 12, altitudeM: 300 };
+
+const row = (p: Partial<Ingredient>): Ingredient =>
+  ({ id: Math.random().toString(36).slice(2), kind: 'fermentable', name: 'x', amount: 0, timing: 'mash', ...p });
+const malt = row({ id: 'm', name: 'Base', ingredientId: 'malt:base', amount: 5 });
+const sugar = row({ id: 's', name: 'Zucker', ingredientId: 'sugar:cane', amount: 0.5, timing: 'boil' });
+const gypsum = row({ id: 'g', kind: 'auxiliary', name: 'Gips', ingredientId: 'aux:gypsum', amount: 4, timing: 'water' });
+const acid = row({ id: 'a', kind: 'auxiliary', name: 'Milchsäure', ingredientId: 'aux:lactic', amount: 2, timing: 'sparge' });
+
+// The recipe names another brewhouse: the brew computes with its own.
+const recipe = (ingredients: Ingredient[] = [malt, sugar, gypsum, acid], p: Partial<Recipe> = {}): Recipe =>
+  ({ ...newRecipe(), volumeL: 22, brewhouseId: 'other', ingredients, ...p });
+const inputs = (bh: Brewhouse = herms): BrewInputs => ({ bh, brewery, entries: catalog });
+const own = (r: Recipe): Recipe => ({ ...r, brewhouseId: herms.id });
+
+describe('brewTargets', () => {
+  it('takes volumes, temperatures and pH from the recipe tabs', () => {
+    const r = recipe();
+    const t = brewTargets(r, inputs());
+    const stats = calcStats(own(r), catalog, herms, brewery);
+    const water = calcWater(own(r), herms, wortExtract(own(r), catalog, herms, brewery).extractKg, brewery).water!;
+    const w = t.water!;
+    expect(w.preBoilL).toBeCloseTo(water.preBoilL, 6);
+    expect(t.values.strikeVolume).toBe(w.strikeFillL);
+    expect(t.values.spargeVolume).toBe(w.spargeFillL);
+    expect(t.values.preBoilVolume).toBe(w.preBoilL);
+    expect(t.values.postBoilVolume).toBe(w.dilution.kettleL);
+    expect(t.values.postBoilGravity).toBeCloseTo(stats.ogPlato!, 6);
+    const mash = calcMash(own(r), herms, brewery, w);
+    expect(t.values.strikeTemp).toBe(mash.rows[0].waterTempC);
+    expect(t.values.spargeTemp).toBe(78);
+    const cols = calcTreatment(own(r), w, brewery, catalog).columns;
+    expect(t.values.strikePh).toBe(cols.find((c) => c.key === 'strike')!.after.ph);
+    expect(t.values.spargePh).toBe(cols.find((c) => c.key === 'sparge')!.after.ph);
+    expect(t.values.strikePh).toBeGreaterThan(t.values.spargePh!);  // the acid
+    expect(t.boilC).toBeLessThan(100);
+  });
+
+  it('leaves the kettle sugar out before the boil', () => {
+    const withSugar = brewTargets(recipe(), inputs()).values;
+    const without = brewTargets(recipe([malt, gypsum]), inputs()).values;
+    expect(withSugar.preBoilGravity!).toBeLessThan(withSugar.postBoilGravity!);
+    expect(withSugar.postBoilGravity!).toBeGreaterThan(without.postBoilGravity!);
+    // The sugar adds nothing before the boil; the volumes are the same.
+    expect(withSugar.preBoilGravity!).toBeCloseTo(without.preBoilGravity!, 6);
+  });
+
+  it('measures the knock-out before a dilution in the kettle', () => {
+    const t = brewTargets(recipe(undefined, { water: { dilution: { at: 'kettle', lead: 'volume', volumeL: 4 } } }), inputs());
+    expect(t.dilutionInKettle).toBe(true);
+    expect(t.values.postBoilVolume).toBeCloseTo(18, 6);
+  });
+
+  it('has no targets but the boiling point without a brewhouse', () => {
+    const t = brewTargets(recipe(), { bh: undefined, brewery, entries: catalog });
+    expect(t.values).toEqual({});
+    expect(t.notes.length).toBeGreaterThan(0);
+  });
+
+  it('computes with the copies once started, with today\'s objects before', () => {
+    const frozen = { brewhouse: herms, brewery, entries: catalog };
+    const brew = { brewhouseId: 'x', frozen } as unknown as Brew;
+    expect(brewInputs(brew, { brewhouses: [], brewery: null, entries: null })).toEqual({ bh: herms, brewery, entries: catalog });
+    const planned = { brewhouseId: herms.id } as Brew;
+    expect(brewInputs(planned, { brewhouses: [herms], brewery, entries: catalog }).bh).toBe(herms);
+  });
+});
+
+describe('measuredEfficiency', () => {
+  const r = recipe();
+  const t = brewTargets(r, inputs());
+  const e = t.efficiency!;
+  const v = t.values;
+  const pick = (...keys: MeasureId[]) => Object.fromEntries(keys.map((k) => [k, v[k]]));
+
+  it('gives the recipe\'s efficiencies back when the brew hits the targets', () => {
+    const m = measuredEfficiency(pick('preBoilVolume', 'preBoilGravity', 'firstWortGravity'), t.ctx!);
+    expect(m.from).toBe('preBoil');
+    expect(m.mashPct).toBeCloseTo(e.mashPct!, 6);
+    expect(m.yieldPct).toBeCloseTo(e.yieldPct!, 6);
+    expect(m.conversionPct).toBeCloseTo(e.conversionPct!, 6);
+    expect(m.lauterPct).toBeCloseTo(e.lauter!.pct, 6);
+  });
+
+  it('counts from the knock-out without the values before the boil', () => {
+    const m = measuredEfficiency(pick('postBoilVolume', 'postBoilGravity'), t.ctx!);
+    expect(m.from).toBe('postBoil');
+    expect(m.mashPct).toBeCloseTo(e.mashPct!, 6);
+    expect(m.conversionPct).toBeUndefined();
+  });
+
+  it('follows more wort at the same gravity', () => {
+    const m = measuredEfficiency({ ...pick('preBoilGravity'), preBoilVolume: v.preBoilVolume! * 1.05 }, t.ctx!);
+    expect(m.mashPct).toBeCloseTo(e.mashPct! * 1.05, 6);
+  });
+});
+
+describe('deviation', () => {
+  it('marks a value beyond the tolerance', () => {
+    expect(deviation('preBoilGravity', 12, 12.2)).toEqual({ text: '+0,2 °P', level: 'ok' });
+    expect(deviation('preBoilGravity', 12, 11.7)).toEqual({ text: '−0,3 °P', level: 'warn' });
+    expect(deviation('mashPh', 5.4, 5.5)?.level).toBe('ok');
+    expect(deviation('mashPh', 5.4, 5.56)).toEqual({ text: '+0,16', level: 'warn' });
+    expect(deviation('strikeTemp', 70, 71)).toEqual({ text: '+1,0 K', level: 'ok' });
+    expect(deviation('spargeTemp', 78, 76.5)?.level).toBe('warn');
+    expect(deviation('efficiency', 70, 72)).toEqual({ text: '+2,0 Pkt.', level: 'ok' });
+    expect(deviation('efficiency', 70, 67.5)?.level).toBe('warn');
+  });
+
+  it('counts volumes in percent', () => {
+    expect(deviation('preBoilVolume', 30, 30.75)).toEqual({ text: '+0,8 l (+2,5 %)', level: 'ok' });
+    expect(deviation('preBoilVolume', 30, 29)?.level).toBe('warn');
+  });
+
+  it('is unset without both values or without a tolerance', () => {
+    expect(deviation('preBoilVolume', undefined, 30)).toBeUndefined();
+    expect(deviation('airPressure', 1000, 990)).toBeUndefined();
+  });
+});

@@ -950,6 +950,42 @@ Belegungsplan.
 - **Größe:** Die Kopien brauchen einige KB von 16 KB je Dokument. Messreihen der Gärung (5c) gehören nicht
   ins Sud-Dokument.
 
+**Stand 5b-1 (2026-10-13, `web/src/brewDay.ts`, `pages/brew/PrepTab.tsx`, `pages/brew/MeasureRow.tsx`):**
+- **Sollwerte** (`brewTargets`) aus der Kette der Rezept-Tabs auf den Kopien des Suds, vor dem Start auf den
+  aktuellen Objekten. Gerechnet wird mit dem Sudhaus des Suds, auch wenn das Rezept ein anderes nennt.
+  - Haupt- und Nachguss: Einfüllmenge (`strikeFillL`/`spargeFillL`, mit Totraum und Leitung), darunter
+    die Menge in die Maische bzw. zum Läutern. Temperatur: Hauptguss aus dem Maischeplan, Nachguss aus dem
+    Rezept. pH aus der Aufbereitung.
+  - **Neuer Messwert `strikeTemp`** (Hauptgusstemperatur) im Sudhaus, mit einem Fühler verknüpfbar.
+  - **Stammwürze vor dem Kochen** ist neu: der Extrakt ohne Kochzucker in Pfannevoll (abzüglich
+    Kühlschwund). `wortExtract` gibt dafür Grist und den Kochzucker-Extrakt (`boilOtherKg`) zurück.
+  - Ausschlag und Stammwürze nach dem Kochen: Pfanneninhalt **vor** einem Verschnitt in der Pfanne.
+  - Vorderwürze (für 5b-2): aus der Rezept-Konversion nach Troesters Mash Gravity Test,
+    °P = 100·D/(D+W) mit D = gelöster Extrakt und W = Maischwasser (Hauptguss mit Zubrühen, abzüglich
+    Verdampfung beim Maischen). Die Malzfeuchte zählt nicht (`TODO(verify)`).
+- **Effizienzen rückwärts** (`measuredEfficiency`): genau die Umkehrung der Vorwärtskette. Pfannevoll und
+  Vorkoch-°P zählen vor Ausschlag und Stammwürze nach dem Kochen. Ein Sud mit Ist = Soll ergibt die
+  Rezept-Effizienzen (Test). Die Gesamteffizienz braucht die Anstellwürze und kommt mit 5c.
+- **Abweichung** (`deviation`): Toleranzen als Annahme in `TOLERANCE`: °P ±0,2, Volumen ±2,5 %,
+  pH ±0,1, °C ±1 K, Effizienz ±2 Punkte.
+- **Speichern:** Messwerte, Haken und Ist-Mengen speichern beim Bestätigen (Enter oder Feld verlassen) über
+  `patchBrew`: Sud frisch laden, ein Feld setzen, `PUT`. Auch „Speichern“ im Kopf schreibt nur die
+  Kopf-Felder (`HEAD_FIELDS`, dazu die Notizen je Phase) auf eine frische Kopie. Zwei Geräte am Brautag
+  überschreiben sich so nur, wenn sie zur selben Zeit dasselbe Feld ändern.
+- **Sensor oder Hand:** Ist die Messung im Sudhaus mit einem Fühler verknüpft, zeigt die Zeile dessen
+  Live-Wert mit „übernehmen“ (gespeichert mit `src`); das Eingabefeld bleibt daneben. Stammwürze in
+  °P, SG oder °Bx, gespeichert in °P. Bis zum Start sind die Felder gesperrt, die Sollwerte sichtbar.
+- **Vorbereitung:** Wasser je Haupt- und Nachguss mit den Dosen der Aufbereitung (Hauptguss, Maische außer
+  „nach pH-Messung“, Nachguss) zum Abhaken. Die Zutaten stehen nach Art, nicht nach Prozessschritt, und
+  sind je Zutat und Lagerposten zusammengefasst. Die Gruppe hat Soll-Summe, Bestand und Haken. Bei mehreren
+  Gaben stehen diese eingerückt darunter, jede mit ihrer Ist-Menge (`rowAmounts` je Rezeptzeile).
+- **Lager:** Eine geänderte Ist-Menge bucht die Differenz am Posten nach oder zurück (`rebook`, höchstens
+  bis 0) und führt `booked` nach. Ein Posten, der beim Start abgewählt wurde, wird nicht nachgebucht.
+  Warnung vor dem Start: Bestand reicht nicht; danach: nur ein Teil wurde abgebucht.
+- **Größe:** Ein großer Sud (29 Rezeptzeilen, alle Messwerte, Haken, Ist-Mengen, Notiz) hat nach dem Start
+  9,5 KB. Messwerte, Haken und Ist-Mengen tragen dazu etwa 3–4 KB bei, die Kopie des Sudhauses gut 2 KB,
+  jede eingefrorene Zutat etwa 0,4 KB.
+
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.
 - **Messwerte** stehen überall als Zeile Messwert | Soll laut Rezept | Ist | Abweichung. Die Abweichung ist
@@ -984,6 +1020,258 @@ Belegungsplan.
   **steuern** (Start/Stopp) oder zeigen nur den **Status**, mit Laufzeit und Menge. Die Besitzregeln wie in
   `web/src/ownership.ts` gelten: Eine Pumpe, die gerade einem Regler oder Programm gehört, lässt sich nicht
   schalten.
+
+### Plan 5b – Brautag (Vorbereitung, Maischen, Würzekochen)
+
+> Erstellt 2026-10-12 in einer Planungssession, ins Repo übernommen mit 5b-1. Umgesetzt wird **jede
+> Teil-Etappe in einer eigenen, neuen Session** mit einem eigenen PR. Jede Session startet im Planmodus mit:
+> „Setze Sud 5b-n laut `rezept-sud-editor.md` › Plan 5b um“.
+
+**Modell und Aufwand je Teil-Etappe.** „Umfang“ ist die Einschätzung nach dem Schema aus PLAN.md
+(klein/mittel/groß); „Effort“ ist die Einstellung für die Session (`/model`, Effort-Regler).
+
+| Etappe | Modell | Effort | Umfang | Planmodus | Grund |
+|---|---|---|---|---|---|
+| 5b-1 Messwerte, Vorbereitung | Opus | hoch | mittel | mit Plan | Neue Rechnungen (Vorkoch-Stammwürze, Effizienz rückwärts, Konversion nach Troester), Datenmodell der Messwerte und Speichern ohne gegenseitiges Überschreiben, Größenmessung. |
+| 5b-2 Maischen | Opus | hoch | mittel | mit Plan | Säurevorschlag aus gemessenem pH (pH-Modell); führt das Firmware-Flag `notify` ein, weil der Rasten-Timer der erste Nutzer ist. |
+| 5b-3 Würzekochen | Sonnet | mittel | mittel | mit Plan | Gaben-Programm auf dem Muster aus 5b-2, Index-Felder, Spalten und Diagramm im Tab „Sude“. |
+| 5b-4 Maischverlauf, Pumpen | Sonnet | mittel | mittel | mit Plan | Log-Diagramm und Pumpen nach vorhandenen Mustern (`MashCurve`, `ownership.ts`). |
+
+#### Kontext
+Das Sud-Gerüst ist gemergt (5a, PR #94): Ablage `/api/brews` mit Index, Start mit eingefrorenen Kopien
+(`brew.frozen`: Sudhaus, Brauerei, Gärplatz, Zutatenwerte), Abbuchen und Versionsregel.
+
+5b füllt die drei Brautag-Tabs mit **Soll/Ist-Messwerten** (Zeile Messwert | Soll | Ist | Abweichung). Die
+Sollwerte kommen aus den vorhandenen Rechnungen auf den Kopien des Suds.
+
+**Entscheidungen des Nutzers**
+- **Umfang**
+  - Maische-Säure in drei Schritten.
+  - Rasten Soll/Ist mit Timer, aber **nur ohne Regelung** (Maischheizung „von Hand“).
+  - Würze abzweigen (Speise, Dip Hopping).
+  - Maischverlauf aus dem Gerätelog mit Heizleistung.
+  - Pumpen/Transfers mit Start/Stopp.
+- **Effizienz-Spalten** im Rezept-Tab „Sude“ kommen aus der **Index-Zeile**. Dafür braucht
+  `brewSummaryLine` neue Felder, also eine kleine Firmware-Änderung.
+- **Lager:** Die Ist-Menge je Zutat lässt sich ändern. Die Differenz zur Abbuchung beim Start wird am
+  Lagerposten nach- bzw. zurückgebucht und in `booked` vermerkt.
+- **Kochtimer als Programm** (Vorschlag des Nutzers, Einschätzung unten): Der Sud legt ein
+  Firmware-Programm an. Seine Schritte schalten nichts, sondern melden „30 g Hallertau Mittelfrüh zugeben“.
+
+#### Einschätzung: Gaben als Programm statt Browser-Timer
+**Dafür spricht, dass fast alles schon da ist:**
+- Ein Schritt darf ohne Ziele sein (`ProgramStep.targets = {}`).
+- `confirm: true` hält an und löst über `AlarmStore::onProgramStatus` eine `awaiting`-Meldung mit Push aus.
+  „Weiter“ (`POST /api/programs/{id}/control`, `next`) ist das Quittieren der Gabe.
+- Das Programm läuft auf dem Gerät weiter, auch bei geschlossener Seite und nach einem Neustart
+  (Resume-Pfad).
+
+**Lücken:**
+1. **Die Meldung nennt nur den Programmnamen**, nicht den Schritt. Ändern: Bei `awaiting` den Namen des
+   aktuellen Schritts als Text der Meldung mitgeben. Das betrifft `ProgramRunner.cpp`,
+   `AlarmStore::onProgramStatus` und die Alert-Darstellung in der UI.
+2. **Drift:** `confirm` hält die Uhr an, bis quittiert wird. Bei Verspätung rutschen die folgenden Gaben
+   nach hinten. Abhilfe: Die Schritte enden zeitgesteuert ohne `confirm`, und nur der Schritt *vor* einer
+   Gabe hat `confirm`.
+   - Besser ist ein eigenes Flag „melden ohne anzuhalten“ (`notify: true`). Es löst die Meldung beim
+     Schrittwechsel aus, und die Uhr läuft weiter.
+   - Das ist eine kleine, saubere Firmware-Erweiterung; empfohlen.
+3. **Aufräumen:** Das Programm gehört dem Sud (`brew.boilProgramId`). Beim Abschluss der Phase oder beim
+   Löschen des Suds wird es gelöscht.
+
+**Dasselbe Muster passt auf die Rasten ohne Regelung:** ein Programm mit einem Schritt je Rast, Haltezeit
+wie im Maischeplan und Meldung „Rast 63 °C beendet“. Das ist der gewünschte Timer.
+
+Mit Regelung ließe sich daraus später ein Maischprogramm mit Sollwerten erzeugen (je Rast „aufheizen bis
+Fühler ≥ T“, dann „halten“). Das ist **nicht** Teil von 5b und steht als Punkt in PLAN.md.
+
+#### Teil-Etappen (je ein PR)
+
+##### 5b-1 Messwerte und Vorbereitung
+- **`web/src/brewDay.ts`** (rein, getestet): Es gibt drei Funktionen.
+  - **`brewTargets(brew, recipe)`** rechnet mit der Kette aus `pages/recipe/tabs.tsx` auf `frozen`:
+    `calcStats`, `wortExtract`, `calcWater`, `calcMash`, `calcTreatment`. Vor dem Start nimmt sie die
+    Live-Daten wie bisher.
+    - Liefert die Sollwerte je `MeasureKey`: Hauptguss/Nachguss (l, °C), pH Hauptguss/Nachguss
+      (`col.after.ph`), Maische-pH (Mash-Spalte `ph.after`), Pfannevoll (`preBoilL`) und Stammwürze vor
+      dem Kochen.
+    - **Die Vorkoch-Stammwürze ist neu:** `platoFromExtract(extractKg ohne Kochzucker,
+      preBoilL·(1−shrink))`, analog `platoHot` in `recipeWater.ts`. `wortExtract` muss dafür die
+      Gabe-Zeitpunkte bzw. den Grist zurückgeben.
+    - Weitere Sollwerte: Ausschlag (`knockOutL`, `kettlePlato`) und Siedepunkt.
+  - **`measuredEfficiency(brew, …)`** rechnet rückwärts, konsistent zur Vorwärtskette:
+    - Extrakt = V_heiß·(1−shrink)·SG·°P/100
+    - Maischeeffizienz = (Extrakt − Fremdextrakt) / Potenzial
+    - Sudhausausbeute = Maischeeffizienz × Potenzial/kg
+    - Konversion aus der Vorderwürze (Troesters Mash Gravity Test, Formel mit `TODO(verify)`)
+    - Läutereffizienz = Maischeeffizienz / Konversion
+  - **`deviation(key, soll, ist)`** liefert Text und Stufe ok/warn. Die Toleranzen sind Annahmen und
+    stehen an einer Stelle: °P ±0,2, Volumen ±2,5 %, pH ±0,1, °C ±1 K, Effizienz ±2 Punkte.
+- **Modell** (`brews.ts`, rückwärtskompatibel, keine Migration):
+  - `measurements?: Partial<Record<MeasureKey | 'mashPhAcid', { v: number; at: number; src?: string }>>`
+  - `checked?: string[]`
+  - `rowAmounts?: Record<rowId, number>`
+  - `notes` je Phase optional.
+- **Speichern:**
+  - Messwerte und Haken werden **sofort beim Bestätigen** gespeichert (Enter/Blur). Dabei wird der Sud
+    frisch geladen, das eine Feld gesetzt und per `PUT` geschrieben, damit sich Handy und Laptop am
+    Brautag nicht gegenseitig überschreiben.
+  - Kopf und Notizen behalten den Speichern-Knopf.
+- **Sensor oder Hand:**
+  - Ist die Messung im Sudhaus mit einem Sensor verknüpft (`frozen.brewhouse.measurements[key]`), zeigt
+    die Zeile den Live-Wert aus dem Snapshot und einen Knopf „übernehmen“. Gespeichert wird mit
+    Zeitstempel und `src`.
+  - Sonst gibt es ein Eingabefeld; Stammwürze über `GravityInput` (°P/SG/°Bx).
+- **UI:**
+  - **`pages/brew/MeasureRow.tsx`:** die Zeile Messwert | Soll | Ist | Abweichungs-Abzeichen.
+  - **Tab Vorbereitung:**
+    - Wassermengen mit Aufbereitung je Hauptguss/Nachguss (Dosen aus `calcTreatment`, abhakbar).
+    - pH Haupt- und Nachguss.
+    - Die Zutatenliste nach Vergärbarem, Hopfen und Hefe, zusammengefasst je Zutat und Lagerposten, mit
+      Ist-Menge und Haken. Eine Warnung erscheint, wenn der Bestand oder die Abbuchung nicht reicht.
+- **Lager:** `rebook(brew, rowId, newAmount)` bucht die Differenz am Posten. Das Prinzip ist dasselbe wie
+  bei `bookStock`: höchstens bis 0, und `booked` wird nachgeführt.
+- **Entscheidungen der Umsetzungssession (2026-10-12):**
+  - Neuer Messwert **`strikeTemp`** (Hauptgusstemperatur) im Sudhaus, mit einem Fühler verknüpfbar wie
+    die anderen.
+  - Die **Ist-Menge** steht **je Gabe** (Rezeptzeile, `rowAmounts`); die Gruppe je Zutat und Posten zeigt
+    Summe, Bestand und Haken, mehrere Gaben stehen eingerückt darunter.
+  - Soll von Haupt- und Nachgussmenge ist die **Einfüllmenge** (`strikeFillL`/`spargeFillL`, mit Totraum
+    und Leitung), darunter die Menge in die Maische.
+- **Verifikation:**
+  - Tests für `brewTargets` mit Vorlage `herms3` und einem Testrezept (Werte gegen die Rezept-Übersicht).
+  - Tests für `measuredEfficiency`: Ein Sud mit Ist = Soll ergibt genau die Rezept-Effizienzen.
+  - Tests für `deviation` und für `rebook` (nach- und zurückbuchen).
+  - Im Mock: Messwert eintragen, neu laden, der Wert ist da; zwei Tabs speichern verschiedene Felder,
+    beide bleiben erhalten.
+  - **Größe messen:** Der Sud muss mit einem großen Rezept nach dem Start inklusive Messwerten deutlich
+    unter 16 KB bleiben. Die gemessene Zahl kommt in SESSION.md.
+
+##### 5b-2 Maischen
+- **Maische-Säure in drei Schritten:**
+  1. pH nach Einmaischen messen.
+  2. Säure: Rezeptmenge, Vorschlag und Ist-Menge. Der Vorschlag kommt aus `suggestAgent(col, targetPh, …)`;
+     die Mash-Spalte bekommt dafür den **gemessenen** pH als Ausgangswert statt des Modell-pH. Die
+     Ist-Menge zählt wie eine Zutat und wird über `rebook` gebucht.
+  3. pH danach (`mashPhAcid`).
+- **Vorderwürze** (`firstWortGravity`) ergibt die Konversion als Ist.
+- **Rasten ohne Regelung** (Maischheizung „von Hand“ laut `heatingOf(frozen.brewhouse,'mash')`):
+  - Tabelle aus `calcMash().rows` mit Soll-Temperatur und -Dauer und Ist-Temperatur von Hand.
+  - Dazu der Rasten-Timer als Programm (siehe Einschätzung): „Maischen starten“ legt es an und startet es.
+- **Mit Regelung** entfällt die Rasten-Tabelle; stattdessen kommt der Verlauf aus 5b-4.
+- **Firmware (hierher gezogen, erster Nutzer):**
+  - Programm-Schritt `notify`: meldet beim Schrittwechsel, ohne anzuhalten, und die Meldung trägt den
+    Schrittnamen.
+  - Betroffen sind `ProgramSteps.cpp/.h`, `ProgramRunner.cpp` und `AlarmStore`. Native Tests kommen dazu.
+  - Im selben Commit: `openapi.yaml` und `web/src/types.ts`.
+  - **Flash:** betrifft alle Boards, also esp32dev messen (zuletzt 98,0 %, 37 739 Byte frei); Erwartung
+    unter 1 KB.
+- **Verifikation:**
+  - Ein Test für den Vorschlag mit gemessenem pH.
+  - Tests für den Programm-Generator der Rasten (Schritte, Haltezeiten, Meldetexte).
+  - Im Mock: Programm wird angelegt; nach Abschluss oder Löschen ist es weg.
+
+##### 5b-3 Würzekochen
+- **Kochen starten:**
+  - Legt das Gaben-Programm an. Die Schritte sind die Zeitabstände zwischen den Gaben aus `boil` und den
+    Hopfen-Zeilen (`timeMin`, Vorderwürze, Whirlpool); die Meldung lautet „{Menge} {Name} zugeben“.
+    Danach wird es gestartet.
+  - Der Kopf zeigt Restzeit und nächste Gabe aus `GET /api/programs` (Polling wie im Dashboard).
+- **Hopfengaben** sind abhakbar mit Zeitstempel; die Ist-Menge wird über `rebook` gebucht.
+- **Messwerte vor und nach dem Kochen:** Pfannevoll, Stammwürze, pH, Ausschlag, Luftdruck. Der Luftdruck
+  ergibt den Siedepunkt (`boilingPointC`) und wird als Wert angezeigt. Dazu zeigt die Zeile die
+  Effizienzen Maischeeffizienz und Sudhausausbeute (Ist).
+- **Würze abzweigen** (Speise, Dip Hopping) mit Ist-Litern.
+  - Den Soll für Dip Hopping liefert das Rezept nicht mehr („Würzemenge entfällt“). Die Speise braucht die
+    Karbonisierungsrechnung, die erst mit dem Gärung-Tab kommt.
+  - **5b zeigt deshalb nur Ist-Felder ohne Soll;** der Soll kommt mit 5c.
+- **Index:**
+  - `brewSummaryLine` bekommt `ogPlato`, `ogActual`, `mashEffPct`, `yieldPct` und `bottledL` (für 5c, leer
+    bis dahin). Der Sud schreibt die Ist-Ergebnisse beim Speichern in diese Felder.
+  - Im Rezept-Tab „Sude“ kommen die Spalten Stammwürze Soll/Ist, Maischeeffizienz, Sudhausausbeute und ein
+    kleines Effizienz-Diagramm über die Sude dazu (uPlot wie `MashCurve`).
+- **Verifikation:**
+  - Test des Gaben-Generators (60/10/0 min, Vorderwürze, Whirlpool, mehrere Gaben im selben Zeitpunkt in
+    einem Schritt).
+  - Im Mock: Gaben-Liste, Restzeit, Haken.
+  - **Nicht in der Cloud prüfbar:** Push am Gerät und das Programm über einen Neustart.
+
+##### 5b-4 Maischverlauf und Pumpen
+- **Verlauf:**
+  - Der Sud merkt sich `logId` (Auswahl aus `GET /api/logs`, vorgeschlagen ist das Log, das den
+    Maischfühler enthält).
+  - Das Diagramm zeigt Soll und Ist: Die Soll-Kurve kommt aus `calcMash().rows`, verankert an
+    `phaseStartedAt.mash`; Ist ist die Temperatur aus `getLogData(logId)` im Zeitfenster.
+  - Die Heizleistung ist der Aktor des Reglers (`heatingOf(...).heater.controller` → `params.actuator`,
+    Prozent wie `outputPct` in `ControllerCard.tsx`, das dafür exportiert wird).
+  - Live-Punkte kommen per SSE dazu.
+- **Pumpen:**
+  - Die Transfers aus `frozen.brewhouse.transfers` mit `drive: 'pump'` erscheinen in ihrem Tab. Start/Stopp
+    über `writeActuator` auf den Aktor des Pumpen-Geräts.
+  - Gesperrt, wenn `controllerOwnerOf`/`programOwnerOf` eine Pumpe gerade einem Regler oder Programm
+    zuordnet; der Grund steht am Knopf.
+  - Laufzeit und Menge (`flowLPerMin` × Laufzeit) werden als `transfers[id] = {startedAt, stoppedAt}` im
+    Sud gespeichert.
+- **Verifikation:**
+  - Test der Soll-Kurve mit Zeitanker.
+  - Im Mock mit Snapshot-Stub: Pumpe schalten, Sperre bei Regler-Besitz, Laufzeit.
+  - **Nicht in der Cloud prüfbar:** Diagramm mit echtem Log am Gerät.
+
+#### Anknüpfung für 5c (Gärung, Reifung, Abfüllung, Belegungsplan)
+Diese Teile aus 5b nutzt 5c, ohne dass gespeicherte Sude umgebaut werden müssen:
+- **Belegung:** `fermenterId`, `occupiedFrom` und `occupiedUntil` stehen seit 5a im Sud und in der
+  Index-Zeile.
+  - Der Belegungsplan liest nur `GET /api/brews`.
+  - Beim Anstellen setzt 5c `occupiedFrom` auf den tatsächlichen Tag; beim Abfüllen setzt es
+    `occupiedUntil` auf den Tag, an dem der Gärplatz frei wird.
+  - Den Gärplatz wählt der Sud in 5c, sobald er am Ausschlagen ankommt. Die Kopie in `frozen.fermenter`
+    wird dann erneuert.
+- **Messwerte:** Das Muster aus 5b-1 (`measurements`, `MeasureRow`, `deviation`) trägt auch Anstellwürze
+  (`batchVolume`, `pitchTemp`), Restextrakt und Abfüllmenge.
+  - **Messreihen der Gärung** (Spindel und Temperatur über Wochen) gehören **nicht** ins Sud-Dokument,
+    wegen der 16-KB-Grenze. Sie kommen aus dem Gerätelog, gewählt wie in 5b-4 über `logId`.
+  - Von Hand eingetragene Messreihen kommen in eine eigene Datei je Sud. Wie genau, wird in 5c entschieden.
+- **Gärführung als Programm:** Der Generator aus 5b-2/5b-3 (`brewPrograms.ts`) bekommt eine Variante für
+  die Gärphasen des Rezepts (`recipe.fermentation`). Sie setzt Sollwerte auf den Regler des Gärplatzes
+  (`frozen.fermenter.controller`), meldet Stopfgaben mit `notify` und gehört wie die anderen Programme dem
+  Sud.
+  - Das ist der offene Punkt „Gärführung als Programm“ unter Offen / später.
+- **Würze abzweigen:** Die Ist-Liter von Speise und Dip Hopping aus 5b-3 bekommen in 5c ihren Soll.
+  - Der Soll kommt aus der Karbonisierungsrechnung und der Abfüllmenge im Gärung-Tab des Rezepts (PLAN.md
+    › Hopfenform und Abfüllmenge).
+- **Index-Felder:** `bottledL` ist in 5b-3 schon angelegt; 5c füllt es.
+  - Weitere Felder für die Liste (z. B. Alkohol, Endvergärung) brauchen dann wieder eine kleine Änderung an
+    `brewSummaryLine`.
+- **Lager:** `rebook` aus 5b-1 bucht auch Hefe, Stopfhopfen und Speisezucker der Gärphasen.
+- **Modell für 5c:** Opus · Effort hoch · Umfang groß · mit Plan. Es gibt neue Entscheidungen (Ablage der
+  Messreihen, Programm am Gärplatz-Regler, Rechnung der Abfüllmenge). Vermutlich lohnt sich ein eigener
+  Schnitt in Teil-Etappen, wie bei 5b.
+
+#### Dateien (Überblick)
+- **Neu:** `web/src/brewDay.ts`, `brewDay.test.ts`, `web/src/brewPrograms.ts` (+ Test),
+  `pages/brew/PrepTab.tsx`, `MashTab.tsx`, `BoilTab.tsx`, `MeasureRow.tsx`, `TransferList.tsx`.
+- **Geändert:**
+  - Web: `brews.ts` (Felder, `rebook`), `pages/BrewPage.tsx` (Tabs füllen), `pages/recipe/BrewsTab.tsx`
+    (Spalten), `recipeStats.ts` (Grist und Zeitpunkte zurückgeben), `components/ControllerCard.tsx`
+    (`outputPct` exportieren).
+  - Firmware: `RecipeFiles.h` (Index-Felder), `ProgramSteps.*`, `ProgramRunner.cpp`, `AlarmStore.cpp`,
+    Tests.
+  - Doku: `openapi.yaml`, README.
+- **Doku nach jeder Teil-Etappe:**
+  - `rezept-sud-editor.md` (Stand 5b-n).
+  - `PLAN.md`: Erledigtes raus. Neu rein: „Maischprogramm aus dem Plan für geregelte Maischen“ und „Soll für
+    Speise/Dip Hopping“ bei 5c.
+  - `SESSION.md`.
+  - Alles am Gerät wird als „nicht geprüft“ geführt.
+
+#### Verifikation gesamt
+- `pnpm typecheck`, `pnpm test`, `pnpm build`; Hauptbundle vergleichen, denn die Brautag-Seiten liegen im
+  Paket-Chunk.
+- `npx @redocly/cli lint …`.
+- Native Firmware-Tests mit g++/Unity außerhalb von PlatformIO, wie bei 5a. Compile, `pio test` und
+  esp32dev-Flash prüft der Nutzer lokal.
+- Browser gegen einen Wegwerf-Mock (Scratchpad, erweitert um `/api/programs`, `/api/logs`,
+  `/api/snapshot`): Brautag einmal durchspielen, 390 px Breite ohne Querscrollen.
 
 ## Offen / später
 

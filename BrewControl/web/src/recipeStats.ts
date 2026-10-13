@@ -4,7 +4,7 @@
 // stays undefined.
 import { breweryBoilC, type Brewery, type Brewhouse } from './brewhouse';
 import { ballingBeerAnalysis, hopIbu, moreyEbc } from './brewMath';
-import { resolveEfficiency, type Efficiency } from './efficiency';
+import { resolveEfficiency, type Efficiency, type Grist } from './efficiency';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient, Range } from './ingredientCatalog';
 import { resolveDilution, type DilutionResult } from './recipeWater';
@@ -36,37 +36,41 @@ export interface WortPart { id: string; kg: number; ebc: number; extractKg: numb
 // count towards the OG. Unset without a linked fermentable, or when the
 // efficiency chain cannot give the Maischeeffizienz (efficiency.ts).
 // `bh` and `brewery` feed the chain; without them it takes the recipe's input.
+// `grist` is what the efficiency chain saw; `boilOtherKg` the part of its
+// other extract added in the kettle (sugar at "Kochen"), missing before the boil.
 export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse, brewery?: Brewery | null): {
-  extractKg?: number; colors: WortPart[]; note?: string; efficiency: Efficiency;
+  extractKg?: number; colors: WortPart[]; note?: string; efficiency: Efficiency; grist: Grist; boilOtherKg: number;
 } {
   const worts = recipe.ingredients.filter(
     (i) => i.kind === 'fermentable' && (i.timing === 'mash' || i.timing === 'boil'));
   const fermentables = worts.flatMap((i) => {
     const c = entryOf(i, catalog);
-    return c?.kind === 'fermentable' ? [{ id: i.id, kg: i.amount, c }] : [];
+    return c?.kind === 'fermentable' ? [{ id: i.id, kg: i.amount, c, boil: i.timing === 'boil' }] : [];
   });
   const note = fermentables.length < worts.length
     ? `${worts.length - fermentables.length} von ${worts.length} Vergärbaren ohne Katalogverknüpfung, nicht eingerechnet`
     : undefined;
-  const parts = fermentables.map(({ id, kg, c }) => {
+  const parts = fermentables.map(({ id, kg, c, boil }) => {
     const moisture = c.moisturePct ? rangeValue(c.moisturePct) : 0;
     const potentialKg = kg * (rangeValue(c.extractDryPct) / 100) * (1 - moisture / 100);
     // Only mashed grain is held back by the efficiency.
-    return { id, kg, ebc: rangeValue(c.colorEbc), potentialKg, mashed: c.type === 'malt' || c.type === 'raw-grain' };
+    return { id, kg, ebc: rangeValue(c.colorEbc), potentialKg, mashed: c.type === 'malt' || c.type === 'raw-grain', boil };
   });
   const total = (xs: typeof parts, key: 'kg' | 'potentialKg') => xs.reduce((s, p) => s + p[key], 0);
   const grain = parts.filter((p) => p.mashed);
-  const efficiency = resolveEfficiency(recipe, {
+  const grist: Grist = {
     grainKg: total(grain, 'kg'),
     grainExtractKg: total(grain, 'potentialKg'),
     otherExtractKg: total(parts.filter((p) => !p.mashed), 'potentialKg'),
-  }, bh, brewery);
-  if (fermentables.length === 0) return { colors: [], note, efficiency };
+  };
+  const boilOtherKg = total(parts.filter((p) => !p.mashed && p.boil), 'potentialKg');
+  const efficiency = resolveEfficiency(recipe, grist, bh, brewery);
+  if (fermentables.length === 0) return { colors: [], note, efficiency, grist, boilOtherKg };
   const eta = efficiency.mashPct === undefined ? undefined : efficiency.mashPct / 100;
   const colors = parts.map(({ id, kg, ebc, potentialKg, mashed }) =>
     ({ id, kg, ebc, extractKg: potentialKg * (mashed ? eta ?? 0 : 1) }));
   const known = eta !== undefined || grain.length === 0;
-  return { extractKg: known ? colors.reduce((s, p) => s + p.extractKg, 0) : undefined, colors, note, efficiency };
+  return { extractKg: known ? colors.reduce((s, p) => s + p.extractKg, 0) : undefined, colors, note, efficiency, grist, boilOtherKg };
 }
 
 // Beer colour after a planned dilution: in the kettle the knock-out already
