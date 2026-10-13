@@ -35,7 +35,8 @@ function reach(name: string, tempC: number, up: boolean, sensor?: string): Progr
   if (!sensor) return act(name);
   return {
     name, targets: {}, holdSec: 0, notify: true, end: 'sensor',
-    cond: { ref: `sensor/${sensor}`, op: up ? 'gt' : 'lt', value: tempC + (up ? -REACHED_MARGIN_K : REACHED_MARGIN_K), hyst: 0 },
+    // To 0.1 K, as the step's name shows the temperature (the card prints the threshold).
+    cond: { ref: `sensor/${sensor}`, op: up ? 'gt' : 'lt', value: Math.round((tempC + (up ? -REACHED_MARGIN_K : REACHED_MARGIN_K)) * 10) / 10, hyst: 0 },
   };
 }
 

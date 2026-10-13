@@ -36,6 +36,26 @@ function statusBadgeClass(status: string): string {
   return `${badge} bg-fg/10 text-muted`;
 }
 
+// Defined outside the card, like ProgramCard's: declared inside it would be a
+// new component on every render and the buttons were rebuilt with each snapshot.
+function Btn({ action, label, icon: Icon, primary, iconOnly, disabled, onAct }: {
+  action: TimerAction; label: string; icon: LucideIcon; primary?: boolean; iconOnly?: boolean;
+  disabled: boolean; onAct: (action: TimerAction) => void;
+}) {
+  return (
+    <button type="button" disabled={disabled} title={label}
+      onClick={() => onAct(action)}
+      class={`flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors disabled:opacity-40 ` +
+        `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-bg ` +
+        (primary
+          ? 'bg-accent text-accent-fg hover:bg-accent/90 active:bg-accent/80 focus-visible:ring-accent'
+          : 'border border-border text-fg hover:bg-fg/5 active:bg-fg/10 focus-visible:ring-fg/30')}>
+      <Icon size={16} class="shrink-0" />
+      {!iconOnly && label}
+    </button>
+  );
+}
+
 export function TimerCard({ timer, programs, viewMode = 'normal', onChanged, onEdit, onDelete, onCycleMode }: Props) {
   const { id, name, mode, timeOfDay, repeat, onExpire, durationSec, status, remainingSec } = timer;
   const [busy, setBusy] = useState(false);
@@ -56,22 +76,7 @@ export function TimerCard({ timer, programs, viewMode = 'normal', onChanged, onE
 
   const progressPct = durationSec > 0 ? Math.max(0, Math.min(1, 1 - remainingSec / durationSec)) : 0;
 
-  function Btn({ action, label, icon: Icon, primary, iconOnly }: {
-    action: TimerAction; label: string; icon: LucideIcon; primary?: boolean; iconOnly?: boolean;
-  }) {
-    return (
-      <button type="button" disabled={busy} title={label}
-        onClick={() => act(action)}
-        class={`flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium transition-colors disabled:opacity-40 ` +
-          `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-bg ` +
-          (primary
-            ? 'bg-accent text-accent-fg hover:bg-accent/90 active:bg-accent/80 focus-visible:ring-accent'
-            : 'border border-border text-fg hover:bg-fg/5 active:bg-fg/10 focus-visible:ring-fg/30')}>
-        <Icon size={16} class="shrink-0" />
-        {!iconOnly && label}
-      </button>
-    );
-  }
+  const btn = { disabled: busy, onAct: act };
 
   const subtitle = mode === 'clock' ? `bis ${timeOfDay} Uhr` : `von ${fmtDuration(durationSec)}`;
 
@@ -111,12 +116,12 @@ export function TimerCard({ timer, programs, viewMode = 'normal', onChanged, onE
           </div>
           <div class="mt-2 grid grid-flow-col auto-cols-fr gap-2">
             {(status === 'idle' || status === 'done') && (
-              <Btn action="start" label="Start" icon={Play} primary iconOnly />
+              <Btn {...btn} action="start" label="Start" icon={Play} primary iconOnly />
             )}
-            {status === 'running' && <Btn action="pause" label="Pause" icon={Pause} iconOnly />}
-            {status === 'paused' && <Btn action="resume" label="Fortsetzen" icon={Play} primary iconOnly />}
+            {status === 'running' && <Btn {...btn} action="pause" label="Pause" icon={Pause} iconOnly />}
+            {status === 'paused' && <Btn {...btn} action="resume" label="Fortsetzen" icon={Play} primary iconOnly />}
             {(status === 'running' || status === 'paused') && (
-              <Btn action="stop" label="Stop" icon={Square} iconOnly />
+              <Btn {...btn} action="stop" label="Stop" icon={Square} iconOnly />
             )}
           </div>
         </>
@@ -157,12 +162,12 @@ export function TimerCard({ timer, programs, viewMode = 'normal', onChanged, onE
       {viewMode !== 'compact' && (
         <div class="mt-3 grid grid-flow-col auto-cols-fr gap-2">
           {(status === 'idle' || status === 'done') && (
-            <Btn action="start" label="Start" icon={Play} primary />
+            <Btn {...btn} action="start" label="Start" icon={Play} primary />
           )}
-          {status === 'running' && <Btn action="pause" label="Pause" icon={Pause} />}
-          {status === 'paused' && <Btn action="resume" label="Fortsetzen" icon={Play} primary />}
+          {status === 'running' && <Btn {...btn} action="pause" label="Pause" icon={Pause} />}
+          {status === 'paused' && <Btn {...btn} action="resume" label="Fortsetzen" icon={Play} primary />}
           {(status === 'running' || status === 'paused') && (
-            <Btn action="stop" label="Stop" icon={Square} />
+            <Btn {...btn} action="stop" label="Stop" icon={Square} />
           )}
         </div>
       )}
