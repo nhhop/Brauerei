@@ -1,24 +1,20 @@
-import { useEffect, useState } from 'preact/hooks';
-import { createProgram, controlProgram, deleteProgram, getPrograms } from '../../api';
 import { deviation, mashAcidSuggestion, measuredEfficiency, type BrewInputs, type BrewTargets } from '../../brewDay';
-import { isRegulated, mashTimerProgram, type TimerSensors } from '../../brewPrograms';
+import { isRegulated, mashTimerProgram } from '../../brewPrograms';
 import { MEASUREMENTS, type MeasureKey } from '../../brewhouse';
-import { setMeasurement, setRestTemp, type Brew, type MeasureId } from '../../brews';
+import { setMeasurement, setRestTemp, type Brew } from '../../brews';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { unitOfEntry } from '../../ingredientSource';
-import type { MashRow } from '../../mashPlan';
 import { MASH_KIND_LABEL, type Recipe } from '../../recipes';
 import { entryOf } from '../../stockLots';
-import type { ProgramConfig, Snapshot } from '../../types';
-import { badgeCaution, badgeSuccess, btnPrimary, btnSecondary, inp } from '../../ui';
-import { ConfirmModal } from '../../components/ConfirmModal';
-import { ProgramCard } from '../../components/ProgramCard';
+import type { Snapshot } from '../../types';
+import { badgeCaution, badgeSuccess, btnSecondary, inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
 import { AmountInput, num, rowAmountChange } from './amounts';
+import { BrewTimer } from './BrewTimer';
 import { MeasureRow, fmtNum } from './MeasureRow';
 import type { Patch } from './PrepTab';
 
-const labelOf = (key: MeasureId) => (key === 'mashPhAcid' ? 'pH nach der Säure' : MEASUREMENTS.find((m) => m.key === key)!.label);
+const labelOf = (key: MeasureKey | 'mashPhAcid') => (key === 'mashPhAcid' ? 'pH nach der Säure' : MEASUREMENTS.find((m) => m.key === key)!.label);
 
 // Tab "Maischen": the mash pH with its acid in three steps, the first wort and,
 // for a mash heated by hand, the rests with their timer on the device.
@@ -39,7 +35,7 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
     const id = inputs.bh?.measurements[key];
     return id ? snap?.sensors.find((s) => s.id === id) : undefined;
   };
-  const row = (key: MeasureId, sub?: string) => (
+  const row = (key: MeasureKey | 'mashPhAcid', sub?: string) => (
     <MeasureRow key={key} id={key} label={labelOf(key)} sub={sub} soll={values[key]} value={brew.measurements?.[key]}
       sensor={key === 'mashPhAcid' ? sensorOf('mashPh') : sensorOf(key)} disabled={!editable}
       onSave={(m) => patch((b) => setMeasurement(b, key, m))} />
@@ -65,6 +61,7 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
   const conversion = targets.ctx ? measuredEfficiency(m, targets.ctx).conversionPct : undefined;
   const conversionSoll = targets.efficiency?.conversionPct;
   const conversionDev = deviation('efficiency', conversionSoll, conversion);
+  const sensors = { strike: liveSensor(inputs, snap, 'strikeTemp'), mash: liveSensor(inputs, snap, 'mashTemp') };
 
   return (
     <>
@@ -142,8 +139,12 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
                 soll={r.tempC} value={brew.restTemps?.[r.step.id]} sensor={sensorOf('mashTemp')} disabled={!editable}
                 onSave={(x) => patch((b) => setRestTemp(b, r.step.id, x))} />
             ))}
-            <RestTimer brew={brew} rows={mash.rows} sensors={{ strike: liveSensor(inputs, snap, 'strikeTemp'), mash: liveSensor(inputs, snap, 'mashTemp') }}
-              snap={snap} editable={editable} patch={patch} />
+            <div class="mt-4">
+              <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Timer</h3>
+              <BrewTimer brew={brew} field="mashProgramId" build={() => mashTimerProgram(brew.number, mash.rows, sensors)}
+                startLabel="Maischen starten" snap={snap} editable={editable} patch={patch}
+                intro={`Ein Programm auf dem Gerät führt durch die Rasten und meldet sich auch bei geschlossener Seite: Heizen und Zugaben bestätigst du mit „Weiter“${sensors.mash || sensors.strike ? ', ein verknüpfter Fühler beendet das Heizen von selbst' : ''}.`} />
+            </div>
           </>
         )}
       </Card>
@@ -162,82 +163,4 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
 function liveSensor(inputs: BrewInputs, snap: Snapshot | null, key: MeasureKey): string | undefined {
   const id = inputs.bh?.measurements[key];
   return id && snap?.sensors.some((s) => s.id === id) ? id : undefined;
-}
-
-// The rest timer: a program on the device that belongs to the brew. The card is
-// the dashboard's; this adds starting it and taking it away.
-function RestTimer({ brew, rows, sensors, snap, editable, patch }: {
-  brew: Brew; rows: MashRow[]; sensors: TimerSensors; snap: Snapshot | null; editable: boolean; patch: Patch;
-}) {
-  const id = brew.mashProgramId;
-  const [program, setProgram] = useState<ProgramConfig | null | undefined>(undefined);  // null = gone from the device
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [asking, setAsking] = useState(false);
-
-  const refresh = () => {
-    if (id) getPrograms().then((l) => setProgram(l.find((p) => p.id === id) ?? null)).catch(() => {});
-  };
-  useEffect(() => {
-    setProgram(undefined);
-    if (!id) return;
-    refresh();
-    const t = setInterval(refresh, 1000);
-    return () => clearInterval(t);
-  }, [id]);
-
-  async function run(what: () => Promise<void>, failure: string) {
-    setBusy(true);
-    setError(null);
-    try { await what(); } catch { setError(failure); }
-    setBusy(false);
-  }
-
-  const start = () => run(async () => {
-    if (id) await deleteProgram(id).catch(() => {});
-    const created = await createProgram(mashTimerProgram(brew.number, rows, sensors));
-    await controlProgram(created, 'start');
-    await patch((b) => ({ ...b, mashProgramId: created }));
-  }, 'Timer konnte nicht gestartet werden.');
-
-  const remove = () => run(async () => {
-    setAsking(false);
-    if (id) await deleteProgram(id).catch(() => {});
-    await patch((b) => {
-      const { mashProgramId: _, ...rest } = b;
-      return rest;
-    });
-  }, 'Timer konnte nicht entfernt werden.');
-
-  const active = program && ['running', 'awaiting', 'paused'].includes(program.status);
-  return (
-    <div class="mt-4">
-      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Timer</h3>
-      {!id || program === null ? (
-        <>
-          <p class="mb-2 text-sm text-muted">
-            {program === null ? 'Das Programm gibt es auf dem Gerät nicht mehr. ' : ''}
-            Ein Programm auf dem Gerät führt durch die Rasten und meldet sich auch bei geschlossener Seite:
-            Heizen und Zugaben bestätigst du mit „Weiter“{sensors.mash || sensors.strike ? ', ein verknüpfter Fühler beendet das Heizen von selbst' : ''}.
-          </p>
-          <button type="button" class={btnPrimary} disabled={!editable || busy} onClick={start}>Maischen starten</button>
-        </>
-      ) : program === undefined ? (
-        <p class="text-sm text-muted">Lädt …</p>
-      ) : (
-        <>
-          <ProgramCard program={program} snap={snap} onChanged={refresh} />
-          <button type="button" class={`${btnSecondary} mt-2`} disabled={!editable || busy}
-            onClick={() => (active ? setAsking(true) : remove())}>
-            {active ? 'Timer abbrechen' : 'Timer entfernen'}
-          </button>
-        </>
-      )}
-      {error && <p class="mt-2 text-sm text-critical">{error}</p>}
-      <ConfirmModal open={asking} title="Timer abbrechen?" confirmLabel="Timer abbrechen" cancelLabel="Weiterlaufen lassen" destructive pending={busy}
-        onConfirm={remove} onCancel={() => setAsking(false)}>
-        Das Programm „{program?.name}“ wird auf dem Gerät gelöscht.
-      </ConfirmModal>
-    </div>
-  );
 }

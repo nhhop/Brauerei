@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, setChecked,
-  setMeasurement, setRowAmount, todayIso, withHead, type Brew, type BrewSummary,
+  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, setAddedAt, setChecked,
+  setMeasurement, setRowAmount, summaryOf, todayIso, withHead, type Brew, type BrewSummary,
 } from './brews';
 import { bookStock, freezeEntries, lotTarget, rebook, startBrew, stockPlan, unbookStock, withBooking } from './brewStart';
 import type { CatalogIngredient, Hop, StockLot } from './ingredientCatalog';
@@ -154,6 +154,18 @@ describe('brew day edits', () => {
     const b = setRowAmount(setRowAmount(base, 'r1', 4.2), 'r2', 30);
     expect(b.rowAmounts).toEqual({ r1: 4.2, r2: 30 });
     expect(setRowAmount(b, 'r1', undefined).rowAmounts).toEqual({ r2: 30 });
+  });
+
+  it('keeps the time a boil addition went in', () => {
+    const b = setAddedAt(setAddedAt(base, 'h1', 100), 'h2', 200);
+    expect(b.addedAt).toEqual({ h1: 100, h2: 200 });
+    expect(setAddedAt(b, 'h1', undefined).addedAt).toEqual({ h2: 200 });
+  });
+
+  it('gives the list the fields of the index line', () => {
+    const s = summaryOf({ ...base, ogPlato: 12.5, mashEffPct: 71.5 });
+    expect(s).toMatchObject({ id: base.id, number: 1, status: 'planned', ogPlato: 12.5, mashEffPct: 71.5 });
+    expect('measurements' in s || 'checked' in s || 'ogActual' in s).toBe(false);
   });
 
   it('saves the head of a draft onto a fresh copy', () => {

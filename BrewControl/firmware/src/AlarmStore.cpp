@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "ProgramEvents.h"
 #include "SdLock.h"
 
 namespace BrewControl {
@@ -20,12 +21,13 @@ struct ScopedLock {
   ScopedLock& operator=(const ScopedLock&) = delete;
 };
 
-// Copies into a fixed-width field, always NUL-terminated.
+// Copies into a fixed-width field, always NUL-terminated; a text too long is
+// cut at a character boundary.
 template <size_t N>
 void setField(char (&dst)[N], const char* src) {
-  if (!src) { dst[0] = 0; return; }
-  strncpy(dst, src, N - 1);
-  dst[N - 1] = 0;
+  const size_t n = src ? utf8PrefixLen(src, N - 1) : 0;
+  if (n) memcpy(dst, src, n);
+  dst[n] = 0;
 }
 
 // Below this the system clock has not been set by NTP yet (2000-01-01).

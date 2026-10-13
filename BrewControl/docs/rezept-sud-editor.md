@@ -4,8 +4,8 @@ Stand: 2026-10-13. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), da
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
-der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und vom Brautag die Vorbereitung (5b-1) und das
-Maischen (5b-2); es folgen Würzekochen, Maischverlauf und Pumpen (5b-3, 5b-4) und Gärung,
+der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und vom Brautag die Vorbereitung (5b-1), das
+Maischen (5b-2) und das Würzekochen (5b-3); es folgen Maischverlauf und Pumpen (5b-4) und Gärung,
 Reifung und Abfüllung mit Belegungsplan (5c). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
@@ -1031,6 +1031,63 @@ Belegungsplan.
   Meldung ersetzt die vorige. Der Programm-Editor kennt `notify` als „Melden“, die Karte zeigt 🔔.
 - **Größe:** Der Mock-Sud nach dem Durchspielen (3 Zutaten, drei Messwerte, eine Rast) hat 3,8 KB; je
   Rast-Ist-Temperatur kommen etwa 50 Byte dazu.
+
+**Stand 5b-3 (2026-10-13, `web/src/brewPrograms.ts`, `brewDay.ts`, `pages/brew/BoilTab.tsx`, `BrewTimer.tsx`,
+`pages/recipe/BrewsTab.tsx`, `EfficiencyChart.tsx`, Firmware `RecipeFiles.h`, `ProgramEvents.h`):**
+- **Zeitfeld für alle Kochgaben** (Entscheidung 2026-10-13): „min vor Kochende“ gibt es im Rezept für jede
+  Zeile mit Zeitpunkt „Kochen“, nicht nur für Hopfen (Kochzucker, Irish Moss). Ohne Angabe gilt die ganze
+  Kochzeit. Die Bittere rechnet weiter nur mit Hopfen.
+- **Gaben** (`boilAdditions`): alle Zeilen mit Zeitpunkt Vorderwürze, Kochen, Whirlpool, Hop Back, Kettle
+  Sour und Dip, in dieser Reihenfolge, beim Kochen die längste Zeit zuerst. Eine Zeit über der Kochdauer
+  zählt als Kochbeginn. Eine Quelle für die Liste im Tab und für das Programm.
+- **Kochtimer** (`boilTimerProgram`): „Kochen starten“ legt das Programm „Sud #n Kochen“ an und startet es
+  (`brew.boilProgramId`); gedrückt wird **beim Anheizen** (Entscheidung 2026-10-13). Die Schritte schalten
+  nichts:
+  - „Vorderwürze: … zugeben“ (nur mit Vorderwürze-Gaben) und „Aufheizen – Weiter bei Kochbeginn“ warten auf
+    „Weiter“ (`confirm`).
+  - Je Zeitpunkt mit Gaben ein Schritt „Noch 10 min: 20 g Citra, 15 g Saaz zugeben“ mit der Zeit bis zum
+    nächsten Zeitpunkt als Haltezeit; gleiche Zeit ergibt **einen** Schritt. Er meldet sich per `notify` und
+    hält die Uhr nicht an, eine späte Quittung verschiebt also nichts. Der erste Schritt nach „Weiter“ meldet
+    nicht; ohne Gabe bei voller Kochzeit heißt er „Kochen · 60 min“.
+  - „Kochende: Heizung aus“ (mit den Gaben bei 0 min) wartet auf „Weiter“.
+  - **Whirlpool** (Entscheidung 2026-10-13): mit Whirlpool-Gaben „Auf 80 °C kühlen, … zugeben“ (`confirm`),
+    dann „Whirlpool · 15 min“ als Haltezeit. Die Whirlpool-Zeit läuft auch ohne Gabe (Annahme); ihr Ende
+    meldet die Firmware als „Programm fertig“.
+  - Die Menge im Schritt ist die Ist-Menge, wenn sie beim Start schon eingetragen ist.
+  - Hop Back, Kettle Sour und Dip stehen nur in der Liste.
+- **Kopfzeile** (`boilProgress`): über der Programm-Karte „Kochende in 38:12 · in 11:48: 20 g Citra zugeben“
+  bzw. „Wartet auf Weiter: …“; im Whirlpool „Whirlpool-Ende in …“. Abfrage jede Sekunde wie beim Maischen.
+- **Timer-Komponente:** Der Rasten-Timer aus 5b-2 und der Kochtimer teilen sich `BrewTimer` (anlegen,
+  starten, Karte, abbrechen/entfernen mit Rückfrage). „Abschließen“ und „Löschen“ des Suds löschen beide
+  Programme.
+- **Gaben-Liste:** je Gabe Haken, Zeit, Rezeptmenge und Ist-Menge (bucht über `rebook`). Der Haken merkt
+  sich die Uhrzeit (`brew.addedAt` je Rezeptzeile) und zeigt „zugegeben 10:21“. Das Programm hakt nichts ab.
+- **Messwerte:** vor dem Kochen pH, Pfannevoll, Stammwürze und die **Maischeeffizienz** (Soll/Ist), nach dem
+  Kochen pH, Ausschlagmenge, Stammwürze, Luftdruck und die **Sudhausausbeute**. Darunter steht, aus welchem
+  Wertepaar die Effizienzen kommen (`measuredEfficiency().from`).
+  - Ein Soll für den **pH der Würze** gibt es nur, wenn das Rezept dort etwas zugibt („Würze vor dem
+    Kochen“, „Ausschlagwürze“); diese Dosen stehen zum Abhaken dabei.
+  - **Luftdruck:** Soll aus der Höhe der Brauerei; der Messwert ergibt den Siedepunkt, der unter der Zeile
+    neben dem aus der Höhe steht.
+- **Würze abzweigen:** Speise und Würze für Dip Hopping als Messwerte `speiseVolume`/`dipWortVolume`, nur
+  Ist; den Soll bringt 5c.
+- **Ergebnisse im Index** (`withResults`): Jedes Speichern des Suds schreibt `ogPlato` (Soll) und
+  `ogActual` (Ist) der Stammwürze nach dem Kochen sowie `mashEffPct` und `yieldPct` (Ist) ins Sud-Dokument,
+  auf zwei Stellen gerundet; die Firmware nimmt sie mit `bottledL` (für 5c) in die Index-Zeile auf. Bei einem
+  Verschnitt ist das die Stammwürze **vor** dem Verschnitt (Annahme); 5c stellt auf die Anstellwürze um.
+  Sude, die vor dem Firmware-Update gespeichert wurden, bekommen die Felder beim nächsten Speichern.
+- **Rezept-Tab „Sude“:** Spalten Stammwürze Soll / Ist, Maischeeffizienz, Sudhausausbeute; ab zwei Suden mit
+  Werten das Diagramm „Effizienz über die Sude“ (uPlot, x = Sude in Reihenfolge ihrer Nummer). Die
+  Kennzahlen-Kacheln und die Soll-Linie aus dem Canvas fehlen: Die Index-Zeile trägt keine Soll-Effizienz.
+- **Speichern nacheinander:** Die Sud-Seite reiht ihre Feld-Speicherungen auf. Vorher konnten zwei schnell
+  gesetzte Haken (drei Gaben zur selben Minute) einander überschreiben, weil jede Speicherung den Sud frisch
+  liest. Zwischen zwei Geräten gilt weiter die Regel aus 5b-1.
+- **Firmware:** Ein Text, der länger ist als sein Feld in der Meldung (Schrittname 39 Byte), wird an einer
+  Zeichengrenze abgeschnitten (`utf8PrefixLen`); vorher konnte der Schnitt mitten in „ü“ oder „°“ liegen.
+  Mehrere Gaben in einem Schritt passen nicht in 39 Byte: Meldung und Push enden dann nach der ersten oder
+  zweiten Gabe, die Karte zeigt den vollen Namen.
+- **Größe:** Der Mock-Sud (12 Rezeptzeilen, 8 Messwerte, 3 Haken mit Uhrzeit, eine Ist-Menge) hat 5,7 KB;
+  je Haken mit Uhrzeit kommen etwa 20 Byte dazu, die Ergebnisfelder zusammen etwa 70 Byte.
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, type BrewInputs } from './brewDay';
+import { brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, withResults, type BrewInputs } from './brewDay';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
-import type { Brew, MeasureId } from './brews';
+import type { Brew, MeasureId, Measurement } from './brews';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { calcMash } from './mashPlan';
 import { calcStats, wortExtract } from './recipeStats';
@@ -68,6 +68,21 @@ describe('brewTargets', () => {
     const t = brewTargets(recipe(undefined, { water: { dilution: { at: 'kettle', lead: 'volume', volumeL: 4 } } }), inputs());
     expect(t.dilutionInKettle).toBe(true);
     expect(t.values.postBoilVolume).toBeCloseTo(18, 6);
+  });
+
+  it('has a wort pH only where the recipe adds something to the wort', () => {
+    expect(brewTargets(recipe(), inputs()).values.preBoilPh).toBeUndefined();
+    const wortAcid = row({ id: 'w', kind: 'auxiliary', name: 'Milchsäure', ingredientId: 'aux:lactic', amount: 2, timing: 'preBoil' });
+    const v = brewTargets(recipe([malt, gypsum, wortAcid]), inputs()).values;
+    expect(v.preBoilPh).toBeGreaterThan(4);
+    expect(v.preBoilPh).toBeLessThan(6);
+    expect(v.postBoilPh).toBeUndefined();
+  });
+
+  it('expects the air pressure at the altitude of the brewery', () => {
+    const p = brewTargets(recipe(), inputs()).values.airPressure!;
+    expect(p).toBeGreaterThan(970);
+    expect(p).toBeLessThan(985);
   });
 
   it('has no targets but the boiling point without a brewhouse', () => {
@@ -174,5 +189,35 @@ describe('mash acid from the measured pH', () => {
     const k = brewTargets(r, { ...inputs(), brewery: { ...brewery, phModel: 'kolbach' } });
     expect(k.values.mashPh).toBeUndefined();
     expect(mashAcidSuggestion(k, 5.7, entries)!.amount).toBeGreaterThan(0);
+  });
+});
+
+describe('withResults', () => {
+  const t = brewTargets(recipe(), inputs());
+  const brew = (values: Partial<Record<MeasureId, number>>, p: Partial<Brew> = {}): Brew => ({
+    id: 'b', number: 1, name: 'x', recipeId: 'r', rootId: 'r', version: 1, status: 'active', updatedAt: 0, ...p,
+    measurements: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { v: v!, at: 1 }])) as Record<MeasureId, Measurement>,
+  });
+
+  it('carries the gravity and efficiencies of the recipe when the brew hits the targets', () => {
+    const { preBoilVolume, preBoilGravity, postBoilGravity } = t.values;
+    const b = withResults(brew({ preBoilVolume, preBoilGravity, postBoilGravity }), t);
+    expect(b.ogPlato).toBeCloseTo(t.values.postBoilGravity!, 2);
+    expect(b.ogActual).toBe(b.ogPlato);
+    expect(b.mashEffPct).toBeCloseTo(t.efficiency!.mashPct!, 2);
+    expect(b.yieldPct).toBeCloseTo(t.efficiency!.yieldPct!, 2);
+  });
+
+  it('has the target alone before anything is measured, and drops a result that no longer follows', () => {
+    const b = withResults(brew({}, { ogActual: 12, mashEffPct: 70, yieldPct: 55, bottledL: 18 }), t);
+    expect(b.ogPlato).toBeCloseTo(t.values.postBoilGravity!, 2);
+    expect('ogActual' in b || 'mashEffPct' in b || 'yieldPct' in b).toBe(false);
+    expect(b.bottledL).toBe(18);
+  });
+
+  it('leaves the results out without a brewhouse', () => {
+    const b = withResults(brew({ postBoilGravity: 12.34 }), brewTargets(recipe(), { bh: undefined, brewery, entries: catalog }));
+    expect(b.ogActual).toBe(12.34);
+    expect('ogPlato' in b || 'mashEffPct' in b).toBe(false);
   });
 });

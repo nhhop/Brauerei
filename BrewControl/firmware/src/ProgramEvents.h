@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include <string>
 
 namespace BrewControl {
@@ -12,6 +14,18 @@ namespace BrewControl {
 // pulses follow — so "prev" then "next", or a reboot, do not repeat it.
 inline bool notifiesOnEntry(bool notify, int idx, int reachedStep) {
   return notify && idx > reachedStep;
+}
+
+// How many bytes of `s` fit into `max` without splitting a UTF-8 character. A
+// step's name goes into a fixed-width alert field; cut inside "°" or "ü" it
+// would end in half a character, which is not valid JSON text.
+inline size_t utf8PrefixLen(const char* s, size_t max) {
+  size_t n = 0;
+  while (n < max && s[n]) ++n;
+  if (s[n]) {
+    while (n > 0 && (static_cast<unsigned char>(s[n]) & 0xC0) == 0x80) --n;
+  }
+  return n;
 }
 
 // Title and body of a program alert's push. `detail` is the program event

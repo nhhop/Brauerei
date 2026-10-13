@@ -180,7 +180,7 @@ function ingredientGroups(a: Recipe, b: Recipe): DiffGroup[] {
     if (!i || !isMashGrain(i) || !split) return undefined;
     return charges.find((c) => c.id === chargeIdOf(i, charges))!.name;
   };
-  const timing = (r: Recipe, i?: Ingredient) => i && (i.kind === 'hop' && i.timing === 'boil'
+  const timing = (r: Recipe, i?: Ingredient) => i && (i.timing === 'boil'
     ? `${TIMING_LABEL.boil} · ${i.timeMin ?? r.boil.durationMin} min` : TIMING_LABEL[i.timing]);
   return KINDS.map((k) => ({
     title: k.label,

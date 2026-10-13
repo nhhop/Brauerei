@@ -32,7 +32,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
   kind?: IngredientKind;
   scope?: Scope;
   match: (i: Ingredient) => boolean;
-  boilMin: number; // the recipe's boil duration, shown as the default for hop minutes
+  boilMin: number; // the recipe's boil duration, shown as the default for the minutes of a boil addition
   groups?: IngredientGroup[];
   action?: ComponentChildren;  // next to "+ Zutat"
   mark?: (i: Ingredient) => string | undefined;
@@ -75,7 +75,7 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
         onChange={(e) => patch(i.id, { timing: e.currentTarget.value as Ingredient['timing'], timeMin: undefined })}>
         {allowedTimings(i.kind, scope).map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
       </select>
-      {i.kind === 'hop' && i.timing === 'boil' && (
+      {i.timing === 'boil' && (
         <div class="flex items-center gap-1 text-xs text-muted">
           <NumInput value={i.timeMin ?? boilMin} onChange={(n) => patch(i.id, { timeMin: n })} class="w-16" />
           min vor Kochende

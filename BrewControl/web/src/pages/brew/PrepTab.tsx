@@ -36,7 +36,7 @@ function groupsOf(recipe: Recipe, inputs: BrewInputs): { kind: (typeof KINDS)[nu
 }
 
 const whenOf = (i: Ingredient) =>
-  i.kind === 'hop' && i.timing === 'boil' && i.timeMin !== undefined ? `Kochen ${i.timeMin} min` : TIMING_LABEL[i.timing];
+  i.timing === 'boil' && i.timeMin !== undefined ?`Kochen ${i.timeMin} min` : TIMING_LABEL[i.timing];
 
 // Tab "Vorbereitung": water with its treatment, then the ingredients to weigh out.
 export function PrepTab({ brew, recipe, inputs, targets, stock, snap, editable, patch, notes, onNotes }: {
