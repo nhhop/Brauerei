@@ -31,7 +31,7 @@ class AlarmStore {
  public:
   enum Severity : uint8_t { SevInfo = 0, SevWarning = 1, SevCritical = 2 };
 
-  // Fixed-width POD so the ring is a deterministic ~7.4 KB in .bss instead of
+  // Fixed-width POD so the ring is a deterministic ~5.8 KB in .bss instead of
   // 40 heap allocations next to WiFi, AsyncTCP and the SD buffers. Public
   // because PushService consumes alerts as structs rather than re-parsing the
   // JSON that takePending() emits.
@@ -47,7 +47,6 @@ class AlarmStore {
     char     name[32]   = "";
     char     rule[8]    = "";
     char     detail[48] = "";
-    char     step[40]   = "";  // program: the step's name ("awaiting", "notify")
   };
 
   AlarmStore();
@@ -89,10 +88,8 @@ class AlarmStore {
   // Program run-state transition, pushed by ProgramRunner. Called with the
   // runner's lock held and possibly from the AsyncTCP task, so it only writes
   // into the ring — it must never call back into ProgramRunner.
-  // `status` "notify" is a notify step entered (ProgramEvents.h); `step` names
-  // the step for it and for "awaiting".
   void onProgramStatus(const char* id, const char* name, const char* status,
-                       const char* step, time_t nowEpoch, uint32_t nowMs);
+                       time_t nowEpoch, uint32_t nowMs);
 
   // Timer expiry, pushed by TimerStore. Called with the store's lock held and
   // possibly from the AsyncTCP task, so it only writes into the ring — it must
@@ -170,7 +167,7 @@ class AlarmStore {
   // Appends to the ring. Caller holds the lock.
   void raise_(const char* kind, const char* src, const char* name,
               const char* rule, Severity sev, bool cleared, const float* v,
-              const char* detail, time_t nowEpoch, const char* step = "");
+              const char* detail, time_t nowEpoch);
   void alertToJson_(const Alert& a, JsonObject o) const;
 
   void tickThresholds_(SensActCtrl::Registry& reg, time_t nowEpoch, uint32_t nowMs);

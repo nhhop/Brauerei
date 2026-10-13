@@ -66,9 +66,6 @@ export interface Brew {
   measurements?: Partial<Record<MeasureId, Measurement>>;
   checked?: string[];                    // ticked keys, e.g. `row:<group>`, `dose:<column>:<row id>`
   rowAmounts?: Record<string, number>;   // amount actually used per recipe row, in the row's unit
-                                         // (`mashPh:<entry id>`: an acid or base the recipe does not have)
-  restTemps?: Record<string, Measurement>;  // temperature measured per mash step id
-  mashProgramId?: string;                // the rest timer on the device (brewPrograms.ts)
   phaseNotes?: Partial<Record<PhaseId, string>>;
 }
 
@@ -145,12 +142,6 @@ export function setMeasurement(b: Brew, key: MeasureId, m: Measurement | undefin
   const measurements = { ...b.measurements };
   if (m) measurements[key] = m; else delete measurements[key];
   return { ...b, measurements };
-}
-
-export function setRestTemp(b: Brew, stepId: string, m: Measurement | undefined): Brew {
-  const restTemps = { ...b.restTemps };
-  if (m) restTemps[stepId] = m; else delete restTemps[stepId];
-  return { ...b, restTemps };
 }
 
 export function setChecked(b: Brew, key: string, on: boolean): Brew {

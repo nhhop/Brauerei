@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <string.h>
 
-#include "ProgramEvents.h"
 #include "SdLock.h"
 
 namespace BrewControl {
@@ -146,10 +145,7 @@ String ProgramRunner::generateId() {
 void ProgramRunner::setStatus_(Program& p, Status s) {
   if (p.status == s) return;
   p.status = s;
-  if (!onStatusChanged_) return;
-  const bool named = s == Status::Awaiting && p.currentStep < (int)p.steps.size();
-  onStatusChanged_(p.id.c_str(), p.name.c_str(), statusToStr(s),
-                   named ? p.steps[p.currentStep].name.c_str() : "");
+  if (onStatusChanged_) onStatusChanged_(p.id.c_str(), p.name.c_str(), statusToStr(s));
 }
 
 ProgramRunner::Program* ProgramRunner::find_(const char* id) {
@@ -251,9 +247,6 @@ void ProgramRunner::enterStep_(Program& p, SensActCtrl::Registry& reg, int idx,
   p.elapsedAtPauseSec = 0;
   p.condActive        = false;
   setStatus_(p, Status::Running);
-  const ProgramStep& step = p.steps[idx];
-  if (onStatusChanged_ && notifiesOnEntry(step.notify, idx, p.reachedStep))
-    onStatusChanged_(p.id.c_str(), p.name.c_str(), "notify", step.name.c_str());
   const bool firstEntry = idx > p.reachedStep;
   if (firstEntry) p.reachedStep = idx;
   applyStepTargets_(p, reg, /*withImpulse=*/firstEntry);

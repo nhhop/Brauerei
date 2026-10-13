@@ -5043,15 +5043,6 @@ components:
             advancing. Applies on top of either `end` trigger: once the trigger
             fires the step waits for a manual `next` instead of advancing.
             Omitted otherwise.
-        notify:
-          type: boolean
-          const: true
-          description: |
-            Present only when entering the step raises an alert (`kind:
-            program`, `detail: notify`, `step` = the step's name) without
-            holding the clock. Fires once per run, on the first forward entry,
-            like a step's pulses: not again after `prev` then `next`, nor on
-            resume after a reboot. Omitted otherwise.
 
     ProgramInput:
       type: object
@@ -5322,15 +5313,9 @@ components:
         detail:
           type: string
           description: |
-            The driver's `fault()` text, the program event (`awaiting`,
-            `done`, or `notify` for an entered notify step), the breached
+            The driver's `fault()` text, the program status, the breached
             comparison, or for `kind: system` the reset reason (`panic`,
             `int_wdt`, `task_wdt`, `wdt`, `brownout`). Truncated to 47 characters. Omitted when empty.
-        step:
-          type: string
-          description: |
-            `kind: program` with `detail` `awaiting` or `notify`: the name of
-            the step. Truncated to 39 bytes. Omitted when empty.
         v:
           type: number
           description: |

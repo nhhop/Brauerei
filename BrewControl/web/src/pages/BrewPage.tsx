@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { route } from 'preact-router';
 import { Ellipsis } from 'lucide-preact';
-import { deleteProgram } from '../api';
 import {
   PHASES, STATUS_LABEL, deleteBrew, getBrew, headOf, listBrews, moveBrewDate, occupancyOverlaps, patchBrew, saveBrew,
   withHead, type Brew, type BrewSummary,
@@ -19,7 +18,6 @@ import { PageShell } from '../components/PageShell';
 import { TabBtn } from '../components/TabBtn';
 import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Card, Field, MenuItem } from './recipe/fields';
-import { MashTab } from './brew/MashTab';
 import { PrepTab, type Patch } from './brew/PrepTab';
 import { StartBrewDialog } from './brew/StartBrewDialog';
 import { formatIsoDate } from './brew/format';
@@ -126,15 +124,9 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
     setBusy(false);
   }
 
-  // The brew's programs on the device go with it; one already gone is fine.
-  const dropPrograms = async () => {
-    if (saved.mashProgramId) await deleteProgram(saved.mashProgramId).catch(() => {});
-  };
-
   // Gives the taken amounts back to lots that still exist, then deletes.
   const remove = (giveBack: boolean) => run(async () => {
     setDialog(null);
-    await dropPrograms();
     if (giveBack) {
       const catalog = await reloadCatalog();
       for (const b of saved.booked ?? []) {
@@ -178,13 +170,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
                   )}
                   {saved.status === 'active' && (
                     <MenuItem label="Abschließen" sub={dirty ? 'erst speichern' : undefined} disabled={dirty || busy}
-                      onClick={() => run(async () => {
-                        await dropPrograms();
-                        adopt(await patchBrew(saved.id, (b) => {
-                          const { mashProgramId: _, ...rest } = b;
-                          return { ...rest, status: 'done' };
-                        }));
-                      }, 'Abschließen fehlgeschlagen.')} />
+                      onClick={() => run(async () => adopt(await patchBrew(saved.id, (b) => ({ ...b, status: 'done' }))), 'Abschließen fehlgeschlagen.')} />
                   )}
                   <MenuItem label="Löschen" disabled={busy} onClick={() => { setMenuOpen(false); setDialog('delete'); }} />
                 </div>
@@ -273,15 +259,10 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
             stock={catalog?.stock ?? null} snap={snap} editable={!planned} patch={patch}
             notes={draft.phaseNotes?.prep} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, prep: t } })} />
         )
-      ) : tab === 'mash' ? (
-        !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
-          <MashTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets}
-            liveEntries={catalog?.entries ?? null} snap={snap} editable={!planned} patch={patch}
-            notes={draft.phaseNotes?.mash} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, mash: t } })} />
-        )
       ) : (
         <p class="text-sm text-muted">
-          {{ boil: 'Inhalt folgt mit Etappe 5b-3: Messwerte vor und nach dem Kochen, Hopfengaben, Kochtimer.' }[tab]
+          {{ mash: 'Inhalt folgt mit Etappe 5b-2: Maische-Säure, Vorderwürze, Rasten.',
+            boil: 'Inhalt folgt mit Etappe 5b-3: Messwerte vor und nach dem Kochen, Hopfengaben, Kochtimer.' }[tab]
             ?? 'Inhalt folgt mit Gärung, Reifung und Abfüllung (Etappe 5c), dazu der Belegungsplan.'}
         </p>
       )}

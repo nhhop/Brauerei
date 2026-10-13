@@ -1,9 +1,10 @@
+import { useEffect, useState } from 'preact/hooks';
 import type { BrewInputs, BrewTargets } from '../../brewDay';
 import { MEASUREMENTS, type MeasureKey } from '../../brewhouse';
-import { setChecked, setMeasurement, type Brew } from '../../brews';
-import { lotTarget } from '../../brewStart';
+import { setChecked, setMeasurement, setRowAmount, type Brew } from '../../brews';
+import { lotTarget, rebook, withBooking } from '../../brewStart';
 import type { StockLot } from '../../ingredientCatalog';
-import { unitOfEntry } from '../../ingredientSource';
+import { reloadCatalog, saveStockLot, unitOfEntry } from '../../ingredientSource';
 import { isTreatmentRow, type ColumnDose } from '../../recipeTreatment';
 import { fmtL } from '../../recipeWater';
 import { KINDS, TIMING_LABEL, type Ingredient, type Recipe } from '../../recipes';
@@ -11,11 +12,11 @@ import { entryOf } from '../../stockLots';
 import type { Snapshot } from '../../types';
 import { inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
-import { AmountInput, num, rowAmountChange } from './amounts';
 import { MeasureRow } from './MeasureRow';
 
 export type Patch = (change: (b: Brew) => Brew | Promise<Brew>) => Promise<void>;
 
+const num = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', ',');
 const labelOf = (key: MeasureKey) => MEASUREMENTS.find((m) => m.key === key)!.label;
 
 // Rows of one ingredient and stock lot, as they are weighed out.
@@ -63,8 +64,20 @@ export function PrepTab({ brew, recipe, inputs, targets, stock, snap, editable, 
   );
   const tick = (key: string, on: boolean) => patch((b) => setChecked(b, key, on));
 
-  const saveAmount = (rowId: string, lotId: string | undefined, amount: number | undefined) =>
-    patch(rowAmountChange(recipe, rowId, lotId, amount));
+  // A lot taken at the start follows the amount used; one left out there is not booked.
+  const saveAmount = (rowId: string, lotId: string | undefined, amount: number | undefined) => patch(async (b) => {
+    const next = setRowAmount(b, rowId, amount);
+    const booking = lotId ? b.booked?.find((x) => x.lotId === lotId) : undefined;
+    if (!lotId || !booking) return next;
+    const lot = (await reloadCatalog()).stock.find((l) => l.id === lotId);
+    if (!lot) return next;
+    const r = rebook(lot, booking.amount, lotTarget(recipe, next.rowAmounts, lotId));
+    if (r.booked !== booking.amount) {
+      await saveStockLot(r.lot);
+      await reloadCatalog();
+    }
+    return { ...next, booked: withBooking(next.booked, lotId, r.booked) };
+  });
 
   const col = (k: string) => targets.columns.find((c) => c.key === k);
   const doses = (list: ColumnDose[] | undefined, colKey: string, where?: string) => (list ?? []).map((d) => {
@@ -163,5 +176,32 @@ export function PrepTab({ brew, recipe, inputs, targets, stock, snap, editable, 
         </Field>
       </Card>
     </>
+  );
+}
+
+// The amount used of a recipe row; empty = as in the recipe (the placeholder).
+// The typed text stays local, so a live update of the page does not reset it.
+function AmountInput({ value, placeholder, unit, label, disabled, onSave }: {
+  value: number | undefined; placeholder: string; unit: string; label: string; disabled: boolean;
+  onSave: (n: number | undefined) => Promise<void>;
+}) {
+  const toText = (v: number | undefined) => (v === undefined ? '' : num(v));
+  const [text, setText] = useState(toText(value));
+  useEffect(() => setText(toText(value)), [value]);
+  return (
+    <span class="flex items-center gap-1">
+      <input type="text" inputMode="decimal" aria-label={label} class={`${inp} w-20`} placeholder={placeholder}
+        disabled={disabled} value={text}
+        onInput={(e) => setText(e.currentTarget.value)}
+        onChange={(e) => {
+          const t = e.currentTarget.value.trim();
+          const n = parseFloat(t.replace(',', '.'));
+          if (t === '') { if (value !== undefined) void onSave(undefined); }
+          else if (!Number.isNaN(n) && n >= 0 && n !== value) void onSave(n);
+          else setText(toText(value));
+        }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+      <span class="w-6 text-xs text-muted">{unit}</span>
+    </span>
   );
 }

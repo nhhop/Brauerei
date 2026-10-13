@@ -420,11 +420,11 @@ void setup() {
   stateSaver.reset(BrewControl::captureState(registry, dynamicItems));
   BrewControl::HeapDiag::mark("registry");
 
-  // Program run-state transitions and notify steps feed the alert centre. Fires with the
+  // Program run-state transitions feed the alert centre. Fires with the
   // runner's lock held, so the callback must not call back into it.
   programRunner.setOnStatusChanged(
-      [](const char* id, const char* name, const char* status, const char* step) {
-        alarmStore.onProgramStatus(id, name, status, step, time(nullptr), millis());
+      [](const char* id, const char* name, const char* status) {
+        alarmStore.onProgramStatus(id, name, status, time(nullptr), millis());
       });
 
   // Timer expiry feeds the alert centre too. Fires with the store's lock
