@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { brewInputs, brewTargets, deviation, measuredEfficiency, type BrewInputs } from './brewDay';
+import { brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, type BrewInputs } from './brewDay';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
 import type { Brew, MeasureId } from './brews';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { calcMash } from './mashPlan';
 import { calcStats, wortExtract } from './recipeStats';
-import { calcTreatment } from './recipeTreatment';
+import { calcTreatment, suggestAgent } from './recipeTreatment';
 import { calcWater } from './recipeWater';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 
@@ -134,5 +134,45 @@ describe('deviation', () => {
   it('is unset without both values or without a tolerance', () => {
     expect(deviation('preBoilVolume', undefined, 30)).toBeUndefined();
     expect(deviation('airPressure', 1000, 990)).toBeUndefined();
+  });
+});
+
+describe('mash acid from the measured pH', () => {
+  const soda = { id: 'aux:soda', kind: 'auxiliary', name: 'Natron', category: 'water-salt', defaultUnit: 'g', waterAgent: 'nahco3' } as CatalogIngredient;
+  const entries = [...catalog, soda];
+  const mashAcid = row({ id: 'ma', kind: 'auxiliary', name: 'Milchsäure', ingredientId: 'aux:lactic', amount: 1, timing: 'mashPh' });
+  const r = recipe([malt, gypsum, mashAcid]);
+  const t = brewTargets(r, inputs());
+  const mash = t.columns.find((c) => c.key === 'mash')!;
+
+  it('compares the measurement before the acid, the one after with the target', () => {
+    expect(t.values.mashPh).toBe(mash.ph!.before);
+    expect(t.values.mashPh!).toBeGreaterThan(mash.ph!.after);
+    expect(t.values.mashPhAcid).toBe(5.4);
+  });
+
+  it('is the recipe helper when the measurement hits the model', () => {
+    const s = mashAcidSuggestion(t, mash.ph!.before, entries)!;
+    expect(s.rowId).toBe('ma');
+    expect(s.unit).toBe('ml');
+    expect(s.base).toBe(false);
+    expect(s.amount).toBeCloseTo(suggestAgent(mash, 5.4, entries)!.amount, 6);
+  });
+
+  it('gives more acid for a higher pH, a base below the target', () => {
+    const at = mashAcidSuggestion(t, 5.6, entries)!;
+    const higher = mashAcidSuggestion(t, 5.8, entries)!;
+    expect(higher.amount).toBeGreaterThan(at.amount);
+    const low = mashAcidSuggestion(t, 5.2, entries)!;
+    expect(low.base).toBe(true);
+    expect(low.name).toBe('Natron');
+    expect(low.rowId).toBeUndefined();
+    expect(low.amount).toBeGreaterThan(0);
+  });
+
+  it('works under the model kolbach, which has no mash pH of its own', () => {
+    const k = brewTargets(r, { ...inputs(), brewery: { ...brewery, phModel: 'kolbach' } });
+    expect(k.values.mashPh).toBeUndefined();
+    expect(mashAcidSuggestion(k, 5.7, entries)!.amount).toBeGreaterThan(0);
   });
 });
