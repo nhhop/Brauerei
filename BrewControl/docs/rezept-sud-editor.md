@@ -1,10 +1,11 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-12. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-13. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
-der Gärkeller (Gärplätze und Gebinde) und das Gerüst des Suds (5a); es folgen der Brautag (5b) und Gärung,
+der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und vom Brautag die Vorbereitung (5b-1) und das
+Maischen (5b-2); es folgen Würzekochen, Maischverlauf und Pumpen (5b-3, 5b-4) und Gärung,
 Reifung und Abfüllung mit Belegungsplan (5c). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
@@ -985,6 +986,51 @@ Belegungsplan.
 - **Größe:** Ein großer Sud (29 Rezeptzeilen, alle Messwerte, Haken, Ist-Mengen, Notiz) hat nach dem Start
   9,5 KB. Messwerte, Haken und Ist-Mengen tragen dazu etwa 3–4 KB bei, die Kopie des Sudhauses gut 2 KB,
   jede eingefrorene Zutat etwa 0,4 KB.
+
+**Stand 5b-2 (2026-10-13, `web/src/brewPrograms.ts`, `brewDay.ts`, `pages/brew/MashTab.tsx`, Firmware
+`ProgramEvents.h`):**
+- **pH und Säure in drei Schritten:** „pH Maische“ (nach dem Einmaischen), die Säure, „pH nach der Säure“
+  (`mashPhAcid`).
+  - **Soll:** „pH Maische“ ist der Modell-pH **vor** der Gabe „Maische nach pH-Messung“ (5b-1 hatte den nach
+    ihr gesetzt, aber nicht angezeigt). „pH nach der Säure“ ist der Ziel-pH der Maische aus dem Rezept
+    (ohne Eingabe 5,4). Beide Zeilen bieten den Wert des pH-Fühlers an.
+  - **Vorschlag** (`mashAcidSuggestion`): die Säurehilfe des Rezepts (`suggestAgent`) auf der Mash-Spalte,
+    deren pH am Messwert verankert ist. Das geht über `diPh = gemessen − mashPh(0, R, Maische vor der Gabe)`,
+    weil das Modell den Schüttungs-pH nur addiert; die Wirkung der Säure (Wasser und Malzpufferung) bleibt
+    die des Modells. Damit gibt es den Vorschlag **auch unter Kolbach** (Entscheidung 2026-10-13); Malzdaten
+    braucht er nicht, nur das Hauptguss-Verhältnis. Liegt der pH unter dem Ziel, schlägt er eine Base vor
+    (Natron).
+  - **Ist-Menge** je Rezeptzeile „Maische nach pH-Messung“, gebucht wie jede Zutat (`rowAmounts`,
+    `rebook`). Gibt das Rezept das vorgeschlagene Mittel nicht her, steht seine Menge unter
+    `rowAmounts['mashPh:<Katalog-ID>']`, ohne Lagerbuchung. „übernehmen“ setzt die Ist-Menge auf den
+    Vorschlag (auf 0,1 gerundet). Das vorgeschlagene Mittel kommt aus dem heutigen Katalog, weil die Kopie
+    des Suds nur die Zutaten des Rezepts enthält.
+- **Vorderwürze:** Messwert mit Soll aus 5b-1, darunter die Konversion Ist (`measuredEfficiency`) gegen
+  Soll mit Abweichung.
+- **Rasten** gibt es nur **ohne Regelung**: Die Heizquelle beim Maischen ist „von Hand“ oder hat keinen
+  Regler (`isRegulated`). Sonst steht ein Hinweis auf den Verlauf (5b-4).
+  - **Tabelle:** jede Zeile des Maischeplans außer Wasser vorlegen, mit Soll-Temperatur, Dauer, Übergang und
+    Ist-Temperatur (`restTemps` je Schritt-ID, mit dem Wert des Maischefühlers).
+  - **Timer** (`mashTimerProgram`): „Maischen starten“ legt ein Programm „Sud #n Maischen“ auf dem Gerät an
+    und startet es (`brew.mashProgramId`). Die Schritte schalten nichts (`targets: {}`):
+    - je Handgriff ein Schritt, der auf „Weiter“ wartet (`confirm`): Hauptguss heizen, Einmaischen (mit
+      Schüttung nur bei mehreren), Zubrühen, Eis, Dekoktion;
+    - je Temperaturwechsel „Aufheizen/Abkühlen auf T“: ohne Fühler mit `confirm`, mit verknüpftem Fühler
+      (Hauptgusstemperatur bzw. Maischetemperatur, der in der Registry stehen muss) endet er von selbst bei
+      T ∓ 0,5 K (`REACHED_MARGIN_K`, Annahme) und meldet sich per `notify` (Entscheidung 2026-10-13);
+    - je Rast „Rast T °C · m min“ mit der Haltezeit; nach einem Fühler-Ende meldet auch sie sich.
+    - Das Ende der letzten Rast meldet die Firmware als „Programm fertig“.
+  - **Anzeige:** die Programm-Karte des Dashboards (`ProgramCard`, Entscheidung 2026-10-13), Abfrage jede
+    Sekunde bei offenem Tab. Dazu „Timer abbrechen“ (mit Rückfrage) bzw. „Timer entfernen“; die Karte selbst
+    kann neu starten. Fehlt das Programm auf dem Gerät, bietet der Tab wieder „Maischen starten“ an.
+  - **Aufräumen:** „Abschließen“ und „Löschen“ des Suds löschen das Programm (Entscheidung 2026-10-13).
+- **Firmware:** Schritt-Flag `notify` (meldet beim ersten Betreten eines Schritts, nach derselben Regel wie
+  die Impulse: nicht nach „Zurück“ und „Weiter“, nicht nach einem Neustart; die Uhr läuft weiter). Meldungen
+  `awaiting` und `notify` tragen den Schrittnamen (`Alert.step`, 39 Byte); der Push lautet „{Programm}:
+  {Schritt}“ bzw. bei `notify` Titel = Programm, Text = Schritt. Der Push-Tag bleibt `program/<id>`, eine
+  Meldung ersetzt die vorige. Der Programm-Editor kennt `notify` als „Melden“, die Karte zeigt 🔔.
+- **Größe:** Der Mock-Sud nach dem Durchspielen (3 Zutaten, drei Messwerte, eine Rast) hat 3,8 KB; je
+  Rast-Ist-Temperatur kommen etwa 50 Byte dazu.
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.

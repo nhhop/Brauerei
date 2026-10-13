@@ -292,6 +292,7 @@ export interface ProgramStep {
   end?: 'hold' | 'sensor';
   cond?: Condition;       // present only when end === 'sensor'
   confirm?: boolean;      // true → wait for a manual "next" once the trigger fires
+  notify?: boolean;       // true → raise an alert on entering the step, the clock keeps running
 }
 
 export interface ProgramConfig {
@@ -396,7 +397,8 @@ export interface Alert {
   src: string;            // sensor/<id> | actuator/<id> | controller/<id> | program/<id> | timer/<id>
   name?: string;          // rule name, program name or item id
   rule?: string;          // originating rule id, kind === 'threshold' only
-  detail?: string;        // fault() text, program status, or the breached comparison
+  detail?: string;        // fault() text, program event (awaiting | done | notify), or the breached comparison
+  step?: string;          // kind 'program', detail awaiting | notify: the step's name
   v?: number;             // measured value at the edge
 }
 

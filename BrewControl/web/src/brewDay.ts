@@ -8,11 +8,13 @@ import type { Brew, MeasureId } from './brews';
 import type { Efficiency, Grist } from './efficiency';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient } from './ingredientCatalog';
+import { DEFAULT_MASH_PH, mashPh } from './mashPh';
 import { calcMash, type MashPlan } from './mashPlan';
 import { wortExtract } from './recipeStats';
-import { calcTreatment, type Column } from './recipeTreatment';
+import { calcTreatment, suggestAgent, type Column } from './recipeTreatment';
 import { calcWater, type Water } from './recipeWater';
 import { DEFAULT_SPARGE_TEMP, type Recipe } from './recipes';
+import { WATER_AGENTS, isAcid } from './waterChem';
 
 // What a brew computes with: its copies once started, today's objects before.
 export interface BrewInputs {
@@ -82,7 +84,9 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries }: BrewInputs
     values.spargeTemp = r.water?.spargeTempC ?? DEFAULT_SPARGE_TEMP;
     values.spargePh = col('sparge')?.after.ph;
   }
-  values.mashPh = col('mash')?.ph?.after;
+  // Measured after dough-in, before the addition after the pH measurement.
+  values.mashPh = col('mash')?.ph?.before;
+  values.mashPhAcid = r.water?.targetPh?.mash ?? DEFAULT_MASH_PH;
   values.preBoilVolume = water.preBoilL;
   // Measured at the end of the boil, before a dilution in the kettle.
   const d = water.dilution;
@@ -103,6 +107,36 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries }: BrewInputs
     values.firstWortGravity = firstWortPlato((efficiency.conversionPct / 100) * grist.grainExtractKg + mashOtherKg, out.ctx.mashWaterKg);
   }
   return out;
+}
+
+// The acid (or base) that brings the measured mash pH to the target: the
+// recipe's helper (suggestAgent) on the mash column, its pH anchored to the
+// measurement. The model troester's and the water's response to acid stay; the
+// grist's pH is the measured one, so it works under the model kolbach too.
+export interface AcidSuggestion {
+  amount: number;
+  unit: 'g' | 'ml';
+  name: string;
+  base: boolean;
+  rowId?: string;     // the recipe row it goes to; unset = one the recipe does not have
+  entryId?: string;
+}
+
+export function mashAcidSuggestion(t: BrewTargets, measuredPh: number, entries: CatalogIngredient[] | null):
+  AcidSuggestion | undefined {
+  const col = t.columns.find((c) => c.key === 'mash');
+  const ratio = t.water?.mashRatioLPerKg;
+  const targetPh = t.values.mashPhAcid;
+  if (!col || ratio === undefined || targetPh === undefined) return undefined;
+  const diPh = measuredPh - mashPh(0, ratio, col.mid ?? col.start);
+  const s = suggestAgent({ ...col, basis: { kind: 'mash', diPh, ratio } }, targetPh, entries);
+  const agentId = s?.entry?.waterAgent;
+  if (!s || !agentId) return undefined;
+  const agent = WATER_AGENTS[agentId];
+  return {
+    amount: s.amount, unit: agent.form === 'solid' ? 'g' : 'ml', name: s.ingredient?.name || s.entry!.name,
+    base: !isAcid(agent), rowId: s.ingredient?.id, entryId: s.entry!.id,
+  };
 }
 
 export interface MeasuredEfficiency {
