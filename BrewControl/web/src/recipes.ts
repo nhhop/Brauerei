@@ -113,6 +113,7 @@ export interface Decoction {
   thin?: boolean;       // unset = thick
   rests: { tempC: number; durationMin: number }[];  // in the decoction vessel, before the boil
   boilMin: number;
+  holdRest?: boolean;   // the mash left behind is kept at its temperature; unset = unheated meanwhile
 }
 
 // A share of the grist that is mashed in by its own doughIn step. Without
@@ -144,6 +145,7 @@ export interface Recipe {
   updatedAt: number;
   ingredients: Ingredient[];
   mash: MashStep[];
+  mashRampInRest?: boolean;  // a rest's duration counts from the start of heating or cooling to it; unset = from reaching it
   charges?: Charge[];     // unset = one charge, FIRST_CHARGE
   boil: { durationMin: number; whirlpoolTempC: number; whirlpoolMin: number };
   fermentation: Phase[];

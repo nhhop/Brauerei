@@ -283,6 +283,7 @@ function mashGroups(a: Recipe, b: Recipe, da: Derived, db: Derived): DiffGroup[]
     (s?.kind === 'doughIn' && split ? charges.find((c) => c.id === chargeIdOf(s, charges))!.name : undefined);
   const rests = (s?: MashStep) => s?.decoction?.rests.map((r) => `${fmt(r.tempC, 1, false)} °C ${fmt(r.durationMin, 0, false)} min`).join(', ');
   const thickness = (s?: MashStep) => s?.decoction && (s.decoction.thin ? 'dünn' : 'dick');
+  const restMash = (s?: MashStep) => s?.decoction && (s.decoction.holdRest ? 'gehalten' : 'unbeheizt');
   const water = (s?: MashStep) => (s?.infusion?.ice ? 'Eis' : undefined);
   // Of volume and temperature, share and temperature, only the one that leads is an input.
   const lead = <T,>(on: boolean | undefined, v: T) => (on ? v : undefined);
@@ -316,9 +317,10 @@ function mashGroups(a: Recipe, b: Recipe, da: Derived, db: Derived): DiffGroup[]
       textLine(thickness(x), thickness(y), 'Dekoktion'),
       textLine(rests(x), rests(y), 'Rasten der Kochmaische'),
       numLine(x?.decoction?.boilMin, y?.decoction?.boilMin, 'min', 0, 'Kochzeit'),
+      textLine(restMash(x), restMash(y), 'Restmaische'),
       ...(y && stepsMoved.has(y) ? [positionLine(a.mash.indexOf(x!), b.mash.indexOf(y))] : []),
     ])) },
-    { rows: [computed('Maischdauer', duration)] },
+    { rows: [field('Aufheizzeit zählt zur Rast', textLine(yesNo(!!a.mashRampInRest), yesNo(!!b.mashRampInRest))), computed('Maischdauer', duration)] },
   ];
 }
 

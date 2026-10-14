@@ -65,6 +65,31 @@ describe('calcMash', () => {
     expect(byTemp.rows[0].waterL! + 4).toBeCloseTo(byTemp.strikeL, 6);
   });
 
+  it('counts the heating into a rest when the recipe says so', () => {
+    const steps = [{ tempC: 72, durationMin: 20 }, { tempC: 78, durationMin: 0 }];
+    const base = plan(kettle, recipeFor(kettle, steps));
+    const p = plan(kettle, recipeFor(kettle, steps, { mashRampInRest: true }));
+    const heat = base.rows[2].transition.min;
+    expect(heat).toBeGreaterThan(0);
+    expect(base.rows[2].holdMin).toBe(20);
+    expect(base.rows[2].rampInRest).toBeUndefined();
+    expect(p.rows[2].rampInRest).toBe(true);
+    expect(p.rows[2].holdMin).toBeCloseTo(20 - heat, 6);
+    expect(p.rows[2].startMin).toBeCloseTo(base.rows[2].startMin, 6);
+    expect(p.totalMin).toBeCloseTo(base.totalMin - heat, 6);
+    // Mixing takes no time, and a step without a duration has nothing to count into.
+    expect(p.rows[1]).toMatchObject({ holdMin: 30 });
+    expect(p.rows[1].rampInRest).toBeUndefined();
+    expect(p.rows[3].rampInRest).toBeUndefined();
+  });
+
+  it('says when the heating takes longer than the rest it counts into', () => {
+    const slow: Brewhouse = { ...kettle, steps: { ...kettle.steps, mash: { ...kettle.steps.mash!, heatRateKPerMin: 0.1 } } };
+    const p = plan(slow, recipeFor(slow, [{ tempC: 72, durationMin: 20 }], { mashRampInRest: true }));
+    expect(p.rows[2].holdMin).toBe(0);
+    expect(p.notes.join()).toContain('Der Übergang dauert länger als die Rast (20 min)');
+  });
+
   it('cools with ice through its latent heat', () => {
     const p = plan(kettle, recipeFor(kettle, [{ kind: 'infusion', tempC: 55, infusion: { lead: 'temp', ice: true } }]));
     const r = p.rows[2];
@@ -227,6 +252,35 @@ describe('calcMash: decoction', () => {
     expect(row.decoction!.restMashC).toBeCloseTo(50 - (6 * row.transition.min) / 60, 6);
     expect(row.decoction!.sharePct).toBeGreaterThan(base.decoction!.sharePct);
     expect(row.tempC).toBeCloseTo(64, 3);
+  });
+
+  it('holds the mash left behind when the recipe says so and the mash vessel is heated', () => {
+    const lossy = withVessel(kettle, mashVesselId, { heatLossKPerH: 6 });
+    const cooled = plan(lossy, decoctionRecipe(lossy)).rows[2];
+    const p = plan(lossy, decoctionRecipe(lossy, { holdRest: true }));
+    expect(p.rows[2].decoction!.restMashC).toBeCloseTo(50, 6);
+    expect(p.rows[2].decoction!.sharePct).toBeLessThan(cooled.decoction!.sharePct);
+    expect(p.rows[2].tempC).toBeCloseTo(64, 3);
+    expect(p.notes.join()).not.toContain('beheizten Maischbehälter');
+    // Without a heater the mash cannot be held.
+    const unheated: Brewhouse = { ...lossy, steps: { ...lossy.steps, mash: { ...lossy.steps.mash!, heaterId: undefined } } };
+    const q = plan(unheated, decoctionRecipe(unheated, { holdRest: true }));
+    expect(q.rows[2].decoction!.restMashC).toBeLessThan(50);
+    expect(q.notes.join()).toContain('Die Restmaische lässt sich nur in einem beheizten Maischbehälter halten.');
+  });
+
+  it('counts the heating into the decoction\'s own rests when the recipe says so', () => {
+    const base = plan(kettle, decoctionRecipe(kettle)).rows[2];
+    const row = plan(kettle, { ...decoctionRecipe(kettle), mashRampInRest: true }).rows[2];
+    expect(base.decoction!.rampInRest).toBeUndefined();
+    expect(row.decoction!.rampInRest).toBe(true);
+    // 15 min from the start of heating to 72 °C, then up to the boil and 15 min of it.
+    const rate = (1800 * HEATER_EFFICIENCY * 60) / (pulledMass(row) * WATER_J_PER_KG_K);
+    expect(row.transition.min).toBeCloseTo(15 + (100 - 72) / rate + 15, 3);
+    expect(row.transition.min).toBeLessThan(base.transition.min);
+    // The rest of the whole mash follows the decoction and keeps its time.
+    expect(row.holdMin).toBe(30);
+    expect(row.rampInRest).toBeUndefined();
   });
 
   it('evaporates at the decoction vessel\'s rate and takes the water off the mash', () => {

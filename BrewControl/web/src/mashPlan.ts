@@ -38,6 +38,7 @@ export interface DecoctionRow {
   evaporatedL: number;
   restMashC: number;    // the mash left behind, when the decoction comes back
   curve: { min: number; tempC: number }[];  // from pulling it to putting it back; minutes as startMin
+  rampInRest?: boolean; // its rests count from the start of heating to them (Recipe.mashRampInRest)
 }
 
 export interface MashRow {
@@ -53,7 +54,8 @@ export interface MashRow {
   tempC: number;        // reached
   transition: Transition;
   startMin: number;     // when tempC is reached, minutes from heating the strike water
-  holdMin: number;
+  holdMin: number;      // at tempC
+  rampInRest?: boolean; // the step's duration began with the transition (Recipe.mashRampInRest), holdMin is what is left of it
 }
 
 export interface MashPlan {
@@ -103,6 +105,7 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
     .filter((i) => isMashGrain(i) && chargeIdOf(i, charges) === chargeId)
     .reduce((s, i) => s + i.amount, 0);
   const steps = recipe.mash;
+  const ramp = !!recipe.mashRampInRest;
   const strikeL = water.strikeL;
 
   // One pass through the plan with `strikeWaterL` put in first.
@@ -181,11 +184,14 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
     // THICK_DECOCTION_L_PER_KG of water, then liquid; thin: liquid only), rests
     // and boils in the decoction vessel, loses its evaporation and comes back.
     // The mash left behind rests unheated meanwhile and loses the mash vessel's
-    // heat loss. Back in: T = (M_r·T_r + (M_d − E)·T_boil) / (M_r + M_d − E).
+    // heat loss, unless the recipe has it held (`holdRest`) and the mash vessel
+    // is heated. Back in: T = (M_r·T_r + (M_d − E)·T_boil) / (M_r + M_d − E).
     // A thin decoction without loss and evaporation is Troester's
     // s = (T_target − T_start) / (T_boil − T_start) of the heat equivalent.
     function decoct(s: MashStep, label: string, d: Decoction, dv: DecoctionVessel): Part {
       const start = t;
+      const held = !!d.holdRest && !!heating.heater && !byInfusion;
+      if (d.holdRest && !held) notes.push(`${label}: Die Restmaische lässt sich nur in einem beheizten Maischbehälter halten.`);
       const volumeL = waterKg + GRAIN_DISPLACEMENT_L_PER_KG * grainKg;
       const run = (share: number) => {
         const pulledL = share * volumeL;
@@ -213,9 +219,11 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
           curve.push({ min, tempC: temp });
         };
         for (const r of d.rests) {
+          const before = min;
           heatTo(r.tempC);
-          if (r.durationMin > 0) {
-            min += r.durationMin;
+          const hold = ramp ? Math.max(r.durationMin - (min - before), 0) : r.durationMin;
+          if (hold > 0) {
+            min += hold;
             curve.push({ min, tempC: temp });
           }
         }
@@ -225,7 +233,7 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
           curve.push({ min, tempC: temp });
         }
         const evaporatedL = Math.min(((dv.vessel.evaporationLPerH ?? 0) * d.boilMin) / 60, wd);
-        const restMashC = start - lossKPerMin * min;
+        const restMashC = held ? start : start - lossKPerMin * min;
         const mr = mass() - md;
         const back = md - evaporatedL;
         const tempC = mr + back > 0 ? (mr * restMashC + back * temp) / (mr + back) : temp;
@@ -266,6 +274,7 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
         decoction: {
           sharePct: share * 100, volumeL: r.pulledL, grainKg: r.gd, vessel: dv.vessel.name, evaporatedL: r.evaporatedL,
           restMashC: r.restMashC, curve: r.curve.map((p) => ({ min: clock + p.min, tempC: p.tempC })),
+          ...(ramp && { rampInRest: true }),
         },
       };
     }
@@ -338,9 +347,13 @@ export function calcMash(recipe: Recipe, bh: Brewhouse, brewery: Brewery | null,
           }
           break;
       }
-      const holdMin = s.kind === 'strike' ? 0 : s.durationMin ?? 0;
+      const duration = s.kind === 'strike' ? 0 : s.durationMin ?? 0;
+      // The clock of a rest that is heated or cooled to may start with the transition.
+      const ramped = ramp && duration > 0 && (row.transition.kind === 'heat' || row.transition.kind === 'cool');
+      const holdMin = ramped ? Math.max(duration - row.transition.min, 0) : duration;
+      if (ramped && holdMin === 0) notes.push(`${label}: Der Übergang dauert länger als die Rast (${Math.round(duration)} min), auf Temperatur bleibt keine Zeit.`);
       const startMin = clock + row.transition.min;
-      rows.push({ ...row, step: s, fromC: from, tempC: t, startMin, holdMin });
+      rows.push({ ...row, step: s, fromC: from, tempC: t, startMin, holdMin, ...(ramped && { rampInRest: true }) });
       clock = startMin + holdMin;
     }
 

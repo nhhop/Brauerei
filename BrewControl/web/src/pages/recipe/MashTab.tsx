@@ -420,6 +420,12 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
               onPointerCancel: () => setDrag(null),
             }} />
         ))}
+        <label class="flex w-fit items-center gap-1.5 pt-2 text-xs text-muted"
+          title="Die Dauer einer Rast läuft ab Beginn des Aufheizens oder Abkühlens, nicht erst ab Erreichen der Temperatur.">
+          <input type="checkbox" checked={!!recipe.mashRampInRest}
+            onChange={(e) => onChange({ mashRampInRest: e.currentTarget.checked || undefined })} />
+          Aufheizzeit zählt zur Rast
+        </label>
         {plan && strikeRow && (
           <div class="flex flex-wrap justify-between gap-x-4 gap-y-1 pt-2 text-xs text-muted">
             <span>
@@ -632,6 +638,11 @@ function DecoctionCourse({ step, row, patch }: {
       <span class="flex items-center gap-1">
         kochen <NumInput value={d.boilMin} onChange={(n) => set({ boilMin: n })} class="w-14" /> min
       </span>
+      <label class="flex items-center gap-1"
+        title="Die Restmaische wird während der Dekoktion auf ihrer Temperatur gehalten. Ohne Haken rechnet der Plan mit dem Wärmeverlust des Maischbehälters.">
+        <input type="checkbox" checked={!!d.holdRest} onChange={(e) => set({ holdRest: e.currentTarget.checked || undefined })} />
+        Restmaische halten
+      </label>
       {dr && (
         <span class="tabular-nums">
           Restmaische {num(dr.restMashC)} °C{dr.evaporatedL > 0 ? ` · verdampft ${fmtL(dr.evaporatedL)}` : ''}
