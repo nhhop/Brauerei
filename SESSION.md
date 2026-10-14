@@ -2373,3 +2373,33 @@ und „Gerätetest geregelt“ (aus „Ein-Topf“, Maischefühler = `HLT`, Rüh
   eingeschaltet, `kettle` aus mit Sollwert 0,63. Lagerposten wieder 5 kg, die Abbuchungen aus den beiden
   Test-Suden genommen. Das Log „Maischen“ hat seit 00:10 eine neue Session.
 - **Offen:** Beim Kochtimer sind vier von sieben Pushes bestätigt (PLAN.md).
+
+## 2026-10-14 — Sud 5b-5: Maischprogramm für geregelte Maischen
+
+PLAN.md › Rezept- und Sud-Editor, „Nächster Schritt“. Branch `feat/maischprogramm-geregelt`. Einzelheiten und
+alle Entscheidungen des Nutzers: `BrewControl/docs/rezept-sud-editor.md` › „Stand 5b-5“.
+
+- **Programm:** Bei geregelter Maische legt „Maischen starten“ ein Programm an, das dem Regler der
+  Maisch-Heizquelle die Sollwerte setzt (`mashTimerProgram(…, control)`, `mashControlOf`). Aufheizen und
+  Abkühlen setzen den Sollwert beim Beginn und enden am Fühler; ein Schritt mit Freigabe setzt nichts, der
+  Schritt danach bringt die neue Temperatur. Der Hauptguss gehört dazu, wenn er am selben Regler hängt, und
+  wartet nach dem Aufheizen auf „Weiter“. Am Ende hält „Maischen beendet“ den Sollwert bis zur Freigabe,
+  dann gehen die Regler aus. Pumpe und Rührwerk schaltet das Programm nicht.
+- **Dekoktion:** Ziehen, Rasten und Kochen der Teilmaische und Zurückgeben sind einzelne Schritte; der Regler
+  der Maische ist währenddessen aus, ein Regler am Dekoktionskessel bekommt die Sollwerte.
+- **Firmware:** „Stop“ schaltet alle Regler und Aktoren aus, die ein Programm anspricht
+  (`ProgramRunner::control`, `targetIds` in `ProgramTargets.h`). Vorher blieb alles stehen, auch im
+  Dashboard; das gilt jetzt für jedes Programm. `docs/openapi.yaml` und README nachgezogen.
+- **Sud:** „Timer abbrechen“, „Abschließen“ und „Löschen“ stoppen ein laufendes Programm, bevor sie es
+  löschen (`dropProgram`). Vor einem Start, der sofort heizt, fragt der Tab nach. „Weiter“ am Einmaischen
+  setzt die Zeit „Eingemaischt“ (`mashedInAt`), auch beim Rasten-Timer von Hand.
+- **Nebenbei geändert:** Ein Sudhaus mit Aufguss (Heizquelle am Regler, aber in einem anderen Behälter ohne
+  Spirale und Pumpe) zählt nicht mehr als geregelt und bekommt den Rasten-Timer von Hand; der Regler hält
+  dort das Wasser heiß, nicht die Maische.
+- **Prüfung:** `pnpm test` (528, +17), `typecheck`, `build` (Hauptbundle 471,94 kB); `pio test -e native`
+  (187, +1), `pio run` für `lilygo_t_display_s3_amoled` und `esp32dev`. Im Browser gegen einen Mock: Start
+  mit Rückfrage, acht Schritte bis „Regler aus“ mit den Sollwerten am Mock-Regler, „Eingemaischt“ nach dem
+  „Weiter“ am Einmaischen, Abbrechen (Stop, Löschen, Regler aus), die Hinweise zu Fühler, Umwälzpumpe und
+  fehlendem Regler, Dekoktion mit Regler am zweiten Kessel (zwölf Schritte).
+- **Nicht geprüft:** alles am Gerät (PLAN.md). Die SD-Karte des LilyGo hing während der Session nach einem
+  Einschalten nicht ein, die Testdaten waren deshalb nicht lesbar.

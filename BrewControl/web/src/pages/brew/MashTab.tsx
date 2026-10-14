@@ -1,12 +1,13 @@
+import { useState } from 'preact/hooks';
 import { deviation, mashAcidSuggestion, measuredEfficiency, type BrewInputs, type BrewTargets } from '../../brewDay';
-import { isRegulated, mashTimerProgram } from '../../brewPrograms';
-import { MEASUREMENTS, type MeasureKey, type StepKey } from '../../brewhouse';
+import { isRegulated, mashControlOf, mashTimerProgram, mashedInAt } from '../../brewPrograms';
+import { MEASUREMENTS, heatingOf, needsPump, type MeasureKey, type StepKey } from '../../brewhouse';
 import { setMeasurement, setRestTemp, type Brew } from '../../brews';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { unitOfEntry } from '../../ingredientSource';
 import { MASH_KIND_LABEL, type Recipe } from '../../recipes';
 import { entryOf } from '../../stockLots';
-import type { Snapshot } from '../../types';
+import type { ProgramConfig, Snapshot } from '../../types';
 import { badgeCaution, badgeSuccess, btnSecondary, inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
 import { AmountInput, num, rowAmountChange } from './amounts';
@@ -22,8 +23,9 @@ const labelOf = (key: MeasureKey | 'mashPhAcid') => (key === 'mashPhAcid' ? 'pH 
 const DEVICE_STEPS: StepKey[] = ['strike', 'mash', 'lauter', 'sparge'];
 
 // Tab "Maischen": the course of the mash against the device log, the mash pH
-// with its acid in three steps, the first wort, for a mash heated by hand the
-// rests with their timer on the device, and the brewhouse's devices.
+// with its acid in three steps, the first wort, the mash program on the device
+// (heated by hand a rest timer below the rests' temperatures, regulated one
+// that sets the controller), and the brewhouse's devices.
 export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, editable, patch, notes, onNotes }: {
   brew: Brew;                  // as saved; the page keeps the head's draft
   recipe: Recipe;
@@ -67,12 +69,37 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
   const conversion = targets.ctx ? measuredEfficiency(m, targets.ctx).conversionPct : undefined;
   const conversionSoll = targets.efficiency?.conversionPct;
   const conversionDev = deviation('efficiency', conversionSoll, conversion);
-  const sensors = { strike: liveSensor(inputs, snap, 'strikeTemp'), mash: liveSensor(inputs, snap, 'mashTemp') };
+
+  // Regulated, the program sets the controller of the mash's heater. A step
+  // ends at the measurement's sensor, else at the one the controller regulates on.
+  const regulated = isRegulated(inputs.bh);
+  const control = mashControlOf(inputs.bh, snap, mash?.boilC ?? 100);
+  const mashSensor = liveSensor(inputs, snap, 'mashTemp');
+  const sensors = {
+    strike: liveSensor(inputs, snap, 'strikeTemp') ?? (control?.strike ? control.sensor : undefined),
+    mash: mashSensor ?? control?.sensor,
+  };
+  const heating = inputs.bh && heatingOf(inputs.bh, 'mash');
+  const controllerId = control?.controller ?? heating?.heater?.controller;
+  const controllerName = snap?.controllers.find((c) => c.id === controllerId)?.label ?? controllerId;
+  const strikeC = mash?.rows.find((r) => r.step.kind === 'strike')?.tempC;
+  const hints = !regulated ? [] : !control ? [snap ? `Der Regler „${controllerName}“ fehlt in der Registry; ohne ihn gibt es kein Programm.` : 'Lädt …'] : [
+    ...(!mashSensor ? [control.sensor
+      ? `Die Maischetemperatur ist im Sudhaus mit keinem Fühler verknüpft; das Programm wartet auf den Fühler des Reglers („${control.sensor}“).`
+      : 'Weder die Maischetemperatur noch der Regler hat einen Fühler in der Registry; jedes Aufheizen wartet auf „Weiter“.']
+      : control.sensor && control.sensor !== mashSensor ? [`Der Regler regelt auf „${control.sensor}“, das Programm wartet auf den Maischefühler „${mashSensor}“. Erreicht die Maische eine Temperatur nicht, geht es mit „Weiter“ weiter.`] : []),
+    ...(heating && needsPump(heating) ? ['Die Heizung wirkt nur mit laufender Umwälzpumpe; die schaltest du unter „Pumpen & Geräte“.'] : []),
+  ];
+  // A mash program past its dough-in says when the grain went in (MashCourse).
+  const [mashedIn, setMashedIn] = useState<number>();
+  const watch = (p: ProgramConfig) => setMashedIn(mashedInAt(p));
 
   return (
     <>
       {!editable && <p class="mb-3 text-sm text-muted">Ist-Werte, Mengen und der Timer lassen sich ab dem Brautag-Start eintragen.</p>}
-      {mash && inputs.bh && <MashCourse brew={brew} rows={mash.rows} bh={inputs.bh} snap={snap} editable={editable} patch={patch} />}
+      {mash && inputs.bh && (
+        <MashCourse brew={brew} rows={mash.rows} bh={inputs.bh} snap={snap} editable={editable} patch={patch} suggestedAt={mashedIn} />
+      )}
       <Card title="pH und Säure">
         {row('mashPh', 'nach dem Einmaischen')}
         <div class="border-b border-border py-2">
@@ -136,8 +163,15 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
       <Card title="Rasten">
         {!mash ? (
           <p class="text-sm text-muted">{targets.notes[0] ?? 'Ohne Sudhaus kein Maischeplan.'}</p>
-        ) : isRegulated(inputs.bh) ? (
-          <p class="text-sm text-muted">Die Maische wird geregelt: Die Rasten stellst du am Regler, den Verlauf zeigt das Diagramm oben.</p>
+        ) : regulated ? (
+          <>
+            {hints.map((h) => <p key={h} class="mb-2 text-xs text-muted">{h}</p>)}
+            <BrewTimer brew={brew} field="mashProgramId" build={() => mashTimerProgram(brew.number, mash.rows, sensors, control)}
+              startLabel="Maischen starten" snap={snap} editable={editable} patch={patch} canStart={!!control} watch={watch}
+              confirmStart={control?.strike && strikeC !== undefined
+                ? `Der Regler „${controllerName}“ geht sofort an und heizt auf ${fmtNum(strikeC, 1)} °C. Ist der Hauptguss eingefüllt?` : undefined}
+              intro={`Ein Programm auf dem Gerät fährt den Maischeplan ab, auch bei geschlossener Seite: Es stellt dem Regler „${controllerName}“ die Sollwerte, wartet beim Heizen auf den Fühler und hält die Rastzeiten. Handgriffe bestätigst du mit „Weiter“; am Ende schaltet „Weiter“ den Regler aus.`} />
+          </>
         ) : (
           <>
             {mash.rows.filter((r) => r.step.kind !== 'strike').map((r) => (
@@ -149,7 +183,7 @@ export function MashTab({ brew, recipe, inputs, targets, liveEntries, snap, edit
             <div class="mt-4">
               <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Timer</h3>
               <BrewTimer brew={brew} field="mashProgramId" build={() => mashTimerProgram(brew.number, mash.rows, sensors)}
-                startLabel="Maischen starten" snap={snap} editable={editable} patch={patch}
+                startLabel="Maischen starten" snap={snap} editable={editable} patch={patch} watch={watch}
                 intro={`Ein Programm auf dem Gerät führt durch die Rasten und meldet sich auch bei geschlossener Seite: Heizen und Zugaben bestätigst du mit „Weiter“${sensors.mash || sensors.strike ? ', ein verknüpfter Fühler beendet das Heizen von selbst' : ''}.`} />
             </div>
           </>

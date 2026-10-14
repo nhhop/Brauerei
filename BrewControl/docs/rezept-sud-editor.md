@@ -1008,7 +1008,8 @@ Belegungsplan.
 - **Vorderwürze:** Messwert mit Soll aus 5b-1, darunter die Konversion Ist (`measuredEfficiency`) gegen
   Soll mit Abweichung.
 - **Rasten** gibt es nur **ohne Regelung**: Die Heizquelle beim Maischen ist „von Hand“ oder hat keinen
-  Regler (`isRegulated`). Sonst steht dort nur ein Satz; den Verlauf zeigt das Diagramm (Stand 5b-4).
+  Regler (`isRegulated`). Sonst steht dort nur ein Satz; den Verlauf zeigt das Diagramm (Stand 5b-4). Seit
+  Stand 5b-5 steht dort das Maischprogramm, das den Regler stellt.
   - **Tabelle:** jede Zeile des Maischeplans außer Wasser vorlegen, mit Soll-Temperatur, Dauer, Übergang und
     Ist-Temperatur (`restTemps` je Schritt-ID, mit dem Wert des Maischefühlers).
   - **Timer** (`mashTimerProgram`): „Maischen starten“ legt ein Programm „Sud #n Maischen“ auf dem Gerät an
@@ -1095,8 +1096,8 @@ Web, Firmware unverändert):**
 - **Verlauf** (Karte oben im Tab Maischen, in **jedem** Sud mit Maischeplan, Entscheidung 2026-10-13): der
   Maischeplan gegen die Temperatur aus einem Gerätelog.
   - **Mit Regelung** steht das Diagramm mit Heizleistung da; Rasten-Tabelle und Programm-Karte gibt es dort
-    nicht, die Rasten stellt man am Regler. **Von Hand** bleiben Timer und Rasten-Tabelle aus 5b-2, das
-    Diagramm kommt dazu.
+    nicht, die Rasten stellt man am Regler (seit Stand 5b-5 fährt sie ein Programm). **Von Hand** bleiben
+    Timer und Rasten-Tabelle aus 5b-2, das Diagramm kommt dazu.
   - **Zeitanker ist das Einmaischen** (Entscheidung 2026-10-13): „Eingemaischt“ setzt `phaseStartedAt.mash`
     auf jetzt, das Feld „Eingemaischt um“ korrigiert die Zeit (beim Verlassen gespeichert, geleert nimmt es
     den Anker wieder weg). Der erste Einmaisch-Schritt des Plans liegt auf dieser Zeit, das Heizen des
@@ -1136,6 +1137,66 @@ Web, Firmware unverändert):**
 - **Am Gerät geprüft (LilyGo, 2026-10-14):** 5b-1 bis 5b-4 mit einem Prüfrezept, dessen Timer in Minuten
   laufen (SESSION.md). Die Testdaten liegen auf dem Board: Rezept „Gerätetest“, Sudhäuser „Gerätetest von
   Hand“ und „Gerätetest geregelt“, Sude #2 und #3.
+
+**Stand 5b-5 (2026-10-14, `web/src/brewPrograms.ts`, `pages/brew/MashTab.tsx`, `BrewTimer.tsx`,
+`MashCourse.tsx`, Firmware `ProgramRunner.cpp`):** das Maischprogramm für geregelte Maischen. Alle Punkte
+sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
+- **Wann:** Die Heizquelle des Schritts „Maischen“ hängt an einem Regler (`isRegulated`). „Maischen starten“
+  legt dann wie von Hand das Programm „Sud #n Maischen“ an, nur stellt es dem Regler die Sollwerte. Die
+  Karte „Rasten“ zeigt dort die Programm-Karte; die Rasten-Tabelle mit Ist-Temperaturen bleibt dem Maischen
+  von Hand vorbehalten.
+  - **Nicht bei Aufguss** (Heizquelle in einem anderen Behälter, ohne Spirale und Pumpe): Dort hält der
+    Regler das Wasser heiß und nicht die Maische. Solche Sudhäuser bekommen den Rasten-Timer von Hand
+    (vorher stand dort der Satz „Die Rasten stellst du am Regler“).
+- **Was das Programm stellt** (`mashControlOf`): nur Regler, keine Pumpe und kein Rührwerk. Die bleiben in
+  „Pumpen & Geräte“ frei schaltbar, weil ein Aktor, den ein Programm anspricht, dort gesperrt wäre. Braucht
+  die Heizung die Umwälzpumpe (HERMS, RIMS; `needsPump`), steht ein Hinweis über dem Startknopf.
+- **Ein Generator** für beide Fälle: `mashTimerProgram(…, control?)`. Ohne `control` ist es der
+  Rasten-Timer aus 5b-2, unverändert.
+- **Sollwerte:** auf 0,1 K gerundet, jeder mit `enabled: true`.
+  - **Aufheizen/Abkühlen auf T** setzen den Sollwert beim Beginn und enden am Fühler bei T ∓ 0,5 K. Sie
+    melden sich nicht, weil es nichts zu tun gibt; die Rast danach meldet sich wie bisher.
+  - **Ein Schritt mit Freigabe setzt nichts** (Zubrühen, Eis, weitere Schüttung): Der Regler hält die
+    Temperatur davor, bis „Weiter“ gedrückt ist. Der Schritt danach bringt den neuen Sollwert, höher wie
+    tiefer. Bei Eis heißt das: zügig zugeben oder vorher „Weiter“ drücken.
+- **Fühler:** Die Schritte enden am Fühler der Messung „Maischetemperatur“ (Hauptguss:
+  „Hauptgusstemperatur“). Ist keiner verknüpft oder fehlt er in der Registry, am Fühler, auf den der Regler
+  regelt (`params.sensor`, bei mehreren Kanälen der erste). Weichen beide ab, sagt das ein Hinweis; ohne
+  jeden Fühler wartet der Schritt auf „Weiter“. Erreicht die Maische die Temperatur nicht (HERMS mit Regler
+  am HLT), hilft „Weiter“; ein Sollwert-Aufschlag ist offen (PLAN.md).
+- **Hauptguss:** im Programm, wenn seine Heizquelle am Regler der Maische hängt (Ein-Topf, HERMS-HLT). Der
+  Schritt setzt die Hauptguss-Temperatur, endet am Fühler und **wartet dann auf „Weiter“**, der Regler hält
+  so lange. „Einmaischen“ setzt danach die Einmaischtemperatur. Hängt der Hauptguss an einer anderen
+  Heizquelle, bleibt er ein Handgriff wie im Rasten-Timer, und der Regler geht erst mit dem Schritt nach dem
+  „Weiter“ des Einmaischens an (kein Heizen in den leeren Behälter).
+- **Rückfrage vor dem Start** (nicht verlangt, vom Nutzer im Plan bestätigt): Heizt das Programm sofort,
+  fragt „Maischen starten“ nach („Der Regler … geht sofort an und heizt auf 67,0 °C. Ist der Hauptguss
+  eingefüllt?“).
+- **Dekoktion:** „Dekoktion: X l in ‹Kessel› ziehen“ (Freigabe, der Regler hält die Rast), dann der Ablauf
+  im Dekoktionskessel: je Rast der Teilmaische „Teilmaische auf T heizen“ und „Teilmaische Rast T · n min“,
+  „Teilmaische – Weiter bei Kochbeginn“, „Teilmaische kochen · n min“, „Teilmaische zurückgeben“ (Freigabe).
+  - **Restmaische:** Der erste Schritt nach dem Ziehen schaltet den Regler der Maische aus, so wie der Plan
+    rechnet (Stand 3d). Der Schritt nach dem Zurückgeben schaltet ihn mit der neuen Temperatur wieder ein.
+  - **Zweiter Kessel:** Hat die Heizquelle des Dekoktionsbehälters einen eigenen Regler, bekommt er die
+    Sollwerte (Rasten, dann den Siedepunkt nach Höhe) und geht nach dem Zurückgeben aus. Ohne Regler dort
+    sind dieselben Schritte Freigaben.
+  - **Kochbeginn** meldet der Brauer wie beim Kochtimer: Ein Fühler kurz unter dem Siedepunkt ist kein
+    sicheres Ende.
+  - Der Rasten-Timer von Hand behält seinen einen Schritt „Dekoktion: … ziehen, kochen, zurück auf T“.
+- **Ende:** „Maischen beendet – Weiter: Regler aus“ hält den letzten Sollwert und wartet auf Freigabe (bei
+  HERMS kühlt der HLT so nicht aus, bevor jemand am Kessel steht). Danach schaltet „Regler aus“ alle Regler
+  des Programms aus, und die Firmware meldet „Programm fertig“.
+- **Stop (Firmware, für alle Programme):** „Stop“ schaltet jeden Regler und Aktor aus, den das Programm in
+  irgendeinem Schritt anspricht, erst die Regler. Vorher blieb alles stehen, auch im Dashboard. „Fertig“ und
+  „Pause“ lassen weiter alles, wie es ist.
+  - „Timer abbrechen“, „Abschließen“ und „Löschen“ des Suds stoppen ein noch laufendes Programm und löschen
+    es dann (`dropProgram`); der Abbrechen-Dialog sagt das. Ein beendetes Programm wird nur gelöscht.
+- **Eingemaischt:** Steht ein Maischprogramm im Schritt nach dem ersten „Einmaischen“ und der Sud hat noch
+  keine Zeit, trägt der Tab den Beginn dieses Schritts ein (`mashedInAt`, Zeit vom Gerät) und merkt sich das
+  Log wie der Knopf. Gilt auch für den Rasten-Timer von Hand. Je Programm einmal: Eine Zeit, die der Brauer
+  wieder leert, bleibt leer. Ist der Tab in diesem Schritt nicht offen, bleibt der Knopf.
+- **Im Mock geprüft:** Start mit Rückfrage, Lauf bis „Regler aus“, Abbrechen (Stop, dann Löschen, Regler
+  aus), die drei Hinweise, Dekoktion mit Regler am zweiten Kessel. **Am Gerät noch nicht** (PLAN.md).
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.
@@ -1235,8 +1296,8 @@ Sollwerte kommen aus den vorhandenen Rechnungen auf den Kopien des Suds.
 wie im Maischeplan und Meldung „Rast 63 °C beendet“. Das ist der gewünschte Timer.
 
 Mit Regelung ließe sich daraus später ein Maischprogramm mit Sollwerten erzeugen (je Rast „aufheizen bis
-Fühler ≥ T“, dann „halten“). Das ist **nicht** Teil von 5b und steht als Punkt in PLAN.md. Mit ihm
-erscheint die Programm-Karte im Tab Maischen auch bei Regelung; bis dahin steht dort nur das Diagramm.
+Fühler ≥ T“, dann „halten“). Das war nicht Teil von 5b-1 bis 5b-4 und ist mit Stand 5b-5 umgesetzt: Die
+Programm-Karte steht im Tab Maischen auch bei Regelung.
 
 #### Teil-Etappen (je ein PR)
 

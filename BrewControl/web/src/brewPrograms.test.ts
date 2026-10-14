@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { REACHED_MARGIN_K, boilAdditions, boilProgress, boilTimerProgram, isRegulated, mashTimerProgram } from './brewPrograms';
-import { TEMPLATES } from './brewhouse';
+import {
+  REACHED_MARGIN_K, boilAdditions, boilProgress, boilTimerProgram, isRegulated, mashControlOf, mashTimerProgram, mashedInAt, type MashControl,
+} from './brewPrograms';
+import { TEMPLATES, type Brewhouse } from './brewhouse';
 import type { MashRow, Transition } from './mashPlan';
 import type { Ingredient, MashStep, MashStepKind } from './recipes';
-import type { ProgramStatus } from './types';
+import type { ProgramStatus, ProgramStep, Snapshot } from './types';
 
 const tr = (kind: Transition['kind']): Transition => ({ kind, min: 0, text: '' });
 const mashRow = (kind: MashStepKind, tempC: number, holdMin: number, p: Partial<MashRow> = {}): MashRow => ({
@@ -76,6 +78,190 @@ describe('mashTimerProgram', () => {
   });
 });
 
+describe('regulated mash program', () => {
+  const control: MashControl = { controller: 'mash', sensor: 'pot', strike: true, boilC: 100 };
+  const sensors = { strike: 'pot', mash: 'pot' };
+  const set = (v: number) => ({ mash: { v, enabled: true } });
+  const targets = (steps: ProgramStep[]) => steps.map((s) => s.targets);
+
+  it('sets the setpoints, waits for the sensor and switches off after "Weiter"', () => {
+    const p = mashTimerProgram(7, rows, sensors, control);
+    expect(p.name).toBe('Sud #7 Maischen');
+    expect(p.steps.map((s) => s.name)).toEqual([
+      'Hauptguss auf 70,5 °C heizen',
+      'Einmaischen 5 kg',
+      'Rast 63 °C · 30 min',
+      'Aufheizen auf 72 °C',
+      'Rast 72 °C · 20 min',
+      'Aufheizen auf 78 °C',
+      'Maischen beendet – Weiter: Regler aus',
+      'Regler aus',
+    ]);
+    expect(targets(p.steps)).toEqual([set(70.5), set(63), {}, set(72), {}, set(78), {}, { mash: { enabled: false } }]);
+    expect(p.steps.map((s) => !!s.confirm)).toEqual([true, true, false, false, false, false, true, false]);
+    expect(p.steps.map((s) => s.holdSec)).toEqual([0, 0, 1800, 0, 1200, 0, 0, 0]);
+    const [strike, , , heat72, rest72] = p.steps;
+    // The strike water is held at its temperature until the brewer is there.
+    expect(strike).toMatchObject({ end: 'sensor', cond: { ref: 'sensor/pot', op: 'gt', value: 70 } });
+    expect(heat72).toMatchObject({ end: 'sensor', cond: { ref: 'sensor/pot', op: 'gt', value: 72 - REACHED_MARGIN_K } });
+    // Only the rests report themselves: there is nothing to do while the controller heats.
+    expect(p.steps.map((s) => !!s.notify)).toEqual([false, false, false, false, true, false, false, false]);
+    expect(rest72.notify).toBe(true);
+  });
+
+  it('leaves strike water heated by hand alone and switches on after mashing in', () => {
+    const p = mashTimerProgram(7, rows, { mash: 'pot' }, { ...control, strike: false });
+    expect(targets(p.steps).slice(0, 4)).toEqual([{}, {}, set(63), set(72)]);
+    expect(p.steps[0]).toMatchObject({ name: 'Hauptguss auf 70,5 °C heizen', confirm: true });
+  });
+
+  it('holds the temperature while a handgrip waits and sets the new one after it', () => {
+    const p = mashTimerProgram(1, [
+      rows[1],
+      mashRow('infusion', 72, 15, { waterL: 4, waterTempC: 95 }),
+      mashRow('infusion', 50, 0, { waterL: 1.5, ice: true }),
+      mashRow('rest', 50, 10, { transition: tr('none') }),
+    ], sensors, control);
+    expect(p.steps.map((s) => s.name).slice(0, 6)).toEqual([
+      'Einmaischen 5 kg', 'Rast 63 °C · 30 min', 'Zubrühen 4 l mit 95 °C', 'Rast 72 °C · 15 min', '1,5 kg Eis zugeben', 'Rast 50 °C · 10 min',
+    ]);
+    expect(targets(p.steps).slice(0, 6)).toEqual([{}, set(63), {}, set(72), {}, set(50)]);
+  });
+
+  it('sets what a handgrip without a rest leads to with the step after it', () => {
+    const p = mashTimerProgram(1, [mashRow('doughIn', 63, 0, { grainKg: 5 })], sensors, control);
+    expect(p.steps.map((s) => s.name)).toEqual(['Einmaischen 5 kg', 'Maischen beendet – Weiter: Regler aus', 'Regler aus']);
+    expect(targets(p.steps)).toEqual([{}, set(63), { mash: { enabled: false } }]);
+  });
+
+  it('sets a lower setpoint when cooling begins', () => {
+    const p = mashTimerProgram(1, [mashRow('rest', 45, 10, { transition: tr('cool') })], sensors, control);
+    expect(p.steps[0]).toMatchObject({ name: 'Abkühlen auf 45 °C', targets: set(45), cond: { op: 'lt', value: 45 + REACHED_MARGIN_K } });
+  });
+
+  it('waits for "Weiter" where no sensor ends the heating', () => {
+    const p = mashTimerProgram(1, [rows[2]], {}, control);
+    expect(p.steps[0]).toMatchObject({ name: 'Aufheizen auf 72 °C', targets: set(72), confirm: true });
+    expect(p.steps[0].end).toBeUndefined();
+  });
+
+  describe('decoction', () => {
+    const decoction = mashRow('decoction', 64, 20, {
+      fromC: 50, transition: tr('decoction'),
+      step: { id: 'd', kind: 'decoction', name: '', decoction: { lead: 'temp', rests: [{ tempC: 72, durationMin: 10 }], boilMin: 15 } },
+      decoction: { sharePct: 30, volumeL: 8.4, grainKg: 2, vessel: 'Einkocher', evaporatedL: 0, restMashC: 50, curve: [] },
+    });
+    const names = [
+      'Dekoktion: 8,4 l in Einkocher ziehen',
+      'Teilmaische auf 72 °C heizen',
+      'Teilmaische Rast 72 °C · 10 min',
+      'Teilmaische – Weiter bei Kochbeginn',
+      'Teilmaische kochen · 15 min',
+      'Teilmaische zurückgeben',
+      'Rast 64 °C · 20 min',
+      'Maischen beendet – Weiter: Regler aus',
+      'Regler aus',
+    ];
+
+    it('drives the decoction vessel by its own controller and leaves the mash unheated', () => {
+      const p = mashTimerProgram(1, [decoction], sensors, { ...control, decoction: { controller: 'kettle', sensor: 'kettle.temp' } });
+      const kettle = (v: number) => ({ kettle: { v, enabled: true } });
+      expect(p.steps.map((s) => s.name)).toEqual(names);
+      expect(targets(p.steps)).toEqual([
+        {}, { mash: { enabled: false }, ...kettle(72) }, {}, kettle(100), {}, {},
+        { ...set(64), kettle: { enabled: false } }, {}, { mash: { enabled: false }, kettle: { enabled: false } },
+      ]);
+      expect(p.steps.map((s) => !!s.confirm)).toEqual([true, false, false, true, false, true, false, true, false]);
+      expect(p.steps[1]).toMatchObject({ end: 'sensor', cond: { ref: 'sensor/kettle.temp', op: 'gt', value: 71.5 } });
+      expect(p.steps.map((s) => !!s.notify)).toEqual([false, false, true, false, false, false, false, false, false]);
+      expect(p.steps.map((s) => s.holdSec)).toEqual([0, 0, 600, 0, 900, 0, 1200, 0, 0]);
+    });
+
+    it('asks for every move in a decoction vessel heated by hand', () => {
+      const p = mashTimerProgram(1, [decoction], sensors, control);
+      expect(p.steps.map((s) => s.name)).toEqual(names);
+      expect(targets(p.steps)).toEqual([{}, { mash: { enabled: false } }, {}, {}, {}, {}, set(64), {}, { mash: { enabled: false } }]);
+      expect(p.steps.map((s) => !!s.confirm)).toEqual([true, true, false, true, false, true, false, true, false]);
+    });
+
+    it('skips heating to a rest the decoction already has, and a boil without a time', () => {
+      const cold = { ...decoction, step: { ...decoction.step, decoction: { lead: 'temp' as const, rests: [{ tempC: 50, durationMin: 5 }], boilMin: 0 } } };
+      expect(mashTimerProgram(1, [cold], sensors, control).steps.map((s) => s.name).slice(0, 4)).toEqual([
+        'Dekoktion: 8,4 l in Einkocher ziehen', 'Teilmaische Rast 50 °C · 5 min', 'Teilmaische – Weiter bei Kochbeginn', 'Teilmaische zurückgeben',
+      ]);
+    });
+
+    it('stays one handgrip in the rest timer', () => {
+      expect(mashTimerProgram(1, [decoction], {}).steps.map((s) => s.name)).toEqual([
+        'Dekoktion: 8,4 l ziehen, kochen, zurück auf 64 °C', 'Rast 64 °C · 20 min',
+      ]);
+    });
+  });
+});
+
+describe('mashControlOf', () => {
+  const template = (key: string) => TEMPLATES.find((t) => t.key === key)!.build();
+  const link = (bh: Brewhouse, name: string, controller: string) =>
+    ({ ...bh, devices: bh.devices.map((d) => (d.name === name ? { ...d, manual: false, controller } : d)) });
+  const snap = (controllers: [string, string][], sensors: string[]) => ({
+    sensors: sensors.map((id) => ({ id })), actuators: [],
+    controllers: controllers.map(([id, sensor]) => ({ id, setpoint: 0, enabled: false, params: { sensor } })),
+  }) as unknown as Snapshot;
+
+  it('takes the controller of the mash heater with the sensor it regulates on', () => {
+    const pot = link(template('pot'), 'Heizung', 'mash');
+    expect(mashControlOf(pot, snap([['mash', 'pot']], ['pot']), 99)).toEqual({ controller: 'mash', sensor: 'pot', strike: true, boilC: 99 });
+    // A controller names a sensor with channels by its bare id and reads the first.
+    expect(mashControlOf(pot, snap([['mash', 'bme']], ['bme.temp', 'bme.hum']), 99)?.sensor).toBe('bme.temp');
+    expect(mashControlOf(pot, snap([['mash', 'gone']], ['pot']), 99)?.sensor).toBeUndefined();
+  });
+
+  it('is nothing without the controller in the registry, or without regulation', () => {
+    const pot = link(template('pot'), 'Heizung', 'mash');
+    expect(mashControlOf(pot, snap([], ['pot']), 99)).toBeUndefined();
+    expect(mashControlOf(pot, null, 99)).toBeUndefined();
+    expect(mashControlOf(template('pot'), snap([['mash', 'pot']], ['pot']), 99)).toBeUndefined();
+    expect(mashControlOf(undefined, snap([], []), 99)).toBeUndefined();
+  });
+
+  it('knows whether the strike water hangs on the same controller', () => {
+    // HERMS: the HLT's heater heats the strike water and, through the coil, the mash.
+    const herms = link(template('herms3'), 'Heizstab HLT', 'hlt');
+    const s = snap([['hlt', 'hlt.temp'], ['boil', 'boil.temp']], ['hlt.temp', 'boil.temp']);
+    expect(mashControlOf(herms, s, 99)).toMatchObject({ controller: 'hlt', strike: true });
+    const other = { ...herms, steps: { ...herms.steps, strike: { ...herms.steps.strike!, heaterId: herms.devices[1].id } } };
+    expect(mashControlOf(other, s, 99)?.strike).toBe(false);
+    expect(mashControlOf(link(other, 'Heizstab Würzepfanne', 'boil'), s, 99)?.strike).toBe(false);
+  });
+
+  it('takes the decoction vessel\'s own controller', () => {
+    const bh = link(template('kettle-lauter'), 'Heizung', 'mash');
+    const s = snap([['mash', 'pot'], ['hlt', 'hlt.temp']], ['pot', 'hlt.temp']);
+    expect(mashControlOf(bh, s, 99)?.decoction).toBeUndefined();
+    expect(mashControlOf(link(bh, 'Einkocher', 'hlt'), s, 99)?.decoction).toEqual({ controller: 'hlt', sensor: 'hlt.temp' });
+    expect(mashControlOf(link(bh, 'Einkocher', 'mash'), s, 99)?.decoction).toBeUndefined();
+    expect(mashControlOf(link(bh, 'Einkocher', 'gone'), s, 99)?.decoction).toBeUndefined();
+  });
+});
+
+describe('mashedInAt', () => {
+  const { steps } = mashTimerProgram(7, rows, {});
+  const at = (currentStep: number, status: ProgramStatus = 'running', stepStartedEpoch = 1_791_930_000) =>
+    mashedInAt({ steps, status, currentStep, stepStartedEpoch });
+
+  it('is the start of the step after the first dough-in', () => {
+    expect(at(2)).toBe(1_791_930_000_000);
+    expect(at(2, 'paused')).toBe(1_791_930_000_000);
+  });
+
+  it('is unknown before, later, and while the program does not run', () => {
+    expect(at(1, 'awaiting')).toBeUndefined();
+    expect(at(3)).toBeUndefined();
+    expect(at(2, 'done')).toBeUndefined();
+    expect(at(2, 'running', 0)).toBeUndefined();
+  });
+});
+
 describe('isRegulated', () => {
   const herms = TEMPLATES.find((t) => t.key === 'herms3')!.build();
   const heaterId = herms.steps.mash!.heaterId!;
@@ -87,6 +273,12 @@ describe('isRegulated', () => {
     expect(isRegulated(withHeater(false, 'hlt'))).toBe(true);
     expect(isRegulated(withHeater(false))).toBe(false);
     expect(isRegulated(undefined)).toBe(false);
+  });
+
+  it('is not when the mash is heated by infusion: the controller keeps the water hot', () => {
+    const bh = withHeater(false, 'hlt');
+    const infusion = { ...bh, devices: bh.devices.filter((d) => d.kind !== 'coil'), steps: { ...bh.steps, mash: { ...bh.steps.mash!, pumpId: undefined } } };
+    expect(isRegulated(infusion)).toBe(false);
   });
 });
 
