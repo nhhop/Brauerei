@@ -166,6 +166,18 @@ describe('diffRecipes', () => {
     expect(rowOf(s, 'mash', 'Maischdauer').lines[0].delta).toMatch(/^\+\d+ min$/);
   });
 
+  it('compares the two switches of the mash plan', () => {
+    const dek = (holdRest?: boolean) => ({
+      id: 'dk', kind: 'decoction' as const, name: 'Kochmaische', tempC: 64, durationMin: 20,
+      decoction: { lead: 'temp' as const, rests: [], boilMin: 15, holdRest },
+    });
+    const a = { ...base, mash: [...base.mash, dek()] };
+    const s = diff(a, { ...a, mashRampInRest: true, mash: [...base.mash, dek(true)] });
+    expect(rowOf(s, 'mash', 'Kochmaische').lines.find((l) => l.changed)).toEqual(
+      { label: 'Restmaische', a: 'unbeheizt', b: 'gehalten', changed: true });
+    expect(rowOf(s, 'mash', 'Aufheizzeit zählt zur Rast').lines[0]).toMatchObject({ a: 'nein', b: 'ja', changed: true });
+  });
+
   it('marks a reordered mash step by its position', () => {
     const a = { ...base, mash: [...base.mash, rest('s3', 62), rest('s4', 72), rest('s5', 78)] };
     const b = { ...a, mash: [a.mash[0], a.mash[1], a.mash[4], a.mash[2], a.mash[3]] };

@@ -139,6 +139,20 @@ describe('regulated mash program', () => {
     expect(p.steps[0]).toMatchObject({ name: 'Abkühlen auf 45 °C', targets: set(45), cond: { op: 'lt', value: 45 + REACHED_MARGIN_K } });
   });
 
+  it('lets a rest that counts its heating set the temperature and run its whole time', () => {
+    // 20 min from the start of heating, 14 of them at 72 °C.
+    const ramped = mashRow('rest', 72, 14, { rampInRest: true, step: { id: 'r', kind: 'rest', name: '', tempC: 72, durationMin: 20 } });
+    const names = ['Einmaischen 5 kg', 'Rast 63 °C · 30 min', 'Rast 72 °C · 20 min'];
+    const p = mashTimerProgram(1, [rows[1], ramped], sensors, control);
+    expect(p.steps.map((s) => s.name).slice(0, 3)).toEqual(names);
+    expect(p.steps[2]).toMatchObject({ targets: set(72), holdSec: 1200 });
+    expect(p.steps[2].notify).toBeUndefined();
+    // By hand the rest says that it begins, so the brewer heats.
+    const hand = mashTimerProgram(1, [rows[1], ramped], { mash: 'pot' });
+    expect(hand.steps.map((s) => s.name)).toEqual(names);
+    expect(hand.steps[2]).toMatchObject({ targets: {}, holdSec: 1200, notify: true });
+  });
+
   it('waits for "Weiter" where no sensor ends the heating', () => {
     const p = mashTimerProgram(1, [rows[2]], {}, control);
     expect(p.steps[0]).toMatchObject({ name: 'Aufheizen auf 72 °C', targets: set(72), confirm: true });
@@ -189,6 +203,25 @@ describe('regulated mash program', () => {
       expect(mashTimerProgram(1, [cold], sensors, control).steps.map((s) => s.name).slice(0, 4)).toEqual([
         'Dekoktion: 8,4 l in Einkocher ziehen', 'Teilmaische Rast 50 °C · 5 min', 'Teilmaische – Weiter bei Kochbeginn', 'Teilmaische zurückgeben',
       ]);
+    });
+
+    it('leaves the mash controller on when the recipe has the mash left behind held', () => {
+      const held = { ...decoction, step: { ...decoction.step, decoction: { ...decoction.step.decoction!, holdRest: true } } };
+      const p = mashTimerProgram(1, [held], sensors, control);
+      expect(p.steps.map((s) => s.name)).toEqual(names);
+      expect(targets(p.steps)).toEqual([{}, {}, {}, {}, {}, {}, set(64), {}, { mash: { enabled: false } }]);
+    });
+
+    it('has no step to heat to a rest of the decoction that counts its heating', () => {
+      const ramped = { ...decoction, decoction: { ...decoction.decoction!, rampInRest: true } };
+      const p = mashTimerProgram(1, [ramped], sensors, { ...control, decoction: { controller: 'kettle', sensor: 'kettle.temp' } });
+      expect(p.steps.map((s) => s.name).slice(0, 3)).toEqual([
+        'Dekoktion: 8,4 l in Einkocher ziehen', 'Teilmaische Rast 72 °C · 10 min', 'Teilmaische – Weiter bei Kochbeginn',
+      ]);
+      expect(p.steps[1].targets).toEqual({ mash: { enabled: false }, kettle: { v: 72, enabled: true } });
+      expect(p.steps[1].notify).toBeUndefined();
+      // Heated by hand, the rest says that it begins.
+      expect(mashTimerProgram(1, [ramped], sensors, control).steps[1]).toMatchObject({ targets: { mash: { enabled: false } }, notify: true });
     });
 
     it('stays one handgrip in the rest timer', () => {

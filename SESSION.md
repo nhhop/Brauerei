@@ -2403,3 +2403,24 @@ alle Entscheidungen des Nutzers: `BrewControl/docs/rezept-sud-editor.md` › „
   fehlendem Regler, Dekoktion mit Regler am zweiten Kessel (zwölf Schritte).
 - **Nicht geprüft:** alles am Gerät (PLAN.md). Die SD-Karte des LilyGo hing während der Session nach einem
   Einschalten nicht ein, die Testdaten waren deshalb nicht lesbar.
+
+## 2026-10-14 — Maischeplan: Restmaische halten, Aufheizzeit zählt zur Rast
+
+Zwei Schalter aus der Planung des Maischprogramms (Entscheidungen des Nutzers vom 2026-10-14). Branch
+`feat/maischplan-schalter`, aufbauend auf `feat/maischprogramm-geregelt`. Einzelheiten:
+`BrewControl/docs/rezept-sud-editor.md` › „Stand 3e“ und „Stand 5b-5“. Nur Web.
+
+- **Restmaische halten** (`Decoction.holdRest`, Haken je Dekoktion): Der Maischeplan rechnet die Restmaische
+  ohne Wärmeverlust, wenn der Maischbehälter beheizt ist; sonst ein Hinweis. Das Maischprogramm lässt den
+  Regler der Maische dann während der Dekoktion an.
+- **Aufheizzeit zählt zur Rast** (`Recipe.mashRampInRest`, Haken unter dem Maischeplan): Die Dauer einer
+  Rast läuft ab Beginn des Aufheizens oder Abkühlens; auf Temperatur bleibt Dauer minus Übergang, die
+  Maischdauer wird kürzer. Gilt auch für die Rasten der Teilmaische. Im Programm entfällt für solche Rasten
+  „Aufheizen auf T“: Die Rast setzt den Sollwert und läuft ihre ganze Dauer; von Hand meldet sie sich beim
+  Beginn.
+- **Versionsvergleich:** je eine Zeile für beide Schalter. Maischprofile tragen sie nicht.
+- **Prüfung:** `pnpm test` (536, +8), `typecheck`, `build`. Im Browser gegen einen Mock: beide Haken im
+  Rezept-Editor (Maischdauer 0:32 → 0:31 h im Prüfrezept, gespeichert als `holdRest` und `mashRampInRest`),
+  im Sud das Programm mit beiden Schaltern (keine Aufheiz-Schritte, Rasten mit Sollwert, Regler der Maische
+  bleibt bei der Dekoktion an).
+- **Nicht geprüft:** am Gerät (PLAN.md, beim Prüfpunkt des Maischprogramms).

@@ -686,6 +686,25 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     76 °C. Ablauf nach brewingforward.com „Maltase mash“ (beruft sich auf Kunze und Esslinger), Aufteilung
     50:50 nach edelstoffquest.wordpress.com; die Dissertation selbst ist nicht gelesen. Die Variante mit
     zwei Dekoktionen (Edelstoffquest) ist nicht mitgeliefert.
+- **Stand 3e (2026-10-14, `web/src/mashPlan.ts`, `recipes.ts`, `pages/recipe/MashTab.tsx`, `recipeDiff.ts`):**
+  zwei Schalter am Maischeplan. Entscheidungen des Nutzers vom 2026-10-14.
+  - **Restmaische halten** (`Decoction.holdRest`, Haken je Dekoktion neben der Kochdauer): Die Restmaische
+    bleibt während der Dekoktion auf ihrer Temperatur, T_r = T_s. Ohne Haken gilt weiter der Wärmeverlust
+    des Maischbehälters. Das wirkt nur, wenn der Maischbehälter beheizt ist (Heizquelle, nicht Aufguss);
+    sonst rechnet der Plan mit dem Verlust und nennt das in einem Hinweis. Bei einem Verlust von 0 K/h
+    ändert der Haken die Rechnung nicht, wohl aber das Maischprogramm (Stand 5b-5).
+  - **Aufheizzeit zählt zur Rast** (`Recipe.mashRampInRest`, ein Haken unter dem Maischeplan, Vorgabe aus):
+    Die Dauer einer Rast läuft ab Beginn des Aufheizens oder Abkühlens, wie viele Hobbybrauer den Timer
+    stellen. Auf Temperatur bleibt Dauer minus Übergang, mindestens 0 (dann ein Hinweis); die Maischdauer
+    wird um die Übergänge kürzer. Die Zeile trägt `rampInRest`.
+    - Gilt für Rasten mit Dauer, die durch Heizen oder Abkühlen erreicht werden, und für die Rasten der
+      Teilmaische im Dekoktionsbehälter. Mischen (Einmaischen, Zubrühen), das Zurückgeben einer Dekoktion
+      und der Hauptguss haben keine Rampe, die zählen könnte.
+    - Ohne bekannte Heizrate ist der Übergang 0 min; der Plan zeigt dann die volle Dauer.
+    - Eine kochende Rast verdampft weiter über ihre ganze Dauer (Vereinfachung).
+  - **Versionsvergleich:** Zeile „Restmaische“ (gehalten / unbeheizt) je Dekoktion und „Aufheizzeit zählt zur
+    Rast“ (ja / nein) beim Maischeplan.
+  - **Profile** tragen beide Schalter nicht: Der eine hängt am Sudhaus, der andere gilt fürs ganze Rezept.
 - **Offen:** Läutern als eigener Schritt (Läuterruhe, Nachguss in Portionen; das
   Verfahren Batch oder Fly Sparge steht seit 3b im Wasser-Tab).
 - **Ausgangstemperatur des Hauptgusses** für die Heizzeit ist die Leitungswassertemperatur der
@@ -1159,6 +1178,11 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   - **Ein Schritt mit Freigabe setzt nichts** (Zubrühen, Eis, weitere Schüttung): Der Regler hält die
     Temperatur davor, bis „Weiter“ gedrückt ist. Der Schritt danach bringt den neuen Sollwert, höher wie
     tiefer. Bei Eis heißt das: zügig zugeben oder vorher „Weiter“ drücken.
+  - **Aufheizzeit zählt zur Rast** (Rezept, Stand 3e): Für eine solche Rast gibt es keinen Schritt
+    „Aufheizen/Abkühlen auf T“. „Rast T · n min“ setzt den Sollwert und läuft die ganze Dauer ab ihrem
+    Beginn, ohne auf den Fühler zu warten. Im Rasten-Timer von Hand meldet sich die Rast beim Beginn, damit
+    der Brauer heizt. Dasselbe gilt für die Rasten der Teilmaische. Ein Schritt ohne Dauer (Abmaischen ohne
+    Rast) behält sein „Aufheizen auf T“.
 - **Fühler:** Die Schritte enden am Fühler der Messung „Maischetemperatur“ (Hauptguss:
   „Hauptgusstemperatur“). Ist keiner verknüpft oder fehlt er in der Registry, am Fühler, auf den der Regler
   regelt (`params.sensor`, bei mehreren Kanälen der erste). Weichen beide ab, sagt das ein Hinweis; ohne
@@ -1177,6 +1201,7 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   „Teilmaische – Weiter bei Kochbeginn“, „Teilmaische kochen · n min“, „Teilmaische zurückgeben“ (Freigabe).
   - **Restmaische:** Der erste Schritt nach dem Ziehen schaltet den Regler der Maische aus, so wie der Plan
     rechnet (Stand 3d). Der Schritt nach dem Zurückgeben schaltet ihn mit der neuen Temperatur wieder ein.
+    Mit „Restmaische halten“ im Rezept (Stand 3e) bleibt der Regler an und hält die alte Rast.
   - **Zweiter Kessel:** Hat die Heizquelle des Dekoktionsbehälters einen eigenen Regler, bekommt er die
     Sollwerte (Rasten, dann den Siedepunkt nach Höhe) und geht nach dem Zurückgeben aus. Ohne Regler dort
     sind dieselben Schritte Freigaben.

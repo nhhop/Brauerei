@@ -8,7 +8,7 @@ import type { CatalogIngredient } from './ingredientCatalog';
 import { unitOfEntry } from './ingredientSource';
 import type { MashRow } from './mashPlan';
 import { programIds } from './program';
-import type { Ingredient, Recipe } from './recipes';
+import type { Decoction, Ingredient, Recipe } from './recipes';
 import { entryOf } from './stockLots';
 import type { Controller, ProgramConfig, ProgramStep, Snapshot } from './types';
 
@@ -106,23 +106,27 @@ const quiet = ({ notify: _, ...step }: ProgramStep): ProgramStep => step;
 
 // A decoction in a regulated mash: pulled by hand, then its own course in the
 // decoction vessel, whose controller (if it has one) gets the setpoints. The
-// mash left behind is not heated meanwhile, as the plan computes it.
+// mash left behind is not heated meanwhile, as the plan computes it, unless
+// the recipe has it held. A rest whose time counts from the start of heating
+// (`rampInRest`) sets its temperature itself, there is no step to heat to it.
 function decoctionSteps(row: MashRow, c: MashControl): ProgramStep[] {
-  const d = row.step.decoction ?? { rests: [], boilMin: 0 };
+  const d: Pick<Decoction, 'rests' | 'boilMin' | 'holdRest'> = row.step.decoction ?? { rests: [], boilMin: 0 };
   const k = c.decoction;
+  const ramp = !!row.decoction!.rampInRest;
   const kettle = (tempC: number): Targets => (k ? on(k.controller, tempC) : {});
   const steps = [act(`Dekoktion: ${fmt(row.decoction!.volumeL)} l in ${row.decoction!.vessel} ziehen`)];
   let t = row.fromC;
   for (const r of d.rests) {
     const heated = r.tempC > t;
     if (heated) {
-      steps.push({ ...quiet(reach(`Teilmaische auf ${fmtC(r.tempC)} heizen`, r.tempC, true, k?.sensor)), targets: kettle(r.tempC) });
+      if (!ramp) steps.push({ ...quiet(reach(`Teilmaische auf ${fmtC(r.tempC)} heizen`, r.tempC, true, k?.sensor)), targets: kettle(r.tempC) });
       t = r.tempC;
     }
     if (r.durationMin > 0) {
       steps.push({
-        name: `Teilmaische Rast ${fmtC(t)} · ${fmt(r.durationMin)} min`, targets: {}, holdSec: Math.round(r.durationMin * 60),
-        ...(heated && k?.sensor && { notify: true }),
+        name: `Teilmaische Rast ${fmtC(t)} · ${fmt(r.durationMin)} min`, targets: heated && ramp ? kettle(t) : {}, holdSec: Math.round(r.durationMin * 60),
+        // Reached by a sensor, or to be heated by hand from here on.
+        ...(heated && (ramp ? !k : k?.sensor) && { notify: true }),
       });
     }
   }
@@ -130,7 +134,7 @@ function decoctionSteps(row: MashRow, c: MashControl): ProgramStep[] {
   steps.push({ ...act('Teilmaische – Weiter bei Kochbeginn'), targets: kettle(c.boilC) });
   if (d.boilMin > 0) steps.push({ name: `Teilmaische kochen · ${fmt(d.boilMin)} min`, targets: {}, holdSec: Math.round(d.boilMin * 60) });
   steps.push(act('Teilmaische zurückgeben'));
-  steps[1] = { ...steps[1], targets: { [c.controller]: { enabled: false }, ...steps[1].targets } };
+  if (!d.holdRest) steps[1] = { ...steps[1], targets: { [c.controller]: { enabled: false }, ...steps[1].targets } };
   return steps;
 }
 
@@ -155,7 +159,10 @@ export function mashTimerProgram(
     pending = undefined;
   };
   rows.forEach((row, i) => {
-    let move = moveTo(row, sensors, charges);
+    // A rest whose time counts from the start of the transition has no step
+    // for it: the rest sets its temperature, by hand it says that it begins.
+    const ramped = !!row.rampInRest;
+    let move = ramped ? undefined : moveTo(row, sensors, charges);
     if (control && row.decoction) {
       decoctionSteps(row, control).forEach(push);
       pending = { ...on(control.controller, row.tempC), ...(control.decoction && { [control.decoction.controller]: { enabled: false } }) };
@@ -177,11 +184,13 @@ export function mashTimerProgram(
     } else if (move) {
       push(move);
     }
-    if (row.holdMin > 0) {
+    const restMin = ramped ? row.step.durationMin ?? 0 : row.holdMin;
+    if (restMin > 0) {
       push({
-        name: `Rast ${fmtC(row.tempC)} · ${fmt(row.holdMin)} min`, targets: {}, holdSec: Math.round(row.holdMin * 60),
+        name: `Rast ${fmtC(row.tempC)} · ${fmt(restMin)} min`, holdSec: Math.round(restMin * 60),
+        targets: ramped && control ? on(control.controller, row.tempC) : {},
         // Reached by a sensor: the brewer learns the rest has begun.
-        ...(move?.end === 'sensor' && { notify: true }),
+        ...((ramped ? !control : move?.end === 'sensor') && { notify: true }),
       });
     }
   });
