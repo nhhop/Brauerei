@@ -765,7 +765,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/logs/<id>/data` · `/download` | GET | Session als CSV (inline / als Download) |
 | `/api/programs` | GET, POST | Sollwert-Programme auflisten / anlegen |
 | `/api/programs/<id>` | POST, DELETE | Programm ändern / löschen |
-| `/api/programs/<id>/control` | POST | `start`/`pause`/`resume`/`stop`/`next`/`prev` |
+| `/api/programs/<id>/control` | POST | `start`/`pause`/`resume`/`stop`/`next`/`prev`; `stop` schaltet die Regler und Aktoren des Programms aus |
 | `/api/timers` | GET, POST | Timer auflisten / anlegen |
 | `/api/timers/<id>` | POST, DELETE | Timer ändern (setzt zurück auf `idle`) / löschen |
 | `/api/timers/<id>/control` | POST | `start`/`pause`/`resume`/`stop` |

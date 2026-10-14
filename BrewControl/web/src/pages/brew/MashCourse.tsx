@@ -215,14 +215,16 @@ const toLocalInput = (ms: number) => new Date(ms - new Date(ms).getTimezoneOffse
 
 // Card "Verlauf": the mash plan against the temperature a device log recorded,
 // with the heating power. The plan is laid on the clock by when the grain went
-// in (phaseStartedAt.mash).
-export function MashCourse({ brew, rows, bh, snap, editable, patch }: {
+// in (phaseStartedAt.mash): "Eingemaischt", or `suggestedAt` from the mash
+// program (epoch ms) while that time is not set.
+export function MashCourse({ brew, rows, bh, snap, editable, patch, suggestedAt }: {
   brew: Brew;
   rows: MashRow[];
   bh: Brewhouse;
   snap: Snapshot | null;
   editable: boolean;
   patch: Patch;
+  suggestedAt?: number;
 }) {
   const [logs, setLogs] = useState<LogConfig[] | null>(null);
   useEffect(() => {
@@ -258,6 +260,14 @@ export function MashCourse({ brew, rows, bh, snap, editable, patch }: {
   const mashedIn = (ms: number | undefined) => patch((b) => ({
     ...setPhaseStart(b, 'mash', ms), ...(!b.logId && log && { logId: log.id }),
   }));
+  // The mash program's time is taken once per program, so a time the brewer
+  // took away again stays away.
+  const taken = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (at !== undefined || suggestedAt === undefined || !editable || logs === null || taken.current === brew.mashProgramId) return;
+    taken.current = brew.mashProgramId;
+    void mashedIn(suggestedAt);
+  }, [at, suggestedAt, logs]);
 
   return (
     <Card title="Verlauf" action={select}>

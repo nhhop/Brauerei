@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { route } from 'preact-router';
 import { Ellipsis } from 'lucide-preact';
-import { deleteProgram } from '../api';
 import {
   PHASES, STATUS_LABEL, deleteBrew, getBrew, headOf, listBrews, moveBrewDate, occupancyOverlaps, patchBrew, saveBrew,
   summaryOf, withHead, type Brew, type BrewSummary,
@@ -20,6 +19,7 @@ import { TabBtn } from '../components/TabBtn';
 import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Card, Field, MenuItem } from './recipe/fields';
 import { BoilTab } from './brew/BoilTab';
+import { dropProgram } from './brew/BrewTimer';
 import { MashTab } from './brew/MashTab';
 import { PrepTab, type Patch } from './brew/PrepTab';
 import { StartBrewDialog } from './brew/StartBrewDialog';
@@ -133,7 +133,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
 
   // The brew's programs on the device go with it; one already gone is fine.
   const dropPrograms = async () => {
-    for (const id of [saved.mashProgramId, saved.boilProgramId]) if (id) await deleteProgram(id).catch(() => {});
+    for (const id of [saved.mashProgramId, saved.boilProgramId]) if (id) await dropProgram(id);
   };
 
   // Gives the taken amounts back to lots that still exist, then deletes.

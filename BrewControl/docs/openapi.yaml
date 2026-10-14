@@ -1859,6 +1859,11 @@ paths:
         program's targets change. `start`, `next` and a step ending on its own
         apply that step's own `targets`; `prev` re-establishes the state built
         up by all steps up to the new one (see `ProgramStep.targets`).
+
+        `stop` resets the program to `idle` and switches off (`enabled: false`)
+        every controller and actuator any of its steps addresses. A program
+        that reaches `done` by itself leaves them as its last step set them,
+        and so does `pause`.
       requestBody:
         required: true
         content:
@@ -5131,7 +5136,8 @@ components:
           description: |
             For `actuator`/`controller`: the master enable switch
             (`enabled` true/false). For `program`: the program's own
-            `start`/`stop` control action.
+            `start`/`stop` control action; `stop` switches off what the
+            program drives (see `controlProgram`).
 
     TimerInput:
       type: object

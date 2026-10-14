@@ -106,6 +106,17 @@ inline void writeTargets(JsonObject step, const std::vector<TargetCmd>& targets)
   }
 }
 
+// Every id any step addresses, each once, in order of first appearance. Mirrors
+// programIds() in web/src/program.ts.
+template <class Step>
+std::vector<std::string> targetIds(const std::vector<Step>& steps) {
+  std::vector<std::string> ids;
+  for (const auto& s : steps)
+    for (const TargetCmd& c : s.targets)
+      if (std::find(ids.begin(), ids.end(), c.id) == ids.end()) ids.push_back(c.id);
+  return ids;
+}
+
 // The state a program has built up by step k: for every id and every field, the
 // last value any of steps 0..k set, ids in order of first appearance. Used to
 // re-establish that state after a reboot or a "prev", where only replaying the

@@ -324,10 +324,17 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
 
   if (strcmp(action, "stop") == 0) {
     if (st == Status::Idle) return {false, "invalid action for state"};
+    // Stopping switches off whatever the program drives. Controllers first, so
+    // none of them hands its actuator a new value afterwards.
+    const std::vector<std::string> ids = targetIds(p->steps);
+    for (const auto& tid : ids)
+      if (SensActCtrl::Controller* c = reg.findController(tid.c_str())) c->setEnabled(false);
+    for (const auto& tid : ids)
+      if (SensActCtrl::Actuator* a = reg.findActuator(tid.c_str())) a->setEnabled(false);
     setStatus_(*p, Status::Idle);
     p->currentStep       = 0;
     p->elapsedAtPauseSec = 0;
-    return {true};  // everything the program set is left as-is
+    return {true};
   }
 
   if (strcmp(action, "next") == 0) {

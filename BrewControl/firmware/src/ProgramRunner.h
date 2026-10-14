@@ -64,7 +64,9 @@ class ProgramRunner {
   bool remove(const char* id);
 
   // Apply a control action: "start" | "pause" | "resume" | "stop" | "next" |
-  // "prev". Applies the resulting targets immediately.
+  // "prev". Applies the resulting targets immediately. "stop" switches off
+  // every controller and actuator the program addresses; a program that ends
+  // by itself, or is paused, leaves them as they are.
   // Returns {false,reason} for unknown id (404), unknown action or an action
   // invalid for the current state (400).
   Result control(const char* id, const char* action, SensActCtrl::Registry& reg);
