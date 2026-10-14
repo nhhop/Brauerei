@@ -10,7 +10,7 @@ import { calcMash, fmtClock, outlineMash, type MashPlan, type MashRow } from '..
 import {
   BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, profileLoadEffects, type MashProfile,
 } from '../../mashProfiles';
-import { calcStats, wortExtract, type RecipeStats, type WortPart } from '../../recipeStats';
+import { atKnockOut, calcStats, wortExtract, type RecipeStats, type WortPart } from '../../recipeStats';
 import { calcWater, fmtL } from '../../recipeWater';
 import {
   MASH_KIND_LABEL, SCOPE_TIMINGS, addCharge, chargeIdOf, chargesOf, isMashGrain, removeCharge, replaceDecoctions, uid,
@@ -48,10 +48,11 @@ const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, dura
 export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
-  const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
-  const water = bh ? calcWater(recipe, bh, wort?.extractKg, brewery, wort?.draw).water : undefined;
+  const hot = atKnockOut(recipe, bh, catalog?.entries ?? null, brewery);
+  const wort = catalog ? wortExtract(hot, catalog.entries, bh, brewery) : undefined;
+  const water = bh ? calcWater(hot, bh, wort?.extractKg, brewery, wort?.draw).water : undefined;
   const plan = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
-  const stats = catalog ? calcStats(recipe, catalog.entries, bh, brewery) : undefined;
+  const stats = catalog ? calcStats(hot, catalog.entries, bh, brewery) : undefined;
   return (
     <>
       <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />

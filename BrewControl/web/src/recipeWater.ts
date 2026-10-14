@@ -97,6 +97,9 @@ export interface DilutionResult {
   notes: string[];
 }
 
+// Anstellwürze: the wort in the fermenter, a dilution there included.
+export const pitchL = (d: DilutionResult) => d.restL + (d.at === 'fermenter' ? d.volumeL : 0);
+
 // Wort that reaches the fermenter: knock-out less chill shrinkage, the kettle's
 // dead space at the outlet, the transfers from the whirlpool on and what the
 // hops in the kettle hold back (fermentation.kettleHopL). The Speise comes off

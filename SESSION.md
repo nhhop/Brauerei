@@ -2508,3 +2508,33 @@ Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-1, nur
     der Wasser-Tab zeigt dieselbe Anstellmenge. Zucker, Grünschlauchen, Zwangskarbonisierung und der Druckhinweis
     sind durchgeklickt.
   - Kein Gerät.
+
+## 2026-10-14 — Sud 5c-1b: Heiß/Kalt-Schalter
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-1b, nur Web. Einzelheiten stehen dort unter
+„Wasser › Wassermenge › Heiß/Kalt-Schalter“.
+
+- **Modell:** `volumeBasis?: 'hot' | 'cold'` am Rezept, ohne Angabe heiß. Bei „kalt“ ist `volumeL` die Anstellwürze.
+- **Rechnung:** `knockOutL` in `recipeStats.ts` löst die Vorwärtskette nach dem Ausschlag auf (Regula falsi), weil der
+  Ausschlag über Effizienz, Speise und Verschnitt nach °P in sich selbst zurückwirkt. `pitchL` in `recipeWater.ts`
+  ist jetzt die eine Definition der Anstellwürze (auch für `calcBottling`).
+- **Leser:** Übersicht, Wasser, Maischen, Gärung, Versionsvergleich und `brewTargets` rechnen mit der Kopie aus
+  `atKnockOut`. `calcTreatment` nimmt die Farbe jetzt vom Ausschlag aus `Water`, deshalb können Aufbereitung und
+  Automatik beim Original-Rezept bleiben. Abweichung vom Doc-Wortlaut, im Plan freigegeben: Die Kettenfunktionen
+  selbst lesen weiter `volumeL` (der Kopie), sonst würde die Lösung rekursiv.
+- **Entscheidungen des Nutzers:**
+  - Ist eine Anstellwürze nicht erreichbar, gibt es einen Hinweis, nichts wird gesperrt.
+  - Umschalten rechnet die Menge um.
+  - Die Rezeptliste bekommt keinen Bezug, das bleibt offen (PLAN.md).
+- **UI:** Das Mengenfeld der Übersicht heißt „Ausschlagmenge“ oder „Anstellwürze“ und hat den Schalter heiß/kalt. Bei
+  kalt zeigt es den Ausschlag darunter. In den Berechnungen von Wasser und Gärung steht „Rezept“ an der Anstellwürze.
+  Der Versionsvergleich hat das Feld „Mengenbezug“.
+- **Verifikation:**
+  - `pnpm test` 576 grün, die bestehenden Tests sind unverändert. Neu sind die Rundreise heiß ↔ kalt in neun Fällen
+    (ohne Sudhaus, Verluste, Speise, Verschnitt in Pfanne und Gärbehälter nach Menge und °P, Grundlagen
+    Brewhouse-Efficiency und Konversion), dazu ohne Katalog, nicht erreichbar, Versionsvergleich und `brewTargets`.
+  - `pnpm typecheck`, `pnpm build`.
+  - Browser gegen den Mock aus 5c-1 bei 390 px ohne Querscrollen: Umschalten 25 l heiß → 21,3 l kalt bei gleichen
+    Kennwerten, zurück wieder 25 l. Die Gärung rechnet vom Ausschlag 25,0 l auf 21,3 l Anstellwürze, der Wasser-Tab
+    zeigt „Ausschlag (aus der Anstellwürze)“. Hinweis bei 1,5 l. Keine Konsolenfehler.
+  - Kein Gerät.

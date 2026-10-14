@@ -5,7 +5,7 @@ import type { Brewhouse } from './brewhouse';
 import type { Container } from './cellar';
 import type { CatalogIngredient } from './ingredientCatalog';
 import type { BottlingRow, HopForm, Ingredient, Recipe } from './recipes';
-import { fermenterIntake, type DilutionResult, type Intake } from './recipeWater';
+import { fermenterIntake, pitchL, type DilutionResult, type Intake } from './recipeWater';
 import { hopFormOf } from './stockLots';
 
 // Wort a gram of hops holds back (ml/g), in the kettle and in the fermenter.
@@ -85,8 +85,8 @@ export function calcBottling(recipe: Recipe, bh: Brewhouse, dilution: DilutionRe
   const notes: string[] = [];
   const intake = fermenterIntake(recipe, bh, draw.kettleHopL);
   const dilutionL = dilution.at === 'fermenter' ? dilution.volumeL : 0;
-  const pitchL = dilution.restL + dilutionL;
-  const youngL = pitchL - draw.trubL - draw.dryHopL;
+  const pitch = pitchL(dilution);
+  const youngL = pitch - draw.trubL - draw.dryHopL;
   const beerL = Math.max(youngL + dilution.speiseL, 0);
   if (youngL < 0) notes.push('Trub und Stopfhopfen nehmen mehr auf, als angestellt wird.');
 
@@ -111,7 +111,7 @@ export function calcBottling(recipe: Recipe, bh: Brewhouse, dilution: DilutionRe
   const bottledL = lines.length > 0 ? Math.min(filledL, beerL - fillLossL) : beerL;
   const countOf = (kind: Container['kind']) => lines.reduce((n, l) => n + (l.container?.kind === kind ? l.count : 0), 0);
   return {
-    intake, speiseL: dilution.speiseL, dilutionL, pitchL, trubL: draw.trubL, dryHopL: draw.dryHopL, youngL, beerL,
+    intake, speiseL: dilution.speiseL, dilutionL, pitchL: pitch, trubL: draw.trubL, dryHopL: draw.dryHopL, youngL, beerL,
     lines, fillLossL, bottledL, leftL: Math.max(beerL - fillLossL - bottledL, 0),
     bottles: countOf('bottle'), kegs: countOf('keg'), notes,
   };

@@ -7,7 +7,7 @@ import { ballingBeerAnalysis, hopIbu, moreyEbc } from './brewMath';
 import { resolveEfficiency, type Efficiency, type Grist } from './efficiency';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient, Range } from './ingredientCatalog';
-import { resolveDilution, type DilutionResult } from './recipeWater';
+import { pitchL, resolveDilution, type DilutionResult } from './recipeWater';
 import { wortDraw, type WortDraw } from './fermentation';
 import { entryOf } from './stockLots';
 import type { Recipe } from './recipes';
@@ -76,6 +76,65 @@ export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[], bh?: B
   const known = eta !== undefined || grain.length === 0;
   return { extractKg: known ? colors.reduce((s, p) => s + p.extractKg, 0) : undefined, colors, note, efficiency, grist, boilOtherKg, draw };
 }
+
+// Anstellwürze of the recipe brewed with a knock-out of `knockOutL`, as the tabs
+// compute it (without catalog no extract and no draw).
+function pitchAt(recipe: Recipe, knockOutL: number, bh: Brewhouse | undefined, entries: CatalogIngredient[] | null, brewery?: Brewery | null): number {
+  const r: Recipe = { ...recipe, volumeL: knockOutL, volumeBasis: undefined };
+  const wort = entries ? wortExtract(r, entries, bh, brewery) : undefined;
+  return pitchL(resolveDilution(r, wort?.extractKg, bh, wort?.draw));
+}
+
+// The knock-out (hot): the recipe's volume, or with volumeBasis 'cold' the one
+// whose chain gives the recipe's volume as Anstellwürze. The knock-out reaches
+// into the efficiency (fermenter share, lauter) and the gravity (Speise, a
+// dilution led by gravity), so it is solved for: the Anstellwürze grows with
+// the knock-out, regula falsi (Illinois) between 0 and a doubled bracket.
+// Every reader of the knock-out goes through here (or atKnockOut); the chain's
+// own functions read `volumeL` of that copy, they are what is solved.
+// Out of reach: the knock-out that comes closest (check with pitchedL).
+export function knockOutL(recipe: Recipe, bh: Brewhouse | undefined, entries: CatalogIngredient[] | null, brewery?: Brewery | null): number {
+  const target = recipe.volumeL;
+  if (recipe.volumeBasis !== 'cold' || !(target > 0)) return target;
+  const miss = (k: number) => pitchAt(recipe, k, bh, entries, brewery) - target;
+  // A dilution in the fermenter by volume is there without any knock-out.
+  let lo = 0, flo = miss(0);
+  if (flo >= 0) return 0;
+  let hi = target, fhi = miss(hi);
+  for (let i = 0; fhi < 0 && i < 40; i++) {
+    lo = hi; flo = fhi;
+    hi *= 2; fhi = miss(hi);
+  }
+  if (fhi < 0) return hi;
+  let side = 0;
+  for (let i = 0; i < 100 && hi - lo > 1e-9; i++) {
+    const k = (lo * fhi - hi * flo) / (fhi - flo);
+    const f = miss(k);
+    if (Math.abs(f) < 1e-9) return k;
+    if (f < 0) {
+      lo = k; flo = f;
+      if (side === -1) fhi /= 2;
+      side = -1;
+    } else {
+      hi = k; fhi = f;
+      if (side === 1) flo /= 2;
+      side = 1;
+    }
+  }
+  return (lo + hi) / 2;
+}
+
+// The recipe with its knock-out as volume, for the chain's functions
+// (calcWater, calcStats, wortExtract, resolveDilution, calcBottling). The same
+// object with volumeBasis 'hot'. Only for computing, never to save.
+export function atKnockOut(recipe: Recipe, bh: Brewhouse | undefined, entries: CatalogIngredient[] | null, brewery?: Brewery | null): Recipe {
+  return recipe.volumeBasis !== 'cold' ? recipe
+    : { ...recipe, volumeL: knockOutL(recipe, bh, entries, brewery), volumeBasis: undefined };
+}
+
+// The Anstellwürze the recipe gives; with 'cold' its volume when in reach.
+export const pitchedL = (recipe: Recipe, bh: Brewhouse | undefined, entries: CatalogIngredient[] | null, brewery?: Brewery | null) =>
+  pitchAt(recipe, knockOutL(recipe, bh, entries, brewery), bh, entries, brewery);
 
 // Apparent attenuation (%) of the first yeast with a catalog link that states one.
 export function yeastAttenuation(recipe: Recipe, catalog: CatalogIngredient[]): number | undefined {

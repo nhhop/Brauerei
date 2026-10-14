@@ -168,7 +168,8 @@ export interface Recipe {
   description: string;
   style: string;
   styleId?: string; // BJCP 2021 number the style text was picked from; unset = free text
-  volumeL: number;
+  volumeL: number;        // knock-out (hot), or the pitched wort with volumeBasis 'cold'; read via recipeStats.knockOutL
+  volumeBasis?: 'hot' | 'cold';  // unset = hot
   efficiencyPct?: number; // input of the brewery's efficiency basis (efficiency.ts); unset = its default
   conversionPct?: number; // basis "Konversion": override of the brewhouse's value
   brewhouseId?: string;   // unset = no brewhouse chosen yet

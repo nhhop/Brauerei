@@ -90,7 +90,7 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
   - **Geändert** ist ein Wert, wenn sein angezeigter, gerundeter Text abweicht. Bei Zahlen steht die
     Differenz dahinter. Ein Feld, das auf einer Seite nicht gilt (Nachgusstemperatur ohne Nachguss), zeigt
     dort „—“.
-  - **Bereiche:** Rezept (Name, Stil, Ausschlagmenge, Eingabe der Effizienz-Grundlage, Sudhaus, Status,
+  - **Bereiche:** Rezept (Name, Stil, Menge mit Mengenbezug heiß/kalt, Eingabe der Effizienz-Grundlage, Sudhaus, Status,
     Beschreibung; berechnet Stammwürze, Restextrakt, Alkohol, Bittere, Farbe und die Effizienz-Kette),
     Zutaten nach Art (Menge, Zeitpunkt, Konzentration, Schüttung, sobald eine Seite mehrere hat), Wasser
     (Nachguss, Hauptguss-Verhältnis, Nachgusstemperatur, Läutern, Gaben, Verdampfung, Treberverlust,
@@ -469,9 +469,25 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     Abkühlen, Ausschlag × (1 − Abkühlschwund des Sudhauses); vorher wurde er auf die heiße Menge gerechnet
     und die Stammwürze lag um den Schwund zu niedrig (5 kg Pils, 75 %: 13,6 statt 14,1 °P). Ohne Sudhaus
     bleibt es beim Ausschlag. Dasselbe gilt für Pfannen-Stammwürze und Verschnitt in der Pfanne.
-  - **Offen (mit dem Gärung-Tab, Entscheidung 2026-10-09):** ein Schalter, ob die Menge im Rezept der
-    Ausschlag heiß oder die Anstellwürze kalt im Gärbehälter ist (wie Brewfathers „Batch size“). Bei „kalt“
-    rechnet das Rezept den Ausschlag aus Anstellwürze, Verlusten nach dem Kochen und Schwund zurück.
+  - **Heiß/Kalt-Schalter (Stand 5c-1b, 2026-10-14, `recipeStats.knockOutL`, `pages/recipe/tabs.tsx`):**
+    `volumeBasis` am Rezept, ohne Angabe heiß. Bei „kalt“ ist die Rezeptmenge die Anstellwürze im
+    Gärbehälter (wie Brewfathers „Batch size“).
+    - **Rückrechnung:** Der Ausschlag steckt überall in der Kette: Stammwürze, Speise, Verschnitt nach °P,
+      Grundlage Brewhouse-Efficiency und Läutereffizienz. `knockOutL` kehrt die Kette deshalb nicht
+      geschlossen um, sondern sucht den Ausschlag, dessen Vorwärtsrechnung (`wortExtract` →
+      `resolveDilution` → `pitchL`) die Anstellwürze ergibt (Regula falsi, Illinois). Hin- und
+      Rückrechnung stimmen damit überein.
+    - **Leser:** Alle Rechnungen lesen den Ausschlag über `knockOutL`. Die Tabs, der Versionsvergleich
+      und der Sud (`brewTargets`) rechnen mit einer Kopie aus `atKnockOut`, gespeichert wird immer das
+      Original. Die Kettenfunktionen selbst lesen `volumeL` dieser Kopie, sie sind ja das, was gelöst wird.
+    - **Umschalten** rechnet die Menge um (auf 0,1 l gerundet), das Bier bleibt gleich (Nutzer). Bei
+      „kalt“ steht unter dem Feld der Ausschlag.
+    - **Nicht erreichbar** ist eine Anstellwürze, wenn der Verschnitt im Gärbehälter schon mehr ist. Dann
+      gibt es einen Hinweis, und gerechnet wird mit dem nächsten Ausschlag (Nutzer). Ein Verschnitt im
+      Gärbehälter nach °P legt mit der Schüttung die Anstellwürze schon fast fest; der Ausschlag kann dann
+      sehr klein werden.
+    - **Rezeptliste:** Sie zeigt die Rezeptmenge ohne Bezug, weil die Summary der Firmware kein
+      `volumeBasis` hat (offen, PLAN.md).
 - **Wassermenge** wird **vom Ausschlag zurückgerechnet**, nicht vom Wasser vorwärts:
   1. Verdampfung = l/h × Kochdauer aus dem Würzekochen. Ausschlag + Verdampfung = **Pfannevoll**.
   2. **Würzeverluste vor dem Kochen** aus den Transfers der Schritte Maischen und Läutern: der
@@ -767,7 +783,8 @@ Wiki-Artikel „Understanding Efficiency“ (braukaiser.com); Namen wie bei Malz
 ### Gärung
 **Stand 5c-1 (2026-10-14, `web/src/fermentation.ts`, `pages/recipe/FermentationTab.tsx`, `PhaseList.tsx`,
 `IngredientCard.tsx`, `recipeWater.ts`):** Der Tab hat vier Karten: Gärführung, Zutaten, Karbonisierung und
-Abfüllmenge. Der Heiß/Kalt-Schalter folgt mit 5c-1b.
+Abfüllmenge. Mit dem Heiß/Kalt-Schalter (5c-1b, Wasser › Wassermenge) kann die Rezeptmenge auch die
+Anstellwürze sein; die Berechnung nennt dann sie als Rezeptwert, nicht den Ausschlag.
 - **Gärführung:** Phasen mit Rampe ab Phase 2 (`rampDays`, zählt zur Dauer) und mit dem Schalter „Unter Druck
   vergären“ (`pressureFermentation`) einem Druck je Phase (`pressureBar`). Eine neue Phase startet mit 20 °C und
   7 Tagen. Es gibt zwei Hinweise: Die Rampe ist länger als die Phase, und kein Gärplatz ist bis zum höchsten Druck
