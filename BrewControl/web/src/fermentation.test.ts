@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
 import type { EfficiencyBasis } from './efficiency';
 import { forcedCarbonationBar, krausenRackingPlato, primingSugarGrams, residualCo2Volumes, speiseVolumeL } from './brewMath';
-import type { Container } from './cellar';
-import { calcBottling, calcCarbonation, dryHopL, kettleHopL, maxPhasePressureBar } from './fermentation';
+import type { Container, Fermenter } from './cellar';
+import {
+  calcBottling, calcCarbonation, dryHopL, fermentationSchedule, fermenterHints, kettleHopL, maxPhasePressureBar,
+} from './fermentation';
 import type { CatalogIngredient, StockLot } from './ingredientCatalog';
 import { atKnockOut, calcStats, knockOutL, pitchedL, wortExtract } from './recipeStats';
 import { fermenterShare, resolveDilution } from './recipeWater';
@@ -240,5 +242,55 @@ describe('knockOutL (volumeBasis)', () => {
     const cold = recipe({ ...dil({ at: 'fermenter', lead: 'volume', volumeL: 5 }), volumeL: 3, volumeBasis: 'cold' });
     expect(knockOutL(cold, herms, catalog)).toBe(0);
     expect(pitchedL(cold, herms, catalog)).toBeCloseTo(5, 9);
+  });
+});
+
+describe('fermentationSchedule', () => {
+  const phases = [
+    { id: 'a', name: 'Haupt', tempC: 12, duration: 10 }, { id: 'b', name: 'Rast', tempC: 18, duration: 2.5, rampDays: 1 },
+    { id: 'c', name: 'Kalt', tempC: 1, duration: 14 },
+  ];
+  const day = 86400000;
+
+  it('lays the phases one after the other in days from the pitching', () => {
+    expect(fermentationSchedule(phases, undefined, 0).map((p) => [p.fromDay, p.toDay, p.state])).toEqual([
+      [0, 10, undefined], [10, 12.5, undefined], [12.5, 26.5, undefined],
+    ]);
+  });
+
+  it('marks the current phase once pitched', () => {
+    const at = 1_000_000_000_000;
+    const s = fermentationSchedule(phases, at, at + 11 * day);
+    expect(s.map((p) => p.state)).toEqual(['done', 'current', 'next']);
+    expect(s[1].fromAt).toBe(at + 10 * day);
+    expect(fermentationSchedule(phases, at, at + 30 * day).every((p) => p.state === 'done')).toBe(true);
+  });
+});
+
+describe('fermenterHints', () => {
+  const f = (p: Partial<Fermenter> = {}): Fermenter =>
+    ({ id: 'f', name: 'F', updatedAt: 0, kind: 'bucket', volumeL: 30, tempering: 'none', manual: true, ...p });
+  const r = recipe();  // 20 °C, then 2 °C
+
+  it('says when the wort does not fit', () => {
+    expect(fermenterHints(f(), r, 25)).toEqual([]);
+    expect(fermenterHints(f({ volumeL: 20 }), r, 25)[0]).toMatch(/Anstellwürze \(25 l\) ist größer/);
+  });
+
+  it('says when the recipe ferments under more pressure than the fermenter takes', () => {
+    const p = recipe({ pressureFermentation: true, fermentation: [{ id: 'p', name: 'Haupt', tempC: 20, duration: 7, pressureBar: 1 }] });
+    expect(fermenterHints(f(), p, 25)[0]).toMatch(/nicht druckfest/);
+    expect(fermenterHints(f({ maxPressureBar: 0.5 }), p, 25)[0]).toMatch(/nur bis 0,5 bar/);
+    expect(fermenterHints(f({ maxPressureBar: 2 }), p, 25)).toEqual([]);
+  });
+
+  it('says which phase needs cooling or heating the tempering cannot do, only with the surroundings known', () => {
+    expect(fermenterHints(f(), r, 25)).toEqual([]);
+    expect(fermenterHints(f({ ambientTempC: 19 }), r, 25)).toEqual([expect.stringMatching(/Kaltlagerung \(2 °C\) braucht Kühlen/)]);
+    expect(fermenterHints(f({ ambientTempC: 19, tempering: 'cool' }), r, 25)).toEqual([]);
+    expect(fermenterHints(f({ ambientTempC: 10, tempering: 'cool' }), r, 25)).toEqual([expect.stringMatching(/Hauptgärung \(20 °C\) braucht Heizen/)]);
+    expect(fermenterHints(f({ ambientTempC: 10, tempering: 'both' }), r, 25)).toEqual([]);
+    // Within 2 K of the surroundings nothing is needed.
+    expect(fermenterHints(f({ ambientTempC: 18 }), recipe({ fermentation: [{ id: 'p', name: 'H', tempC: 20, duration: 7 }] }), 25)).toEqual([]);
   });
 });

@@ -1,12 +1,13 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-13. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-14. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
 der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und der Brautag: die Vorbereitung (5b-1), das
-Maischen (5b-2), das Würzekochen (5b-3) und der Maischverlauf mit den Geräten des Sudhauses (5b-4); es
-folgen das Maischprogramm für geregelte Maischen und Gärung, Reifung und Abfüllung mit Belegungsplan (5c). Das UI ist
+Maischen (5b-2), das Würzekochen (5b-3) und der Maischverlauf mit den Geräten des Sudhauses (5b-4), das
+Maischprogramm (5b-5), der Gärung-Tab des Rezepts (5c-1, 5c-1b) und der Belegungsplan mit dem Anstellen
+(5c-2); es folgen Gärprogramm, Messreihen, Reifung und Abfüllung (5c-3 bis 5c-5). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -982,7 +983,10 @@ mehrere Wochen (belegt, frei, reserviert für geplante Sude) kommt mit dem Sud, 
   leer = nicht druckfest) und Temperierung: ohne, kühlen, heizen, kühlen und heizen. Ist sie nicht „ohne“,
   steht die Steuerung auf „von Hand“ (Vorgabe) oder „angeschlossen“; angeschlossen braucht einen **Regler
   oder Aktor**, wie die Heizquelle im Sudhaus. Ein **Temperaturfühler** ist immer wählbar, auch für einen
-  Gärplatz nur mit Thermometer. „Ohne Temperierung“ verwirft Regler und Aktor, der Fühler bleibt. Ein
+  Gärplatz nur mit Thermometer. „Ohne Temperierung“ verwirft Regler und Aktor, der Fühler bleibt. Die
+  **Umgebungstemperatur** (`ambientTempC`, seit 5c-2) ist die Temperatur dort, wo der Behälter steht; leer =
+  unbekannt. Ein Gärplatz ist ein Behälter mit seiner Temperierung, kein Ort, deshalb steht sie am Gärplatz
+  und nicht an der Brauerei (Entscheidung 2026-10-14). Ein
   **Dichtesensor** (z. B. iSpindel als Remote-Sensor) kommt mit Plan 5c › 5c-4.
 - **Gerät auf einem anderen Board:** Remote-Sensoren und -Aktoren sind lokale Proxys und stehen im Snapshot
   wie lokale Items; die Verknüpfung trägt sie ohne Änderung. Einen **Remote-Regler gibt es nicht**
@@ -1292,6 +1296,57 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   wieder leert, bleibt leer. Ist der Tab in diesem Schritt nicht offen, bleibt der Knopf.
 - **Im Mock geprüft:** Start mit Rückfrage, Lauf bis „Regler aus“, Abbrechen (Stop, dann Löschen, Regler
   aus), die drei Hinweise, Dekoktion mit Regler am zweiten Kessel. **Am Gerät noch nicht** (PLAN.md).
+
+**Stand 5c-2 (2026-10-14, `web/src/occupancy.ts`, `pages/CellarPlan.tsx`, `pages/brew/FermentTab.tsx`,
+`brewDay.ts`, `fermentation.ts`; nur Web):** Belegungsplan, Gärplatz-Wahl nach dem Start, Anstellen.
+- **Belegungsplan** oben auf der Sude-Liste, nur aus `GET /api/brews`:
+  - Acht Wochen ab dem Montag der Vorwoche, Blättern um je eine Woche, Kopf mit Kalenderwoche (ISO 8601).
+    Die Namensspalte bleibt beim Scrollen stehen, das Raster scrollt nur in der Karte.
+  - Eine Zeile je Gärplatz, frei bleibt leer. „Ohne Gärplatz“ erscheint nur mit Suden; dort stehen auch Sude,
+    deren Gärplatz gelöscht ist (Annahme).
+  - Läuft = voller Balken, geplant = schraffiert, abgeschlossen = grau. Eine Überschneidung färbt beide Balken
+    rot und steht als Satz unter dem Plan; gesperrt wird nichts. Überlappende Balken eines Gärplatzes liegen in
+    Unterzeilen übereinander.
+  - Ein laufender Sud mit `occupiedUntil` vor heute reicht bis heute („überfällig“) und zählt so auch bei der
+    Überschneidung mit dem nächsten.
+- **Gärplatz** (Tab Gärung): Bis zum Start wählt ihn der Kopf, danach der Tab. Die Wahl erneuert
+  `fermenterId` und `frozen.fermenter` (mit dem Gärplatz von heute) und übernimmt beides in den Entwurf des
+  Kopfs, sodass „Speichern“ nichts zurückschreibt. Die Optionen nennen Volumen und die Sude, die den Gärplatz
+  im Zeitraum dieses Suds belegen.
+  - **Hinweise** (`fermenterHints`, sperren nichts): Anstellwürze größer als das Volumen; Druck verlangt über
+    dem, was der Gärplatz aushält; eine Phase liegt mehr als 2 K unter (über) der Umgebungstemperatur und der
+    Gärplatz kann nicht kühlen (heizen). Ohne Umgebungstemperatur entfällt der letzte.
+  - **Sperre** bei laufendem Gärprogramm kommt mit 5c-3 (Entscheidung 2026-10-14), weil es das Programm erst
+    dann gibt.
+  - Der **Trubverlust des Gärplatzes** ersetzt im Sud die Annahme des Rezepts (`brewInputs` trägt den
+    Gärplatz). Er wirkt auf die Speise.
+- **Anstellen:**
+  - Messwerte: Anstellwürze (`batchVolume`, Soll `pitchL`, mit einem Verschnitt im Gärbehälter), Stammwürze
+    (`pitchGravity`, neu, Soll = Stammwürze nach dem Verschnitt) und Anstelltemperatur (`pitchTemp`, Soll =
+    erste Phase). Die Anstellwürze und -temperatur lassen sich wie bisher im Sudhaus mit einem Fühler
+    verknüpfen.
+  - **Gesamteffizienz** als Ist (`measuredFermenterPct`): Extrakt der Anstellwürze plus Extrakt der Speise
+    (Ist, sonst Soll, bei der Stammwürze nach dem Kochen), weniger der Anteil von Zucker und Extrakt, der in
+    den Gärbehälter kam, über dem Potenzial des Korns. Die Speise zählt mit, wie beim Soll (5c-1). Ein
+    Verschnitt im Gärbehälter mischt im Rezept nach Masse, die Messung zählt nach Volumen: Bei 2 l Verschnitt
+    liegt das Ist etwa 0,003 Punkte neben dem Soll.
+  - Gaben „Anstellen“ (Zeitpunkt `pitch`) und „Dip Hopping“ mit Haken und Ist-Menge. Die Dip-Gaben stehen
+    auch im Tab Würzekochen, mit demselben Zustand (Entscheidung 2026-10-14). Die Zeile einer Gabe ist dafür
+    ein eigenes Bauteil (`AdditionRow`).
+  - **„Angestellt“** (`pitchBrew`) setzt `phaseStartedAt.fermentation` und belegt den Gärplatz ab diesem Tag
+    für dieselbe Spanne wie vorher. Die Zeit lässt sich korrigieren wie „Eingemaischt um“, das verschiebt die
+    Belegung wieder. Geleert bleibt die Belegung, wie sie ist.
+- **Index-Zeile:** Soll und Ist der Stammwürze bleiben ein Paar. Ist `pitchGravity` gemessen, gelten die
+  Stammwürze der Anstellwürze (`ogPlato`) und die Messung (`ogActual`), sonst wie bisher die Werte nach dem
+  Kochen. Abweichend vom Plan, der nur `ogActual` umstellte: Sonst stünden bei einem Verschnitt Soll vor und
+  Ist nach dem Verschnitt nebeneinander.
+- **Würze abzweigen:** Die Speise hat ihren Soll (`speiseVolume` aus `dilution.speiseL`); Dip bleibt ohne.
+- **Gärführung:** Die Phasen des Rezepts nacheinander ab der Anstellzeit (`fermentationSchedule`), die
+  aktuelle hervorgehoben. Vor dem Anstellen stehen Tage statt Daten.
+- **Im Mock geprüft** (390 px, kein Querscrollen): Plan mit Überschneidung, überfällig, Blättern, „ohne
+  Gärplatz“; Brautag starten, Gärplatz wechseln (Kopf ohne ungespeicherten Stand, Hinweise),
+  „Angestellt“ und Korrektur der Zeit (Belegung wandert), Messwerte mit Gesamteffizienz und Index-Zeile,
+  Speise-Soll im Würzekochen. Kein Gerät nötig, nur Web.
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.
@@ -1701,7 +1756,7 @@ Nur Web.
   - Ein Klick auf einen Balken öffnet den Sud. Das Raster scrollt nur innerhalb der Karte (390 px).
 - **Gärplatz nach dem Start** (Tab Gärung):
   - Die Wahl erneuert `fermenterId` und die Kopie `frozen.fermenter`. Gesperrt, solange ein Gärprogramm
-    läuft.
+    läuft (kommt mit 5c-3).
   - Die Optionen nennen die Belegung im Zeitraum des Suds.
   - **Hinweise:** Volumen kleiner als die Anstellwürze; Druck verlangt, aber nicht druckfest; eine Phase
     braucht Kühlen oder Heizen, das die Temperierung nicht kann.
@@ -1743,6 +1798,7 @@ Nur Web.
 - **Tab Gärung:** Programm-Karte über `BrewTimer` (neues Feld `fermentProgramId`), mit Rückfrage vor dem
   Start, weil der Regler sofort angeht. Der Start setzt die Anstellzeit, falls sie fehlt. Die aktuelle Phase
   kommt aus dem Programm. „Timer abbrechen“, „Abschließen“ und „Löschen“ gehen über `dropProgram`.
+  - Die Gärplatz-Wahl im Tab sperrt, solange `fermentProgramId` läuft (aus 5c-2 hierher verschoben).
 - **Tab Reifung:** Stopfgaben zum Abhaken mit Uhrzeit (`addedAt`) und Ist-Menge (`rebook`), ein Haken
   „entnommen“, Notizen.
 

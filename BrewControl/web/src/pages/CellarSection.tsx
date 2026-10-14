@@ -191,6 +191,10 @@ function FermenterDialog({ fermenter, snap, onSave, onClose }: {
           {TEMPERINGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
       </Field>
+      <Field label="Umgebungstemperatur (°C)">
+        <OptNum value={f.ambientTempC} placeholder="unbekannt" class="w-full"
+          onChange={(ambientTempC) => set({ ambientTempC })} />
+      </Field>
       {f.tempering !== 'none' && (
         <Field label="Steuerung">
           <select class={`${inp} w-full`} value={f.manual ? 'manual' : 'connected'}

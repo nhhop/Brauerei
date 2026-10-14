@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, setAddedAt, setChecked,
+  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, pitchBrew, setAddedAt, setChecked,
   setMeasurement, setPhaseStart, setRowAmount, summaryOf, todayIso, withHead, type Brew, type BrewSummary,
 } from './brews';
 import { bookStock, freezeEntries, lotTarget, rebook, startBrew, stockPlan, unbookStock, withBooking } from './brewStart';
@@ -43,6 +43,26 @@ describe('newBrew', () => {
   it('moves the booked period with the brew day', () => {
     const b = moveBrewDate(newBrew(r, [], '2026-10-20'), '2026-10-25');
     expect([b.brewDate, b.occupiedFrom, b.occupiedUntil]).toEqual(['2026-10-25', '2026-10-25', '2026-11-09']);
+  });
+});
+
+describe('pitchBrew', () => {
+  const b = { ...newBrew(recipe(), [], '2026-10-14'), occupiedFrom: '2026-10-14', occupiedUntil: '2026-11-04' };
+  const at = new Date(2026, 9, 16, 21, 15).getTime();
+
+  it('starts the fermentation and books the fermenter from that day for as long as before', () => {
+    const p = pitchBrew(b, at);
+    expect(p.phaseStartedAt?.fermentation).toBe(at);
+    expect([p.occupiedFrom, p.occupiedUntil]).toEqual(['2026-10-16', '2026-11-06']);
+    // A corrected time moves it again.
+    expect(pitchBrew(p, new Date(2026, 9, 15, 8).getTime()).occupiedUntil).toBe('2026-11-05');
+  });
+
+  it('removes only the time, and keeps an open end open', () => {
+    const p = pitchBrew(pitchBrew(b, at), undefined);
+    expect(p.phaseStartedAt?.fermentation).toBeUndefined();
+    expect(p.occupiedFrom).toBe('2026-10-16');
+    expect(pitchBrew({ ...b, occupiedUntil: undefined }, at).occupiedUntil).toBeUndefined();
   });
 });
 

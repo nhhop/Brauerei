@@ -39,7 +39,8 @@ export interface Fermenter {
   trubLossL?: number;       // unset = the recipe's assumption holds
   maxPressureBar?: number;  // gauge pressure; unset = not pressure-rated
   tempering: Tempering;
-  manual: boolean;          // "von Hand": no registry link; only counts with a tempering
+  ambientTempC?: number;    // where it stands; unset = unknown (no hint whether a phase needs cooling or heating)
+  manual: boolean;         // "von Hand": no registry link; only counts with a tempering
   controller?: string;      // snapshot ids; a device on another board is a Remote item here
   actuator?: string;
   sensor?: string;          // temperature probe, with or without tempering
