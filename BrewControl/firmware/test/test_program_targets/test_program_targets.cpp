@@ -193,6 +193,22 @@ void test_state_out_of_range_k() {
   TEST_ASSERT_EQUAL_size_t(1, effectiveTargets(steps, 5, noImpulse).size());
 }
 
+// ── targetIds ────────────────────────────────────────────────────────────────
+
+void test_ids_once_each_in_order_of_first_appearance() {
+  std::vector<Step> steps = {
+      step(R"({"targets":{"temp":{"v":63,"enabled":true}}})"),
+      step(R"({"targets":{}})"),
+      step(R"({"targets":{"ruehrer":{"enabled":true},"temp":{"v":72}}})"),
+      step(R"({"targets":{"temp":{"enabled":false}}})"),
+  };
+  auto ids = BrewControl::targetIds(steps);
+  TEST_ASSERT_EQUAL_size_t(2, ids.size());
+  TEST_ASSERT_EQUAL_STRING("temp", ids[0].c_str());
+  TEST_ASSERT_EQUAL_STRING("ruehrer", ids[1].c_str());
+  TEST_ASSERT_EQUAL_size_t(0, BrewControl::targetIds(std::vector<Step>{}).size());
+}
+
 // ── Runner ───────────────────────────────────────────────────────────────────
 
 void setUp(void) {}
@@ -214,5 +230,6 @@ int main(int, char**) {
   RUN_TEST(test_state_keeps_first_appearance_order);
   RUN_TEST(test_state_excludes_impulse_v_but_keeps_its_enabled);
   RUN_TEST(test_state_out_of_range_k);
+  RUN_TEST(test_ids_once_each_in_order_of_first_appearance);
   return UNITY_END();
 }

@@ -382,7 +382,10 @@ export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, 
           <Btn {...btn} action="next" label="Weiter" icon={SkipForward} primary={status === 'awaiting'}
             title="nächsten Schritt / Freigabe" />
         )}
-        {active && <Btn {...btn} action="stop" label="Stop" icon={Square} />}
+        {active && (
+          <Btn {...btn} action="stop" label="Stop" icon={Square}
+            title={ids.length > 0 ? 'beenden und alles ausschalten, was das Programm steuert' : undefined} />
+        )}
       </div>
 
       {missing.length > 0 && (
