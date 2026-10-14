@@ -2424,3 +2424,24 @@ Zwei Schalter aus der Planung des Maischprogramms (Entscheidungen des Nutzers vo
   im Sud das Programm mit beiden Schaltern (keine Aufheiz-Schritte, Rasten mit Sollwert, Regler der Maische
   bleibt bei der Dekoktion an).
 - **Nicht geprüft:** am Gerät (PLAN.md, beim Prüfpunkt des Maischprogramms).
+
+## 2026-10-14 — Maischprogramm am LilyGo geprüft, Regler-Ausgang bleibt stehen
+
+Firmware und Oberfläche aus `dev` (`v0.5.0-113-gd48a5b6`, mit Stilvergleich) per OTA auf den LilyGo, Prüf-Sud #4
+aus „Gerätetest“ mit „Gerätetest geregelt“, ohne Lagerbuchung gestartet und danach abgeschlossen. Keine Platte an
+`IDS1`; die Fühler-Schritte wurden mit „Weiter“ übersprungen.
+
+- **Geprüft:**
+  - Rückfrage beim Start („… heizt auf 23,3 °C“), sieben Schritte wie erwartet.
+  - Am Regler `Maischen` je Schritt der Sollwert: 23,3 → 23 → 26 °C; „Maischen beendet“ hält 26 °C, „Weiter“
+    schaltet ihn aus, das Programm ist fertig.
+  - „Weiter“ am Einmaischen setzt „Eingemaischt“ (10:17:27) und das Log.
+  - „Stop“ in der Programm-Karte schaltet den Regler aus (neu in der Firmware). „Timer entfernen“ löscht ein
+    gestopptes oder fertiges Programm nur. „Timer abbrechen“ stoppt, löscht und schaltet aus.
+- **Gefunden:** Ein ausgeschalteter Regler lässt seinen Aktor auf dem letzten Wert stehen. Nach „Stop“ und „Regler
+  aus“ stand `IDS1` auf 1, eine Platte hätte weitergeheizt. Ursache in SensActCtrl (`Controller::setEnabled` setzt
+  nur ein Flag); gilt auch für den Dashboard-Schalter. Auf Wunsch des Nutzers erst in PLAN.md, nicht behoben.
+- **Nicht geprüft:** das Ende der Fühler-Schritte bei echtem Heizen und der Haken „Aufheizzeit zählt zur Rast“ am
+  Gerät (PLAN.md).
+- **Danach am Gerät:** Regler `Maischen` an mit 16 °C (`IDS1` ging dadurch wieder auf 0), `agitator` 55 % im
+  Intervall, `kettle` aus mit 0,63, keine Programme des Prüf-Suds, Lager unverändert 5 kg.
