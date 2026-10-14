@@ -116,15 +116,16 @@ export interface Efficiency {
 
 const pct = (n: number | undefined) => (n === undefined ? undefined : n * 100);
 
+// `kettleHopL`: wort the hops in the kettle hold back (fermentation.kettleHopL).
 export function resolveEfficiency(
-  recipe: Recipe, grist: Grist, bh: Brewhouse | undefined, brewery: Brewery | null | undefined,
+  recipe: Recipe, grist: Grist, bh: Brewhouse | undefined, brewery: Brewery | null | undefined, kettleHopL = 0,
 ): Efficiency {
   const basis = basisOf(brewery);
   const notes: string[] = [];
   const { pct: inputPct, from: inputFrom } = efficiencyInput(recipe, bh, basis);
   const input = inputPct / 100;
   const perKg = grist.grainKg > 0 ? grist.grainExtractKg / grist.grainKg : undefined;
-  const share = bh ? fermenterShare(recipe, bh) : 1;
+  const share = bh ? fermenterShare(recipe, bh, kettleHopL) : 1;
   if (basis === 'fermenter' && !bh) notes.push('Ohne Sudhaus gilt die Brewhouse-Efficiency auch in der Pfanne.');
 
   // Maischeeffizienz; with the Konversion as input it needs the lauter efficiency.

@@ -49,7 +49,7 @@ export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
-  const water = bh ? calcWater(recipe, bh, wort?.extractKg, brewery).water : undefined;
+  const water = bh ? calcWater(recipe, bh, wort?.extractKg, brewery, wort?.draw).water : undefined;
   const plan = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   const stats = catalog ? calcStats(recipe, catalog.entries, bh, brewery) : undefined;
   return (

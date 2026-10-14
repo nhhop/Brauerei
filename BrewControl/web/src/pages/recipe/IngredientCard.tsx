@@ -1,14 +1,14 @@
 import { Plus, Trash2 } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import {
-  KINDS, TIMING_LABEL, allowedTimings, defaultTiming, uid,
-  type Ingredient, type IngredientKind, type Scope,
+  HOP_FORMS, KINDS, TIMING_LABEL, allowedTimings, defaultTiming, isDryHop, uid,
+  type HopForm, type Ingredient, type IngredientKind, type Scope,
 } from '../../recipes';
 import { unitOfEntry, useCatalog } from '../../ingredientSource';
-import { entryOf } from '../../stockLots';
+import { entryOf, lotFormOf } from '../../stockLots';
 import { agentOf } from '../../recipeTreatment';
 import { inp } from '../../ui';
-import { Card, NumInput } from './fields';
+import { Card, NumInput, OptNum } from './fields';
 import { IngredientPicker } from './IngredientPicker';
 
 // A block of rows under its own header line (the charges of the mash); `init`
@@ -49,7 +49,10 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
 
   function changeKind(i: Ingredient, k: IngredientKind) {
     const timings = allowedTimings(k, scope);
-    patch(i.id, { kind: k, ingredientId: undefined, stockLotId: undefined, timeMin: undefined, timing: timings.includes(i.timing) ? i.timing : timings[0] });
+    patch(i.id, {
+      kind: k, ingredientId: undefined, stockLotId: undefined, timeMin: undefined, form: undefined, dryHopDay: undefined, dryHopDays: undefined,
+      timing: timings.includes(i.timing) ? i.timing : timings[0],
+    });
   }
 
   function add(init: Partial<Ingredient> = {}) {
@@ -72,7 +75,10 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
       <IngredientPicker ingredient={i} onChange={(p) => patch(i.id, p)} />
       {mark?.(i) && <span class="rounded bg-fg/10 px-1.5 py-0.5 text-xs text-muted">{mark(i)}</span>}
       <select class={inp} value={i.timing}
-        onChange={(e) => patch(i.id, { timing: e.currentTarget.value as Ingredient['timing'], timeMin: undefined })}>
+        onChange={(e) => {
+          const timing = e.currentTarget.value as Ingredient['timing'];
+          patch(i.id, { timing, timeMin: undefined, ...(isDryHop({ kind: i.kind, timing }) ? {} : { dryHopDay: undefined, dryHopDays: undefined }) });
+        }}>
         {allowedTimings(i.kind, scope).map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
       </select>
       {i.timing === 'boil' && (
@@ -81,6 +87,13 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
           min vor Kochende
         </div>
       )}
+      {isDryHop(i) && (
+        <div class="flex items-center gap-1 text-xs text-muted" title="Tag nach dem Anstellen, an dem gestopft wird, und wie lange">
+          Tag <OptNum value={i.dryHopDay} placeholder="–" onChange={(n) => patch(i.id, { dryHopDay: n })} class="w-14" />
+          für <OptNum value={i.dryHopDays} placeholder="–" onChange={(n) => patch(i.id, { dryHopDays: n })} class="w-14" /> Tage
+        </div>
+      )}
+      {i.kind === 'hop' && <HopFormSelect i={i} lotForm={lotFormOf(i, catalog)} onChange={(form) => patch(i.id, { form })} />}
       <div class="flex items-center gap-1 text-xs text-muted">
         <NumInput value={i.amount} onChange={(n) => patch(i.id, { amount: n })} class="w-20" />
         {unitFor(i)}
@@ -123,6 +136,18 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
         </div>
       )}
     </Card>
+  );
+}
+
+// Form of a hop addition; empty = the stock lot's, else T90 (fermentation.ts).
+function HopFormSelect({ i, lotForm, onChange }: { i: Ingredient; lotForm?: HopForm; onChange: (f: HopForm | undefined) => void }) {
+  const label = (f: HopForm) => HOP_FORMS.find((x) => x.value === f)!.label;
+  return (
+    <select class={inp} value={i.form ?? ''} title="Form, für die Würzeaufnahme"
+      onChange={(e) => onChange((e.currentTarget.value || undefined) as HopForm | undefined)}>
+      <option value="">{lotForm ? `${label(lotForm)} (Lager)` : `${label('t90')} (Vorgabe)`}</option>
+      {HOP_FORMS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+    </select>
   );
 }
 

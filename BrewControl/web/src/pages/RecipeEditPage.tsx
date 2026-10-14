@@ -19,8 +19,9 @@ import { VersionSelect } from './recipe/Versions';
 import { BrewsTab } from './recipe/BrewsTab';
 import { MashTab } from './recipe/MashTab';
 import {
-  BoilTab, FermentationTab, IngredientsTab, OverviewTab, type TabProps,
+  BoilTab, IngredientsTab, OverviewTab, type TabProps,
 } from './recipe/tabs';
+import { FermentationTab } from './recipe/FermentationTab';
 import { WaterTab } from './recipe/WaterTab';
 
 const TABS: { id: string; label: string; view: (p: TabProps) => JSX.Element }[] = [

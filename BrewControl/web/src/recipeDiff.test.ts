@@ -208,4 +208,24 @@ describe('diffRecipes', () => {
     expect(rowOf(s, 'fermentation', 'Hauptgärung').lines[0]).toEqual(
       { label: 'Temperatur', a: '12 °C', b: '10 °C', delta: '−2 °C', changed: true });
   });
+
+  it('compares ramp, pressure, carbonation, containers and the dry hopping', () => {
+    const dry = ing({ id: 'i4', kind: 'hop', name: 'Citra', ingredientId: 'hop:saaz', amount: 50, timing: 'primary' });
+    const a = { ...base, ingredients: [...base.ingredients, dry] };
+    const b: Recipe = {
+      ...a, pressureFermentation: true, carbonation: { method: 'sugar', targetVol: 2.4 },
+      bottling: { containers: [{ containerId: 'c1', count: 1 }, { containerId: 'c2' }] },
+      fermentation: [{ ...base.fermentation[0], rampDays: 1, pressureBar: 1 }],
+      ingredients: [...base.ingredients, { ...dry, form: 't45', dryHopDay: 3, dryHopDays: 4 }],
+    };
+    const containers = [{ id: 'c1', updatedAt: 0, kind: 'keg' as const, sizeL: 19, count: 1 }];
+    const s = diffRecipes(a, b, deriveRecipe(a, catalog, [bh], null), deriveRecipe(b, catalog, [bh], null),
+      { brewhouses: [bh], brewery: null, containers });
+    expect(changedTitles(s, 'fermentation')).toEqual(
+      ['Hauptgärung:changed', 'Unter Druck vergären:changed', 'Karbonisierung:changed', 'CO₂-Ziel:changed', 'Zucker:changed', 'Gebinde:changed']);
+    expect(rowOf(s, 'fermentation', 'Gebinde').lines[0].b).toBe('1 × Keg 19 l, Rest × c2');
+    expect(rowOf(s, 'fermentation', 'Zucker').lines[0].b).toBe('Saccharose');
+    expect(rowOf(s, 'ingredients', 'Citra').lines.filter((l) => l.changed).map((l) => [l.label, l.b]))
+      .toEqual([['Form', 'T45'], ['Stopfen', 'Tag 3, 4 Tage']]);
+  });
 });

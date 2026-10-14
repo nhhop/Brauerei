@@ -13,7 +13,6 @@ import {
 import { badgeAccent, inp } from '../../ui';
 import { Card, Field, NumInput, Override } from './fields';
 import { IngredientCard } from './IngredientCard';
-import { PhaseList } from './PhaseList';
 import { StyleCard } from './StyleCard';
 import { StylePicker } from './StylePicker';
 import { VersionCompareDialog } from './VersionCompareDialog';
@@ -68,7 +67,8 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const stats = catalog ? calcStats(recipe, catalog.entries, bh, brewery) : null;
-  const water = calcWater(recipe, bh, catalog ? wortExtract(recipe, catalog.entries, bh, brewery).extractKg : undefined, brewery).water;
+  const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
+  const water = calcWater(recipe, bh, wort?.extractKg, brewery, wort?.draw).water;
   const mash = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   // Picking a brewhouse without a decoction vessel leaves the plan's decoctions
   // to be counted as rests; offer to turn them into rests for good.
@@ -250,7 +250,7 @@ export function IngredientsTab({ recipe, onChange }: TabProps) {
   );
 }
 
-function ProcessIngredients({ recipe, onChange, scope }: Pick<TabProps, 'recipe' | 'onChange'> & { scope: Scope }) {
+export function ProcessIngredients({ recipe, onChange, scope }: Pick<TabProps, 'recipe' | 'onChange'> & { scope: Scope }) {
   return (
     <IngredientCard title="Zutaten" scope={scope}
       all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}
@@ -271,17 +271,6 @@ export function BoilTab({ recipe, onChange }: TabProps) {
         </div>
       </Card>
       <ProcessIngredients recipe={recipe} onChange={onChange} scope="boil" />
-    </>
-  );
-}
-
-export function FermentationTab({ recipe, onChange }: TabProps) {
-  return (
-    <>
-      <PhaseList title="Gärführung" addLabel="Phase" namePlaceholder="z.B. Hauptgärung"
-        durationUnit="Tage" empty="Noch keine Phasen."
-        items={recipe.fermentation} onChange={(fermentation) => onChange({ fermentation })} />
-      <ProcessIngredients recipe={recipe} onChange={onChange} scope="fermentation" />
     </>
   );
 }

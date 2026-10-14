@@ -131,8 +131,8 @@ describe('calcStats', () => {
     it('thins gravity, colour and bitterness in the fermenter', () => {
       const plain = calcStats(recipeWith([pils, hop], { volumeL: 30 }), catalog, herms);
       const s = calcStats(at('fermenter', 5), catalog, herms);
-      // 30 l · 0.96 − 2 l dead space − 1 l line = 25.8 l arrive, then 5 l water
-      const factor = 25.8 / 30.8;
+      // 30 l · 0.96 − 2 l dead space − 1 l line − 20 g T90 × 5 ml/g = 25.7 l arrive, then 5 l water
+      const factor = 25.7 / 30.7;
       expect(s.ogPlato).toBeLessThan(plain.ogPlato! * 0.9);
       expect(s.ogPlato).toBeGreaterThan(plain.ogPlato! * factor);
       expect(s.ebc).toBeCloseTo(plain.ebc! * factor, 9);
@@ -142,7 +142,8 @@ describe('calcStats', () => {
     it('takes the whole knock-out without a brewhouse, and says so', () => {
       const s = calcStats(at('fermenter', 5), catalog);
       expect(s.notes).toContain('Ohne Sudhaus kommt die ganze Ausschlagmenge in den Gärbehälter.');
-      expect(s.ebc).toBeCloseTo(calcStats(recipeWith([pils], { volumeL: 30 }), catalog).ebc! * 30 / 35, 9);
+      // The hops in the kettle hold back 0.1 l.
+      expect(s.ebc).toBeCloseTo(calcStats(recipeWith([pils], { volumeL: 30 }), catalog).ebc! * 29.9 / 34.9, 9);
     });
 
     it('shares the extract with the water tab', () => {

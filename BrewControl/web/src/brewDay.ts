@@ -64,7 +64,7 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries }: BrewInputs
   // The brew may use another brewhouse than the recipe names.
   const r = bh ? { ...recipe, brewhouseId: bh.id } : recipe;
   const wort = entries ? wortExtract(r, entries, bh, brewery) : undefined;
-  const { water, notes } = calcWater(r, bh, wort?.extractKg, brewery);
+  const { water, notes } = calcWater(r, bh, wort?.extractKg, brewery, wort?.draw);
   const values: BrewTargets['values'] = {};
   const out: BrewTargets = {
     values, boilC: breweryBoilC(brewery), water, columns: [], efficiency: wort?.efficiency, dilutionInKettle: false, notes,

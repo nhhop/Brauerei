@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Brewery, Brewhouse } from '../../brewhouse';
+import { listContainers, type Container } from '../../cellar';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
 import { useCatalog } from '../../ingredientSource';
 import { deriveRecipe, diffRecipes, type DiffLine, type DiffRow, type DiffState } from '../../recipeDiff';
@@ -31,6 +32,13 @@ export function VersionCompareDialog({ versions, recipe, dirty, brewhouses, brew
   const [right, setRight] = useState(versions[Math.max(at, 1)].id);
   const [diffOnly, setDiffOnly] = useState(false);
   const [loaded, setLoaded] = useState<Record<string, Recipe | 'error'>>({});
+  const [containers, setContainers] = useState<Container[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    listContainers().then((l) => alive && setContainers(l)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -48,7 +56,7 @@ export function VersionCompareDialog({ versions, recipe, dirty, brewhouses, brew
   const ready = !!a && !!b && a !== 'error' && b !== 'error';
   const sections = ready
     ? diffRecipes(a, b, deriveRecipe(a, catalog?.entries ?? null, brewhouses, brewery),
-      deriveRecipe(b, catalog?.entries ?? null, brewhouses, brewery), { brewhouses, brewery })
+      deriveRecipe(b, catalog?.entries ?? null, brewhouses, brewery), { brewhouses, brewery, containers })
     : [];
   const count = sections.reduce((n, s) => n + s.groups.reduce((m, g) => m + g.rows.filter((r) => r.state !== 'same').length, 0), 0);
 
