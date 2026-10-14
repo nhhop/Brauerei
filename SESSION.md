@@ -2445,3 +2445,34 @@ aus „Gerätetest“ mit „Gerätetest geregelt“, ohne Lagerbuchung gestarte
   Gerät (PLAN.md).
 - **Danach am Gerät:** Regler `Maischen` an mit 16 °C (`IDS1` ging dadurch wieder auf 0), `agitator` 55 % im
   Intervall, `kettle` aus mit 0,63, keine Programme des Prüf-Suds, Lager unverändert 5 kg.
+
+## 2026-10-14 — Sud 5c: Plan (nur Doku)
+
+Planungssession für Gärung, Reifung, Abfüllung und den Belegungsplan; gebaut wird in eigenen Sessions.
+Der Plan steht in `BrewControl/docs/rezept-sud-editor.md` › Plan 5c.
+
+- **Befund:** Die Rezept-Seite der Gärung ist kaum gebaut. Es gibt nur Phasen mit Name, Temperatur und Dauer.
+  Rampe, Druck, Karbonisierung, Hopfenform an der Gabe, Stopfen-Tag und Abfüllmenge fehlen. Die Formeln
+  liegen in `brewMath.ts`, nur der Rechner nutzt sie. Deshalb kommt das Rezept zuerst.
+- **Schnitt:** sechs PRs.
+  - 5c-1: Rezept mit Gärführung, Karbonisierung und Abfüllmenge.
+  - 5c-1b: Heiß/Kalt-Schalter.
+  - 5c-2: Belegungsplan, Gärplatz-Wahl und Anstellen.
+  - 5c-3: Gärprogramm mit Rampe in der Firmware und Stopfgaben.
+  - 5c-4: Messreihen von Hand und Gärverlauf.
+  - 5c-5: Reifung, Abfüllung, Bilanz und Index-Felder.
+- **Entscheidungen:**
+  - Der Belegungsplan steht oben auf der Sude-Liste.
+  - Messreihen von Hand bekommen die neue Route `/api/brews/{id}/readings`.
+  - Die Rampe kommt in die Firmware (`rampSec`).
+  - Der Druck wird nur gemeldet.
+  - Stopfgaben melden sich per `notify` bei Zugabe und Entnahme.
+  - Am Programmende hält der Regler bis „Weiter“, dann geht er aus.
+  - Die Index-Zeile bekommt Alkohol, Endvergärungsgrad und Restextrakt.
+  - Der Gärplatz bekommt einen Dichtesensor.
+  - Dip Hopping bekommt keinen Soll.
+  - Mehrere Gebinde gibt es schon im Rezept.
+- **Abhängigkeit:** 5c-3 braucht eine Lösung für den Regler, der beim Ausschalten seinen Aktor stehen lässt
+  (PLAN.md › Bugs).
+- **Doku:** Konzept-Doc (Plan 5c, Verweise in Gärung, Gärkeller, Anknüpfung, Offen) und PLAN.md (Punkt
+  Rezept- und Sud-Editor, Manueller Sensor). Keine Code-Änderung.
