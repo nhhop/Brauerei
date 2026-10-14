@@ -3,6 +3,8 @@
 // in `b` is added, one only in `a` removed. A value counts as changed when its
 // displayed text differs, so differences below the rounding stay unmarked.
 import type { Brewery, Brewhouse } from './brewhouse';
+import type { SugarType } from './brewMath';
+import { containerLabel, type Container } from './cellar';
 import { BASIS_LABEL, basisOf, efficiencyInput } from './efficiency';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { DEFAULT_MASH_PH } from './mashPh';
@@ -11,8 +13,8 @@ import { calcStats, wortExtract, type RecipeStats } from './recipeStats';
 import { COLUMN_LABEL, waterById } from './recipeTreatment';
 import { calcWater, type Water } from './recipeWater';
 import {
-  DEFAULT_MASH_RATIO, DEFAULT_SPARGE_TEMP, KINDS, MASH_KIND_LABEL, TIMING_LABEL, chargeIdOf, chargesOf, isMashGrain,
-  unitOf, type Charge, type Ingredient, type MashStep, type PhKey, type Recipe, type WaterKey,
+  CARBONATION_METHODS, DEFAULT_MASH_RATIO, DEFAULT_SPARGE_TEMP, HOP_FORMS, KINDS, MASH_KIND_LABEL, TIMING_LABEL, chargeIdOf,
+  chargesOf, isMashGrain, unitOf, type Charge, type Ingredient, type MashStep, type PhKey, type Recipe, type WaterKey,
 } from './recipes';
 import { resolveTarget } from './waterSolver';
 
@@ -32,7 +34,8 @@ export function deriveRecipe(
 ): Derived {
   const bh = brewhouses?.find((b) => b.id === r.brewhouseId);
   const stats = catalog ? calcStats(r, catalog, bh, brewery) : null;
-  const water = calcWater(r, bh, catalog ? wortExtract(r, catalog, bh, brewery).extractKg : undefined, brewery).water;
+  const wort = catalog ? wortExtract(r, catalog, bh, brewery) : undefined;
+  const water = calcWater(r, bh, wort?.extractKg, brewery, wort?.draw).water;
   const mash = bh && water ? calcMash(r, bh, brewery, water) : undefined;
   return { stats, water, mashMin: mash?.totalMin };
 }
@@ -115,7 +118,8 @@ const yesNo = (v: boolean | undefined) => (v === undefined ? undefined : v ? 'ja
 
 // ── Sections ───────────────────────────────────────────────────────────────────
 
-export interface DiffContext { brewhouses: Brewhouse[] | null; brewery: Brewery | null }
+// `containers` names the bottling rows; unset or not loaded = their ids.
+export interface DiffContext { brewhouses: Brewhouse[] | null; brewery: Brewery | null; containers?: Container[] | null }
 
 export function diffRecipes(a: Recipe, b: Recipe, da: Derived, db: Derived, ctx: DiffContext): DiffSection[] {
   return [
@@ -128,7 +132,7 @@ export function diffRecipes(a: Recipe, b: Recipe, da: Derived, db: Derived, ctx:
       field('Whirlpool-Temperatur', numLine(a.boil.whirlpoolTempC, b.boil.whirlpoolTempC, '°C', 1)),
       field('Whirlpool-Dauer', numLine(a.boil.whirlpoolMin, b.boil.whirlpoolMin, 'min', 0)),
     ] }] },
-    { id: 'fermentation', title: 'Gärung', groups: [{ rows: phaseRows(a, b) }] },
+    { id: 'fermentation', title: 'Gärung', groups: [{ rows: phaseRows(a, b) }, { rows: bottlingRows(a, b, ctx.containers) }] },
   ].map((s) => ({ ...s, groups: s.groups.filter((g) => g.rows.length > 0) }));
 }
 
@@ -190,6 +194,8 @@ function ingredientGroups(a: Recipe, b: Recipe): DiffGroup[] {
       textLine(timing(a, x), timing(b, y), 'Zeitpunkt'),
       numLine(x?.strengthPct, y?.strengthPct, '%', 1, 'Konzentration'),
       textLine(chargeName(a, x), chargeName(b, y), 'Schüttung'),
+      textLine(hopForm(x), hopForm(y), 'Form'),
+      textLine(dryHop(x), dryHop(y), 'Stopfen'),
     ])),
   }));
 }
@@ -324,6 +330,30 @@ function mashGroups(a: Recipe, b: Recipe, da: Derived, db: Derived): DiffGroup[]
   ];
 }
 
+const hopForm = (i?: Ingredient) => i?.form && HOP_FORMS.find((f) => f.value === i.form)?.label;
+const dryHop = (i?: Ingredient) => (i?.dryHopDay === undefined && i?.dryHopDays === undefined ? undefined
+  : `Tag ${i.dryHopDay ?? '–'}, ${i.dryHopDays ?? '–'} Tage`);
+
+const SUGAR_LABEL: Record<SugarType, string> = { saccharose: 'Saccharose', traubenzucker: 'Traubenzucker', dme: 'DME' };
+
+function bottlingRows(a: Recipe, b: Recipe, containers?: Container[] | null): DiffRow[] {
+  const method = (r: Recipe) => CARBONATION_METHODS.find((m) => m.value === r.carbonation?.method)?.label;
+  const sugar = (r: Recipe) => (r.carbonation?.method === 'sugar' ? SUGAR_LABEL[r.carbonation.sugarType ?? 'saccharose'] : undefined);
+  const name = (id: string) => {
+    const c = containers?.find((x) => x.id === id);
+    return c ? containerLabel(c) : id;
+  };
+  const rows = (r: Recipe) => r.bottling?.containers.map((x) => `${x.count ?? 'Rest'} × ${name(x.containerId)}`).join(', ');
+  return [
+    field('Unter Druck vergären', textLine(yesNo(!!a.pressureFermentation), yesNo(!!b.pressureFermentation))),
+    field('Trub', numLine(a.trubLossL, b.trubLossL, 'l', 1)),
+    field('Karbonisierung', textLine(method(a), method(b))),
+    field('CO₂-Ziel', numLine(a.carbonation?.targetVol, b.carbonation?.targetVol, 'vol', 2)),
+    field('Zucker', textLine(sugar(a), sugar(b))),
+    field('Gebinde', textLine(rows(a), rows(b))),
+  ];
+}
+
 function phaseRows(a: Recipe, b: Recipe): DiffRow[] {
   const pairs = matchRows(a.fermentation, b.fermentation);
   const moved = movedRows(pairs, a.fermentation);
@@ -331,6 +361,8 @@ function phaseRows(a: Recipe, b: Recipe): DiffRow[] {
     ...(x && y && x.name !== y.name ? [textLine(x.name, y.name, 'Name')] : []),
     numLine(x?.tempC, y?.tempC, '°C', 1, 'Temperatur'),
     numLine(x?.duration, y?.duration, 'Tage', 1, 'Dauer'),
+    numLine(x?.rampDays, y?.rampDays, 'Tage', 1, 'Rampe'),
+    numLine(x?.pressureBar, y?.pressureBar, 'bar', 2, 'Druck'),
     ...(y && moved.has(y) ? [positionLine(a.fermentation.indexOf(x!), b.fermentation.indexOf(y))] : []),
   ]));
 }

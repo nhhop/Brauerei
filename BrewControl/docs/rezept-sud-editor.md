@@ -765,8 +765,60 @@ Wiki-Artikel „Understanding Efficiency“ (braukaiser.com); Namen wie bei Malz
   „Mash Gravity Test“).
 
 ### Gärung
-Gebaut ist bisher nur die Phasenliste (Name, Temperatur, Dauer) mit den Zutaten; der Rest kommt mit
-Plan 5c › 5c-1 (Heiß/Kalt-Schalter: 5c-1b).
+**Stand 5c-1 (2026-10-14, `web/src/fermentation.ts`, `pages/recipe/FermentationTab.tsx`, `PhaseList.tsx`,
+`IngredientCard.tsx`, `recipeWater.ts`):** Der Tab hat vier Karten: Gärführung, Zutaten, Karbonisierung und
+Abfüllmenge. Der Heiß/Kalt-Schalter folgt mit 5c-1b.
+- **Gärführung:** Phasen mit Rampe ab Phase 2 (`rampDays`, zählt zur Dauer) und mit dem Schalter „Unter Druck
+  vergären“ (`pressureFermentation`) einem Druck je Phase (`pressureBar`). Eine neue Phase startet mit 20 °C und
+  7 Tagen. Es gibt zwei Hinweise: Die Rampe ist länger als die Phase, und kein Gärplatz ist bis zum höchsten Druck
+  druckfest.
+- **Zutaten:** Hopfen haben eine Form (`form`). Ohne Angabe gilt die Form des Lagerpostens, sonst T90; die Auswahl
+  zeigt das als „T45 (Lager)“ bzw. „T90 (Vorgabe)“. Hopfen und Aroma bei Hauptgärung oder Reifung haben „Tag“ und
+  „Tage“ (`dryHopDay`, `dryHopDays`).
+- **Karbonisierung** (`carbonation`): Verfahren, Ziel in vol CO₂, bei Zucker die Zuckerart.
+  - Die Restkohlensäure kommt aus der höchsten Phasentemperatur.
+  - Zucker: `primingSugarGrams` für das Bier vor dem Abfüllen.
+  - Speise: Menge aus der Kette (unten).
+  - Grünschlauchen: scheinbarer Extrakt zum Schlauchen, `krausenRackingPlato`. Restextrakt + der Extrakt, dessen
+    CO₂ (Balling: 2,0665 g Extrakt → 0,9565 g CO₂) das Ziel auffüllt.
+  - Zwangskarbonisierung: Überdruck bei der Temperatur der **letzten Phase** (Nutzer), `forcedCarbonationBar`.
+    Dafür nutzt sie die übliche Regression in psi/°F.
+- **Abfüllmenge** (`calcBottling`):
+  - **Anstellwürze** = Ausschlag − Kühlschwund − Totraum und Transfers ab Whirlpool − Hopfen im Kessel − Speise
+    + Verschnitt im Gärbehälter.
+  - **Jungbier** = Anstellwürze − Trub (`trubLossL`, ohne Angabe 0 l, Nutzer) − Hopfen im Gärbehälter (Dip,
+    Hauptgärung, Reifung).
+  - **Abgefüllt** = Jungbier + Speise − Abfüllverluste.
+  - **Gebinde** (`bottling.containers`): Zeilen Gebinde × Anzahl. Nur die letzte Zeile darf ohne Anzahl sein und
+    bekommt so viele ganze Gebinde (Größe + Abfüllverlust), wie das Bier hergibt. Was in kein ganzes Gebinde passt,
+    steht als „Rest“. Ohne Gebinde zählt das ganze Bier als abgefüllt.
+  - Darstellung: Kennzahlen, Balken „Verbleib“ und „Berechnung“ wie im Wasser-Tab.
+- **Aufnahme je Form** in ml/g (`TODO(verify)`, nur Faustwerte, für Dolden etwa 5–6 ml/g; gemessene Werte gibt es
+  laut MBAA 2017 nur nach Gewicht):
+
+  | Form | Kessel | Gärbehälter |
+  |---|---|---|
+  | Dolde | 8 | 7 |
+  | T90 | 5 | 5 |
+  | T45 | 4 | 4 |
+  | Lupulin | 3 | 3 |
+  | Extrakt | 0 | 0 |
+
+  Im Kessel zählen Vorderwürze, Kochen, Whirlpool und Hop Back. Maischehopfen bleibt im Treber.
+- **Überall eingerechnet** (Nutzer: „jetzt in 5c-1“):
+  - Hopfen im Kessel und Speise mindern die Würze, die im Gärbehälter ankommt (`fermenterIntake`,
+    `resolveDilution`). Damit ändern sich der Verschnitt im Gärbehälter (Wasser-Tab) und die Stammwürze nach ihm.
+  - Die Speise wird bei der Stammwürze der Ausschlagwürze abgezweigt. Ihr Anteil bezieht sich auf das Bier vor dem
+    Abfüllen. Bei einem Verschnitt nach Stammwürze hängen Speise und Verschnitt aneinander; das löst eine
+    Fixpunktschleife.
+  - **Effizienz „im Gärbehälter“** (`fermenterShare`) zieht nur den Hopfen ab, **nicht die Speise**. Ihr Extrakt
+    kommt beim Abfüllen ins Bier, und die Grundlage „Brewhouse-Efficiency“ hinge sonst von sich selbst ab
+    (Speise ← Stammwürze ← Maischeeffizienz ← Anteil).
+  - Den Rechenweg reicht `wortExtract` als `draw` (`wortDraw`) an `calcWater`/`resolveDilution` weiter.
+- **Versionen vergleichen** zeigt die neuen Felder: Rampe, Druck, Druckgärung, Trub, Karbonisierung, Gebinde,
+  Hopfenform und Stopfen.
+
+Konzept (vor 5c-1):
 - Zutaten-Karte mit Anstellen, Hauptgärung, Reifung · Stopfen und Abfüllung · Karbonisierung; sie ersetzt die
   frühere reine Hefe-Anzeige.
 - Gärführung als Phasen mit Temperatur, Dauer, Rampe und optional Druck (Schalter „Unter Druck vergären“).
@@ -779,9 +831,7 @@ Plan 5c › 5c-1 (Heiß/Kalt-Schalter: 5c-1b).
   - Der Trubverlust im Rezept ist eine Annahme. Im Sud gilt der Wert des gewählten Gärplatzes.
   - Darstellung wie beim Wasser: Kennzahlen (Anstellwürze, Jungbier, Abgefüllt), Balken (Verbleib der
     Ausschlagwürze) und Aufklappbereich „Berechnung“.
-  - Die Absorption von Stopfhopfen (0,6 l/100 g im Entwurf) ist ein ungeprüfter Platzhalter.
-  - **Hopfenaufnahme** im Kessel: etwa 5 ml/g, je Produkt weniger. Dafür bekommt die Hopfengabe ein Feld
-    Form (Dolde, T90, T45, Lupulin, Extrakt), die Aufnahme in ml/g ist eine Konstante je Form.
+  - Hopfenaufnahme im Kessel und beim Stopfen: je Form, Werte siehe Stand 5c-1.
 
 ### Sude (Tab im Rezept)
 - Knopf „Neuer Sud aus diesem Rezept“, bei Entwürfen und ungespeicherten Änderungen gesperrt.

@@ -157,6 +157,32 @@ export function speiseVolumeL(volumeL: number, targetVolumes: number, tempC: num
   return fermentableExtractNeededG / extractPerLiterG;
 }
 
+// Apparent extract (°P) at which green beer is racked into a closed vessel so
+// that the extract still to ferment brings `targetVolumes` (Grünschlauchen,
+// spunding). Balling: 2.0665 g of real extract give 0.9565 g CO₂; real and
+// apparent extract fall as in ballingBeerAnalysis (0.8192). The beer's SG is
+// taken at the final gravity.
+// TODO(verify): cross-check the chain against a primary source (Narziß).
+export function krausenRackingPlato(fgPlato: number, targetVolumes: number, tempC: number): number {
+  const co2GPerL = Math.max(0, targetVolumes - residualCo2Volumes(tempC)) * CO2_G_PER_L_PER_VOLUME;
+  const realExtractGPerL = co2GPerL * (2.0665 / 0.9565);
+  const realPlato = realExtractGPerL / (10 * platoToSg(fgPlato));
+  return fgPlato + realPlato / 0.8192;
+}
+
+const BAR_PER_PSI = 0.0689476;
+
+// Gauge pressure (bar) that holds `targetVolumes` of CO₂ in beer at `tempC`
+// (forced carbonation). Common regression of the carbonation chart, in psi
+// and °F internally.
+// TODO(verify): cross-check against a primary source (solubility tables).
+export function forcedCarbonationBar(targetVolumes: number, tempC: number): number {
+  const t = (tempC * 9) / 5 + 32;
+  const v = targetVolumes;
+  const psi = -16.6999 - 0.0101059 * t + 0.00116512 * t * t + 0.173354 * t * v + 4.24267 * v - 0.0684226 * v * v;
+  return psi * BAR_PER_PSI;
+}
+
 // Recommended racking (Grünschlauchen) gravity — practice is to rack at a
 // fraction of the expected total attenuation rather than a predicted time,
 // since fermentation speed varies too much to predict reliably.

@@ -25,7 +25,7 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   }
   const bh = brewhouses.find((b) => b.id === recipe.brewhouseId);
   const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
-  const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg, brewery);
+  const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg, brewery, wort?.draw);
   const lauter = wort?.efficiency.lauter;
   if (!w || !bh) {
     return (
@@ -204,7 +204,7 @@ function WaterBar({ w }: { w: Water }) {
   );
 }
 
-function Row({ op = '', label, l, from, strong }: {
+export function Row({ op = '', label, l, from, strong }: {
   op?: string; label: ComponentChildren; l: number; from?: Source; strong?: boolean;
 }) {
   return (

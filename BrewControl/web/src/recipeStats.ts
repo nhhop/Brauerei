@@ -8,6 +8,7 @@ import { resolveEfficiency, type Efficiency, type Grist } from './efficiency';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient, Range } from './ingredientCatalog';
 import { resolveDilution, type DilutionResult } from './recipeWater';
+import { wortDraw, type WortDraw } from './fermentation';
 import { entryOf } from './stockLots';
 import type { Recipe } from './recipes';
 
@@ -38,8 +39,10 @@ export interface WortPart { id: string; kg: number; ebc: number; extractKg: numb
 // `bh` and `brewery` feed the chain; without them it takes the recipe's input.
 // `grist` is what the efficiency chain saw; `boilOtherKg` the part of its
 // other extract added in the kettle (sugar at "Kochen"), missing before the boil.
+// `draw` is what the hops, trub and Speise take off the wort (fermentation.ts),
+// for calcWater and resolveDilution.
 export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[], bh?: Brewhouse, brewery?: Brewery | null): {
-  extractKg?: number; colors: WortPart[]; note?: string; efficiency: Efficiency; grist: Grist; boilOtherKg: number;
+  extractKg?: number; colors: WortPart[]; note?: string; efficiency: Efficiency; grist: Grist; boilOtherKg: number; draw: WortDraw;
 } {
   const worts = recipe.ingredients.filter(
     (i) => i.kind === 'fermentable' && (i.timing === 'mash' || i.timing === 'boil'));
@@ -64,13 +67,23 @@ export function wortExtract(recipe: Recipe, catalog: CatalogIngredient[], bh?: B
     otherExtractKg: total(parts.filter((p) => !p.mashed), 'potentialKg'),
   };
   const boilOtherKg = total(parts.filter((p) => !p.mashed && p.boil), 'potentialKg');
-  const efficiency = resolveEfficiency(recipe, grist, bh, brewery);
-  if (fermentables.length === 0) return { colors: [], note, efficiency, grist, boilOtherKg };
+  const draw = wortDraw(recipe, catalog, yeastAttenuation(recipe, catalog));
+  const efficiency = resolveEfficiency(recipe, grist, bh, brewery, draw.kettleHopL);
+  if (fermentables.length === 0) return { colors: [], note, efficiency, grist, boilOtherKg, draw };
   const eta = efficiency.mashPct === undefined ? undefined : efficiency.mashPct / 100;
   const colors = parts.map(({ id, kg, ebc, potentialKg, mashed }) =>
     ({ id, kg, ebc, extractKg: potentialKg * (mashed ? eta ?? 0 : 1) }));
   const known = eta !== undefined || grain.length === 0;
-  return { extractKg: known ? colors.reduce((s, p) => s + p.extractKg, 0) : undefined, colors, note, efficiency, grist, boilOtherKg };
+  return { extractKg: known ? colors.reduce((s, p) => s + p.extractKg, 0) : undefined, colors, note, efficiency, grist, boilOtherKg, draw };
+}
+
+// Apparent attenuation (%) of the first yeast with a catalog link that states one.
+export function yeastAttenuation(recipe: Recipe, catalog: CatalogIngredient[]): number | undefined {
+  const yeast = recipe.ingredients
+    .filter((i) => i.kind === 'yeast')
+    .map((i) => entryOf(i, catalog))
+    .find((c) => c?.kind === 'culture' && 'attenuationPct' in c);
+  return yeast && 'attenuationPct' in yeast ? rangeValue(yeast.attenuationPct) : undefined;
 }
 
 // Beer colour after a planned dilution: in the kettle the knock-out already
@@ -88,11 +101,11 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
 
   // Gravity and colour after a planned dilution: in the kettle the knock-out
   // already includes it, in the fermenter it thins the wort that arrives.
-  const { extractKg, colors, note, efficiency } = wortExtract(recipe, catalog, bh, brewery);
+  const { extractKg, colors, note, efficiency, draw } = wortExtract(recipe, catalog, bh, brewery);
   if (note) notes.push(note);
   stats.efficiency = efficiency;
   notes.push(...efficiency.notes);
-  const dilution = resolveDilution(recipe, extractKg, bh);
+  const dilution = resolveDilution(recipe, extractKg, bh, draw);
   notes.push(...dilution.notes);
   if (colors.length > 0 && volumeL > 0) {
     stats.ogPlato = dilution.finalPlato;
@@ -100,13 +113,10 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
   }
 
   // Alcohol: first yeast with a catalog link that states an attenuation.
-  const yeast = recipe.ingredients
-    .filter((i) => i.kind === 'yeast')
-    .map((i) => entryOf(i, catalog))
-    .find((c) => c?.kind === 'culture' && 'attenuationPct' in c);
+  const attenuation = yeastAttenuation(recipe, catalog);
   if (stats.ogPlato !== undefined) {
-    if (yeast && 'attenuationPct' in yeast) {
-      stats.fgPlato = stats.ogPlato * (1 - rangeValue(yeast.attenuationPct) / 100);
+    if (attenuation !== undefined) {
+      stats.fgPlato = stats.ogPlato * (1 - attenuation / 100);
       stats.abv = ballingBeerAnalysis(stats.ogPlato, stats.fgPlato).abvPercent;
     } else {
       notes.push('Alkohol braucht eine Hefe mit Katalogverknüpfung');

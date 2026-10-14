@@ -2476,3 +2476,35 @@ Der Plan steht in `BrewControl/docs/rezept-sud-editor.md` › Plan 5c.
   (PLAN.md › Bugs).
 - **Doku:** Konzept-Doc (Plan 5c, Verweise in Gärung, Gärkeller, Anknüpfung, Offen) und PLAN.md (Punkt
   Rezept- und Sud-Editor, Manueller Sensor). Keine Code-Änderung.
+
+## 2026-10-14 — Sud 5c-1: Rezept – Gärführung, Karbonisierung, Abfüllmenge
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-1, nur Web. Einzelheiten stehen dort unter
+„Gärung › Stand 5c-1“.
+
+- **Modell:** Phase mit `rampDays`, `pressureBar`; Rezept mit `pressureFermentation`, `trubLossL`, `carbonation`,
+  `bottling.containers`; Hopfengabe mit `form`, `dryHopDay`, `dryHopDays`. Lot-Einträge im Katalog tragen ihre
+  Form (`lotForm`), `hopFormOf` nimmt Zeile, dann Lager, dann T90.
+- **Rechnung:** neues `web/src/fermentation.ts` (Hopfenaufnahme je Form, `wortDraw`, `calcBottling`,
+  `calcCarbonation`). In `brewMath.ts` neu sind `krausenRackingPlato` und `forcedCarbonationBar`, beide
+  `TODO(verify)`. Ein Plausibilitätstest liegt bei: 2,5 vol bei 4 °C ergibt etwa 0,8 bar, das Schlauchen liegt etwa
+  0,8 °P über dem Restextrakt.
+- **Entscheidungen des Nutzers:**
+  - Hopfen im Kessel und Speise gehen schon jetzt überall ein: in `fermenterIntake`/`resolveDilution`, also auch in
+    den Verschnitt im Gärbehälter, und in die Effizienz im Gärbehälter.
+  - Abweichung, im Plan freigegeben: Die Effizienz zieht die Speise nicht ab, sonst entstünde bei der Grundlage
+    „Brewhouse-Efficiency“ ein Zirkel.
+  - Zwangskarbonisierung bei der Temperatur der letzten Phase; Trub ohne Angabe 0 l.
+- **UI:** Gärung-Tab in eigener Datei mit den Karten Gärführung (Druck-Schalter, Rampe, Druck), Zutaten (Form,
+  Stopfen), Karbonisierung und Abfüllmenge (Trub, Gebindezeilen mit Restzeile, Kennzahlen, Balken, Berechnung).
+  Gärplätze und Gebinde lädt der Tab selbst. Der Versionsvergleich zeigt die neuen Felder.
+- **Verifikation:**
+  - `pnpm test` 553 grün (neu: `fermentation.test.ts` mit Bilanz der Kette, Gebinde-Restzeile, Hopfenform,
+    Speise mit Verschnitt nach Stammwürze, Formeln; dazu ein Test im Versionsvergleich).
+  - Zwei Erwartungen in `recipeStats.test.ts` sind angepasst, weil 20 g T90 im Kessel jetzt 0,1 l zurückhalten.
+  - `pnpm typecheck`, `pnpm build`.
+  - Browser gegen einen Node-Mock (25 l, Verschnitt 2 l im Gärbehälter, Hopfen T90/T45-Lager/Stopfen, Speise,
+    Keg 19 l + Flaschen-Restzeile) bei 390 px ohne Querscrollen: Die Kette geht auf (25 + 2 = 26,9 l + Rundung),
+    der Wasser-Tab zeigt dieselbe Anstellmenge. Zucker, Grünschlauchen, Zwangskarbonisierung und der Druckhinweis
+    sind durchgeklickt.
+  - Kein Gerät.

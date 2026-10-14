@@ -6,6 +6,7 @@ import { importBundle, makeBundle, parseBundle, type BundleKind } from './docBun
 
 export { VALID_ID } from './docBundle';
 import type { TargetIons } from './waterChem';
+import type { SugarType } from './brewMath';
 
 export type IngredientKind = 'fermentable' | 'hop' | 'yeast' | 'aroma' | 'auxiliary';
 
@@ -82,7 +83,21 @@ export interface Ingredient {
   strengthPct?: number; // acid or solution: concentration of this addition; unset = the catalog's
   auto?: true;          // laid out by the water automation; a run replaces it, editing by hand drops the mark
   chargeId?: string;    // fermentable in the mash: its charge (Schüttung); unset = the first
+  form?: HopForm;       // hop: unset = the stock lot's form, else T90
+  dryHopDay?: number;   // hop or aroma in the fermenter: day after pitching it goes in
+  dryHopDays?: number;  // and how many days it stays
 }
+
+export type HopForm = 'cone' | 't90' | 't45' | 'lupulin' | 'extract';
+
+export const HOP_FORMS: { value: HopForm; label: string }[] = [
+  { value: 'cone', label: 'Dolde' }, { value: 't90', label: 'T90' }, { value: 't45', label: 'T45' },
+  { value: 'lupulin', label: 'Lupulin' }, { value: 'extract', label: 'Extrakt' },
+];
+
+// Hops and aroma added in the fermenter: the rows that take a dry-hop day.
+export const isDryHop = (i: Pick<Ingredient, 'kind' | 'timing'>) =>
+  (i.kind === 'hop' || i.kind === 'aroma') && (i.timing === 'primary' || i.timing === 'maturation');
 
 // Mash plan (tab "Maischen", mashPlan.ts computes it). Every step has a target
 // temperature and a hold; the kind only sets how the mash gets there. The plan
@@ -126,7 +141,26 @@ export interface Phase {
   name: string;
   tempC: number;
   duration: number;
+  rampDays?: number;    // from the previous phase's temperature to tempC, part of the duration; unset = a jump
+  pressureBar?: number; // gauge pressure, with Recipe.pressureFermentation
 }
+
+export type CarbonationMethod = 'krausen' | 'sugar' | 'speise' | 'forced';
+
+export const CARBONATION_METHODS: { value: CarbonationMethod; label: string }[] = [
+  { value: 'krausen', label: 'Grünschlauchen' }, { value: 'sugar', label: 'Zucker' },
+  { value: 'speise', label: 'Speise' }, { value: 'forced', label: 'Zwangskarbonisierung' },
+];
+
+export interface Carbonation {
+  method: CarbonationMethod;
+  targetVol: number;      // CO₂ volumes
+  sugarType?: SugarType;  // sugar; unset = saccharose
+}
+
+// The containers a brew is filled into, in order; only the last row may leave
+// out the count and takes what is left.
+export interface BottlingRow { containerId: string; count?: number }
 
 export interface Recipe {
   id: string;
@@ -149,6 +183,10 @@ export interface Recipe {
   charges?: Charge[];     // unset = one charge, FIRST_CHARGE
   boil: { durationMin: number; whirlpoolTempC: number; whirlpoolMin: number };
   fermentation: Phase[];
+  pressureFermentation?: true;  // "Unter Druck vergären": the phases show a pressure
+  trubLossL?: number;           // left in the fermenter; unset = 0 (a brew takes its fermenter's)
+  carbonation?: Carbonation;    // unset = none planned
+  bottling?: { containers: BottlingRow[] };
 }
 
 export const DEFAULT_EFFICIENCY = 75;

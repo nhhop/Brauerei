@@ -2,12 +2,11 @@ import { useState } from 'preact/hooks';
 import type { CatalogIngredient, HopPackaging, StockLot } from '../../ingredientCatalog';
 import { HOP_PACKAGING_LABEL, fieldsOf, getField, isLotField, setField } from '../../ingredientFields';
 import { recipeKindOf, unitOfEntry } from '../../ingredientSource';
+import { HOP_FORMS } from '../../recipes';
 import { btnPrimary, btnSecondary, inp, linkDanger } from '../../ui';
 import { Field, NumInput, OptNum } from '../recipe/fields';
 import { Dialog } from './Dialog';
 import { FieldInput } from './FieldInput';
-
-const HOP_FORMS: [string, string][] = [['cone', 'Dolde'], ['t90', 'T90'], ['t45', 'T45'], ['lupulin', 'Lupulin'], ['extract', 'Extrakt']];
 
 // Create or edit a stock lot of `entry`. Its own values (from the lot's data
 // sheet) override the ingredient's; an empty field keeps the ingredient's,
@@ -58,7 +57,7 @@ export function StockLotForm({ initial, entry, onSave, onDelete, onClose }: {
           <Field label="Form">
             <select class={`${inp} w-full`} value={lot.form ?? ''} onChange={(e) => patch('form', e.currentTarget.value || undefined)}>
               <option value="">–</option>
-              {HOP_FORMS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              {HOP_FORMS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </Field>
         )}
