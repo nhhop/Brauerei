@@ -2,9 +2,9 @@
 // and its carbonation. Pure, like recipeWater.ts.
 import { forcedCarbonationBar, krausenRackingPlato, primingSugarGrams, residualCo2Volumes } from './brewMath';
 import type { Brewhouse } from './brewhouse';
-import type { Container } from './cellar';
+import type { Container, Fermenter } from './cellar';
 import type { CatalogIngredient } from './ingredientCatalog';
-import type { BottlingRow, HopForm, Ingredient, Recipe } from './recipes';
+import type { BottlingRow, HopForm, Ingredient, Phase, Recipe } from './recipes';
 import { fermenterIntake, pitchL, type DilutionResult, type Intake } from './recipeWater';
 import { hopFormOf } from './stockLots';
 
@@ -162,4 +162,66 @@ export function calcCarbonation(recipe: Recipe, p: { beerL: number; fgPlato?: nu
 export function maxPhasePressureBar(recipe: Recipe): number {
   if (!recipe.pressureFermentation) return 0;
   return Math.max(0, ...recipe.fermentation.map((p) => p.pressureBar ?? 0));
+}
+
+// ── Brew (5c-2) ─────────────────────────────────────────────────────────────────
+
+const DAY_MS = 86400000;
+
+export interface ScheduledPhase {
+  phase: Phase;
+  fromDay: number;        // days after pitching
+  toDay: number;
+  fromAt?: number;        // epoch ms, once pitched
+  toAt?: number;
+  state?: 'done' | 'current' | 'next';  // unset before pitching
+}
+
+// The recipe's phases one after the other from the pitching; a ramp counts
+// within its phase's duration.
+export function fermentationSchedule(phases: Phase[], pitchedAt: number | undefined, now: number): ScheduledPhase[] {
+  let day = 0;
+  return phases.map((phase) => {
+    const fromDay = day;
+    day += Math.max(phase.duration || 0, 0);
+    const out: ScheduledPhase = { phase, fromDay, toDay: day };
+    if (pitchedAt !== undefined) {
+      out.fromAt = pitchedAt + fromDay * DAY_MS;
+      out.toAt = pitchedAt + day * DAY_MS;
+      out.state = now >= out.toAt ? 'done' : now >= out.fromAt ? 'current' : 'next';
+    }
+    return out;
+  });
+}
+
+// A phase this far off the fermenter's surroundings needs cooling or heating.
+export const AMBIENT_TOLERANCE_K = 2;
+
+const fmt = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',');
+
+// What speaks against a fermenter for this brew; nothing is blocked.
+export function fermenterHints(f: Fermenter, recipe: Recipe, pitchedL: number | undefined): string[] {
+  const hints: string[] = [];
+  if (pitchedL !== undefined && pitchedL > f.volumeL) {
+    hints.push(`Die Anstellwürze (${fmt(pitchedL)} l) ist größer als der Gärplatz (${fmt(f.volumeL)} l).`);
+  }
+  const bar = maxPhasePressureBar(recipe);
+  if (bar > (f.maxPressureBar ?? 0)) {
+    hints.push(f.maxPressureBar
+      ? `Das Rezept vergärt unter ${fmt(bar)} bar, der Gärplatz ist nur bis ${fmt(f.maxPressureBar)} bar druckfest.`
+      : `Das Rezept vergärt unter ${fmt(bar)} bar, der Gärplatz ist nicht druckfest.`);
+  }
+  const ambient = f.ambientTempC;
+  if (ambient !== undefined) {
+    const cools = f.tempering === 'cool' || f.tempering === 'both';
+    const heats = f.tempering === 'heat' || f.tempering === 'both';
+    for (const p of recipe.fermentation) {
+      const need = p.tempC < ambient - AMBIENT_TOLERANCE_K && !cools ? 'Kühlen'
+        : p.tempC > ambient + AMBIENT_TOLERANCE_K && !heats ? 'Heizen' : undefined;
+      if (need) {
+        hints.push(`${p.name || 'Phase'} (${fmt(p.tempC)} °C) braucht ${need} bei ${fmt(ambient)} °C Umgebung, der Gärplatz kann es nicht.`);
+      }
+    }
+  }
+  return hints;
 }

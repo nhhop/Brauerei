@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, withResults, type BrewInputs } from './brewDay';
+import {
+  brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, measuredFermenterPct, unitOfMeasure, withResults,
+  type BrewInputs,
+} from './brewDay';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
 import type { Brew, MeasureId, Measurement } from './brews';
+import type { Fermenter } from './cellar';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { calcMash } from './mashPlan';
 import { calcStats, pitchedL, wortExtract } from './recipeStats';
@@ -14,6 +18,7 @@ const catalog = [
   { id: 'sugar:cane', kind: 'fermentable', type: 'sugar', name: 'Zucker', colorEbc: [0, 0], extractDryPct: [100, 100] },
   { id: 'aux:gypsum', kind: 'auxiliary', name: 'Gips', category: 'water-salt', defaultUnit: 'g', waterAgent: 'gypsum' },
   { id: 'aux:lactic', kind: 'auxiliary', name: 'Milchsäure', category: 'acid', defaultUnit: 'ml', waterAgent: 'lactic', acidStrengthPct: 80 },
+  { id: 'yeast:us05', kind: 'culture', organism: 'saccharomyces', name: 'US-05', attenuationPct: [78, 82] },
 ] as CatalogIngredient[];
 
 const herms = { ...TEMPLATES.find((t) => t.key === 'herms3')!.build(), id: 'bh-herms' };
@@ -228,5 +233,66 @@ describe('withResults', () => {
     const b = withResults(brew({ postBoilGravity: 12.34 }), brewTargets(recipe(), { bh: undefined, brewery, entries: catalog }));
     expect(b.ogActual).toBe(12.34);
     expect('ogPlato' in b || 'mashEffPct' in b).toBe(false);
+  });
+});
+
+describe('pitching (5c-2)', () => {
+  const yeast = row({ id: 'y', kind: 'yeast', name: 'US-05', ingredientId: 'yeast:us05', amount: 11, timing: 'pitch' });
+  const phases = [{ id: 'p1', name: 'Hauptgärung', tempC: 19, duration: 7 }, { id: 'p2', name: 'Kalt', tempC: 2, duration: 14 }];
+  const speise = recipe([malt, sugar, yeast], {
+    fermentation: phases, carbonation: { method: 'speise', targetVol: 2.5 }, trubLossL: 0.5,
+    water: { ...newRecipe().water, dilution: { at: 'fermenter', lead: 'volume', volumeL: 2 } },
+  });
+  const t = brewTargets(speise, inputs());
+  const fermenter: Fermenter = { id: 'f', name: 'F', updatedAt: 0, kind: 'bucket', volumeL: 30, tempering: 'none', manual: true };
+
+  it('targets the wort in the fermenter, its gravity after the dilution, the first phase and the Speise', () => {
+    const d = t.water!.dilution;
+    expect(t.values.batchVolume).toBeCloseTo(d.restL + 2, 9);
+    expect(t.values.pitchGravity).toBe(d.finalPlato);
+    expect(t.values.pitchGravity!).toBeLessThan(t.values.postBoilGravity!);
+    expect(t.values.pitchTemp).toBe(19);
+    expect(t.values.speiseVolume).toBe(d.speiseL);
+    expect(d.speiseL).toBeGreaterThan(0);
+    expect(unitOfMeasure('pitchGravity')).toBe('°P');
+    expect(brewTargets(recipe(), inputs()).values.speiseVolume).toBeUndefined();
+  });
+
+  it("counts the Speise with the fermenter's trub instead of the recipe's", () => {
+    const more = brewTargets(speise, { ...inputs(), fermenter: { ...fermenter, trubLossL: 3 } }).values.speiseVolume!;
+    expect(more).toBeLessThan(t.values.speiseVolume!);
+    expect(brewTargets(speise, { ...inputs(), fermenter }).values.speiseVolume).toBe(t.values.speiseVolume);
+  });
+
+  it('takes the fermenter from the copy once started, else from the list', () => {
+    const b = { id: 'b', fermenterId: 'f' } as Brew;
+    expect(brewInputs(b, { brewhouses: [], brewery, entries: catalog, fermenters: [fermenter] }).fermenter).toBe(fermenter);
+    const frozen = { ...b, frozen: { brewery, entries: catalog, fermenter: { ...fermenter, name: 'old' } } };
+    expect(brewInputs(frozen, { brewhouses: [], brewery, entries: catalog, fermenters: [fermenter] }).fermenter?.name).toBe('old');
+  });
+
+  it('gives the overall efficiency of the recipe back when the brew hits the targets', () => {
+    const { batchVolume, pitchGravity, postBoilGravity } = t.values;
+    // The dilution mixes by mass (recipeWater), the measurement counts by volume: a few thousandths of a point.
+    expect(measuredFermenterPct({ batchVolume, pitchGravity, postBoilGravity }, t)).toBeCloseTo(t.efficiency!.fermenterPct!, 2);
+    const undiluted = brewTargets({ ...speise, water: newRecipe().water }, inputs());
+    const v = undiluted.values;
+    expect(measuredFermenterPct({ batchVolume: v.batchVolume, pitchGravity: v.pitchGravity, postBoilGravity: v.postBoilGravity }, undiluted))
+      .toBeCloseTo(undiluted.efficiency!.fermenterPct!, 6);
+    const plain = brewTargets(recipe(), inputs());
+    expect(measuredFermenterPct({ batchVolume: plain.values.batchVolume, pitchGravity: plain.values.pitchGravity }, plain))
+      .toBeCloseTo(plain.efficiency!.fermenterPct!, 6);
+    expect(measuredFermenterPct({ batchVolume }, t)).toBeUndefined();
+  });
+
+  it('pairs target and measured gravity in the list: the pitched wort once measured', () => {
+    const m = (values: Partial<Record<MeasureId, number>>) => ({
+      id: 'b', number: 1, name: 'x', recipeId: 'r', rootId: 'r', version: 1, status: 'active', updatedAt: 0,
+      measurements: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { v: v!, at: 1 }])),
+    }) as Brew;
+    const before = withResults(m({ postBoilGravity: 15 }), t);
+    expect([before.ogPlato, before.ogActual]).toEqual([Math.round(t.values.postBoilGravity! * 100) / 100, 15]);
+    const after = withResults(m({ postBoilGravity: 15, pitchGravity: 13.5 }), t);
+    expect([after.ogPlato, after.ogActual]).toEqual([Math.round(t.values.pitchGravity! * 100) / 100, 13.5]);
   });
 });

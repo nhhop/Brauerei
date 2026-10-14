@@ -1,6 +1,6 @@
 import type { BrewInputs, BrewTargets } from '../../brewDay';
 import { MEASUREMENTS, type MeasureKey } from '../../brewhouse';
-import { setChecked, setMeasurement, type Brew } from '../../brews';
+import { setChecked, setMeasurement, type Brew, type HeadField } from '../../brews';
 import { lotTarget } from '../../brewStart';
 import type { StockLot } from '../../ingredientCatalog';
 import { unitOfEntry } from '../../ingredientSource';
@@ -14,7 +14,8 @@ import { Card, Field } from '../recipe/fields';
 import { AmountInput, num, rowAmountChange } from './amounts';
 import { MeasureRow } from './MeasureRow';
 
-export type Patch = (change: (b: Brew) => Brew | Promise<Brew>) => Promise<void>;
+// `fresh`: head fields the change sets, taken over into the page's draft too.
+export type Patch = (change: (b: Brew) => Brew | Promise<Brew>, fresh?: HeadField[]) => Promise<void>;
 
 const labelOf = (key: MeasureKey) => MEASUREMENTS.find((m) => m.key === key)!.label;
 

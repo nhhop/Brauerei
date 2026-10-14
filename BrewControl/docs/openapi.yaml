@@ -5430,8 +5430,12 @@ components:
         occupiedFrom: { type: string, format: date, description: First day the fermenter is booked. }
         occupiedUntil: { type: string, format: date, description: Last day the fermenter is booked. }
         updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
-        ogPlato: { type: number, description: "Gravity after the boil the recipe expects, °P." }
-        ogActual: { type: number, description: "Gravity after the boil as measured, °P." }
+        ogPlato:
+          type: number
+          description: |
+            Original gravity the recipe expects, °P: of the pitched wort once that
+            was measured, else after the boil (before a dilution in the kettle).
+        ogActual: { type: number, description: "Original gravity as measured, °P, at the same point as `ogPlato`." }
         mashEffPct: { type: number, description: "Mash efficiency as measured, percent." }
         yieldPct: { type: number, description: "Brewhouse yield (Sudhausausbeute) as measured, percent." }
         bottledL: { type: number, description: "Bottled volume in litres (not written yet)." }
@@ -5570,6 +5574,11 @@ components:
           type: string
           enum: [none, cool, heat, both]
           description: What the place can do to the temperature.
+        ambientTempC:
+          type: number
+          description: |
+            Temperature where the fermenter stands, °C. Unset = unknown. Tells a
+            brew whether a phase needs cooling or heating.
         manual:
           type: boolean
           description: |

@@ -2538,3 +2538,36 @@ Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-1b, nu
     Kennwerten, zurück wieder 25 l. Die Gärung rechnet vom Ausschlag 25,0 l auf 21,3 l Anstellwürze, der Wasser-Tab
     zeigt „Ausschlag (aus der Anstellwürze)“. Hinweis bei 1,5 l. Keine Konsolenfehler.
   - Kein Gerät.
+
+## 2026-10-14 — Sud 5c-2: Belegungsplan, Gärplatz-Wahl, Anstellen
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-2, nur Web. Einzelheiten stehen dort unter
+„Sud › Stand 5c-2“.
+
+- **Belegungsplan** (`occupancy.ts`, `CellarPlan.tsx`) oben auf der Sude-Liste: acht Wochen ab der Vorwoche, eine
+  Zeile je Gärplatz, belegt/reserviert/abgeschlossen, Überschneidung rot mit Hinweis, laufende Sude über ihre
+  Belegung hinaus bis heute („überfällig“).
+- **Tab Gärung** (`FermentTab.tsx`): Gärplatz nach dem Start wählen (erneuert `frozen.fermenter`, Optionen mit
+  Belegung), Hinweise zu Volumen, Druck und Temperierung; Anstellen mit Anstellwürze, Stammwürze (neu
+  `pitchGravity`), Anstelltemperatur und Gesamteffizienz als Ist; Gaben „Anstellen“ und „Dip Hopping“;
+  „Angestellt“ mit Korrektur der Zeit, die Belegung wandert mit (`pitchBrew`); Gärführung mit aktueller Phase.
+- **Rechnung:** `brewTargets` hat die Sollwerte des Anstellens und der Speise und nimmt den Trub des Gärplatzes.
+  `measuredFermenterPct` rechnet die Gesamteffizienz zurück. Die Index-Zeile führt Soll und Ist der Stammwürze als
+  Paar: an der Anstellwürze, sobald sie gemessen ist.
+- **Entscheidungen des Nutzers:**
+  - Neues Feld **Umgebungstemperatur am Gärplatz** (`ambientTempC`), weil der Gärplatz ein Behälter ist und an
+    verschiedenen Orten stehen kann. Leer = kein Temperierungs-Hinweis, Toleranz 2 K.
+  - Dip-Gaben in beiden Tabs mit demselben Zustand.
+  - Die Sperre der Gärplatz-Wahl bei laufendem Gärprogramm kommt mit 5c-3.
+- **Abweichung vom Plan:** Die Index-Zeile stellt auch `ogPlato` um, nicht nur `ogActual`.
+- **Umbau:** Die Zeile einer Gabe (`AdditionRow`), die Effizienz-Zeile (`EffRow`) und `toLocalInput` sind geteilt.
+  `Patch` kann Kopffelder in den Entwurf übernehmen, damit „Speichern“ sie nicht zurückschreibt.
+- **Verifikation:**
+  - `pnpm test` 596 grün (neu: `occupancy.test.ts`, dazu `pitchBrew`, Sollwerte des Anstellens, Trub des
+    Gärplatzes, Rundreise der Gesamteffizienz, Paar-Regel der Index-Zeile, `fermentationSchedule`,
+    `fermenterHints`).
+  - `pnpm typecheck`, `pnpm build`, Redocly-Lint (`Fermenter.ambientTempC`, Beschreibung `ogPlato`/`ogActual`).
+  - Browser gegen einen Mock bei 390 px ohne Querscrollen der Seite: Plan mit Überschneidung, überfällig, Blättern
+    und „ohne Gärplatz“; Brautag starten, Gärplatz wechseln, Hinweise, „Angestellt“ und Korrektur der Zeit,
+    Messwerte, Index-Zeile, Speise-Soll. Keine Konsolenfehler.
+  - Kein Gerät.

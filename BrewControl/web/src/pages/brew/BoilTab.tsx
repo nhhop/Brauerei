@@ -1,20 +1,21 @@
 import { boilingPointC } from '../../brewMath';
-import { deviation, measuredEfficiency, measuredValues, type BrewInputs, type BrewTargets } from '../../brewDay';
+import { measuredEfficiency, measuredValues, type BrewInputs, type BrewTargets } from '../../brewDay';
 import { BOIL_GROUPS, boilAdditions, boilProgress, boilTimerProgram, type BoilAddition, type BoilGroup } from '../../brewPrograms';
 import { MEASUREMENTS, type MeasureKey, type StepKey } from '../../brewhouse';
-import { setAddedAt, setChecked, setMeasurement, type Brew, type MeasureId } from '../../brews';
+import { setChecked, setMeasurement, type Brew, type MeasureId } from '../../brews';
 import { fmtDuration } from '../../format';
 import { unitOfEntry } from '../../ingredientSource';
 import type { ColumnKey } from '../../recipeTreatment';
 import { TIMING_LABEL, type Recipe } from '../../recipes';
 import { entryOf } from '../../stockLots';
 import type { ProgramConfig, Snapshot } from '../../types';
-import { badgeCaution, badgeSuccess, inp } from '../../ui';
+import { inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
-import { AmountInput, num, rowAmountChange } from './amounts';
+import { AdditionRow } from './AdditionRow';
+import { num } from './amounts';
 import { BrewTimer } from './BrewTimer';
 import { DeviceList } from './DeviceList';
-import { MeasureRow, fmtNum } from './MeasureRow';
+import { EffRow, MeasureRow, fmtNum } from './MeasureRow';
 import type { Patch } from './PrepTab';
 
 const LABEL: Partial<Record<MeasureId, string>> = {
@@ -27,8 +28,6 @@ const GROUP_LABEL: Record<BoilGroup, string> = { ...TIMING_LABEL, dip: 'Dip Hopp
 
 // Lautering and sparging lie between the tabs; their devices are in both.
 const DEVICE_STEPS: StepKey[] = ['sparge', 'lauter', 'boil', 'whirlpool', 'hopback', 'chill'];
-
-const clock = (at: number) => new Date(at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 // The line above the running timer: how long the boil still runs and what goes in next.
 function timerLine(p: ProgramConfig): string | undefined {
@@ -67,10 +66,6 @@ export function BoilTab({ brew, recipe, inputs, targets, snap, editable, patch, 
 
   // The box is read at once: the save runs later, on a fresh copy of the brew.
   const tick = (key: string, on: boolean) => patch((b) => setChecked(b, key, on));
-  const added = (rowId: string, on: boolean) => {
-    const at = on ? Date.now() : undefined;
-    return patch((b) => setAddedAt(b, rowId, at));
-  };
 
   // Acids and salts that go into the wort, to tick off.
   const doses = (colKey: ColumnKey) => (targets.columns.find((c) => c.key === colKey)?.doses ?? []).map((d) => {
@@ -88,20 +83,6 @@ export function BoilTab({ brew, recipe, inputs, targets, snap, editable, patch, 
   const eff = targets.ctx ? measuredEfficiency(measuredValues(brew), targets.ctx) : {};
   const from = eff.from === 'preBoil' ? 'aus Pfannevoll und Stammwürze vor dem Kochen'
     : eff.from === 'postBoil' ? 'aus Ausschlagmenge und Stammwürze nach dem Kochen' : undefined;
-  const effRow = (label: string, soll: number | undefined, ist: number | undefined) => {
-    const dev = deviation('efficiency', soll, ist);
-    return (
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
-        <div class="min-w-[9rem] flex-1">
-          <div class="font-semibold">{label}</div>
-          {ist !== undefined && from && <div class="text-xs text-muted">{from}</div>}
-        </div>
-        <span class="w-24 text-muted" title="Soll">{soll === undefined ? '—' : `${fmtNum(soll, 1)} %`}</span>
-        <span class="w-[6.75rem]">{ist === undefined ? '—' : `${fmtNum(ist, 1)} %`}</span>
-        <span class="w-28">{dev && <span class={dev.level === 'ok' ? badgeSuccess : badgeCaution}>{dev.text}</span>}</span>
-      </div>
-    );
-  };
 
   const pressure = brew.measurements?.airPressure?.v;
   const boilPoint = pressure !== undefined && pressure > 0
@@ -127,7 +108,7 @@ export function BoilTab({ brew, recipe, inputs, targets, snap, editable, patch, 
         {row('preBoilVolume')}
         {row('preBoilGravity')}
         {doses('preBoil')}
-        {effRow('Maischeeffizienz', targets.efficiency?.mashPct, eff.mashPct)}
+        <EffRow label="Maischeeffizienz" soll={targets.efficiency?.mashPct} ist={eff.mashPct} sub={from} />
       </Card>
 
       <Card title="Nach dem Kochen">
@@ -136,7 +117,7 @@ export function BoilTab({ brew, recipe, inputs, targets, snap, editable, patch, 
         {row('postBoilGravity', targets.dilutionInKettle ? 'vor dem Verschnitt' : undefined)}
         {row('airPressure', boilPoint)}
         {doses('knockOut')}
-        {effRow('Sudhausausbeute', targets.efficiency?.yieldPct, eff.yieldPct)}
+        <EffRow label="Sudhausausbeute" soll={targets.efficiency?.yieldPct} ist={eff.yieldPct} sub={from} />
       </Card>
 
       <Card title="Gaben">
@@ -147,26 +128,10 @@ export function BoilTab({ brew, recipe, inputs, targets, snap, editable, patch, 
           return (
             <div key={group} class="mb-3 last:mb-0">
               <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">{GROUP_LABEL[group]}</h3>
-              {rows.map((a) => {
-                const at = brew.addedAt?.[a.row.id];
-                const name = a.row.name || 'Ohne Namen';
-                return (
-                  <div key={a.row.id} class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2 last:border-b-0">
-                    <label class="flex min-w-[9rem] flex-1 items-center gap-2 text-sm">
-                      <input type="checkbox" checked={at !== undefined} disabled={!editable} aria-label={`${name} zugegeben`}
-                        onChange={(e) => added(a.row.id, e.currentTarget.checked)} />
-                      <span>
-                        {name}
-                        {whenOf(a) && <span class="ml-2 text-xs text-muted">{whenOf(a)}</span>}
-                      </span>
-                    </label>
-                    <span class="w-24 text-sm text-muted" title="Rezept">{num(a.amount)} {a.unit}</span>
-                    <AmountInput value={brew.rowAmounts?.[a.row.id]} placeholder={num(a.amount)} unit={a.unit} disabled={!editable}
-                      label={`${name} Ist`} onSave={(n) => patch(rowAmountChange(recipe, a.row.id, a.row.stockLotId, n))} />
-                    <span class="w-28 text-xs text-muted">{at !== undefined && `zugegeben ${clock(at)}`}</span>
-                  </div>
-                );
-              })}
+              {rows.map((a) => (
+                <AdditionRow key={a.row.id} brew={brew} recipe={recipe} row={a.row} amount={a.amount} unit={a.unit}
+                  when={whenOf(a)} editable={editable} patch={patch} />
+              ))}
             </div>
           );
         })}

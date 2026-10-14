@@ -29,9 +29,9 @@ export const PHASES = [
 export type PhaseId = (typeof PHASES)[number]['id'];
 
 // A brew day value: the brewhouse's measurements plus the mash pH after the
-// acid (5b-2) and the wort drawn off at the knock-out (5b-3). Gravities in °P.
-// `src` is the sensor it was taken from.
-export type MeasureId = MeasureKey | 'mashPhAcid' | 'speiseVolume' | 'dipWortVolume';
+// acid (5b-2), the wort drawn off at the knock-out (5b-3) and the gravity of
+// the pitched wort (5c-2). Gravities in °P. `src` is the sensor it was taken from.
+export type MeasureId = MeasureKey | 'mashPhAcid' | 'speiseVolume' | 'dipWortVolume' | 'pitchGravity';
 export interface Measurement { v: number; at: number; src?: string }
 
 export interface Frozen {
@@ -76,7 +76,7 @@ export interface Brew {
   logId?: string;                        // the device log the mash course is drawn from
   phaseStartedAt?: Partial<Record<PhaseId, number>>;  // epoch ms; mash: when the grain went in
   // Results for the list (brewDay.withResults), set whenever the brew is saved.
-  ogPlato?: number;          // gravity after the boil: target
+  ogPlato?: number;          // gravity of the pitched wort (else after the boil): target
   ogActual?: number;         // ... and measured
   mashEffPct?: number;       // measured
   yieldPct?: number;
@@ -111,7 +111,7 @@ export function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const daysBetween = (from: string, to: string) =>
+export const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 
 // The fermenter is booked from the brew day for the recipe's fermentation phases.
@@ -191,6 +191,16 @@ export function setPhaseStart(b: Brew, phase: PhaseId, at: number | undefined): 
   return { ...b, phaseStartedAt };
 }
 
+// "Angestellt": the fermentation starts, and the fermenter is booked from that
+// day for as long as before. Unset removes the time; the booking stays.
+export function pitchBrew(b: Brew, at: number | undefined): Brew {
+  const out = setPhaseStart(b, 'fermentation', at);
+  if (at === undefined) return out;
+  const from = todayIso(new Date(at));
+  const span = b.occupiedFrom && b.occupiedUntil ? daysBetween(b.occupiedFrom, b.occupiedUntil) : undefined;
+  return { ...out, occupiedFrom: from, occupiedUntil: span === undefined ? b.occupiedUntil : addDays(from, span) };
+}
+
 export function setRowAmount(b: Brew, rowId: string, amount: number | undefined): Brew {
   const rowAmounts = { ...b.rowAmounts };
   if (amount === undefined) delete rowAmounts[rowId]; else rowAmounts[rowId] = amount;
@@ -201,6 +211,7 @@ export function setRowAmount(b: Brew, rowId: string, amount: number | undefined)
 export const HEAD_FIELDS = [
   'name', 'brewDate', 'brewhouseId', 'fermenterId', 'occupiedFrom', 'occupiedUntil', 'notes', 'phaseNotes',
 ] as const satisfies readonly (keyof Brew)[];
+export type HeadField = (typeof HEAD_FIELDS)[number];
 
 export const headOf = (b: Brew): Partial<Brew> => Object.fromEntries(HEAD_FIELDS.map((k) => [k, b[k]]));
 

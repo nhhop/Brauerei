@@ -11,6 +11,7 @@ import { outputPct } from '../../components/ControllerCard';
 import { btnPrimary, inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
 import { curveOf } from '../recipe/MashCurve';
+import { toLocalInput } from './format';
 import type { Patch } from './PrepTab';
 
 // The log is shown from a little before the plan to a little after it.
@@ -209,9 +210,6 @@ function CourseChart({ rows, at, logId, sensorId, heat, snap, live }: {
     </>
   );
 }
-
-// "YYYY-MM-DDTHH:mm" in local time, as <input type="datetime-local"> wants it.
-const toLocalInput = (ms: number) => new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
 // Card "Verlauf": the mash plan against the temperature a device log recorded,
 // with the heating power. The plan is laid on the clock by when the grain went

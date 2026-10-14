@@ -14,6 +14,22 @@ const GRAVITY_UNITS: { value: GravityUnit; label: string; digits: number }[] = [
   { value: 'brix', label: '°Bx', digits: 1 },
 ];
 
+// One line efficiency | Soll | Ist | Abweichung, counted from the measurements.
+export function EffRow({ label, soll, ist, sub }: { label: string; soll?: number; ist?: number; sub?: string }) {
+  const dev = deviation('efficiency', soll, ist);
+  return (
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+      <div class="min-w-[9rem] flex-1">
+        <div class="font-semibold">{label}</div>
+        {ist !== undefined && sub && <div class="text-xs text-muted">{sub}</div>}
+      </div>
+      <span class="w-24 text-muted" title="Soll">{soll === undefined ? '—' : `${fmtNum(soll, 1)} %`}</span>
+      <span class="w-[6.75rem]">{ist === undefined ? '—' : `${fmtNum(ist, 1)} %`}</span>
+      <span class="w-28">{dev && <span class={dev.level === 'ok' ? badgeSuccess : badgeCaution}>{dev.text}</span>}</span>
+    </div>
+  );
+}
+
 const digitsOf = (unit: string) => (unit === 'pH' ? 2 : 1);
 
 // A sensor's value in the measurement's unit: gravities in °P.

@@ -3,7 +3,7 @@ import { route } from 'preact-router';
 import { Ellipsis } from 'lucide-preact';
 import {
   PHASES, STATUS_LABEL, deleteBrew, getBrew, headOf, listBrews, moveBrewDate, occupancyOverlaps, patchBrew, saveBrew,
-  summaryOf, withHead, type Brew, type BrewSummary,
+  summaryOf, withHead, type Brew, type BrewSummary, type HeadField,
 } from '../brews';
 import { brewInputs, brewTargets, withResults } from '../brewDay';
 import { unbookStock } from '../brewStart';
@@ -20,6 +20,7 @@ import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Card, Field, MenuItem } from './recipe/fields';
 import { BoilTab } from './brew/BoilTab';
 import { dropProgram } from './brew/BrewTimer';
+import { FermentTab } from './brew/FermentTab';
 import { MashTab } from './brew/MashTab';
 import { PrepTab, type Patch } from './brew/PrepTab';
 import { StartBrewDialog } from './brew/StartBrewDialog';
@@ -52,9 +53,9 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
   // The recipe chain is heavy; the page re-renders with every live snapshot.
   const day = useMemo(() => {
     if (!recipe || !saved) return undefined;
-    const inputs = brewInputs(saved, { brewhouses, brewery, entries: catalog?.entries ?? null });
+    const inputs = brewInputs(saved, { brewhouses, brewery, entries: catalog?.entries ?? null, fermenters });
     return { inputs, targets: brewTargets(recipe, inputs) };
-  }, [recipe, saved?.frozen, saved?.brewhouseId, brewhouses, brewery, catalog]);
+  }, [recipe, saved?.frozen, saved?.brewhouseId, saved?.fermenterId, brewhouses, fermenters, brewery, catalog]);
 
   useEffect(() => {
     let alive = true;
@@ -106,17 +107,18 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
     setAll((l) => [...l.filter((x) => x.id !== s.id), summaryOf(s)]);
   }
 
-  // Takes what the server has and keeps the head edits not saved yet.
-  function adopt(s: Brew) {
+  // Takes what the server has and keeps the head edits not saved yet, except
+  // the head fields the change itself set (`fresh`).
+  function adopt(s: Brew, fresh: HeadField[] = []) {
     setSaved(s);
-    setDraft((d) => (d ? withHead(s, d) : s));
+    setDraft((d) => (d ? withHead(s, { ...d, ...Object.fromEntries(fresh.map((k) => [k, s[k]])) }) : s));
     setAll((l) => [...l.filter((x) => x.id !== s.id), summaryOf(s)]);
   }
 
-  const patch: Patch = (change) => {
+  const patch: Patch = (change, fresh) => {
     saving.current = saving.current.then(async () => {
       setError(null);
-      try { adopt(await patchBrew(saved.id, async (b) => results(await change(b)))); } catch { setError('Speichern fehlgeschlagen.'); }
+      try { adopt(await patchBrew(saved.id, async (b) => results(await change(b))), fresh); } catch { setError('Speichern fehlgeschlagen.'); }
     });
     return saving.current;
   };
@@ -237,7 +239,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
                 {fermenters?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 {draft.fermenterId && fermenters && !fermenter && <option value={draft.fermenterId}>fehlt</option>}
               </select>
-            ) : <div class="py-1.5 text-sm">{fermenterName} <span class="text-xs text-muted">(Stand Brautag)</span></div>}
+            ) : <div class="py-1.5 text-sm">{fermenterName} <span class="text-xs text-muted">(Wahl im Tab Gärung)</span></div>}
           </Field>
           <div class="grid grid-cols-2 gap-3">
             <Field label="Belegt ab">
@@ -290,8 +292,14 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
             snap={snap} editable={!planned} patch={patch}
             notes={draft.phaseNotes?.boil} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, boil: t } })} />
         )
+      ) : tab === 'fermentation' ? (
+        !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
+          <FermentTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets}
+            snap={snap} editable={!planned} patch={patch} fermenters={fermenters} all={all}
+            notes={draft.phaseNotes?.fermentation} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, fermentation: t } })} />
+        )
       ) : (
-        <p class="text-sm text-muted">Inhalt folgt mit Gärung, Reifung und Abfüllung (Etappe 5c), dazu der Belegungsplan.</p>
+        <p class="text-sm text-muted">Inhalt folgt mit Reifung und Abfüllung (Etappe 5c).</p>
       )}
 
       {dialog === 'start' && recipe && brewery && (
