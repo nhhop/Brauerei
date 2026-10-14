@@ -765,6 +765,8 @@ Wiki-Artikel „Understanding Efficiency“ (braukaiser.com); Namen wie bei Malz
   „Mash Gravity Test“).
 
 ### Gärung
+Gebaut ist bisher nur die Phasenliste (Name, Temperatur, Dauer) mit den Zutaten; der Rest kommt mit
+Plan 5c › 5c-1 (Heiß/Kalt-Schalter: 5c-1b).
 - Zutaten-Karte mit Anstellen, Hauptgärung, Reifung · Stopfen und Abfüllung · Karbonisierung; sie ersetzt die
   frühere reine Hefe-Anzeige.
 - Gärführung als Phasen mit Temperatur, Dauer, Rampe und optional Druck (Schalter „Unter Druck vergären“).
@@ -913,7 +915,8 @@ mehrere Wochen (belegt, frei, reserviert für geplante Sude) kommt mit dem Sud, 
   leer = nicht druckfest) und Temperierung: ohne, kühlen, heizen, kühlen und heizen. Ist sie nicht „ohne“,
   steht die Steuerung auf „von Hand“ (Vorgabe) oder „angeschlossen“; angeschlossen braucht einen **Regler
   oder Aktor**, wie die Heizquelle im Sudhaus. Ein **Temperaturfühler** ist immer wählbar, auch für einen
-  Gärplatz nur mit Thermometer. „Ohne Temperierung“ verwirft Regler und Aktor, der Fühler bleibt.
+  Gärplatz nur mit Thermometer. „Ohne Temperierung“ verwirft Regler und Aktor, der Fühler bleibt. Ein
+  **Dichtesensor** (z. B. iSpindel als Remote-Sensor) kommt mit Plan 5c › 5c-4.
 - **Gerät auf einem anderen Board:** Remote-Sensoren und -Aktoren sind lokale Proxys und stehen im Snapshot
   wie lokale Items; die Verknüpfung trägt sie ohne Änderung. Einen **Remote-Regler gibt es nicht**
   (`Discovery.h`: „no remote controller proxy exists“), ein Regler, der nur auf dem anderen Board läuft,
@@ -1476,22 +1479,22 @@ Diese Teile aus 5b nutzt 5c, ohne dass gespeicherte Sude umgebaut werden müssen
   (`batchVolume`, `pitchTemp`), Restextrakt und Abfüllmenge.
   - **Messreihen der Gärung** (Spindel und Temperatur über Wochen) gehören **nicht** ins Sud-Dokument,
     wegen der 16-KB-Grenze. Sie kommen aus dem Gerätelog, gewählt wie in 5b-4 über `logId`.
-  - Von Hand eingetragene Messreihen kommen in eine eigene Datei je Sud. Wie genau, wird in 5c entschieden.
+  - Von Hand eingetragene Messreihen kommen in eine eigene Datei je Sud (Route siehe Plan 5c › 5c-4).
 - **Gärführung als Programm:** Der Generator aus 5b-2/5b-3 (`brewPrograms.ts`) bekommt eine Variante für
   die Gärphasen des Rezepts (`recipe.fermentation`). Sie setzt Sollwerte auf den Regler des Gärplatzes
   (`frozen.fermenter.controller`), meldet Stopfgaben mit `notify` und gehört wie die anderen Programme dem
   Sud.
   - Das ist der offene Punkt „Gärführung als Programm“ unter Offen / später.
-- **Würze abzweigen:** Die Ist-Liter von Speise und Dip Hopping aus 5b-3 bekommen in 5c ihren Soll.
+- **Würze abzweigen:** Die Ist-Liter der Speise aus 5b-3 bekommen in 5c ihren Soll.
   - Der Soll kommt aus der Karbonisierungsrechnung und der Abfüllmenge im Gärung-Tab des Rezepts (PLAN.md
     › Hopfenform und Abfüllmenge).
+  - Dip Hopping bleibt ohne Soll (Entscheidung 2026-10-14): Das Rezept gibt keine Würzemenge vor, und für
+    die Abfüllmenge zählt nur die Hopfenaufnahme.
 - **Index-Felder:** `bottledL` ist in 5b-3 schon angelegt; 5c füllt es.
   - Weitere Felder für die Liste (z. B. Alkohol, Endvergärung) brauchen dann wieder eine kleine Änderung an
     `brewSummaryLine`.
 - **Lager:** `rebook` aus 5b-1 bucht auch Hefe, Stopfhopfen und Speisezucker der Gärphasen.
-- **Modell für 5c:** Opus · Effort hoch · Umfang groß · mit Plan. Es gibt neue Entscheidungen (Ablage der
-  Messreihen, Programm am Gärplatz-Regler, Rechnung der Abfüllmenge). Vermutlich lohnt sich ein eigener
-  Schnitt in Teil-Etappen, wie bei 5b.
+- **Modell für 5c:** je Teil-Etappe, siehe Plan 5c (Schnitt in sechs PRs, Entscheidungen 2026-10-14).
 
 #### Dateien (Überblick)
 - **Neu:** `web/src/brewDay.ts`, `brewDay.test.ts`, `web/src/brewPrograms.ts` (+ Test),
@@ -1519,6 +1522,211 @@ Diese Teile aus 5b nutzt 5c, ohne dass gespeicherte Sude umgebaut werden müssen
 - Browser gegen einen Wegwerf-Mock (Scratchpad, erweitert um `/api/programs`, `/api/logs`,
   `/api/snapshot`): Brautag einmal durchspielen, 390 px Breite ohne Querscrollen.
 
+### Plan 5c – Gärung, Reifung, Abfüllung, Belegungsplan
+
+> Erstellt 2026-10-14 in einer Planungssession (nur Doku). Umgesetzt wird **jede Teil-Etappe in einer
+> eigenen, neuen Session** mit einem eigenen PR gegen `dev`, nach dem Merge der vorigen. Jede Session
+> startet im Planmodus mit: „Setze Sud 5c-n laut `rezept-sud-editor.md` › Plan 5c um“.
+
+**Modell und Aufwand je Teil-Etappe** (Schema wie bei Plan 5b):
+
+| Etappe | Modell | Effort | Umfang | Planmodus | Grund |
+|---|---|---|---|---|---|
+| 5c-1 Rezept: Gärführung, Karbonisierung, Abfüllmenge | Opus | hoch | groß | mit Plan | Neue Rechnungen (Grünschlauchen, Zwangskarbonisierung, Kette bis zur Abfüllung, Aufnahme je Hopfenform) und neue Modellfelder. |
+| 5c-1b Heiß/Kalt-Schalter | Opus | hoch | mittel | mit Plan | Kehrt die Kette um; alle Leser von `recipe.volumeL` werden umgestellt. |
+| 5c-2 Belegungsplan, Gärplatz, Anstellen | Sonnet | mittel | mittel | mit Plan | Plan-Ansicht, Gärplatz-Wahl nach dem Start, Messwerte nach dem Muster aus 5b-1. |
+| 5c-3 Gärprogramm, Firmware-Rampe, Stopfgaben | Opus | hoch | mittel | mit Plan | Rampe im `ProgramRunner` mit Resume nach Neustart, Generator mit Teilschritten. |
+| 5c-4 Messreihen, Gärverlauf | Sonnet | hoch | mittel | mit Plan | Neue Route, Diagramm mit zwei Skalen aus Log und Messungen von Hand. |
+| 5c-5 Reifung und Abfüllung, Bilanz, Index | Sonnet | mittel | mittel | mit Plan | Muster aus 5b, neue Index-Felder (kleine Firmware-Änderung). |
+
+#### Kontext
+Nach dem Brautag (5b) sind die Tabs Gärung, Reifung und Abfüllung des Suds leer. Die Rezept-Seite der
+Gärung ist kaum gebaut, der Sud braucht aber ihre Sollwerte. Deshalb kommt das Rezept zuerst.
+- **Rezept heute:** Eine Phase hat nur Name, Temperatur und Dauer (`Phase`). Es fehlen Rampe, Druck,
+  Karbonisierung, die Hopfenform an der Gabe (es gibt sie nur am Lagerposten, `StockLot.form`), Stopfen-Tag
+  und -Dauer sowie die Abfüllmenge. Der Gärung-Tab besteht aus `PhaseList` und den Zutaten.
+- **Rechnungen vorhanden** in `brewMath.ts`, bisher nur vom Rechner genutzt: `residualCo2Volumes`,
+  `primingSugarGrams`, `speiseVolumeL`, `recommendedRackingGravityPlato`, `ballingBeerAnalysis`. In
+  `recipeWater.ts`: `restVolumeL` (nicht exportiert) und `fermenterShare`. `recipeStats` rechnet `fgPlato`
+  und `abv` aus dem Endvergärungsgrad der Hefe.
+- **Programme der Firmware:** keine Rampe, Werte springen beim Schrittbeginn (`ProgramRunner.h`). `holdSec`
+  ist uint32, ein Schritt darf Wochen dauern. Die Zeit läuft über die Epoch (NTP), ein Neustart setzt fort.
+  War das Gerät aus, endet der überfällige Schritt beim nächsten Tick, die folgenden laufen ab dann voll.
+  Ohne WLAN nach einem Stromausfall steht das Programm, bis NTP die Zeit liefert. Push kennt keine
+  Ruhezeiten.
+- **Logs** liefern immer die ganze Session als CSV, ohne Zeitfenster und ohne Ausdünnen beim Lesen.
+  Wochenlange Logs gehen, wenn das Intervall lang genug ist.
+- **Dokument-Routen:** `serveJsonDocDir_` kennt kein GET eines einzelnen Dokuments, die Liste liefert alle
+  Dokumente vollständig.
+
+**Entscheidungen des Nutzers (2026-10-14)**
+- **Schnitt:** sechs PRs, das Rezept zuerst.
+- **Belegungsplan:** oben auf der Sude-Liste.
+- **Messreihen von Hand:** neue Route je Sud.
+- **Rampe:** in der Firmware, nicht als Stufen im Web.
+- **Druck:** nur eine Meldung, es gibt keinen Aktor dafür.
+- **Stopfgaben:** melden sich per `notify` bei Zugabe und bei Entnahme.
+- **Programmende:** die letzte Temperatur halten bis „Weiter“, dann Regler aus.
+- **Heiß/Kalt-Schalter:** eigener PR direkt nach 5c-1.
+- **Index-Zeile:** Alkohol, scheinbarer Endvergärungsgrad und Restextrakt.
+- **Dichtesensor:** neues Feld am Gärplatz (z. B. iSpindel als Remote-Sensor).
+- **Dip Hopping:** kein Soll am Brautag, das Ist-Feld bleibt.
+- **Gebinde:** mehrere je Sud, schon im Rezept geplant.
+
+#### Teil-Etappen (je ein PR)
+
+##### 5c-1 Rezept: Gärführung, Karbonisierung, Abfüllmenge
+Nur Web, kein Firmware-Teil.
+- **Phase:**
+  - `rampDays?`: Zeit, in der die Temperatur vom vorigen Wert auf die der Phase läuft. Sie zählt zur Dauer der
+    Phase, die Belegung des Gärplatzes ändert sich also nicht.
+  - `pressureBar?`, sichtbar mit dem Schalter „Unter Druck vergären“ am Rezept (`pressureFermentation?: true`).
+  - `PhaseList` bekommt die Spalten. Eine neue Phase startet mit 20 °C und 7 Tagen (heute 65 °C/30, ein Rest
+    aus den Rasten).
+- **Gabe:**
+  - **Hopfenform** `form?` an Hopfenzeilen (Dolde, T90, T45, Lupulin, Extrakt). Ohne Angabe gilt die Form des
+    Lagerpostens, sonst T90 (Annahme).
+  - **Stopfen:** `dryHopDay?` (Tag ab Anstellen) und `dryHopDays?` (Dauer) für Hopfen und Aroma bei
+    Hauptgärung und Reifung, in der schmalen Detailspalte (`IngredientCard`).
+- **Karbonisierung:** `carbonation?: { method: 'krausen' | 'sugar' | 'speise' | 'forced'; targetVol; sugarType? }`.
+  - Die Restkohlensäure kommt aus der höchsten Phasentemperatur. Annahme: Eine Diacetylrast liegt nach dem
+    Gärende.
+  - **Zucker:** Menge mit `primingSugarGrams`.
+  - **Speise:** Liter mit `speiseVolumeL`; Speise-°P = Stammwürze, Vergärung aus der Hefe.
+  - **Grünschlauchen:** Extrakt, bei dem geschlaucht wird (°P), neue Funktion.
+  - **Zwangskarbonisierung:** Druck in bar bei Lagertemperatur, neue Funktion.
+  - Beide neuen Funktionen bekommen `TODO(verify)` und Tests.
+- **Gebinde im Rezept:** `bottling?.containers: { containerId; count? }[]`. Nur die letzte Zeile darf ohne
+  Anzahl sein und nimmt den Rest auf. Abfüllverlust je Füllung × Anzahl; die Flaschenzahl der Restzeile folgt
+  aus dem Rest.
+- **Abfüllmenge** (`web/src/fermentation.ts`, rein, getestet), vorwärts vom Ausschlag:
+  - **Anstellwürze** = Ausschlag − Kühlschwund − Würzeverluste ab Whirlpool (`restVolumeL`, dafür exportiert)
+    − Hopfenaufnahme im Kessel (g × ml/g je Form) − Speise (+ Verschnitt im Gärbehälter).
+  - **Jungbier** = Anstellwürze − Trub − Stopfhopfen (g × ml/g). Der Trub ist im Rezept eine Annahme
+    (`trubLossL?`); im Sud gilt der Wert des Gärplatzes.
+  - **Abgefüllt** = Jungbier + Speise − Abfüllverluste der Gebinde.
+  - Die Aufnahme je Form (Kessel und Stopfen) sind Konstanten mit `TODO(verify)`. Die Werte legt der PR offen.
+  - Darstellung wie im Wasser-Tab: Kennzahlen (`Stat`: Anstellwürze, Jungbier, Abgefüllt, Flaschen), Balken
+    zum Verbleib der Ausschlagwürze und Aufklappbereich „Berechnung“. Eigene kleine Komponenten, der
+    Wasser-Tab bleibt unberührt (`WaterBar`, `Calculation` sind auf `Water` typisiert).
+- **Hinweise im Rezept:** Druck verlangt, aber kein Gärplatz ist druckfest.
+- **Verifikation:** Tests der Kette (Summe der Teile), der neuen Formeln und der Aufteilung auf Gebinde;
+  im Mock bei 390 px ohne Querscrollen.
+
+##### 5c-1b Heiß/Kalt-Schalter
+- `volumeBasis?: 'hot' | 'cold'`, ohne Angabe `hot`. Bei „kalt“ ist die Rezeptmenge die Anstellwürze im
+  Gärbehälter (wie Brewfathers „Batch size“). Den Ausschlag rechnet die Umkehrung der Kette aus 5c-1
+  zurück.
+- Alle Leser von `recipe.volumeL` (rund 15 Dateien) lesen den Ausschlag über eine Funktion
+  `knockOutL(recipe, bh)`.
+- **Verifikation:** Hin- und Rückrechnung ergeben dieselbe Menge. Bei `hot` bleiben alle bekannten
+  Testrezepte unverändert.
+
+##### 5c-2 Belegungsplan, Gärplatz-Wahl, Anstellen
+Nur Web.
+- **Belegungsplan** oben auf der Sude-Liste (`web/src/occupancy.ts` rein und getestet, Komponente
+  `CellarPlan`). Er liest nur `GET /api/brews`.
+  - Eine Zeile je Gärplatz, dazu „ohne Gärplatz“. Sichtbar sind 8 Wochen ab der Vorwoche, mit Blättern um je
+    eine Woche.
+  - Läuft = belegt (voller Balken), geplant = reserviert (schraffiert), abgeschlossen grau; frei bleibt leer.
+  - **Überschneidung:** Balken rot und ein Hinweis; gesperrt wird nichts (`occupancyOverlaps`).
+  - Läuft ein Sud und liegt `occupiedUntil` vor heute, reicht sein Balken bis heute, markiert „überfällig“.
+  - Ein Klick auf einen Balken öffnet den Sud. Das Raster scrollt nur innerhalb der Karte (390 px).
+- **Gärplatz nach dem Start** (Tab Gärung):
+  - Die Wahl erneuert `fermenterId` und die Kopie `frozen.fermenter`. Gesperrt, solange ein Gärprogramm
+    läuft.
+  - Die Optionen nennen die Belegung im Zeitraum des Suds.
+  - **Hinweise:** Volumen kleiner als die Anstellwürze; Druck verlangt, aber nicht druckfest; eine Phase
+    braucht Kühlen oder Heizen, das die Temperierung nicht kann.
+- **Anstellen:**
+  - Messwerte `batchVolume` (Soll aus der Kette), `pitchGravity` (neu; Soll = Stammwürze der Anstellwürze)
+    und `pitchTemp` (Soll = erste Phase), dazu die Gesamteffizienz als Ist.
+  - Die Zeilen „Anstellen“ und „Dip“ mit Ist-Menge (`rebook`) und Haken.
+  - **„Angestellt“** setzt `phaseStartedAt.fermentation` auf jetzt und `occupiedFrom` auf heute;
+    `occupiedUntil` wandert mit. Die Zeit lässt sich korrigieren wie „Eingemaischt um“.
+  - `ogActual` in der Index-Zeile stellt auf `pitchGravity` um, ohne Messung bleibt `postBoilGravity`.
+- **Würze abzweigen** (Tab Würzekochen): Die Speise bekommt ihren Soll aus 5c-1; Dip bleibt nur Ist.
+- **Gärführung:** die Phasen mit der aktuellen, errechnet aus Anstellzeit und Phasen. Das Programm folgt in
+  5c-3.
+
+##### 5c-3 Gärführung als Programm, Firmware-Rampe, Stopfgaben
+- **Firmware: Schrittfeld `rampSec`.** Ein Regler-Ziel mit `v` läuft linear vom letzten Wert, den das
+  Programm diesem Regler in einem früheren Schritt gesetzt hat, zum Ziel; ohne früheren Wert springt es.
+  - Nach einem Neustart ergibt sich der Wert aus `stepStartedEpoch`, das Replay bleibt deterministisch. Eine
+    Pause friert die Rampe ein.
+  - Nachgeführt wird im `tick`, sobald sich der Wert um mindestens 0,05 K ändert. Im Deep Sleep nur beim
+    Aufwachen; `nextEventEpoch` prüfen.
+  - Betroffen sind `ProgramSteps.h/.cpp`, `ProgramRunner.cpp`, die nativen Tests, `openapi.yaml` und
+    `types.ts`. Der Programm-Editor bekommt das Feld „Rampe“.
+  - **Flash:** esp32dev messen (zuletzt 98,0 %).
+- **Generator** `fermentationProgram(brewNumber, phases, dryHops, control?)` in `brewPrograms.ts`:
+  - **Mit Regler** (`frozen.fermenter.controller`): ein Schritt je Phase mit Sollwert, `enabled` und
+    `rampSec`.
+  - **Stopfgaben teilen eine Phase in Teilschritte.** Fällt der Teilungspunkt in eine Rampe, läuft sie
+    stückweise linear weiter. „Stopfen: 50 g Citra“ und nach der Dauer „Hopfen entnehmen: Citra“ melden sich
+    per `notify`; Gaben am selben Tag stehen in einem Schritt. Die Uhrzeit der Meldung folgt dem Anstellen.
+  - **Druck:** Der Phasenbeginn meldet „Spundapparat auf 1,0 bar“, die Uhr läuft weiter.
+  - **Ende:** „Gärführung beendet – Weiter: Regler aus“ hält die letzte Temperatur (meist die Kaltlagerung)
+    und wartet auf Freigabe; danach schaltet ein Schritt den Regler aus.
+  - **Voraussetzung:** Ein ausgeschalteter Regler lässt heute seinen Aktor auf dem letzten Wert stehen
+    (PLAN.md › Bugs, 2026-10-14). Am Gärplatz liefe die Kühlung nach „Regler aus“ oder „Stop“ weiter. Den
+    Fehler vor 5c-3 beheben oder im Plan von 5c-3 entscheiden, wie das Programm den Aktor mit ausschaltet.
+  - **Ohne Regler** (Gärplatz von Hand oder ohne Temperierung) ist es ein Timer von Hand wie der
+    Rasten-Timer: Jeder Phasenbeginn meldet „Auf 12 °C stellen“, mit Rampe „in 2 Tagen auf 18 °C“.
+- **Tab Gärung:** Programm-Karte über `BrewTimer` (neues Feld `fermentProgramId`), mit Rückfrage vor dem
+  Start, weil der Regler sofort angeht. Der Start setzt die Anstellzeit, falls sie fehlt. Die aktuelle Phase
+  kommt aus dem Programm. „Timer abbrechen“, „Abschließen“ und „Löschen“ gehen über `dropProgram`.
+- **Tab Reifung:** Stopfgaben zum Abhaken mit Uhrzeit (`addedAt`) und Ist-Menge (`rebook`), ein Haken
+  „entnommen“, Notizen.
+
+##### 5c-4 Messreihen von Hand und Gärverlauf
+- **Route** `GET/PUT /api/brews/{id}/readings` → `/brewreadings/<id>.json`:
+  - nur SD-Boards, 16 KB je Sud (etwa 300 Messungen);
+  - geschrieben über eine Temp-Datei wie `JsonDocDir`;
+  - registriert vor den Prefix-Handlern von `/api/brews/`, die die ID sonst als ungültig ablehnen;
+  - `DELETE /api/brews/{id}` löscht die Messreihen mit;
+  - native Tests, `openapi.yaml`, README-Tabelle, `types.ts`.
+- **Modell:** `{ id, readings: { at, kind: 'gravity' | 'brix' | 'temp' | 'ph', v, note? }[] }`. Brix wird roh
+  gespeichert und mit der Stammwürze umgerechnet (`apparentExtractFromRefractometer`). Die Sud-Sicherung
+  nimmt die Messreihen mit.
+- **Karte „Messungen“** in den Tabs Gärung und Reifung: eintragen (Zeit vorbelegt, Dichte über
+  `GravityInput`), Liste, löschen.
+- **Dichtesensor** am Gärplatz (`densitySensor?`, Dialog im Gärkeller), mit Hinweis, wenn er nicht in °P oder
+  SG misst.
+- **Gärverlauf** (`FermentCourse`, uPlot, x = Tage ab Anstellen):
+  - Soll aus Phasen und Rampen;
+  - Ist-Temperatur und Sollwert des Reglers aus dem Log. Der Sud merkt sich `fermentLogId` getrennt von
+    `logId` (Maischen); vorgeschlagen ist das Log mit dem Fühler des Gärplatzes;
+  - Dichte aus dem Log (Dichtesensor);
+  - Messungen von Hand als Punkte;
+  - zwei Skalen, °C und °P.
+- Hinweis bei kurzem Log-Intervall, weil die ganze Session geladen wird (PLAN.md).
+
+##### 5c-5 Reifung und Abfüllung, Bilanz, Index
+- **Messwerte:**
+  - `finalGravity`: Restextrakt, Soll = `fgPlato` des Rezepts; vorgeschlagen ist die letzte Messung.
+  - `maxTempAfter`: Höchsttemperatur nach dem Gärende, für die Restkohlensäure.
+  - `bottledVolume`: Soll aus der Kette.
+- **Karbonisierung neu berechnet** mit Ist-Jungbier, Restextrakt und Temperatur. Bei Speise steht dabei, ob
+  die abgezweigte Menge reicht.
+- **Gebinde:** Zeilen Gebinde × Anzahl, vorbelegt aus dem Rezept. Abfüllzeilen (Zucker, Abfüllhefe) mit
+  `rebook` und Haken.
+- **„Abgefüllt“** setzt `occupiedUntil` auf heute und `phaseStartedAt.bottling`.
+- **Bilanz:** Volumen Soll/Ist entlang der Kette; Maischeeffizienz, Sudhausausbeute, Gesamteffizienz;
+  Alkohol und Endvergärungsgrad.
+- **Index:** `brewSummaryLine` bekommt `abvPct`, `attenuationPct` und `fgPlato` (Firmware-Test, `openapi.yaml`,
+  `SUMMARY_FIELDS`). `withResults` füllt sie und `bottledL`. Der Rezept-Tab „Sude“ bekommt die Spalten.
+
+#### Doku und Verifikation je Teil-Etappe
+- **Prüfung:** Tests für neue Rechnungen und Generatoren, `pnpm typecheck`, `pnpm test`, `pnpm build`;
+  `npx @redocly/cli lint` bei Routen- oder Feldänderungen. Bei Firmware `pio test -e native` und `pio run`
+  für `lilygo_t_display_s3_amoled` und `esp32dev`.
+- **Browser:** Wegwerf-Mock im Scratchpad gegen das `dist` des Worktrees (`pnpm build`, nicht `build:tars`),
+  390 px ohne Querscrollen.
+- **Doku:** dieses Doc mit „Stand 5c-n“, `PLAN.md` (Erledigtes ersatzlos raus, Neues rein), `SESSION.md`.
+- **Gerät:** Alles am Gerät gilt als „nicht geprüft“. Ein Lauf am LilyGo, der Regler oder Aktoren schaltet,
+  nur nach Rückfrage, danach alles auf den vorigen Stand.
+
 ## Offen / später
 
 - **Mobile-Ansichten:** Die vorhandenen Screens sind veraltet (altes Stilfeld, keine Pumpen, keine
@@ -1533,4 +1741,4 @@ Diese Teile aus 5b nutzt 5c, ohne dass gespeicherte Sude umgebaut werden müssen
   unverifiziert. Die Definitionen der Effizienzen stehen seit 3b fest (Rezept › Effizienz); der Rechner
   rechnet seine Sudhausausbeute noch auf das Potenzial statt auf das Gewicht. Dazu kommen Morey (Farbe),
   Tinseth (IBU), die pH-Schätzung und der Rest-CO₂.
-- **Gärführung als Programm** an den Gärplatz-Regler übertragen, über die vorhandenen Programme/Profile.
+- **Gärführung als Programm** an den Gärplatz-Regler übertragen: geplant als 5c-3 (Plan 5c).
