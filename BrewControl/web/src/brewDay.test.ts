@@ -4,7 +4,7 @@ import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
 import type { Brew, MeasureId, Measurement } from './brews';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { calcMash } from './mashPlan';
-import { calcStats, wortExtract } from './recipeStats';
+import { calcStats, pitchedL, wortExtract } from './recipeStats';
 import { calcTreatment, suggestAgent } from './recipeTreatment';
 import { calcWater } from './recipeWater';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
@@ -33,6 +33,15 @@ const inputs = (bh: Brewhouse = herms): BrewInputs => ({ bh, brewery, entries: c
 const own = (r: Recipe): Recipe => ({ ...r, brewhouseId: herms.id });
 
 describe('brewTargets', () => {
+  it('plans a cold recipe at its counted-back knock-out', () => {
+    const hot = recipe();
+    const cold: Recipe = { ...hot, volumeL: pitchedL(hot, herms, catalog, brewery), volumeBasis: 'cold' };
+    const a = brewTargets(hot, inputs()).values, b = brewTargets(cold, inputs()).values;
+    expect(b.postBoilVolume).toBeCloseTo(a.postBoilVolume!, 6);
+    expect(b.strikeVolume).toBeCloseTo(a.strikeVolume!, 6);
+    expect(b.postBoilGravity).toBeCloseTo(a.postBoilGravity!, 6);
+  });
+
   it('takes volumes, temperatures and pH from the recipe tabs', () => {
     const r = recipe();
     const t = brewTargets(r, inputs());

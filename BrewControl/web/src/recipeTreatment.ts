@@ -195,7 +195,7 @@ export function calcTreatment(recipe: Recipe, w: Water, brewery: Brewery | null,
 
   if (model === 'kolbach') {
     const colors = catalog ? wortExtract(recipe, catalog).colors : [];
-    if (colors.length > 0) mash.raTarget = raRangeForColor(beerEbc(colors, recipe.volumeL, d));
+    if (colors.length > 0) mash.raTarget = raRangeForColor(beerEbc(colors, w.knockOutL, d));
     else notes.push('Für den RA-Zielbereich fehlt die Bierfarbe (Vergärbares verknüpfen).');
   }
 

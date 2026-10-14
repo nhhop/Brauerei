@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { TEMPLATES } from './brewhouse';
+import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
+import type { EfficiencyBasis } from './efficiency';
 import { forcedCarbonationBar, krausenRackingPlato, primingSugarGrams, residualCo2Volumes, speiseVolumeL } from './brewMath';
 import type { Container } from './cellar';
 import { calcBottling, calcCarbonation, dryHopL, kettleHopL, maxPhasePressureBar } from './fermentation';
 import type { CatalogIngredient, StockLot } from './ingredientCatalog';
-import { calcStats, wortExtract } from './recipeStats';
+import { atKnockOut, calcStats, knockOutL, pitchedL, wortExtract } from './recipeStats';
 import { fermenterShare, resolveDilution } from './recipeWater';
 import { newRecipe, type Dilution, type Ingredient, type Recipe } from './recipes';
 import { hopFormOf, withLotEntries } from './stockLots';
@@ -183,5 +184,61 @@ describe('maxPhasePressureBar', () => {
     const r = recipe({ fermentation: [{ id: 'a', name: '', tempC: 18, duration: 7, pressureBar: 1.2 }] });
     expect(maxPhasePressureBar(r)).toBe(0);
     expect(maxPhasePressureBar({ ...r, pressureFermentation: true })).toBe(1.2);
+  });
+});
+
+describe('knockOutL (volumeBasis)', () => {
+  const brewery = (efficiencyBasis: EfficiencyBasis): Brewery => ({ grainTempC: 18, tapWaterTempC: 12, efficiencyBasis });
+  const speise = { carbonation: { method: 'speise' as const, targetVol: 2.5 }, trubLossL: 1 };
+  const dil = (d: Dilution) => ({ water: { dilution: d } });
+  const cases: [string, Partial<Recipe>, Brewhouse | undefined, Brewery | undefined][] = [
+    ['without brewhouse', {}, undefined, undefined],
+    ['brewhouse losses and kettle hops', {}, herms, undefined],
+    ['Speise', speise, herms, undefined],
+    ['dilution in the kettle by volume', { ...speise, ...dil({ at: 'kettle', lead: 'volume', volumeL: 3 }) }, herms, undefined],
+    ['dilution in the kettle by gravity', { ...speise, ...dil({ at: 'kettle', lead: 'gravity', plato: 16 }) }, herms, undefined],
+    ['dilution in the fermenter by volume', { ...speise, ...dil({ at: 'fermenter', lead: 'volume', volumeL: 2 }) }, herms, undefined],
+    ['dilution in the fermenter by gravity', { ...speise, ...dil({ at: 'fermenter', lead: 'gravity', plato: 9 }) }, herms, undefined],
+    ['basis Brewhouse-Efficiency', speise, herms, brewery('fermenter')],
+    ['basis Konversion', speise, herms, brewery('conversion')],
+  ];
+
+  it('is the volume itself when hot', () => {
+    const r = recipe();
+    expect(knockOutL(r, herms, catalog)).toBe(30);
+    expect(atKnockOut(r, herms, catalog)).toBe(r);
+    expect(atKnockOut({ ...r, volumeBasis: 'hot' }, herms, catalog).volumeL).toBe(30);
+    expect(pitchedL(r, herms, catalog)).toBeCloseTo(chain(r).b.pitchL, 9);
+  });
+
+  it.each(cases)('counts back to the same knock-out: %s', (_, p, bh, b) => {
+    const hot = recipe({ ...p, volumeL: 30 });
+    const pitch = pitchedL(hot, bh, catalog, b);
+    expect(pitch).toBeGreaterThan(0);
+    expect(pitch).not.toBeCloseTo(30, 1);
+    const cold: Recipe = { ...hot, volumeL: pitch, volumeBasis: 'cold' };
+    expect(knockOutL(cold, bh, catalog, b)).toBeCloseTo(30, 6);
+    expect(pitchedL(cold, bh, catalog, b)).toBeCloseTo(pitch, 6);
+  });
+
+  it.each(cases)('gives the cold volume as Anstellwürze: %s', (_, p, bh, b) => {
+    const cold = recipe({ ...p, volumeL: 20, volumeBasis: 'cold' });
+    const hot = atKnockOut(cold, bh, catalog, b);
+    expect(hot.volumeBasis).toBeUndefined();
+    expect(hot.volumeL).toBeGreaterThan(0);
+    expect(pitchedL(hot, bh, catalog, b)).toBeCloseTo(20, 6);
+  });
+
+  it('works without the catalog, as the tabs do before it loads', () => {
+    const cold = recipe({ ...speise, volumeL: 20, volumeBasis: 'cold' });
+    // No hops, no Speise: 20 l + 2 l dead space + 1 l line, over the shrink.
+    expect(knockOutL(cold, herms, null)).toBeCloseTo(23 / 0.96, 6);
+  });
+
+  it('comes as close as it can when out of reach', () => {
+    // 5 l of water in the fermenter alone are more than 3 l.
+    const cold = recipe({ ...dil({ at: 'fermenter', lead: 'volume', volumeL: 5 }), volumeL: 3, volumeBasis: 'cold' });
+    expect(knockOutL(cold, herms, catalog)).toBe(0);
+    expect(pitchedL(cold, herms, catalog)).toBeCloseTo(5, 9);
   });
 });

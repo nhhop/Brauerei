@@ -4,7 +4,7 @@ import type { SugarType } from '../../brewMath';
 import { containerLabel, listContainers, listFermenters, type Container, type Fermenter } from '../../cellar';
 import { calcBottling, calcCarbonation, maxPhasePressureBar, type Bottling, type CarbonationResult } from '../../fermentation';
 import { useCatalog } from '../../ingredientSource';
-import { calcStats, wortExtract } from '../../recipeStats';
+import { atKnockOut, calcStats, wortExtract } from '../../recipeStats';
 import { fmtL, resolveDilution } from '../../recipeWater';
 import { CARBONATION_METHODS, type BottlingRow, type Carbonation, type CarbonationMethod, type Recipe } from '../../recipes';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
@@ -35,10 +35,11 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
 
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const entries = catalog?.entries ?? null;
-  const wort = entries ? wortExtract(recipe, entries, bh, brewery) : undefined;
-  const stats = entries ? calcStats(recipe, entries, bh, brewery) : undefined;
-  const dilution = wort && resolveDilution(recipe, wort.extractKg, bh, wort.draw);
-  const bottling = bh && wort && dilution ? calcBottling(recipe, bh, dilution, wort.draw, containers) : undefined;
+  const hot = atKnockOut(recipe, bh, entries, brewery);
+  const wort = entries ? wortExtract(hot, entries, bh, brewery) : undefined;
+  const stats = entries ? calcStats(hot, entries, bh, brewery) : undefined;
+  const dilution = wort && resolveDilution(hot, wort.extractKg, bh, wort.draw);
+  const bottling = bh && wort && dilution ? calcBottling(hot, bh, dilution, wort.draw, containers) : undefined;
   const carbonation = calcCarbonation(recipe, { beerL: bottling?.beerL ?? 0, fgPlato: stats?.fgPlato, speiseL: dilution?.speiseL ?? 0 });
 
   const maxBar = maxPhasePressureBar(recipe);
@@ -184,8 +185,8 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
             <Stat label="Flaschen" value={rows.length ? b.bottles : undefined} unit="Stück" digits={0}
               sub={b.kegs ? `dazu ${b.kegs} Keg${b.kegs === 1 ? '' : 's'}` : undefined} />
           </dl>
-          <BottlingBar b={b} knockOutL={recipe.volumeL} />
-          <BottlingCalculation b={b} recipe={recipe} />
+          <BottlingBar b={b} />
+          <BottlingCalculation b={b} cold={recipe.volumeBasis === 'cold'} />
           <Notes notes={b.notes} />
         </>
       )}
@@ -195,7 +196,7 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
 
 // Where the knock-out (and a dilution in the fermenter) ends up. Slots 3 and 4
 // are below 3:1 contrast on the light theme, so the legend carries every value.
-function BottlingBar({ b, knockOutL }: { b: Bottling; knockOutL: number }) {
+function BottlingBar({ b }: { b: Bottling }) {
   const mix = (v: string) => `color-mix(in srgb, var(${v}) 45%, transparent)`;
   const parts = [
     { label: 'Abgefüllt', l: b.bottledL, color: 'var(--series-1)' },
@@ -206,7 +207,7 @@ function BottlingBar({ b, knockOutL }: { b: Bottling; knockOutL: number }) {
     { label: 'Abfüllverlust', l: b.fillLossL, color: mix('--series-4') },
     ...(b.leftL > 0 ? [{ label: 'Rest', l: b.leftL, color: 'color-mix(in srgb, var(--fg) 20%, transparent)' }] : []),
   ];
-  const total = knockOutL + b.dilutionL;
+  const total = b.intake.cooledL + b.intake.shrinkL + b.dilutionL;
   if (total <= 0) return null;
   const pct = (l: number) => (l / total) * 100;
   return (
@@ -229,19 +230,21 @@ function BottlingBar({ b, knockOutL }: { b: Bottling; knockOutL: number }) {
   );
 }
 
-function BottlingCalculation({ b, recipe }: { b: Bottling; recipe: Recipe }) {
-  const shrinkPct = recipe.volumeL > 0 ? (b.intake.shrinkL / recipe.volumeL) * 100 : 0;
+// `cold`: the recipe's volume is the Anstellwürze, the knock-out follows from it.
+function BottlingCalculation({ b, cold }: { b: Bottling; cold: boolean }) {
+  const knockOutL = b.intake.cooledL + b.intake.shrinkL;
+  const shrinkPct = knockOutL > 0 ? (b.intake.shrinkL / knockOutL) * 100 : 0;
   return (
     <details class="mt-4">
       <summary class="cursor-pointer text-sm">Berechnung</summary>
       <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-0.5 text-sm">
-        <Row label="Ausschlag" l={recipe.volumeL} from="Rezept" />
+        <Row label="Ausschlag" l={knockOutL} from={cold ? undefined : 'Rezept'} />
         <Row op="−" label={`Kühlschwund (${num(shrinkPct)} %)`} l={b.intake.shrinkL} from="Sudhaus" />
         {b.intake.losses.map((x) => <Row key={x.label} op="−" label={x.label} l={x.l} from="Sudhaus" />)}
         {b.intake.kettleHopL > 0 && <Row op="−" label="Hopfen im Kessel" l={b.intake.kettleHopL} />}
         {b.speiseL > 0 && <Row op="−" label="Speise" l={b.speiseL} />}
         {b.dilutionL > 0 && <Row op="+" label="Verschnitt im Gärbehälter" l={b.dilutionL} from="Rezept" />}
-        <Row op="=" label="Anstellwürze" l={b.pitchL} strong />
+        <Row op="=" label="Anstellwürze" l={b.pitchL} from={cold ? 'Rezept' : undefined} strong />
         <Row op="−" label="Trub" l={b.trubL} from="Rezept" />
         {b.dryHopL > 0 && <Row op="−" label="Hopfen im Gärbehälter" l={b.dryHopL} />}
         <Row op="=" label="Jungbier" l={b.youngL} strong />

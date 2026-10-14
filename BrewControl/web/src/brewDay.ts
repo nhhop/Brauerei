@@ -10,7 +10,7 @@ import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { DEFAULT_MASH_PH, mashPh } from './mashPh';
 import { calcMash, type MashPlan } from './mashPlan';
-import { wortExtract } from './recipeStats';
+import { atKnockOut, wortExtract } from './recipeStats';
 import { calcTreatment, suggestAgent, type Column } from './recipeTreatment';
 import { calcWater, type Water } from './recipeWater';
 import { DEFAULT_SPARGE_TEMP, type Recipe } from './recipes';
@@ -61,8 +61,9 @@ const dissolvedOf = (plato: number, waterKg: number) => (waterKg * plato) / (100
 const extractIn = (volumeL: number, plato: number) => volumeL * platoToSg(plato) * (plato / 100);
 
 export function brewTargets(recipe: Recipe, { bh, brewery, entries }: BrewInputs): BrewTargets {
-  // The brew may use another brewhouse than the recipe names.
-  const r = bh ? { ...recipe, brewhouseId: bh.id } : recipe;
+  // The brew may use another brewhouse than the recipe names; a cold volume
+  // gives its knock-out with that brewhouse.
+  const r = atKnockOut(bh ? { ...recipe, brewhouseId: bh.id } : recipe, bh, entries, brewery);
   const wort = entries ? wortExtract(r, entries, bh, brewery) : undefined;
   const { water, notes } = calcWater(r, bh, wort?.extractKg, brewery, wort?.draw);
   const values: BrewTargets['values'] = {};

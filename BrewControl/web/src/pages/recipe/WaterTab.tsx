@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { grainAbsorptionOf } from '../../brewhouse';
 import { lauterText } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
-import { wortExtract } from '../../recipeStats';
+import { atKnockOut, wortExtract } from '../../recipeStats';
 import { DEFAULT_MASH_RATIO, DEFAULT_SPARGE_TEMP, type Dilution, type RecipeWater } from '../../recipes';
 import { calcWater, fmtL, type Loss, type Source, type Water } from '../../recipeWater';
 import { Segmented } from '../../components/Segmented';
@@ -24,8 +24,9 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
     return <Card title="Wassermenge"><p class="text-sm text-muted">Sudhäuser nicht geladen, Wassermengen nicht verfügbar.</p></Card>;
   }
   const bh = brewhouses.find((b) => b.id === recipe.brewhouseId);
-  const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
-  const { water: w, notes } = calcWater(recipe, bh, wort?.extractKg, brewery, wort?.draw);
+  const hot = atKnockOut(recipe, bh, catalog?.entries ?? null, brewery);
+  const wort = catalog ? wortExtract(hot, catalog.entries, bh, brewery) : undefined;
+  const { water: w, notes } = calcWater(hot, bh, wort?.extractKg, brewery, wort?.draw);
   const lauter = wort?.efficiency.lauter;
   if (!w || !bh) {
     return (
@@ -100,7 +101,7 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
 
         <DilutionSection w={w} value={settings.dilution} onChange={(dilution) => set({ dilution })} />
         <WaterBar w={w} />
-        <Calculation w={w} boilMin={recipe.boil.durationMin} />
+        <Calculation w={w} boilMin={recipe.boil.durationMin} cold={recipe.volumeBasis === 'cold'} />
         <Notes notes={notes} />
         {fit !== undefined && (
           <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -218,12 +219,13 @@ export function Row({ op = '', label, l, from, strong }: {
 
 const lossRows = (losses: Loss[]) => losses.map((x) => <Row key={x.label} op="+" label={x.label} l={x.l} from="Sudhaus" />);
 
-function Calculation({ w, boilMin }: { w: Water; boilMin: number }) {
+// `cold`: the knock-out follows from the recipe's Anstellwürze (Gärung tab).
+function Calculation({ w, boilMin, cold }: { w: Water; boilMin: number; cold: boolean }) {
   return (
     <details class="mt-4">
       <summary class="cursor-pointer text-sm">Berechnung</summary>
       <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-0.5 text-sm">
-        <Row label="Ausschlag" l={w.knockOutL} from="Rezept" />
+        <Row label={cold ? 'Ausschlag (aus der Anstellwürze)' : 'Ausschlag'} l={w.knockOutL} from={cold ? undefined : 'Rezept'} />
         <Row op="+" label={`Verdampfung (${num(w.evaporationLPerH)} l/h × ${boilMin} min)`} l={w.evaporationL} from={w.evaporationFrom} />
         <Row op="=" label="Pfannevoll" l={w.preBoilL} strong />
         {w.wortLosses.length > 0 ? lossRows(w.wortLosses) : <Row op="+" label="Würzeverluste (kein Transfer)" l={0} from="Sudhaus" />}

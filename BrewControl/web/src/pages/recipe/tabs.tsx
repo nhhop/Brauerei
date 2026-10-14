@@ -1,15 +1,17 @@
 import { useState } from 'preact/hooks';
 import { DEFAULT_CONVERSION, type Brewery, type Brewhouse } from '../../brewhouse';
 import { BASIS_LABEL, basisOf, efficiencyInput, lauterText, type Efficiency, type EfficiencyBasis } from '../../efficiency';
+import type { CatalogIngredient } from '../../ingredientCatalog';
 import { useCatalog } from '../../ingredientSource';
-import { calcStats, wortExtract } from '../../recipeStats';
+import { atKnockOut, calcStats, pitchedL, wortExtract } from '../../recipeStats';
 import { calcTreatment } from '../../recipeTreatment';
 import { calcMash, fmtClock } from '../../mashPlan';
-import { calcWater } from '../../recipeWater';
+import { calcWater, fmtL } from '../../recipeWater';
 import {
   KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, replaceDecoctions, type Ingredient, type Recipe,
   type RecipeSummary, type Scope,
 } from '../../recipes';
+import { Segmented } from '../../components/Segmented';
 import { badgeAccent, inp } from '../../ui';
 import { Card, Field, NumInput, Override } from './fields';
 import { IngredientCard } from './IngredientCard';
@@ -66,9 +68,11 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
   const [comparing, setComparing] = useState(false);
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
-  const stats = catalog ? calcStats(recipe, catalog.entries, bh, brewery) : null;
-  const wort = catalog ? wortExtract(recipe, catalog.entries, bh, brewery) : undefined;
-  const water = calcWater(recipe, bh, wort?.extractKg, brewery, wort?.draw).water;
+  const entries = catalog?.entries ?? null;
+  const hot = atKnockOut(recipe, bh, entries, brewery);
+  const stats = catalog ? calcStats(hot, catalog.entries, bh, brewery) : null;
+  const wort = catalog ? wortExtract(hot, catalog.entries, bh, brewery) : undefined;
+  const water = calcWater(hot, bh, wort?.extractKg, brewery, wort?.draw).water;
   const mash = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
   // Picking a brewhouse without a decoction vessel leaves the plan's decoctions
   // to be counted as rests; offer to turn them into rests for good.
@@ -90,9 +94,7 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
                 onInput={(e) => onChange({ style: e.currentTarget.value })} />
             )}
           </Field>
-          <Field label="Ausschlagmenge (l)">
-            <NumInput value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
-          </Field>
+          <VolumeField recipe={recipe} onChange={onChange} bh={bh} entries={entries} brewery={brewery} knockOutL={hot.volumeL} />
           <EfficiencyField recipe={recipe} onChange={onChange} bh={bh} brewery={brewery} />
           <Field label="Sudhaus">
             <BrewhouseSelect recipe={recipe} onChange={onChange} brewhouses={brewhouses} />
@@ -157,6 +159,33 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
         </ul>
       </Card>
     </>
+  );
+}
+
+// The recipe's volume: the knock-out (hot) or the Anstellwürze (cold, the
+// knock-out is counted back). Switching converts the volume, the beer stays.
+function VolumeField({ recipe, onChange, bh, entries, brewery, knockOutL }: Pick<TabProps, 'recipe' | 'onChange' | 'brewery'> & {
+  bh?: Brewhouse; entries: CatalogIngredient[] | null; knockOutL: number;
+}) {
+  const cold = recipe.volumeBasis === 'cold';
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const pitch = cold ? pitchedL(recipe, bh, entries, brewery) : undefined;
+  const setBasis = (b: 'hot' | 'cold') => {
+    if (b === 'cold' && !cold) onChange({ volumeBasis: 'cold', volumeL: round1(pitchedL(recipe, bh, entries, brewery)) });
+    if (b === 'hot' && cold) onChange({ volumeBasis: undefined, volumeL: round1(knockOutL) });
+  };
+  return (
+    <Field label={cold ? 'Anstellwürze (l)' : 'Ausschlagmenge (l)'}>
+      <div class="flex flex-wrap items-center gap-2">
+        <NumInput value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
+        <Segmented value={cold ? 'cold' : 'hot'} onChange={setBasis}
+          options={[{ value: 'hot', label: 'heiß' }, { value: 'cold', label: 'kalt' }]} />
+      </div>
+      {cold && <p class="mt-1 text-xs text-muted">Ausschlag {fmtL(knockOutL)}, aus der Anstellwürze zurückgerechnet</p>}
+      {pitch !== undefined && Math.abs(pitch - recipe.volumeL) > 0.05 && (
+        <p class="mt-1 text-xs text-caution">Diese Anstellwürze ist nicht erreichbar, gerechnet wird mit {fmtL(pitch)}.</p>
+      )}
+    </Field>
   );
 }
 

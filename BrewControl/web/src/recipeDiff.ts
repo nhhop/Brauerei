@@ -9,7 +9,7 @@ import { BASIS_LABEL, basisOf, efficiencyInput } from './efficiency';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { DEFAULT_MASH_PH } from './mashPh';
 import { calcMash, fmtClock } from './mashPlan';
-import { calcStats, wortExtract, type RecipeStats } from './recipeStats';
+import { atKnockOut, calcStats, wortExtract, type RecipeStats } from './recipeStats';
 import { COLUMN_LABEL, waterById } from './recipeTreatment';
 import { calcWater, type Water } from './recipeWater';
 import {
@@ -33,9 +33,10 @@ export function deriveRecipe(
   r: Recipe, catalog: CatalogIngredient[] | null, brewhouses: Brewhouse[] | null, brewery: Brewery | null,
 ): Derived {
   const bh = brewhouses?.find((b) => b.id === r.brewhouseId);
-  const stats = catalog ? calcStats(r, catalog, bh, brewery) : null;
-  const wort = catalog ? wortExtract(r, catalog, bh, brewery) : undefined;
-  const water = calcWater(r, bh, wort?.extractKg, brewery, wort?.draw).water;
+  const hot = atKnockOut(r, bh, catalog, brewery);
+  const stats = catalog ? calcStats(hot, catalog, bh, brewery) : null;
+  const wort = catalog ? wortExtract(hot, catalog, bh, brewery) : undefined;
+  const water = calcWater(hot, bh, wort?.extractKg, brewery, wort?.draw).water;
   const mash = bh && water ? calcMash(r, bh, brewery, water) : undefined;
   return { stats, water, mashMin: mash?.totalMin };
 }
@@ -144,11 +145,14 @@ function recipeGroups(a: Recipe, b: Recipe, da: Derived, db: Derived, { brewhous
   const sa = da.stats, sb = db.stats;
   const ea = sa?.efficiency, eb = sb?.efficiency;
   const pct = (title: string, x?: number, y?: number) => computed(title, numLine(x, y, '%', 0, undefined, true));
+  const volumeTitle = (r: Recipe) => (r.volumeBasis === 'cold' ? 'Anstellwürze' : 'Ausschlagmenge');
+  const volumeBasis = (r: Recipe) => (r.volumeBasis === 'cold' ? 'Anstellwürze (kalt)' : 'Ausschlag (heiß)');
   return [
     { rows: [
       field('Name', textLine(a.name, b.name)),
       field('Stil', textLine(a.style, b.style)),
-      field('Ausschlagmenge', numLine(a.volumeL, b.volumeL, 'l', 1)),
+      field(volumeTitle(a) === volumeTitle(b) ? volumeTitle(b) : 'Menge', numLine(a.volumeL, b.volumeL, 'l', 1)),
+      field('Mengenbezug', textLine(volumeBasis(a), volumeBasis(b))),
       field(`${BASIS_LABEL[basis]} (Eingabe)`,
         numLine(efficiencyInput(a, bhOf(a), basis).pct, efficiencyInput(b, bhOf(b), basis).pct, '%', 1)),
       field('Sudhaus', textLine(bhName(a), bhName(b))),

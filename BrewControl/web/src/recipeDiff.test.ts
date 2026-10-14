@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TEMPLATES } from './brewhouse';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { deriveRecipe, diffRecipes, matchRows, type DiffRow, type DiffSection } from './recipeDiff';
+import { pitchedL } from './recipeStats';
 import { addCharge, newRecipe, type Ingredient, type MashStep, type Recipe } from './recipes';
 
 const catalog = [
@@ -103,6 +104,16 @@ describe('diffRecipes', () => {
     expect(og).toMatchObject({ state: 'changed', computed: true });
     expect(og.lines[0].delta).toMatch(/^−\d+,\d °P$/);
     expect(rowOf(s, 'water', 'Pfannevoll').state).toBe('changed');
+  });
+
+  it('shows the volume basis; switching it with the converted volume keeps the beer', () => {
+    const cold: Recipe = { ...base, volumeL: pitchedL(base, bh, catalog, null), volumeBasis: 'cold' };
+    const s = diff(base, cold);
+    expect(rowOf(s, 'recipe', 'Mengenbezug').lines[0]).toMatchObject({ a: 'Ausschlag (heiß)', b: 'Anstellwürze (kalt)', changed: true });
+    expect(rowOf(s, 'recipe', 'Menge').state).toBe('changed');
+    expect(rowOf(s, 'recipe', 'Stammwürze').state).toBe('same');
+    expect(rowOf(s, 'water', 'Hauptguss').state).toBe('same');
+    expect(rowOf(diff(cold, cold), 'recipe', 'Anstellwürze').state).toBe('same');
   });
 
   it('names a brewhouse that is gone and leaves its figures empty', () => {
