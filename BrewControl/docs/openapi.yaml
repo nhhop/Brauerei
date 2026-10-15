@@ -940,6 +940,12 @@ paths:
         AutoTune, they are written back into the controller's config within
         about a second. Other keys (e.g. `deadband`, `hystLow`) fall back to the
         config on a reboot.
+
+        `enabled` is coupled to the master switch of the controller's
+        actuators: `false` first drives the outputs to their safe value (PID
+        `min`, everything else off) and then disables the actuators; `true`
+        enables them again. With the emergency stop latched, `enabled: true`
+        and `autotune: "start"` are therefore refused with 409.
       requestBody:
         required: true
         content:
@@ -954,6 +960,10 @@ paths:
           content:
             text/plain: { schema: { type: string } }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "409":
+          description: "`estop latched` — the body enables the controller (or starts AutoTune) while the emergency stop is latched."
+          content:
+            text/plain: { schema: { type: string } }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
 
   # ── Bus Discovery ──────────────────────────────────────────────────────────

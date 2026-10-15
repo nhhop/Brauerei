@@ -2571,3 +2571,42 @@ Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-2, nur
     und „ohne Gärplatz“; Brautag starten, Gärplatz wechseln, Hinweise, „Angestellt“ und Korrektur der Zeit,
     Messwerte, Index-Zeile, Speise-Soll. Keine Konsolenfehler.
   - Kein Gerät.
+
+## 2026-10-15 — Regler aus/an: sicherer Ausgang, Kopplung an den Aktor-Schalter
+
+Bug aus PLAN.md (2026-10-14, „Ein ausgeschalteter Regler lässt seinen Aktor auf dem letzten Wert stehen“) und ein
+zweiter, vom Nutzer beim Prüfen gemeldeter: Aktor aus, Regler ein → der Aktor bekam die richtige Leistung als Ziel,
+blieb aber aus; die Regler-Karte zeigte 0 %, weil `Actuator::state()` bei ausgeschaltetem Aktor `min` meldet.
+
+- **Root Cause:** `Controller::setEnabled` in SensActCtrl setzte nur ein Flag. PID und Zweipunkt kehren in `tick()`
+  bei `!enabled()` sofort zurück und schreiben nichts mehr; DualStage/SplitRange schrieben erst im nächsten Tick 0.
+  Dashboard (`ControllerCard`) und Display schrieben deshalb nach dem Ausschalten selbst `min`/0 — Programm-„Stop“,
+  Programmschritte `{enabled:false}` und Timer hatten diesen Umweg nicht. Der Regler-Schalter wirkte außerdem nie
+  auf den Hauptschalter des Aktors.
+- **Entscheidung des Nutzers:** Der Regler-Schalter wird in beide Richtungen an den Hauptschalter seiner Aktoren
+  gekoppelt.
+- **Umsetzung:**
+  - `Controller::setEnabled` nach dem Muster von `Actuator`: nur bei echtem Wechsel, ruft den neuen geschützten
+    Hook `applyEnabled(bool)`. PID schreibt beim Ausschalten `minOutput`, Zweipunkt 0 (und vergisst „an“),
+    DualStage/SplitRange `writeOff()`; danach werden die Aktoren aus- bzw. beim Einschalten eingeschaltet.
+    `RateLimitedController` reicht weiter wie bisher.
+  - Firmware: `POST /api/controllers/<id>/params` lehnt bei eingerastetem Not-Aus `enabled:true` und
+    `autotune:"start"` mit 409 `estop latched` ab (sonst gäbe „Regler an“ die Aktoren frei); `openapi.yaml`
+    nachgezogen. Der Schreib-Umweg im Display-Power-Knopf ist raus.
+  - Web: Der Schreib-Umweg in `ControllerCard` ist raus. „Aktor schalten und Regler deaktivieren“ schaltet jetzt
+    erst den Regler aus und dann den Aktor — sonst hätte das Ausschalten des Reglers den Aktor gleich wieder
+    ausgeschaltet.
+  - Neustart: `RuntimeState` stellt erst Regler, dann Aktoren wieder her, der gespeicherte Zustand bleibt also
+    erhalten.
+  - Doku: `SensActCtrl/README.md` (Semantik von `setEnabled` beim Controller), `BrewControl/README.md`
+    (Display-Power-Knopf).
+- **Verifikation:**
+  - SensActCtrl `pio test -e native` 364 grün (neu: je Regler „Ausschalten schreibt den sicheren Wert sofort und
+    schaltet die Aktoren aus“, „Einschalten schaltet sie ein“, wiederholtes Ausschalten schreibt nichts, Kopplung
+    durch `RateLimitedController`; die neuen Tests schlugen vor der Umsetzung fehl).
+  - BrewControl-Firmware `pio test -e native` 187 grün, `pio run -e esp32dev` und
+    `-e lilygo_t_display_s3_amoled` erfolgreich (esp32dev Flash 98,1 %; LilyGo nur mit kurzem , weil der Worktree-Pfad beim Entpacken von WebSockets die Windows-Pfadgrenze sprengt).
+  - Web `pnpm typecheck`, `pnpm test` 596 grün; Redocly-Lint ohne neue Warnung.
+  - Kein Gerät: Prüfung mit Platte steht in PLAN.md › Hardware-Verifikation.
+- **Offen gelassen (PLAN.md):** Reihenfolge Regler/Aktor im selben Programmschritt; großes dt im ersten PID-Schritt
+  nach dem Wiedereinschalten.

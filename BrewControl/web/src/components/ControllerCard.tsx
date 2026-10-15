@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Pencil, X } from 'lucide-preact';
 import type { Actuator, Controller, ProgramConfig, Sensor, WidgetMode } from '../types';
-import { setControllerSetpoint, enableController, writeActuator, controlProgram } from '../api';
+import { setControllerSetpoint, enableController, controlProgram } from '../api';
 import { ToggleSwitch } from './ToggleSwitch';
 import { ConfirmModal } from './ConfirmModal';
 import { AutotuneProgress } from './AutotuneProgress';
@@ -89,15 +89,9 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
   async function doToggle() {
     setToggling(true);
     setErr(null);
-    try {
-      await enableController(id, !enabled);
-      if (enabled) {
-        const min = params?.min ?? 0;
-        if (params?.actuator) await writeActuator(params.actuator, min);
-        if (params?.heatActuator) await writeActuator(params.heatActuator, 0);
-        if (params?.coolActuator) await writeActuator(params.coolActuator, 0);
-      }
-    } catch (e) { setErr(String(e)); }
+    // The firmware switches the actuators along and puts them at rest on off.
+    try { await enableController(id, !enabled); }
+    catch (e) { setErr(String(e)); }
     finally { setToggling(false); }
   }
 

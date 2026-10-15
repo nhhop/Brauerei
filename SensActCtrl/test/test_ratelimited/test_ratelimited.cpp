@@ -212,6 +212,18 @@ void test_id_forwards_to_inner() {
   TEST_ASSERT_EQUAL_STRING(inner.id(), rl.id());
 }
 
+void test_enabled_couples_inner_actuator() {
+  MockSensor s("t", tempMeta());
+  MockActuator a("h", switchMeta());
+  TwoPointController inner("ctrl", s, a);
+  RateLimitedController rl(inner, 0.0f);
+
+  rl.setEnabled(false);
+  TEST_ASSERT_FALSE(a.enabled());
+  rl.setEnabled(true);
+  TEST_ASSERT_TRUE(a.enabled());
+}
+
 void setUp() { rateLimitedSetMillisForTest(0); }
 void tearDown() {}
 
@@ -228,5 +240,6 @@ int main(int, char**) {
   RUN_TEST(test_set_params_json_updates_rate_and_forwards_to_inner);
   RUN_TEST(test_wraps_pid_smoke);
   RUN_TEST(test_id_forwards_to_inner);
+  RUN_TEST(test_enabled_couples_inner_actuator);
   return UNITY_END();
 }

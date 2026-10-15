@@ -31,6 +31,14 @@ void TwoPointController::tick() {
   actuator_->write(currentlyOn_ ? 1.0f : 0.0f);
 }
 
+void TwoPointController::applyEnabled(bool e) {
+  if (!e) {
+    currentlyOn_ = false;
+    actuator_->write(0.0f);
+  }
+  actuator_->setEnabled(e);
+}
+
 // Tiny hand-rolled JSON parser: only handles flat {"k":num,...} input.
 // Keeps the controller free of an ArduinoJson dependency for trivial blobs.
 static bool extractFloat(const char* json, const char* key, float* out) {

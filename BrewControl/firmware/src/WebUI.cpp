@@ -869,6 +869,13 @@ void WebUI::begin(bool serve) {
           if (isnan(v)) { req->send(400, "text/plain", "missing v"); return; }
           c->setSetpoint(v);
         } else {
+          // Enabling a controller enables its actuators too (Controller.h),
+          // so a latched stop must refuse it rather than let it through.
+          if (estop_ && ((doc["enabled"] | false) ||
+                         strcmp(doc["autotune"] | "", "start") == 0)) {
+            req->send(409, "text/plain", "estop latched");
+            return;
+          }
           String raw;
           serializeJson(doc, raw);
           if (!c->setParamsJson(raw.c_str())) {

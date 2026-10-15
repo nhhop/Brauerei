@@ -108,6 +108,11 @@ void PIDController::tick() {
   lastTickMs_ = now;
 }
 
+void PIDController::applyEnabled(bool e) {
+  if (!e) actuator_->write(minOutput_);
+  actuator_->setEnabled(e);
+}
+
 void PIDController::syncFromBackend() {
   engine_->readGains(&kp_, &ki_, &kd_, &ku_, &tu_);
 }
