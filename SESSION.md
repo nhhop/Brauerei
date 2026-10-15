@@ -2607,6 +2607,18 @@ blieb aber aus; die Regler-Karte zeigte 0 %, weil `Actuator::state()` bei ausges
   - BrewControl-Firmware `pio test -e native` 187 grün, `pio run -e esp32dev` und
     `-e lilygo_t_display_s3_amoled` erfolgreich (esp32dev Flash 98,1 %; LilyGo nur mit kurzem `PLATFORMIO_WORKSPACE_DIR`, weil der Worktree-Pfad beim Entpacken von WebSockets die Windows-Pfadgrenze sprengt).
   - Web `pnpm typecheck`, `pnpm test` 596 grün; Redocly-Lint ohne neue Warnung.
-  - Kein Gerät: Prüfung mit Platte steht in PLAN.md › Hardware-Verifikation.
+  - **Am LilyGo** (Firmware `v0.5.0-123-gee9741d-dirty` per OTA, UI mit Stilvergleich): Die Platte war nicht
+    angeschlossen; ihre Anbindung ist laut Nutzer schon geprüft. Statt `IDS1` diente deshalb `agitator` (Relais mit
+    LED) unter einem vorübergehenden Zweipunktregler `testregler` (`HLT` → `agitator`, 25 °C).
+    - Per API: `IDS1` aus → `Maischen` an schaltet `IDS1` ein, aus schaltet ihn wieder aus (Ziel 0). Bei
+      eingerastetem Not-Aus lehnt die Firmware `enabled:true` und `autotune:"start"` mit 409 ab, `enabled:false`
+      geht durch.
+    - Programm mit den Schritten „Regeln“ (15 s) und „Regler aus“: Zu Beginn von „Regler aus“ geht `agitator` im
+      selben Moment auf 0 und aus. „Stop“ während „Regeln“ schaltet ebenso aus, der Start schaltet ihn wieder ein.
+    - Vom Nutzer geprüft: Regler-Schalter im Dashboard (aus: LED aus, Aktor-Schalter aus; an: LED an, Schalter in
+      Mittelstellung mit Hintergrund, Regler-Karte 100 %), Power-Knopf am Display, „Aktor schalten“ und „Aktor
+      schalten und Regler deaktivieren“ (Regler aus, Aktor an mit 0). Danach hat der Nutzer noch mit einem
+      binären Schalter getestet, auch das funktionierte.
+    - Testregler und Testprogramm gelöscht; den übrigen Gerätezustand hat der Nutzer selbst eingestellt.
 - **Offen gelassen (PLAN.md):** Reihenfolge Regler/Aktor im selben Programmschritt; großes dt im ersten PID-Schritt
   nach dem Wiedereinschalten.
