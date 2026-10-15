@@ -9,7 +9,7 @@ import { ConfirmModal } from '../../components/ConfirmModal';
 import { ProgramCard } from '../../components/ProgramCard';
 import type { Patch } from './PrepTab';
 
-const isActive = (p: ProgramConfig) => p.status === 'running' || p.status === 'awaiting' || p.status === 'paused';
+export const isActive = (p: ProgramConfig) => p.status === 'running' || p.status === 'awaiting' || p.status === 'paused';
 
 // Takes a brew's program off the device. One still running is stopped first,
 // which switches off what it drives; a finished one is only deleted.
@@ -25,7 +25,7 @@ export async function dropProgram(id: string) {
 // before a program that heats at once is started; `watch` sees every poll.
 export function BrewTimer({ brew, field, build, startLabel, intro, summary, confirmStart, canStart = true, watch, snap, editable, patch }: {
   brew: Brew;
-  field: 'mashProgramId' | 'boilProgramId';
+  field: 'mashProgramId' | 'boilProgramId' | 'fermentProgramId';
   build: () => { name: string; steps: ProgramStep[] };
   startLabel: string;
   intro: string;

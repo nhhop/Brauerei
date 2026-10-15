@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "ProgramEvents.h"
+#include "ProgramRamp.h"
 #include "SdLock.h"
 
 namespace BrewControl {
@@ -228,20 +229,56 @@ void ProgramRunner::applyCmd_(SensActCtrl::Registry& reg, const TargetCmd& c,
   a->write(c.v);
 }
 
-void ProgramRunner::applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
-                                      bool withImpulse) {
-  if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) return;
-  for (const TargetCmd& c : p.steps[p.currentStep].targets)
-    applyCmd_(reg, c, withImpulse);
+uint32_t ProgramRunner::elapsed_(const Program& p, time_t now) {
+  if (p.status == Status::Paused) return p.elapsedAtPauseSec;
+  if (p.status != Status::Running) return UINT32_MAX;
+  const long e = (long)(now - p.stepStartedEpoch);
+  return e < 0 ? 0 : (uint32_t)e;
 }
 
-void ProgramRunner::applyState_(Program& p, SensActCtrl::Registry& reg) {
+TargetCmd ProgramRunner::ramped_(const Program& p, SensActCtrl::Registry& reg,
+                                 const TargetCmd& c, time_t now) {
+  if (!c.hasV || p.currentStep < 0 || p.currentStep >= (int)p.steps.size() ||
+      p.steps[p.currentStep].rampSec == 0 || !reg.findController(c.id.c_str()))
+    return c;
+  TargetCmd r = c;
+  r.v = rampedV(p.steps, p.currentStep, c, elapsed_(p, now));
+  return r;
+}
+
+void ProgramRunner::applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
+                                      bool withImpulse, time_t now) {
+  if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) return;
+  p.rampDone = false;
+  for (const TargetCmd& c : p.steps[p.currentStep].targets)
+    applyCmd_(reg, ramped_(p, reg, c, now), withImpulse);
+}
+
+void ProgramRunner::applyState_(Program& p, SensActCtrl::Registry& reg, time_t now) {
   auto impulse = [&reg](const std::string& id) {
     SensActCtrl::Actuator* a = reg.findActuator(id.c_str());
     return a && isImpulse(*a);
   };
+  p.rampDone = false;
   for (const TargetCmd& c : effectiveTargets(p.steps, p.currentStep, impulse))
-    applyCmd_(reg, c, /*withImpulse=*/false);
+    applyCmd_(reg, ramped_(p, reg, c, now), /*withImpulse=*/false);
+}
+
+void ProgramRunner::tickRamp_(Program& p, SensActCtrl::Registry& reg, time_t now,
+                              bool finish) {
+  if (p.rampDone || p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) return;
+  const ProgramStep& cur = p.steps[p.currentStep];
+  if (cur.rampSec == 0) { p.rampDone = true; return; }
+  if (!finish && now == p.rampTickEpoch) return;
+  p.rampTickEpoch = now;
+  const uint32_t e = finish ? UINT32_MAX : elapsed_(p, now);
+  for (const TargetCmd& c : cur.targets) {
+    SensActCtrl::Controller* ctl = reg.findController(c.id.c_str());
+    if (!ctl || !c.hasV) continue;
+    const float v = rampedV(p.steps, p.currentStep, c, e);
+    if (rampShouldWrite(ctl->setpoint(), v, c.v)) ctl->setSetpoint(v);
+  }
+  if (e >= cur.rampSec) p.rampDone = true;
 }
 
 void ProgramRunner::enterStep_(Program& p, SensActCtrl::Registry& reg, int idx,
@@ -256,11 +293,14 @@ void ProgramRunner::enterStep_(Program& p, SensActCtrl::Registry& reg, int idx,
     onStatusChanged_(p.id.c_str(), p.name.c_str(), "notify", step.name.c_str());
   const bool firstEntry = idx > p.reachedStep;
   if (firstEntry) p.reachedStep = idx;
-  applyStepTargets_(p, reg, /*withImpulse=*/firstEntry);
+  applyStepTargets_(p, reg, /*withImpulse=*/firstEntry, now);
 }
 
 void ProgramRunner::advance_(Program& p, SensActCtrl::Registry& reg,
                              time_t nowEpoch) {
+  // A step left early ("next") leaves its ramp on the target, as a replay
+  // after a reboot would.
+  tickRamp_(p, reg, nowEpoch, /*finish=*/true);
   p.condActive = false;
   if (p.currentStep + 1 >= (int)p.steps.size()) {
     setStatus_(p, Status::Done);  // everything the program set stays applied
@@ -304,8 +344,9 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
       if (elapsed < 0) elapsed = 0;
       p->elapsedAtPauseSec = (uint32_t)elapsed;
     } else if (st == Status::Awaiting) {
+      // The step is over, its ramp too: resuming must not restart it.
       const ProgramStep& cur = p->steps[p->currentStep];
-      p->elapsedAtPauseSec = cur.holdSec;
+      p->elapsedAtPauseSec = cur.holdSec > cur.rampSec ? cur.holdSec : cur.rampSec;
     } else {
       return {false, "invalid action for state"};
     }
@@ -318,7 +359,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     p->condActive = false;
     p->stepStartedEpoch = now - (time_t)p->elapsedAtPauseSec;
     setStatus_(*p, Status::Running);
-    applyStepTargets_(*p, reg, /*withImpulse=*/false);
+    applyStepTargets_(*p, reg, /*withImpulse=*/false, now);
     return {true};
   }
 
@@ -354,7 +395,7 @@ ProgramRunner::Result ProgramRunner::control(const char* id, const char* action,
     p->elapsedAtPauseSec = 0;
     // Replaying only the earlier step would leave whatever the later one
     // changed; rebuild the state up to here instead. Never re-fires pulses.
-    applyState_(*p, reg);
+    applyState_(*p, reg, now);
     return {true};
   }
 
@@ -416,7 +457,7 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
     for (auto& p : programs_) {
       if (p.status == Status::Running || p.status == Status::Awaiting ||
           p.status == Status::Paused) {
-        applyState_(p, reg);
+        applyState_(p, reg, nowEpoch);
       }
     }
   }
@@ -427,6 +468,7 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
     if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) continue;
 
     const ProgramStep& cur = p.steps[p.currentStep];
+    tickRamp_(p, reg, nowEpoch, /*finish=*/false);
     bool fired;
     if (cur.end == StepEnd::Sensor) {
       // evalCondition returns false (and leaves the latch untouched) while the
@@ -442,6 +484,7 @@ void ProgramRunner::tick(SensActCtrl::Registry& reg, fs::FS& sd,
     if (!targetsResolvable_(p, reg)) continue;
 
     if (cur.confirm) {
+      tickRamp_(p, reg, nowEpoch, /*finish=*/true);
       setStatus_(p, Status::Awaiting);  // wait for manual "next"
     } else {
       advance_(p, reg, nowEpoch);

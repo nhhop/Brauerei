@@ -20,7 +20,9 @@ namespace BrewControl {
 // { name?, targets, holdSec, confirm, end, cond } (see ProgramSteps.h). Each
 // step's targets map names only the controllers/actuators it touches and, per
 // id, only the fields it sets ({v?, enabled?, interval?}); everything else is
-// left as it is. No ramping: values jump when the step begins. A step ends
+// left as it is. Values jump when the step begins, except a controller's v in
+// a step with rampSec: it runs linearly from the program's previous value for
+// that controller (ProgramRamp.h), frozen while paused. A step ends
 // either when its hold timer elapses (end "hold", default) or when a threshold
 // on a sensor ref is met (end "sensor"); an orthogonal `confirm` flag makes it
 // wait for a manual "next" once that trigger fires instead of advancing.
@@ -128,6 +130,10 @@ class ProgramRunner {
     // condition, mirrors AlarmStore::Rule::active. Reset on every step
     // transition so a re-entered step re-evaluates from scratch.
     bool     condActive        = false;
+    // Runtime, not persisted: the current step's ramp has reached its targets
+    // (or there is none), and the wall-clock second tick() last moved it.
+    bool     rampDone          = false;
+    time_t   rampTickEpoch     = 0;
   };
 
   std::vector<Program> programs_;
@@ -155,12 +161,26 @@ class ProgramRunner {
   static void applyCmd_(SensActCtrl::Registry& reg, const TargetCmd& c,
                         bool withImpulse);
 
-  // Apply the current step's own commands.
-  static void applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
-                                bool withImpulse);
+  // Seconds the current step has run, for its ramp: frozen while paused, the
+  // whole ramp once the step waits for "next" (or the program is not running).
+  static uint32_t elapsed_(const Program& p, time_t now);
 
-  // Replay the state built up by steps 0..currentStep, pulses excluded.
-  static void applyState_(Program& p, SensActCtrl::Registry& reg);
+  // c with a controller's v replaced by where the current step's ramp stands.
+  static TargetCmd ramped_(const Program& p, SensActCtrl::Registry& reg,
+                           const TargetCmd& c, time_t now);
+
+  // Apply the current step's own commands, ramps at their current value.
+  static void applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
+                                bool withImpulse, time_t now);
+
+  // Replay the state built up by steps 0..currentStep, pulses excluded, ramps
+  // at their current value.
+  static void applyState_(Program& p, SensActCtrl::Registry& reg, time_t now);
+
+  // Move the current step's ramped setpoints on (at most once a second), or
+  // put them on their targets with finish (the step is over).
+  static void tickRamp_(Program& p, SensActCtrl::Registry& reg, time_t now,
+                        bool finish);
 
   // Enter step idx forward: restart the timer, set Running, apply the step's
   // commands — its pulses too if idx is past reachedStep.

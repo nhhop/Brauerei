@@ -1,19 +1,27 @@
+import type { ComponentChildren } from 'preact';
 import { setAddedAt, type Brew } from '../../brews';
 import type { Ingredient, Recipe } from '../../recipes';
 import { AmountInput, num, rowAmountChange } from './amounts';
 import type { Patch } from './PrepTab';
 
-const clock = (at: number) => new Date(at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+// The time, with the date when it was not today (a dry hop days later).
+const clock = (at: number) => {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? time
+    : `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} ${time}`;
+};
 
 // One addition to tick off with the time it went in (addedAt) and the amount
-// used. A row shown in two tabs (dip hops) shares both.
-export function AdditionRow({ brew, recipe, row, amount, unit, when, editable, patch }: {
+// used. A row shown in two tabs (dip hops) shares both. `extra` closes the row.
+export function AdditionRow({ brew, recipe, row, amount, unit, when, extra, editable, patch }: {
   brew: Brew;
   recipe: Recipe;
   row: Ingredient;
   amount: number;   // the recipe's, or as used
   unit: string;
   when?: string;
+  extra?: ComponentChildren;
   editable: boolean;
   patch: Patch;
 }) {
@@ -38,6 +46,7 @@ export function AdditionRow({ brew, recipe, row, amount, unit, when, editable, p
       <AmountInput value={brew.rowAmounts?.[row.id]} placeholder={num(amount)} unit={unit} disabled={!editable}
         label={`${name} Ist`} onSave={(n) => patch(rowAmountChange(recipe, row.id, row.stockLotId, n))} />
       <span class="w-28 text-xs text-muted">{at !== undefined && `zugegeben ${clock(at)}`}</span>
+      {extra}
     </div>
   );
 }

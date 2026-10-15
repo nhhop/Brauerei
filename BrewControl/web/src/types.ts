@@ -287,6 +287,9 @@ export interface ProgramStep {
   // out keeps its value. Always present, {} for a step that changes nothing.
   targets: Record<string, StepTarget>;
   holdSec: number;
+  // Controller setpoints of this step run linearly over rampSec from the
+  // program's previous value for that controller (absent = they jump).
+  rampSec?: number;
   // Step-end trigger. Absent = 'hold' (ends when holdSec elapses). 'sensor'
   // ends the step once `cond` is met (holdSec ignored).
   end?: 'hold' | 'sensor';

@@ -1,13 +1,14 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-14. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-15. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
 der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und der Brautag: die Vorbereitung (5b-1), das
 Maischen (5b-2), das Würzekochen (5b-3) und der Maischverlauf mit den Geräten des Sudhauses (5b-4), das
-Maischprogramm (5b-5), der Gärung-Tab des Rezepts (5c-1, 5c-1b) und der Belegungsplan mit dem Anstellen
-(5c-2); es folgen Gärprogramm, Messreihen, Reifung und Abfüllung (5c-3 bis 5c-5). Das UI ist
+Maischprogramm (5b-5), der Gärung-Tab des Rezepts (5c-1, 5c-1b), der Belegungsplan mit dem Anstellen
+(5c-2) und das Gärprogramm mit den Stopfgaben (5c-3); es folgen Messreihen, Reifung und Abfüllung (5c-4,
+5c-5). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -1348,6 +1349,46 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   „Angestellt“ und Korrektur der Zeit (Belegung wandert), Messwerte mit Gesamteffizienz und Index-Zeile,
   Speise-Soll im Würzekochen. Kein Gerät nötig, nur Web.
 
+**Stand 5c-3 (2026-10-15, Firmware `ProgramRamp.h`, `ProgramRunner.cpp`; Web `brewPrograms.ts`,
+`pages/brew/FermentTab.tsx`, `MaturationTab.tsx`, `DryHopList.tsx`):** Gärführung als Programm, Rampe, Stopfgaben.
+- **Firmware: Schrittfeld `rampSec`.** Ein Regler-Sollwert läuft darüber linear vom Wert, den das Programm dem
+  Regler in einem früheren Schritt gesetzt hat; ohne früheren Wert springt er. Aktorwerte rampen nicht.
+  - Die Rampe hängt nur an den Schritten und der vergangenen Zeit des Schritts: Neustart und Aufwachen aus dem
+    Deep Sleep setzen beim Wert zur Uhrzeit fort, eine Pause friert sie ein, „Fortsetzen“ läuft ohne Sprung
+    weiter. Geschrieben wird höchstens einmal je Sekunde und erst ab 0,05 K Änderung, am Ende genau das Ziel.
+  - Endet ein Schritt früher („Weiter“) oder wartet er auf Freigabe, steht der Sollwert auf dem Ziel, wie ihn
+    auch ein Neustart herstellen würde. Eine Rampe weckt nicht eigens aus dem Deep Sleep.
+  - Programm-Editor: Feld „Rampe“ (min/h/d) je Schritt, die Programmkarte zeigt sie mit ↗.
+- **Generator** `fermentationProgram` mit `fermentControlOf` (Regler des Gärplatzes, wenn er temperiert, nicht
+  von Hand und in der Registry ist) und `dryHops`:
+  - **Der erste Schritt ist das Anstellen** (Entscheidung 2026-10-14): „Anstellen bei 12 °C – Weiter, wenn die
+    Hefe drin ist“ wartet auf Freigabe; mit Regler kühlt er schon auf die erste Phase. Ab „Weiter“ laufen die
+    Phasen, Tag d des Rezepts = d × 24 h danach. So entfällt jedes Aufholen auf eine ältere Anstellzeit.
+  - Je Phase ein Schritt mit Sollwert, `enabled: true` und `rampSec` aus `rampDays`. Eine Rampe der ersten Phase
+    entfällt (sie beginnt bei ihrer eigenen Temperatur). Phasen ohne Dauer fehlen.
+  - Stopf-Zugabe (`dryHopDay`) und Entnahme (`dryHopDay + dryHopDays`) teilen die Phase; der Schritt meldet sich
+    („Stopfen: 50 g Citra“, „Hopfen entnehmen: Citra“), was zugleich fällig ist, steht in einem Schritt, auch mit
+    dem Phasenbeginn. Fällt die Teilung in eine Rampe, bekommt der Teil davor den Zwischenwert. Gaben ohne Tag
+    sind nicht im Programm; eine Entnahme nach dem Ende kommt als letzter Schritt.
+  - Druck nur mit „Unter Druck vergären“: Der Phasenbeginn meldet „Spundapparat auf 1,0 bar“.
+  - Ende mit Regler: „Gärführung beendet – Weiter: Regler aus“, dann „Regler aus“. Ohne Regler meldet jeder
+    Phasenbeginn ab der zweiten „Reifung: auf 2 °C stellen“ bzw. „in 2 Tagen auf 18 °C“, ohne Endschritt.
+- **Tab Gärung:** Karte „Gärprogramm“ (`fermentProgramId`), mit Rückfrage, weil der Regler sofort angeht.
+  - „Angestellt“ ist, solange das Programm im ersten Schritt wartet, dessen „Weiter“. Die Anstellzeit kommt dann
+    vom Programm (`pitchedAtOf`: Programmuhr, Pausen eingerechnet), einmal je Programm wie „Eingemaischt“; eine
+    geleerte Zeit bleibt leer. Die Belegung wandert wie bei „Angestellt“.
+  - Die aktuelle Phase kommt vom laufenden Programm (`phaseOf`), sonst aus der Anstellzeit.
+  - Die Gärplatz-Wahl ist gesperrt, solange das Programm läuft (aktiv, wartend, pausiert).
+  - „Timer abbrechen“, „Abschließen“ und „Löschen“ nehmen das Programm mit (`dropProgram`).
+- **Stopfgaben** (Entscheidung 2026-10-14: nach Zeitpunkt): „Hauptgärung“ im Tab Gärung, „Reifung“ im neuen Tab
+  Reifung. Je Gabe Haken mit Zeit (`addedAt`, mit Datum, wenn nicht von heute), Ist-Menge mit Nachbuchen, geplanter
+  Tag mit Datum ab Anstellen und Haken „entnommen“ (`checked`: `removed:<row id>`, kein neues Feld).
+- **Im Mock geprüft** (390 px, kein Querscrollen): Start mit Rückfrage, Schritte und Rampen wie erwartet,
+  „Angestellt“ schaltet das Programm weiter und übernimmt dessen Zeit, Gärplatz gesperrt, aktuelle Phase vom
+  Programm, Stopfgaben in beiden Tabs, Feld „Rampe“ im Editor.
+- **Am LilyGo geprüft** (2026-10-15): Rampe mit Neustart, Pause und „Weiter“ mitten darin; das echte Gärprogramm
+  mit kurzen Phasen von „Angestellt“ bis „Regler aus“, alle Pushes angekommen (SESSION.md).
+
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.
 - **Messwerte** stehen überall als Zeile Messwert | Soll laut Rezept | Ist | Abweichung. Die Abweichung ist
@@ -1793,14 +1834,16 @@ Nur Web.
   - **Voraussetzung:** Ein ausgeschalteter Regler lässt heute seinen Aktor auf dem letzten Wert stehen
     (PLAN.md › Bugs, 2026-10-14). Am Gärplatz liefe die Kühlung nach „Regler aus“ oder „Stop“ weiter. Den
     Fehler vor 5c-3 beheben oder im Plan von 5c-3 entscheiden, wie das Programm den Aktor mit ausschaltet.
+    → Entschieden 2026-10-14: eigener PR vorher (PR #107, Regler schreibt beim Aus den sicheren Wert).
   - **Ohne Regler** (Gärplatz von Hand oder ohne Temperierung) ist es ein Timer von Hand wie der
     Rasten-Timer: Jeder Phasenbeginn meldet „Auf 12 °C stellen“, mit Rampe „in 2 Tagen auf 18 °C“.
 - **Tab Gärung:** Programm-Karte über `BrewTimer` (neues Feld `fermentProgramId`), mit Rückfrage vor dem
-  Start, weil der Regler sofort angeht. Der Start setzt die Anstellzeit, falls sie fehlt. Die aktuelle Phase
+  Start, weil der Regler sofort angeht. Der Start setzt die Anstellzeit, falls sie fehlt (→ geändert
+  2026-10-14: Der erste Schritt ist das Anstellen, die Zeit kommt von dessen „Weiter“). Die aktuelle Phase
   kommt aus dem Programm. „Timer abbrechen“, „Abschließen“ und „Löschen“ gehen über `dropProgram`.
   - Die Gärplatz-Wahl im Tab sperrt, solange `fermentProgramId` läuft (aus 5c-2 hierher verschoben).
 - **Tab Reifung:** Stopfgaben zum Abhaken mit Uhrzeit (`addedAt`) und Ist-Menge (`rebook`), ein Haken
-  „entnommen“, Notizen.
+  „entnommen“, Notizen. (→ 2026-10-14: die Stopfgaben der Hauptgärung stehen im Tab Gärung.)
 
 ##### 5c-4 Messreihen von Hand und Gärverlauf
 - **Route** `GET/PUT /api/brews/{id}/readings` → `/brewreadings/<id>.json`:
@@ -1864,4 +1907,3 @@ Nur Web.
   unverifiziert. Die Definitionen der Effizienzen stehen seit 3b fest (Rezept › Effizienz); der Rechner
   rechnet seine Sudhausausbeute noch auf das Potenzial statt auf das Gewicht. Dazu kommen Morey (Farbe),
   Tinseth (IBU), die pH-Schätzung und der Rest-CO₂.
-- **Gärführung als Programm** an den Gärplatz-Regler übertragen: geplant als 5c-3 (Plan 5c).
