@@ -529,7 +529,7 @@ Akzentfarben, baut das Display ohne Neustart neu auf.
 
 | Seite | Anzeige | Bedienung |
 |---|---|---|
-| Regler | Ring = Istwert (Akzentfarbe), weißer Griff = Sollwert, „Ausgang n %“ (Sekundärfarbe) | Griff ziehen; Tippzonen direkt vor/hinter dem Griff = −/+ ein Schritt; Power-Knopf |
+| Regler | Ring = Istwert (Akzentfarbe), weißer Griff = Sollwert, „Ausgang n %“ (Sekundärfarbe) | Griff ziehen; Tippzonen direkt vor/hinter dem Griff = −/+ ein Schritt; Power-Knopf (schaltet die Aktoren des Reglers mit, beim Ausschalten auf den sicheren Wert) |
 | Stetiger Aktor | Ring = Zustand, Griff = Vorgabe, ggf. Intervall | Griff, Tippzonen, Power-Knopf |
 | Binärer Aktor | großer Knopf AN/AUS | Knopf = Master-Schalter, wie in der Web-UI |
 | Sensor | Wert + Einheit, bei Mehrkanal-Sensoren alle Kanäle | — |

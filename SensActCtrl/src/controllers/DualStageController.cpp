@@ -38,6 +38,12 @@ void DualStageController::writeOff() {
   if (cool_) cool_->write(0.0f);
 }
 
+void DualStageController::applyEnabled(bool e) {
+  if (!e) writeOff();
+  if (heat_) heat_->setEnabled(e);
+  if (cool_) cool_->setEnabled(e);
+}
+
 void DualStageController::tick() {
   if (!enabled()) { writeOff(); return; }
 

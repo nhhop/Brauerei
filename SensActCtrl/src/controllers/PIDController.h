@@ -64,6 +64,9 @@ class PIDController : public Controller {
   size_t paramsJson(char* buf, size_t bufSize) const override;
   bool setParamsJson(const char* json) override;
 
+ protected:
+  void applyEnabled(bool e) override;
+
  private:
   // Pull Kp/Ki/Kd/Ku/Tu out of the backend (e.g. after autotune) into our
   // mirrored state so paramsJson reports current values.

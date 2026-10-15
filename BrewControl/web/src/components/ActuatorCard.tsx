@@ -52,9 +52,11 @@ export function ActuatorCard({ actuator, controllers = [], programs = [], alarm,
     setToggling(true);
     setErr(null);
     try {
-      await enableActuator(id, !enabled);
+      // Controller first: switching it off also switches this actuator off,
+      // which must not undo the manual switch that follows.
       if (ctrlOwner) await enableController(ctrlOwner.id, false);
       else if (progOwner) await controlProgram(progOwner.id, 'pause');
+      await enableActuator(id, !enabled);
     } catch (e) { setErr(String(e)); }
     finally { setToggling(false); setConfirmOpen(false); }
   }

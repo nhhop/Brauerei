@@ -127,6 +127,31 @@ void test_params_json_roundtrip() {
   TEST_ASSERT_TRUE(c2.inverted());
 }
 
+void test_disable_switches_off_and_disables_actuator() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", switchMeta());
+  TwoPointController c("ctrl", s, a);
+  c.setSetpoint(60.0f);
+  c.setHysteresis(-0.5f, 0.5f);
+
+  s.value = 59.0f;  // heat on
+  s.tick();
+  c.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, a.writes.back());
+
+  c.setEnabled(false);  // no tick() needed
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, a.writes.back());
+  TEST_ASSERT_FALSE(a.enabled());
+
+  // Re-enabled inside the deadband: starts from "off", not the stale "on".
+  c.setEnabled(true);
+  TEST_ASSERT_TRUE(a.enabled());
+  s.value = 60.0f;
+  s.tick();
+  c.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, a.writes.back());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -138,5 +163,6 @@ int main(int, char**) {
   RUN_TEST(test_inverted_cooling_logic);
   RUN_TEST(test_invalid_reading_leaves_actuator_alone);
   RUN_TEST(test_params_json_roundtrip);
+  RUN_TEST(test_disable_switches_off_and_disables_actuator);
   return UNITY_END();
 }

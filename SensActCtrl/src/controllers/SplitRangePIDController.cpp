@@ -80,6 +80,12 @@ void SplitRangePIDController::writeOff() {
   if (cool_) cool_->write(0.0f);
 }
 
+void SplitRangePIDController::applyEnabled(bool e) {
+  if (!e) writeOff();
+  if (heat_) heat_->setEnabled(e);
+  if (cool_) cool_->setEnabled(e);
+}
+
 void SplitRangePIDController::tick() {
   if (!enabled()) { writeOff(); return; }
 

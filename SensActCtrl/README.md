@@ -269,6 +269,15 @@ gated am Punkt der Hardware-Ansteuerung); Aktoren zusätzlich `target()`
 (zuletzt kommandierter Wert, unabhängig vom physischen `state()`) und
 optional `interval()`/`setInterval()` (Ein/Aus-Taktung über eine
 konfigurierbare Zeitbasis, `IntervalActuator`-Decorator).
+Beim Controller ist der Schalter an den Master-Schalter seiner Aktoren
+gekoppelt: `setEnabled(false)` schreibt sofort, ohne auf den nächsten
+`tick()` zu warten, den sicheren Ausgang (PID `minOutput`, Zweipunkt aus,
+DualStage/SplitRange beide Ausgänge aus) und schaltet danach die Aktoren aus;
+`setEnabled(true)` schaltet sie wieder ein. Das passiert nur bei einem echten
+Zustandswechsel, ein wiederholtes `setEnabled(false)` schreibt nichts
+(Subklassen-Hook `applyEnabled(bool)`, analog zu `Actuator`). Wer einen Aktor
+von Hand schalten will, schaltet deshalb zuerst den Regler aus und danach
+den Aktor.
 
 Beispiele liegen unter `examples/`. Native Unit-Tests unter `test/` (laufen
 ohne Hardware via `pio test -e native`).
