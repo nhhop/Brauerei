@@ -2605,7 +2605,7 @@ blieb aber aus; die Regler-Karte zeigte 0 %, weil `Actuator::state()` bei ausges
     schaltet die Aktoren aus“, „Einschalten schaltet sie ein“, wiederholtes Ausschalten schreibt nichts, Kopplung
     durch `RateLimitedController`; die neuen Tests schlugen vor der Umsetzung fehl).
   - BrewControl-Firmware `pio test -e native` 187 grün, `pio run -e esp32dev` und
-    `-e lilygo_t_display_s3_amoled` erfolgreich (esp32dev Flash 98,1 %; LilyGo nur mit kurzem , weil der Worktree-Pfad beim Entpacken von WebSockets die Windows-Pfadgrenze sprengt).
+    `-e lilygo_t_display_s3_amoled` erfolgreich (esp32dev Flash 98,1 %; LilyGo nur mit kurzem `PLATFORMIO_WORKSPACE_DIR`, weil der Worktree-Pfad beim Entpacken von WebSockets die Windows-Pfadgrenze sprengt).
   - Web `pnpm typecheck`, `pnpm test` 596 grün; Redocly-Lint ohne neue Warnung.
   - Kein Gerät: Prüfung mit Platte steht in PLAN.md › Hardware-Verifikation.
 - **Offen gelassen (PLAN.md):** Reihenfolge Regler/Aktor im selben Programmschritt; großes dt im ersten PID-Schritt
