@@ -1385,7 +1385,9 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   Tag mit Datum ab Anstellen und Haken „entnommen“ (`checked`: `removed:<row id>`, kein neues Feld).
 - **Im Mock geprüft** (390 px, kein Querscrollen): Start mit Rückfrage, Schritte und Rampen wie erwartet,
   „Angestellt“ schaltet das Programm weiter und übernimmt dessen Zeit, Gärplatz gesperrt, aktuelle Phase vom
-  Programm, Stopfgaben in beiden Tabs, Feld „Rampe“ im Editor. **Am Gerät nicht** (PLAN.md).
+  Programm, Stopfgaben in beiden Tabs, Feld „Rampe“ im Editor.
+- **Am LilyGo geprüft** (2026-10-15): Rampe mit Neustart, Pause und „Weiter“ mitten darin; das echte Gärprogramm
+  mit kurzen Phasen von „Angestellt“ bis „Regler aus“, alle Pushes angekommen (SESSION.md).
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.

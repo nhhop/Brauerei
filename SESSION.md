@@ -2653,4 +2653,19 @@ stehen dort unter „Sud › Stand 5c-3“.
   - Browser gegen einen Mock mit simuliertem Programm-Runner bei 390 px ohne Querscrollen: Start mit Rückfrage,
     „Angestellt“ schaltet das Programm weiter und übernimmt dessen Zeit, Sperre, aktuelle Phase vom Programm,
     Stopfgaben in beiden Tabs mit Speichern von `addedAt` und `removed:<id>`, Feld „Rampe“ mit Wert aus einem Profil.
-  - Am Gerät nicht geprüft (PLAN.md › Hardware-Verifikation, „Gärprogramm am Gerät“).
+  - **Am LilyGo geprüft** (Firmware `v0.5.0-127-g80be251-dirty` per OTA, UI `webui-full.tar` mit Stilvergleich):
+    - Rampentest mit einem vorübergehenden Zweipunktregler `testregler` (`HLT` → `agitator`) und einem Programm von
+      Hand (20 → 22 °C in 120 s): Der Sollwert folgt dem Erwartungswert in 0,05-K-Stufen und landet genau auf 22,00.
+      Neustart nach 40 s der Rampe: weiter bei 20,77 (erwartet 20,78). Pause: bleibt bei 21,13, „Fortsetzen“ ohne
+      Sprung (21,17 wie erwartet). „Weiter“ bei 20,45 setzt sofort 22,00. „Regler aus“ schaltet Regler und `agitator`
+      aus. Die Meldung des Rampenschritts kommt.
+    - Echtes Gärprogramm aus dem Tab Gärung: Rezept „Gerätetest“ v2 (`geraetetest-v2`, drei Phasen à 0,002 d mit
+      Rampen, Stopfgaben Citra in der Hauptgärung und Mosaic in der Reifung), Gärplatz „Testgärplatz“ (`fm-test`) am
+      `testregler`, Sud #5 „Gärtest 5c-3“ ohne Lagerbuchung. Rückfrage beim Start, „Angestellt“ schaltet das Programm
+      weiter und übernimmt dessen Zeit, Gärplatz-Wahl gesperrt, aktuelle Phase vom Programm. Alle Schritte zur
+      erwarteten Zeit, die Teilung der Kaltlagerungs-Rampe bei Mosaic genau auf 20,0 °C. Der Nutzer hat alle Pushes
+      bekommen (Stopfen/Entnehmen beider Gaben, Freigabe, fertig). Haken „zugegeben“ und „entnommen“ in beiden Tabs
+      gespeichert. „Weiter“ am Ende schaltet den Regler aus, „Abschließen“ nimmt das Programm mit.
+    - Danach Testregler und Programme gelöscht, `agitator` auf 64 %, Intervall 4/5 s zurück. Rezept v2, Gärplatz
+      und Sud #5 bleiben als Prüfdaten. `IDS1` steht nach dem OTA-Neustart auf 0 statt vorher 1 (Regler `Maischen`
+      aus); laut Nutzer so lassen.
