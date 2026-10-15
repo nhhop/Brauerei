@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <string.h>
 
+#include <initializer_list>
 #include <string>
 
 namespace BrewControl {
@@ -27,6 +28,19 @@ inline bool recipeBodyMatchesId(JsonVariantConst body, const char* id) {
   return strcmp(body["id"] | "", id) == 0;
 }
 
+// The brew id of "/api/brews/<id>/readings", empty for any other URL (the
+// plain "/api/brews/<id>" routes take those). The id has to be valid, so no
+// path can be formed through it.
+inline std::string brewReadingsId(const std::string& url) {
+  static const std::string kPrefix = "/api/brews/";
+  static const std::string kSuffix = "/readings";
+  if (url.size() <= kPrefix.size() + kSuffix.size()) return "";
+  if (url.compare(0, kPrefix.size(), kPrefix) != 0) return "";
+  if (url.compare(url.size() - kSuffix.size(), kSuffix.size(), kSuffix) != 0) return "";
+  const std::string id = url.substr(kPrefix.size(), url.size() - kPrefix.size() - kSuffix.size());
+  return isValidRecipeId(id.c_str()) ? id : "";
+}
+
 // ── The list index ────────────────────────────────────────────────────────────
 // Listing by opening every recipe costs ~60 ms each on the SD card (measured on
 // the LilyGo), which stalls the AsyncTCP task: 42 recipes took 2.7 s, and its
@@ -34,16 +48,33 @@ inline bool recipeBodyMatchesId(JsonVariantConst body, const char* id) {
 // fields the recipe list shows, and listing reads that single file.
 
 // One index line: the id first (recipeLineHasId relies on it), then whichever of
-// the list fields the recipe has. Compact JSON, so it never contains a newline.
-inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
+// `keys` the document has. Compact JSON, so it never contains a newline.
+inline std::string summaryLineOf(JsonVariantConst doc, const char* id,
+                                 std::initializer_list<const char*> keys) {
   JsonDocument summary;
   summary["id"] = id;
-  for (const char* key : {"name", "style", "volumeL", "status", "updatedAt"}) {
-    if (!recipe[key].isNull()) summary[key] = recipe[key];
+  for (const char* key : keys) {
+    if (!doc[key].isNull()) summary[key] = doc[key];
   }
   std::string line;
   serializeJson(summary, line);
   return line;
+}
+
+inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
+  return summaryLineOf(recipe, id, {"name", "style", "volumeL", "status", "rootId", "version", "updatedAt"});
+}
+
+// Brews (/brews) use the same index. Their line also carries the fermenter and
+// its booked period, so the occupancy plan needs nothing but the list, and the
+// brew's results (gravity, efficiencies, final gravity, alcohol, bottled volume) for the recipe's list
+// of brews. A field missing here takes a firmware update, hence the whole set
+// up front.
+inline std::string brewSummaryLine(JsonVariantConst brew, const char* id) {
+  return summaryLineOf(brew, id, {"number", "name", "recipeId", "rootId", "version", "status", "brewDate",
+                                  "fermenterId", "occupiedFrom", "occupiedUntil", "updatedAt",
+                                  "ogPlato", "ogActual", "mashEffPct", "yieldPct", "bottledL",
+                                  "abvPct", "attenuationPct", "fgPlato"});
 }
 
 inline bool recipeLineHasId(const std::string& line, const char* id) {

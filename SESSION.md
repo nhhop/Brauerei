@@ -1569,3 +1569,1172 @@ dem vorhandenen `SettingsGroup` gegliedert und bleibt bewusst einspaltig:
   Einstellungsseite, Hub mit „1 aktiv“ und „inaktiv“, Umleitung von
   `/settings/logs` auf `/logs` mit aktivem Nav-Eintrag, Alarmseite bei 375 px.
   Konsole ohne Fehler.
+
+## 2026-10-08 — Maischen-Tab Etappe 3a: Maischeplan, Wärmerechnung, Siedepunkt
+
+Erster von vier PRs zum Maischen-Tab (Plan „Maischen-Tab Etappe 3“: 3a Plan und
+Wärmerechnung, 3b Effizienz-Kette, 3c Maischprofile, 3d Dekoktion). Der Tab war eine
+reine Rastenliste.
+
+- **Modell** (`web/src/recipes.ts`): `MashStep` mit Art (`strike`, `doughIn`, `rest`,
+  `infusion`, `decoction` erst in 3d), Zieltemperatur, Haltedauer, Schüttung und
+  Zubrühen (`lead` Menge oder Temperatur, Eis). `Recipe.charges` und
+  `Ingredient.chargeId` für Teilschüttungen. `normalizeMash` beim Laden: Einträge
+  ohne Art fallen weg (keine Migration, Nutzerentscheidung), Wasser vorlegen und das
+  erste Einmaischen stehen fest vorn. `addCharge`/`removeCharge` teilen bzw. führen
+  Malz zusammen, die kg je Malz bleiben gleich.
+- **Rechnung** (`web/src/mashPlan.ts`, rein): Wärmeäquivalent Wasser + 0,41 × Malz
+  (Konstante jetzt `GRAIN_HEAT_RATIO` in `brewMath.ts`), Hauptguss-Temperatur,
+  Mischtemperatur weiterer Schüttungen, Zubrühen in beide Richtungen und mit Eis,
+  Grenzen Leitungswasser bis Siedepunkt, Heizzeit aus Heizrate oder geschätzt aus der
+  Heizleistung (85 %), passives Abkühlen 0,2 K/min. Die Wassermenge zum Vorlegen
+  (Hauptguss − Zubrühmengen) wird per Bisektion gelöst, weil nach Temperatur geführte
+  Zubrühmengen mit der Maische wachsen. Im Aufguss-Sudhaus werden wärmere Rasten durch
+  Zubrühen mit Siedepunkt-Wasser erreicht.
+- **Siedepunkt:** `Brewery.altitudeM` (Karte „Brauerei“ mit berechnetem Siedepunkt),
+  `pressureAtAltitudeHpa`/`boilingPointC` in `brewMath.ts`, neue Messung `airPressure`
+  (Kochen, hPa/mbar). `hopIbu` skaliert die Kochausnutzung relativ zu 100 °C, Whirlpool
+  wie bisher; `calcStats` bekommt die Brauerei. 500 m: 98,3 °C, im Mock 24 → 21 IBU.
+- **UI:** `pages/recipe/MashTab.tsx` mit Kopfkarte, „Zutaten (Maische)“ mit
+  Zwischenzeile je Schüttung (Name, Zeitpunkt, kg, %, EBC, °P), Split-Button
+  „+ Schüttung“ mit Dialog „Schüttung aufteilen“, Maischeplan als Tabelle (Ziehgriff,
+  mobil Pfeile, Split-Button „+ Rast“ mit Zubrühen, Einmaischen und sechs Rasten),
+  `MashCurve.tsx` (uPlot, Rampen, Haltestufen, Zugaben). `IngredientCard` kann Gruppen
+  und eine Markierung; der Zutaten-Tab zeigt die Schüttung. Die Übersicht zeigt die
+  Gesamtdauer.
+- **Doku:** Konzept-Doc (Maischen › Stand 3a, Brauerei-Höhe, Luftdruck), `openapi.yaml`
+  (`Brewery.altitudeM`), PLAN.md (Näherungen des Maischeplans als offener Punkt).
+- **Prüfung:** `pnpm test` (Siedepunkt, IBU bei 98 °C, `mashPlan.test.ts` mit Vorlegen,
+  zweiter Schüttung, Zubrühen in beide Richtungen, Eis, Grenze nach Höhe, Heizzeit aus
+  Rate und Leistung, Abkühlen, Aufguss, Überschuss; `normalizeMash` und Aufteilen),
+  `typecheck`, `build`. Im Node-Mock: Weizen mit zwei Schüttungen und kaltem Zubrühen,
+  Aufguss-Sudhaus (4,3 l kochend), altes Rezept ohne Plan, 500 m, Aufteilen 30 %,
+  Ziehen samt Sperre über den festen Schritten, 375 px ohne Querscrollen.
+
+## 2026-10-08 – 2026-10-09 — Peripherie-Abstraktion Etappe 3: externer DAC (MCP4728) (Branch `feat/peripherie-etappe-3`)
+
+Geräte, die Fähigkeiten nachrüsten: Ein MCP4728 (4 × 12-Bit-DAC, I²C) gibt Boards ohne
+eigenen DAC (LilyGo, Waveshare, StopWatch) echte Analogausgänge. Ein PR, je Etappe ein
+Commit.
+
+- **3a Library:** `core/DacOutput.h` (`rawMax()`, `write()`), neuer Konstruktor
+  `AnalogOutputActuator(id, DacOutput&)` mit `fault()` „DAC antwortet nicht“, eigener
+  Treiber `devices/MCP4728` (nur Multi-Write, Referenz VDD, Gain ×1, UDAC = 0, EEPROM nie
+  beschrieben). Native Tests über einen Test-Hook statt `TwoWire`-Stub (Muster ImuSensor).
+- **3b Firmware:** `DeviceConfig.h` (`kDeviceTypes`, Id `mcp4728-<bus>-<hh>`), Array
+  `devices` in `registry.json` (geladen zwischen Bussen und Items), `/api/peripherals`
+  (GET/POST/PUT/DELETE, Bus/Adresse nur ohne Nutzer). Kanal-Referenz
+  `"<Geräte-Id>:<Kanal>"` im `pin`-Feld eines AnalogOutput mit `mode:"dac"`; eine Zahl
+  bleibt der board-eigene DAC-Pin, keine Migration. `parsePinRef`, `PinUse.device`,
+  Prüfungen 400/409, Gerätekanäle sind keine GPIOs (Konflikte, Deep-Sleep-Hold) und
+  stehen in `GET /api/pins` unter `virtual`. Adressen je Bus gegen BME280/IMU geprüft,
+  das Gerät zählt als Bus-Nutzer. `Mcp4728Device` hält eine `Ref` auf seinen Bus, der
+  Aktor eine aufs Gerät; `PeripheralRegistry::release()` verschachtelt jetzt sicher
+  (Slot vor dem Erase herausgelöst). OpenAPI, README.
+- **3c Web:** Seite Einstellungen → Peripheriegeräte (`PeripheralsPage.tsx`: Karten mit
+  Kanälen und Nutzern, „Prüfen“ per Bus-Scan, Anlegen mit Bus und Adresse 0x60–0x67).
+  Im AnalogOutput-Formular PWM/DAC-Umschalter, sobald Board oder Gerät einen DAC hat
+  (`availableCaps`), im DAC-Modus Auswahl aus Board-DAC-Pins und Gerätekanälen
+  (`dacOutputs`), sonst ein Link auf die neue Seite. Bus-Seite nennt Geräte mit Namen.
+- **3d Hardware (LilyGo, MCP4728 am Qwiic-Stecker, Multimeter):** Kanäle A–D liefern
+  25/50/75/100 % von VDD (0,82 / 1,64 / 2,45 / 3,27 V bei 3,28 V), Zuordnung stimmt, UDAC = 0
+  reicht. `enabled:false` legt 0 V an, Werte und Gerät überstehen einen Kaltstart, die
+  Config nach dem Aufräumen ist identisch mit dem Backup. Display/Touch am selben Bus
+  liefen bei allen Tests weiter. **Befund und Fix:** Nach Abziehen und Wiederanstecken
+  startet der Chip mit seinen EEPROM-Werten (0 V); nur der danach beschriebene Kanal stand
+  wieder richtig, die anderen blieben still auf 0 V bei „ok“, und ohne Write fiel ein
+  fehlender Chip gar nicht auf. Jetzt schreibt `AnalogOutputActuator::tick()` einen
+  externen DAC jede Sekunde neu (`kRefreshMs`): Abziehen meldet an allen Kanälen binnen
+  1 s den Fehler (Alarm), danach stehen alle Spannungen wieder. Ein einmaliger
+  HTTP-Ausfall von zwei Minuten blieb unerklärt und nicht reproduzierbar (PLAN.md).
+- **PLAN.md:** Etappe 3 raus; offen bleiben Etappe 4 (Port-Expander) mit umformuliertem
+  Pin-Manager-Punkt, interne Referenz/Adresse des MCP4728, der S2-DAC-Nebenbefund
+  (`SOC_DAC_SUPPORTED`) und der HTTP-Ausfall; Flash-Eintrag auf 97,7 %.
+- **Prüfung:** Library 337/337, Firmware 169/169 nativ, alle fünf Envs bauen (esp32dev
+  97,7 %), Redocly-Lint, Web `typecheck`/`test` (273)/`build`, UI im Node-Mock und am
+  LilyGo (Prüfen „antwortet“, Scan benennt 0x60, Bearbeiten lädt den Kanal).
+
+## 2026-10-09 — Peripherie-Abstraktion Etappe 4: Port-Expander PCF8575 (Branch `feat/peripherie-etappe-4`)
+
+Ein PCF8575 (16 Pins, I²C 0x20–0x27) liefert zusätzliche, langsame Digitalpins für
+DigitalOutput (Binary/TPO) und DigitalInput (gepollt) — zugleich Pin-Manager Stufe 3b
+„Pins von Port-Expandern“. Der Schnitt aus Etappe 3 blieb unverändert (Kanal-Referenz
+`"<Geräte-Id>:<n>"`, `virtual[]`, `kDeviceTypes`, Fähigkeits-Hook am `Peripheral`). Ein PR,
+je Teilschritt ein Commit.
+
+- **4a Library:** `core/GpioPort.h` (`pinMode`/`write`/`read` je Kanal), Treiber
+  `devices/PCF8575`: Schattenregister aller 16 Ausgänge, jeder Write schickt beide Bytes,
+  Eingänge immer als 1 (quasi-bidirektional), `begin()` übernimmt die Latches des Chips (kein
+  Umschalten der anderen Pins nach einem Reset), Port-Reads 20 ms gecacht, Schatten + Transfer
+  unter einer Mutex. `DigitalOutputActuator`/`DigitalInputSensor` mit `GpioPort&` + Kanal; der
+  Aktor schreibt einen Expander-Kanal nur bei Pegelwechsel und jede Sekunde neu (auch Binary),
+  beide melden `fault()` „Port-Expander antwortet nicht“, der Sensor dann ungültige Werte.
+- **4b Lock:** `POST /api/actuators/<id>` (v/enabled/interval) und `POST /api/estop` laufen
+  jetzt unter dem `RegistryLock` (vorher im AsyncTCP-Task ohne Lock, PLAN-Eintrag vom selben
+  Tag). Damit überschreibt weder ein TPO-`tick()` den Not-Aus noch der DAC-Refresh einen frisch
+  gesetzten Wert, und Expander-Writes aus REST und `loop()` sind serialisiert. Der Not-Aus
+  schaltet ohne Lock ab, wenn er ihn nicht binnen 3 s bekommt (nie 503). Zusätzlich die Mutex
+  im Treiber, weil ESP-NOW-Befehle aus dem WiFi-Task ohne Lock schreiben — dieser Pfad selbst
+  ist neuer PLAN-Eintrag.
+- **4c Firmware:** `kDeviceTypes` mit `pcf8575` (`gpio`, 16, `inputsPullup`), Kanalnamen als
+  Liste (`types[].channels` in `GET /api/peripherals` jetzt ein Array). Zulassung nur über
+  Fähigkeiten in `collectPins`: DigitalOutput und DigitalInput `gpio`, PulseOutput abgetrennt;
+  alle anderen Typen lehnen Gerätekanäle weiter mit 400 ab. DigitalInput ohne `pullup` auf dem
+  PCF8575 → 400 (der Chip hat immer einen Pull-up). `Pcf8575Device` wie `Mcp4728Device`,
+  `SensorEntry::dev` hält das Gerät auch über `PUT`. Waveshare: 0x20 ist über die reservierte
+  TCA9554-Adresse gesperrt. OpenAPI, README (inkl. Einschaltzustand: Power-on High, ein
+  ESP-Reset lässt die Ausgänge stehen → aktiv-low verdrahten).
+- **4d Web:** `DigitalPinField` mit Umschalter GPIO | Port-Expander (Muster DAC-Auswahl),
+  Auswahl der Kanäle P00–P17; `PinHint` zeigt den Status eines Refs und schlägt freie
+  Expander-Pins als eigene Gruppe vor (mit Gerätename, sobald es mehrere gibt). Expander-
+  Eingänge setzen und sperren „Pullup“, Expander-Ausgänge zeigen den Einschalt-Hinweis.
+  Peripheriegeräte-Seite: PCF8575, Typwechsel setzt Bus und freie Adresse neu, reservierte
+  Adressen des Board-Busses gesperrt.
+- **Feste Onboard-Expander** (M5IOE1, TCA9554) nur skizziert: `currentFixedDevices()`,
+  reservierte Kanäle, `BoardInit` über dieselbe `GpioPort`-Instanz — gebaut wird mit der
+  Hardware (PLAN.md).
+- **Prüfung:** Library 358/358, Firmware 174/174 nativ, alle fünf Envs bauen (esp32dev
+  97,9 %, lolin_s2_mini 94,6 %), Redocly-Lint, Web `typecheck`/`test` (293)/`build`, UI im
+  Node-Mock (Waveshare-Profil: Typwechsel wählt 0x22, weil 0x20 reserviert und 0x21 belegt;
+  Bearbeiten lädt den Expander-Kanal, Chip-Klick wechselt die Quelle und setzt den Pull-up,
+  `PUT` schickt den Ref).
+- **Hardware (LilyGo, PCF8575 am Qwiic, NXP-Chip):** Antwortete zuerst nicht — Adress-Pads
+  A0–A2 offen und Brücke VDD–VCC offen (VDD 2,45 V parasitär über SDA/SCL); beides gelötet,
+  dann 0x20. Danach lasen Eingänge zufällig, Rohlesen über eine temporäre Diagnose-Route
+  (nicht eingecheckt) zeigte: Writes und Reads kommen an, aber der Chip hält eine 1 nur kurz
+  nach einem Write (seine ~100-µA-Quelle fehlt), offene/verkabelte Pins kippen im 50-Hz-Takt.
+  Mit externem Pull-up (ESP-GPIO mit `INPUT_PULLUP` an der Brücke P00–P10) geprüft:
+  Ein-/Ausschalten 100 % richtig an beiden Eingängen; Not-Aus gibt P00 sofort frei; TPO
+  2 s/50 % mit Flanken alle 1,0 s; `PUT` mit Gerät behält den Kanal; Chip abziehen → `fault`
+  und Alarm an allen fünf Items binnen ≤ 1 s, Snapshot weiter in 33–55 ms, Display bedienbar;
+  wieder anstecken → Fault weg, TPO wieder richtig; nach Stromlos-Zyklus (die SD hing nach
+  einem Power-on beim Verkabeln, bekannter LilyGo-Effekt) Gerät und Items aus der Config
+  zurück und lauffähig. Negativfälle am Gerät: DigitalInput ohne `pullup` und PulseOutput auf
+  dem Expander → 400. Aufgeräumt: `GET /api/config` byte-identisch mit dem Backup. Offen
+  (PLAN.md): Eingang nur mit dem chip-eigenen Pull-up an einem unbeschädigten Modul.
+  Nebenbei: GPIO 2 sah während des SD-Ausfalls frei aus, gehörte aber zu `agitator` —
+  bei leerer Registry nie Pins aus `/api/pins` für Verkabelung nehmen.
+
+## 2026-10-09 — Maischen-Tab Etappe 3b: Effizienz-Kette, Läutermodell, Stammwürze kalt
+
+Zweiter PR zum Maischen-Tab. Quelle: Troester, „A Closer Look at Efficiency“ (NHC 2010) und
+„Understanding Efficiency“ (braukaiser.com).
+
+- **Begriffe, Nutzerentscheidung 2026-10-09:** Statt „Maische-Effizienz“ für die Konversion
+  heißen die Glieder wie bei Malzknecht und Brewfather: Konversion × Läutereffizienz =
+  Maischeeffizienz (Extrakt in der Pfanne / Potenzial, bisher im Rezept „Sudhausausbeute“
+  genannt) × Würzeanteil = Brewhouse-Efficiency; dazu die Sudhausausbeute nach Narziss je kg
+  Schüttung. Grundlage in der Karte „Brauerei“ (`Brewery.efficiencyBasis`): Konversion,
+  Maischeeffizienz (Vorgabe, bisheriges Verhalten), Sudhausausbeute oder Brewhouse-Efficiency.
+  Das Sudhaus-Feld `mashEfficiencyPct` heißt jetzt „Konversion“, neue Sudhäuser 80 %; das Rezept
+  überschreibt es mit eigenem Feld `conversionPct`.
+- **Läutermodell** (`web/src/efficiency.ts`, rein): Troesters Batch-Sparge-Modell, jeder Ablauf
+  V nimmt V / (V + R) mit; R = Treberverlust + Würzeverluste vor dem Kochen + 0,62 l je kg
+  gelöster Extrakt. Vollguss ist ein Ablauf, Batch Sparge hat n gleich große Gaben (Wasser-Tab,
+  `water.spargeMethod`/`spargeBatches`), Fly Sparge zählt als 2 Gaben mit Hinweis; nur dort
+  ersetzt ein Festwert `Brewhouse.lauterEfficiencyPct` die Näherung (Nutzerentscheidung). Die
+  Rechnung iteriert, weil die Läutereffizienz am gelösten Extrakt und über einen nach
+  Stammwürze geführten Verschnitt an den Wassermengen hängt. `wortExtract`/`calcStats` nehmen
+  Sudhaus und Brauerei und rechnen den Extrakt über die Kette.
+- **Stammwürze kalt** (Nutzerentscheidung): Der Extrakt der heißen Ausschlagmenge steht jetzt in
+  Ausschlag × (1 − Abkühlschwund); vorher war die Stammwürze um den Schwund zu niedrig. Der
+  Würzeanteil zählt deshalb nur Totraum und Transfers ab dem Whirlpool. Der Schalter
+  „Menge = Ausschlag heiß / Anstellwürze kalt“ kommt mit dem Gärung-Tab (PLAN.md).
+- **UI:** Übersicht mit dem Feld der Grundlage und der Kette in den Kennwerten (Eingabe als
+  Abzeichen), Wasser-Tab mit Läutereffizienz, Verfahren und Gaben, Kopfkarte Maischen mit der
+  Konversion, Sudhaus-Editor mit Konversion und Fly-Sparge-Festwert. Neue Messung
+  `firstWortGravity` (Vorderwürze, Läutern). `Override` liegt jetzt in `fields.tsx`.
+- **Doku:** Konzept-Doc (Rezept › Effizienz, Ausschlagmenge kalt, Sudhaus, Brauerei),
+  `openapi.yaml` (`efficiencyBasis`, `mashEfficiencyPct`, `lauterEfficiencyPct`), PLAN.md
+  (Näherungen der Kette inkl. Fly-Sparge-Modell, Schalter heiß/kalt beim Gärung-Tab, Rechner
+  rechnet die Sudhausausbeute noch auf das Potenzial).
+- **Prüfung:** `pnpm test` (`efficiency.test.ts`: Vollguss nach Troester 83/72 % bei 10/16 °P,
+  Gaben +9/+3,4/+1,8, 30/70 −0,9, Fly, gleiche Stammwürze aus jeder Grundlage, Fixpunkt der
+  Iteration, Starkbier, Hinweise, ohne Sudhaus; Stammwürze kalt in `recipeWater.test.ts`),
+  `typecheck`, `build`, redocly. Im Node-Mock: Batch 1/2 Gaben 82/86 %, Fly 86 %, Vollguss
+  73 %; Grundlage Konversion 75 %: Pils 5 kg 11,9 °P, Starkbier 10 kg nur 17,4 °P (Läutern
+  83 → 62 %); 375 px ohne Querscrollen.
+
+## 2026-10-09 — ESP32-S2: On-Chip-DAC statt stillem PWM-Fallback
+
+- **Root Cause:** `AnalogOutputActuator.cpp` gab `dacWrite` nur für `CONFIG_IDF_TARGET_ESP32` frei.
+  Der S2 hat aber einen DAC (GPIO 17/18, `SOC_DAC_SUPPORTED`), `kLolinS2Mini` meldete die Pins
+  schon als `dac`; `mode:"dac"` fiel in `begin()` unbemerkt auf PWM zurück.
+- **Umsetzung:** Guard auf `SOC_DAC_SUPPORTED` (`<soc/soc_caps.h>`) umgestellt; der S3 bleibt ohne DAC.
+- **Prüfung:** Library 358/358 nativ; `lolin_s2_mini` (94,6 %), `esp32dev` (97,9 %) und
+  `lilygo_t_display_s3_amoled` bauen, `dacWrite` steht im S2-ELF. Am `brewcontrol-brautomat`
+  (OTA): DAC Pin 17 → `AnalogInput` Pin 6, ohne Glättung. Stabile, lineare Stufen ohne
+  PWM-Rippel (0 → 0,21, 0,825 → 2,10, 1,65 → 4,05, 2,475 → 6,00, 3,3 → 6,60; Skala siehe PLAN.md).
+  Ein erster Lauf mit schlecht steckendem Draht zeigte Rail-to-Rail-Rauschen und wäre als „PWM“
+  fehlzudeuten gewesen — ohne Glättung messen und die Verdrahtung prüfen.
+- **Nebenfund, gleich mitgefixt:** `AnalogInputSensor` rechnet mit Rohwerten 0–4095, der S2-Core
+  liest aber standardmäßig 13 Bit — die Anzeige lag auf doppelter Skala (DAC 3,3 V →
+  6,6). `begin()` setzt jetzt `analogReadResolution(12)` (ESP32 war schon 12 Bit). Erneut am S2
+  gemessen: 0 → 0,10, 0,825 → 1,05, 1,65 → 2,03, 2,475 → 3,00, 3,3 → 3,30 V; der Rest ist
+  ADC-Kennlinie (Offset unten, Sättigung oben), keine Skalenabweichung mehr.
+  Am LilyGo (S3) mit 4,7-kΩ-Teiler an GPIO 5 (≈1,65 V): vorher 1,66 V, nachher 1,66 V — der
+  S3-Core liest schon 12 Bit, der Fix ändert dort nichts.
+- **PLAN.md:** S2-DAC-Punkt raus.
+
+## 2026-10-09 — ESP-NOW: eingehende Pakete unter RegistryLock zustellen
+
+- **Root Cause:** `EspNowTransport::dispatchIncoming` lief im WiFi-Task und rief die
+  Subscriber-Callbacks direkt auf — für `/set` also `Actuator::write()` ohne `RegistryLock`,
+  parallel zu `registry.tick()`. Gleiches für `retained_`/`subs_` bei Retained-Requests.
+- **Umsetzung:** `dispatchIncoming` kopiert das Paket nur noch in eine begrenzte Queue
+  (16 Einträge, bei voll wird das neueste verworfen); `tick()` leert sie und ruft die
+  unveränderte Logik als `processIncoming_()` auf. `tick()` läuft in `loop()` unter dem Lock
+  (`tickTransports()`), wie bei MQTT/WebSocket.
+- **Prüfung:** Library 358/358 nativ, `esp32dev` und `lolin_s2_mini` bauen. Der Native-Stub hat
+  kein ESP-NOW, die Queue ist nur am Gerät prüfbar. Zwei S2 (`brewcontrol-lolin` mit
+  Test-DigitalOutput `entest` auf GPIO 5, `brewcontrol-brautomat` mit Remote-Aktor darauf, beide
+  per OTA): Retained-Sync nach Reboot (Discovery fand alle Items), `/set` 1/0/1/0 kam jeweils an
+  (Target + State folgen), 40 `/set` im Burst ohne Absturz (`resetReason` blieb `sw`). Den
+  TPO-Überschreib-Race selbst nicht gezielt provoziert. Test-Items danach gelöscht.
+## 2026-10-09 — Maischen-Tab Etappe 3c: Maischprofile
+
+Dritter PR zum Maischen-Tab (Branch `feat/maische-3c`). Fast reine Musterarbeit nach den Sudhäusern.
+
+- **Firmware:** `GET /api/mash-profiles`, `PUT`/`DELETE /api/mash-profiles/:id` über `JsonDocDir`
+  (`/mashprofiles/<id>.json`, nur SD, kein Index), Prüfung nur der `id`. Die Reglerprogramme
+  unter `/api/profiles` bleiben unberührt; im Code heißt das Ding `mashProfile`. `WebUI.h`,
+  `openapi.yaml` (Tag „Mash profiles“, Schema `MashProfile`) und `README.md` im selben Zug.
+- **Modell** (`web/src/mashProfiles.ts`): Name, Verfahren (freier Text), Beschreibung, `doughIn`
+  (Temperatur, Dauer) und `steps` (nur Rast/Zubrühen mit Name, Temperatur, Dauer). **Abweichung vom
+  Plan, bewusst:** Das feste Einmaischen gehört nicht als Schritt ins Profil, aber seine Temperatur
+  und Dauer sind die erste Rast der Folge (Weizen: 45 °C zuerst), sonst ließen sich Weizen- und
+  Eiweißrastprofile nicht abbilden. Laden setzt sie am festen Einmaischen und ersetzt alle weiteren
+  Schritte; Zubrühen kommt mit Siedepunkt-Wasser (`lead: 'temp'`). Die Einmaisch-Schritte weiterer
+  Schüttungen entfallen, die Bestätigung nennt sie.
+- **Mitgeliefert:** Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit
+  Eiweißrast, Kombirast 66 °C, im Web-UI eingebaut und schreibgeschützt, nicht auf der SD.
+  Die Werte sind Richtwerte aus gängiger Praxis und einem Artikel zu Hochkurz (`TODO(verify)`, PLAN.md).
+- **UI:** `MashProfileDialog.tsx` (Liste, Editor, Duplizieren, Löschen, „Plan als Profil
+  speichern“), im Maischeplan der Split-Button „Profile ▾“ (Pfeil lädt direkt, mit Bestätigung).
+  Fällt die SD aus, bleiben die mitgelieferten Profile ladbar, Speichern/Duplizieren sind gesperrt.
+- **Doku:** Konzept-Doc (Stand 3c, Ablage, Laden/Speichern), PLAN.md (3c erledigt; Backup der
+  Maischprofile beim Sudhaus-Backup-Punkt; Richtwerte der mitgelieferten Profile).
+- **Prüfung:** `pnpm test` (319, neu `mashProfiles.test.ts`: mitgelieferte Profile, Laden,
+  Speichern aus dem Plan, Round-Trip, API), `typecheck`, `build`, redocly (nur die bekannte
+  info-license-Warnung); `pio test -e native` (174), `pio run -e lilygo_t_display_s3_amoled`
+  (32,2 %) und `-e esp32dev` (**97,9 % Flash, 1 860 097 von 1 900 544 Byte, 40 447 Byte frei**,
+  prozentual unverändert gegenüber dem Stand vor 3c). Im Node-Mock: Laden mit Bestätigung,
+  Duplizieren, Speichern aus dem Plan, Löschen, 375 px ohne Querscrollen, SD-Fehlerfall. Am LilyGo
+  (OTA): PUT, `id mismatch`/`invalid id` → 400, Neustart, Profil noch da, DELETE → 204, zweites
+  DELETE → 404.
+
+## 2026-10-09 — Bus-Pins ändern, während Items daran hängen
+
+- **Vorher:** `PUT /api/buses/{id}` mit neuen Pins lieferte 409, sobald ein Item oder Gerät am Bus
+  hing. Die Bus-Id war aus den Pins abgeleitet und steckt in Item-Configs (`bus`), Geräten und
+  deren Ids (`mcp4728-i2c-4-5-60`); ein Pinwechsel hätte alles umschreiben und neu aufbauen
+  müssen, und regler-verdrahtete Items lassen sich nicht ersetzen.
+- **Umsetzung:** Die Id ist nur noch der Startwert beim Anlegen und bleibt bei Pinwechseln
+  stabil (`parseBusDef(..., fromStorage)` liest sie nur aus `registry.json`). `updateBus` prüft die
+  neuen Pins gegen alle anderen Nutzer (`checkPinUses` mit Selbst-Ausnahme) und pinnt den
+  laufenden Treiber um: `OneWireBus::repin` (`OneWire::begin`), `I2cBus::repin` (`Wire.end/begin`).
+  Die Items halten nur Referenzen und bleiben unberührt, Regler ebenso. Einzige Ausnahme SPI: die
+  MAX31865 kopieren die Pins im Konstruktor und werden per `replaceSensor` neu gebaut; hängt eine
+  an einem Regler, gibt es vorab 409 (`referencedByController`, aus `removeSensor` herausgezogen).
+  UI: Pin-Felder im Bus-Dialog nicht mehr gesperrt, Hinweis zum Umstecken. Löschen bleibt 409,
+  solange Nutzer dranhängen. Bekannte Kleinigkeit: ein neuer Bus mit den alten Pins kollidiert
+  mit der Id des umgepinnten (409 „already exists“).
+- **Doku:** OpenAPI (PUT /api/buses/{id}), README „Geteilte Busse“, PLAN.md-Punkt entfernt.
+- **Prüfung:** `pio test -e native` (175, neu `test_stored_id_survives_pin_change`),
+  `pnpm typecheck`, redocly. Live-Umpinnen am Gerät: noch offen.
+## 2026-10-09 — Link-Routing zentral (preact-router-Delegation)
+
+Der Plan-Punkt „Klick-Delegation ließ am Gerät einen Link durchrutschen" ist erledigt.
+Ein einziger Listener in `web/src/linkRouting.ts` (aus `main.tsx` installiert) routet alle
+internen Links selbst; der Sonderweg in `NavShell` entfällt.
+
+**Befund** (preact-router 4.1.2): Die Delegation hängt einmal auf `window`, sucht das `<a>`
+erst zur Bubble-Zeit über `parentNode` und lässt den Browser navigieren, sobald `route()`
+falsy liefert. Zwei Wege führen so zum echten Dokument-Load: das Klickziel wird von einem
+Element-`onClick` vorher aus dem DOM genommen, oder zum Klickzeitpunkt matcht kein
+registrierter Router. **Welcher davon am Gerät zutraf, ist nicht belegt** — der Fix macht
+das Routing von beiden unabhängig, beweist aber nicht die Ursache.
+
+**Umsetzung:** Capture-Listener löst den Link auf (vor jedem `onClick`), Bubble-Listener
+routet mit `preventDefault()` + `stopImmediatePropagation()` (keine doppelte
+History-Zeile); fällt `route()` durch, lädt `location.assign()` explizit. Nicht angefasst
+werden Modifier-/Mittelklick, `target`≠`_self`, `native`/`data-native`, `//…`, externe URLs und
+`/api/…` (Downloads). Reine Prüfung in `routableHref()`, Test `linkRouting.test.ts`.
+
+**Verifikation:** `pnpm typecheck` sauber, `pnpm test` 321 grün. Chromium gegen `pnpm dev`:
+Nav-Link ×2, Einstellungs-Karte und ein Link, der sich im `onClick` selbst entfernt, ergeben
+je genau einen History-Eintrag, `window`-Marker überlebt, ein Navigation-Entry; Ctrl-Klick
+schreibt keinen Eintrag. Nicht gemessen: Verhalten vor dem Fix für den Selbst-Entfern-Fall
+und das Gerät selbst.
+
+## 2026-10-09 — Maischen-Tab Etappe 3d: Dekoktion, Kochen im Maischbehälter, Profile mit Dekoktion
+
+Vierter und letzter PR der Etappe 3 (Branch `feat/maische-3d`), reine Web-UI- und Doku-Arbeit, die
+Firmware ist unverändert. Vor dem Start mit dem Nutzer geklärt (Plan `maische-etappe-3.md` gegen den
+Code geprüft, keine Widersprüche, aber Lücken):
+
+- **Entscheidungen:** Die Restmaische verliert während der Dekoktion den **Wärmeverlust des
+  Maischbehälters** (neues Behälterfeld `heatLossKPerH`, Vorgabe 0 = hält) statt der 0,2 K/min des
+  Abkühlens, die bei 45–90 min Dekoktion 9–18 K gekostet hätten. Die **Verdampfung** beim Kochen nimmt
+  die Rate des Behälters aus dem Sudhaus und wirkt in Wärme- und Wasserbilanz. **Profile** können jetzt
+  Dekoktionen und weitere Schüttungen tragen; neu mitgeliefert sind Ein-, Zwei- und
+  Dreimaischverfahren und **Earls Kochmaische**. Der **Dekoktionsbehälter** wird abgeleitet: nicht der
+  Maischbehälter, eigene Heizquelle, heizt nicht die Maische (HERMS-/Kettle-RIMS-/Aufguss-Behälter
+  halten Wasser), der erste in Prozessreihenfolge. Für Earl: Profile tragen Schüttungsanteile (Laden
+  teilt die erste Schüttung auf), und eine Rast am Siedepunkt kocht im direkt beheizten Maischbehälter.
+- **Eigene Abweichung vom Vorschlag in der Rückfrage:** Die Heizzeit der Teilmaische kommt zuerst aus
+  der Heizleistung für ihre Masse, die Heizrate des Schritts erst ohne Leistung, weil sie für den vollen
+  Behälter gilt.
+- **Rechnung** (`web/src/mashPlan.ts`): `walk()` führt Wasser und Malz getrennt. Dekoktion: Anteil am
+  Maischevolumen, dick mit bis zu 2,1 l/kg (`THICK_DECOCTION_L_PER_KG`, `TODO(verify)`), dünn nur
+  Flüssigkeit; Rasten und Kochen im Dekoktionsbehälter, Verdampfung, Restmaische mit Wärmeverlust,
+  Mischtemperatur beim Zurückführen; führt die Temperatur, sucht eine Bisektion den Anteil. Eine dünne
+  Dekoktion ohne Verlust und Verdampfung ergibt genau Troesters Faustformel (Test). Kochrast: Ziel ab
+  Siedepunkt, Verdampfung des Maischbehälters, Hinweis außer bei direkter Heizung. Ohne
+  Dekoktionsbehälter zählt eine Dekoktion als Rast, ein Hinweis nennt alle.
+- **Wasser/Effizienz:** `mashEvaporationL` zählt zum Gesamtwasser (Nachguss, sonst Hauptguss),
+  `calcWater` bekommt dafür optional die Brauerei (Siedepunkt); der erste Ablauf im Läutermodell ist um
+  die Verdampfung kleiner.
+- **Profile** (`web/src/mashProfiles.ts`): Schritt-Arten `decoction` und `doughIn` (`sharePct`),
+  Zubrühen mit `waterTempC`; `applyMashProfile` arbeitet auf dem Rezept (Schüttungen, Zutaten),
+  `profileLoadEffects` speist die Bestätigung, `profileOfPlan` speichert Dekoktionen und
+  Schüttungsanteile. `splitCharge` aus `addCharge` herausgezogen. Earls Zubrühziel nach einem
+  Probelauf auf 62 °C gesetzt (bei 66 °C hätte die Maltoserast wieder abkühlen müssen).
+- **UI:** Dekoktion im Menü und in der Art-Auswahl (gesperrt ohne Dekoktionsbehälter), Felder Anteil,
+  dick/dünn, Volumen, darunter Rasten, Kochdauer, Restmaische und Verdampfung; zweite, gestrichelte
+  Linie im Temperaturverlauf; „Dekoktionen durch Rasten ersetzen“ in Übersicht und Maischen-Tab;
+  Profil-Editor mit allen vier Arten; im Sudhaus „Wärmeverlust (K/h)“ am Maischbehälter und
+  „Verdampfung“ auch am Dekoktionsbehälter und am direkt beheizten Maischbehälter.
+- **Doku:** Konzept-Doc (Stand 3d), `openapi.yaml` (`BrewhouseVessel.heatLossKPerH`, Schritte von
+  `MashProfile`), PLAN.md (3d raus; Näherungen der Dekoktion beim Punkt „Maischeplan rechnet mit
+  Näherungen“; Quellen der neuen Richtwerte).
+- **Prüfung:** `pnpm test` (347, neu u. a. Dekoktion und Kochrast in `mashPlan.test.ts`,
+  `decoctionVesselOf`, Wasserbilanz, Läutermodell, Profile mit Schüttungen und Round-Trip,
+  `MashCurve.test.ts`), `typecheck`, `build`, redocly (nur die bekannte info-license-Warnung). Im
+  Node-Mock: Dreimaischverfahren auf „Pfanne + Läuterbottich“ (Anteile 28/28/32 %, 3:13 h, zweite
+  Linie), Anteil ↔ Temperatur umschalten, Wasser-Tab mit 1,5 l Verdampfung beim Maischen, Wechsel auf
+  2-Kessel-HERMS mit Warnung und Ersetzen, Earl auf dem Ein-Topf in 500 m (Aufteilung 80/20, Kochen bei
+  98,3 °C, 0,8 l verdampft), Profil speichern mit Dekoktion und Schüttung, 3 K/h Wärmeverlust (Anteile
+  32,8 → 36,3 %), 375 px ohne Querscrollen. Kein Gerätetest nötig, das Profil-JSON ist für die Firmware
+  opak.
+
+## 2026-10-10 — Maischprofil Weizen nach Herrmann (Maltaserast)
+
+Kleiner Nachtrag zu Etappe 3d (Branch `feat/maische-herrmann`): ein weiteres mitgeliefertes Profil, ohne
+Dekoktion, damit es auch ohne zweiten beheizten Behälter läuft. Das Modell trug es schon (Aufbau wie Earls
+Kochmaische), es ist nur ein Eintrag in `BUILTIN_MASH_PROFILES`.
+
+- **Ablauf:** erste Hälfte der Schüttung 62 °C 30 min, 72 °C 20 min; kaltes Wasser (12 °C) auf 46 °C; zweite
+  Hälfte (50 %) dazu; Maltaserast 45 °C 40 min; 72 °C 20 min; 76 °C 5 min.
+- **Quellen:** Die Quellen widersprechen sich in den Einzelwerten (Einmaischen bei 38, 43 oder 62 °C, mit
+  oder ohne zwei Dekoktionen). Ablauf nach brewingforward.com „Maltase mash“ (Kunze, Esslinger),
+  Aufteilung 50:50 nach edelstoffquest.wordpress.com. Herrmanns Dissertation (TU München, mediaTUM) wurde
+  bewusst nicht gelesen (Nutzer-Entscheidung, zu umfangreich); Richtwerte mit `TODO(verify)`, PLAN.md.
+- **Probelauf:** 5 kg (3 kg Weizen, 2 kg Pils), Pfanne + Läuterbottich: 9,5 l Wasser vorlegen, 8,0 l kaltes
+  Wasser, nach der zweiten Schüttung 44,5 °C, Maltaserast heizt 0,5 K nach, 2:24 h; Ein-Topf (Vollguss):
+  11,7 l kaltes Wasser, 45,0 °C. Keine Abkühl-Hinweise.
+- **Prüfung:** `pnpm test` (350, neu: Aufbau des Herrmann-Profils, Round-Trip), `typecheck`, `build`.
+
+## 2026-10-10 — Temperaturverlauf ohne Sudhaus
+
+Am LilyGo fehlte der Temperaturverlauf im Maischen-Tab, im Mock nicht: Die Karte erschien nur mit Plan,
+und `calcMash` braucht ein Sudhaus; die Rezepte auf dem Gerät hatten keins gewählt (vom Nutzer selbst
+gefunden). Entscheidung: ohne Sudhaus ein vereinfachter Verlauf (Branch `feat/maische-verlauf-ohne-sudhaus`).
+
+- **`outlineMash`** (`web/src/mashPlan.ts`): Zieltemperaturen und Haltezeiten ab dem Einmaischen, jeder
+  Übergang ein Sprung, kein Wasser vorlegen; weitere Schüttungen und Rasten ohne Ziel behalten die vorige
+  Temperatur, eine Kochrast endet am Siedepunkt der Brauerei, eine Dekoktion springt ohne eigene Linie.
+- **UI:** Die Karte erscheint immer, ohne Sudhaus mit dem Hinweis „Ohne Sudhaus nur Zieltemperaturen
+  und Haltezeiten, Übergänge als Sprung.“ `MashCurve`/`curveOf` nehmen dafür Zeilen statt des Plans.
+- **Prüfung:** `pnpm test` (354, neu `outlineMash` und die Kurve ohne Sudhaus), `typecheck`, `build`; im
+  Node-Mock Earls Kochmaische ohne Sudhaus (Stufen 62/72/100, Sprung durch das kalte Wasser, Punkt bei
+  der zweiten Schüttung) und mit Sudhaus unverändert.
+- **Nebenbefund:** Die Plantabelle ragt bei rund 800 px Fensterbreite über ihre Karte hinaus, offen in
+  PLAN.md.
+
+## 2026-10-10 — Maischplan: Raster nach Kartenbreite statt Fensterbreite
+
+Die Plantabelle ragte bei rund 800 px Fensterbreite über ihre Karte hinaus (aus PLAN.md, dort entfernt).
+Im Node-Mock bestätigt: Das Raster in `MashTab.tsx` (`GRID`) brauchte 860 px, die Karte war aber nur 696 px
+(Seitenleiste eingeklappt) bzw. 512 px (ausgeklappt) breit, Überstand 198 bzw. 382 px.
+
+- **Ursache anders als vermutet:** Nicht nur `md` ist zu früh. Die Karte hängt von der Seitenleiste
+  (3,5 rem eingeklappt, 15 rem ausgeklappt) und von der Breitenkappung der `PageShell` (`max-w-4xl`) ab; mit
+  ausgeklappter Seitenleiste lief das Raster auch bei 1024 px noch 158 px über (Karte 736 px). Ein Wechsel
+  auf `lg` hätte diesen Fall offen gelassen.
+- **Umsetzung:** Die Zeilenliste ist ein `@container`, alle Zeilenklassen (`GRID`, `StepRow`,
+  `DecoctionCourse`) schalten bei 53,75 rem Kartenbreite (Mindestbreiten der Spalten plus Abstände) statt ab
+  `md`: `md:` → `@[53.75rem]:`, `max-md:` → `@max-[53.75rem]:`. Darunter gilt der umgebrochene Fallback.
+- **Prüfung:** `pnpm test` (354), `typecheck`, `build`; im Node-Mock (Rezepte „Dekoktion“ mit
+  Zweimaischverfahren auf Pfanne + Läuterbottich und „Ohne Sudhaus“) bei 375, 800, 1024 und 1440 px, jeweils
+  Seitenleiste ein- und ausgeklappt: `documentElement` und Inhaltsbereich ohne waagerechten Überstand, kein
+  Element in `[data-step]` rechts über der Karte. Raster bei 896 px Karte (inklusive Dekoktions-Unterzeile),
+  Umbruch bei 696 px und darunter.
+
+## 2026-10-10 — Rezeptversionen Etappe 4a: Ablage, Liste, Auswahl, Menü
+
+Erster PR der Etappe Versionen (Branch `feat/rezept-versionen`), ohne den Vergleichsdialog (4b). Vor dem
+Start mit dem Nutzer geklärt:
+
+- **Entscheidungen:** Jede Version ist ein **eigenes Rezept** mit eigener Datei, verknüpft über `rootId`
+  (id der v1) und `version`; eingebettet ins Rezept-JSON wäre die 16-KB-Body-Grenze (`kMaxBodyBytes`) nach
+  zwei, drei Versionen erreicht. Rezepte ohne die Felder sind v1, **keine Migration**. Bis zum Sud löst nur
+  der Menüpunkt „Neue Version als Entwurf“ (bei fertigen Versionen) eine Version aus; 5a ergänzt die
+  Konzept-Regel „Version mit Suden ändern = neue Version“. **Ältere Versionen sind bearbeitbar** (Vorschlag
+  im Konzept war nur ansehen). Liste zeigt die neueste Version mit Abzeichen ab v2. Menü: Neue Version,
+  Duplizieren, Exportieren (JSON), Diese Version löschen; BeerJSON statt BeerXML als offener Punkt.
+- **Firmware:** `recipeSummaryLine` (`RecipeFiles.h`) übernimmt `rootId` und `version` in den Listenindex,
+  keine neuen Routen. `openapi.yaml`: `RecipeSummary` um beide Felder, Beschreibungen von Tag, Liste und
+  `Recipe`.
+- **Web-UI:** `recipes.ts` mit `rootOf`/`versionOf`, `groupVersions`, `newVersion` (kopiert die geöffnete
+  Version als nächste Nummer, Entwurf), `duplicateRecipe`, `deleteRecipeVersions`; `exportRecipes` nimmt
+  optional nur bestimmte Versionen. Liste gruppiert, Löschen nimmt alle Versionen (Rückfrage nennt die
+  Zahl). Editor-Kopf: Auswahlfeld ab zwei Versionen (Nummer, Datum des letzten Speicherns, Status), Wechsel
+  fragt bei ungespeicherten Änderungen, „⋯“-Menü (Kopieren/Exportieren bei ungespeicherten Änderungen
+  gesperrt). Übersicht: Karte „Versionen“ (`pages/recipe/Versions.tsx`). `MenuItem` aus `MashTab.tsx` nach
+  `fields.tsx`, `saveJson` aus `BackupPage.tsx` nach `api.ts` (je zweiter Nutzer).
+- **Doku:** Konzept-Doc (Stand 4a, ältere Versionen bearbeitbar, BeerJSON), PLAN.md (4a da, 4b als
+  nächster Schritt, Regel für 5a, BeerJSON-Export).
+- **Prüfung:** `pnpm test` (360, neu: Altbestand als v1, Gruppierung, `newVersion` auch von älterer
+  Version, Duplizieren, Index-Felder und Löschen aller Versionen, Export einzelner Versionen), `typecheck`,
+  `build`, redocly (nur die bekannte info-license-Warnung). Firmware: PlatformIO-Registry war in dieser
+  Umgebung gesperrt, `test_recipe_files` deshalb von Hand mit g++, ArduinoJson 7.4.2 und Unity gebaut
+  (10/10, neu `test_summary_line_carries_the_version_fields`); `pio test -e native`, die Builds
+  `lilygo_t_display_s3_amoled`/`esp32dev` und der Gerätetest am LilyGo sind am 2026-10-12 nachgeholt
+  (Nachtrag unten). Im Node-Mock
+  mit Playwright: Liste mit v2-Abzeichen, Altrezept ohne Auswahlfeld, neue Version aus fertigem Rezept,
+  Wechsel mit Rückfrage, v1 bearbeiten und speichern, Duplizieren, Export beider Versionen, Version löschen
+  (danach öffnet die neueste), Rezept mit allen Versionen löschen, 375 px ohne Querscrollen (dabei den
+  Kopf umbrechend gemacht, sonst lief das Status-Abzeichen rechts aus dem Bild).
+- **Nachtrag 2026-10-12, Firmware und Gerät:** `pio test -e native` 176/176 (darunter
+  `test_summary_line_carries_the_version_fields`), `pio run -e lilygo_t_display_s3_amoled` (32,2 %,
+  2 109 873 von 6 553 600 Byte), `pio run -e esp32dev` (**98,0 % Flash, 1 861 753 von 1 900 544 Byte,
+  38 791 Byte frei**). Gegenüber 3c (1 860 097 Byte) sind das 1 656 Byte mehr; ein Build des Stands
+  direkt vor 4a (`1275ba8`) ergibt dieselben 1 861 753 Byte. 4a kostet auf esp32dev also nichts (die
+  Rezeptrouten liegen hinter `#ifndef BREWCTL_USE_LITTLEFS`), der Zuwachs stammt aus dem ESP-NOW-Fix
+  (#83) und dem Umpinnen von Bussen (#86). **Am LilyGo** (Firmware per OTA, `v0.5.0-78-ga5aff3e`; UI per
+  `webui-full.tar` an `POST /api/update/assets`, mit `VITE_STYLE_COMPARISON=1` gebaut, damit der
+  Stilvergleich auf dem Gerät bleibt):
+  - Als Wurzel diente ein eigenes Testrezept (`hwtest4av1`) statt eines vorhandenen, damit das Löschen
+    am Ende kein echtes Rezept trifft. `PUT /api/recipes/hwtest4av2` mit `rootId: hwtest4av1` und
+    `version: 2` → 204.
+  - `GET /api/recipes` führt `rootId` und `version` nur an diesem Eintrag, die drei älteren Einträge
+    haben die Felder nicht.
+  - Nach einem Neustart (`POST /api/network` mit unverändertem Hostnamen) unverändert. UI: eine Zeile
+    „HW-Test 4a“ mit Abzeichen „v2“; im Editor das Auswahlfeld (v1 Fertig, v2 Entwurf) und die Karte
+    „Versionen“.
+  - „⋯ › Diese Version löschen“ entfernt Datei und Indexzeile der v2; „Rezept löschen“ in der Liste
+    danach die v1. Beide `GET` liefern 404, `/recipes` enthält nur noch die zwei vorhandenen Rezepte.
+  - Nebenbefund: Der erste UI-Upload scheiterte mit einem SD-Schreibfehler, der zweite lief durch
+    (PLAN.md).
+
+## 2026-10-12 — Rezeptversionen Etappe 4b: Vergleich
+
+Zweiter PR der Etappe Versionen (Branch `feat/rezept-versionen-vergleich`, ab `dev`): der Vergleichsdialog.
+Reine Web-UI-Arbeit, Firmware und `openapi.yaml` unverändert. Vor dem Start mit dem Nutzer geklärt:
+
+- **Entscheidungen:** Zutaten erst über die Zeilen-id zuordnen, den Rest über Art, Katalogzutat (Freitext:
+  Name) und Zeitpunkt; Maischschritte, Gärphasen und Teilschüttungen nur über die id. Wasser zeigt Eingaben
+  und Mengen, keine Ionen und keinen pH nach der Aufbereitung. Zutaten stehen einmal, nach Art. Am Handy
+  die Bezeichnung über zwei Werten nebeneinander. Vorgewählt Vorgänger gegen geöffnete Version. Geändert
+  ist, was im angezeigten Text abweicht, Zahlen mit Differenz. **„vX übernehmen“ entfällt.** Die geöffnete
+  Version geht mit dem Editor-Stand in den Vergleich („ungespeichert“).
+- **Web-UI:** `recipeDiff.ts` (pur): `matchRows` (id, dann Schlüssel; Reihenfolge der rechten Seite,
+  Entferntes hinter seinem Vorgänger), Umsortierung über die längste Folge in gleicher Reihenfolge, damit
+  eingefügte Zeilen nichts verschieben, `deriveRecipe` (dieselbe Kette wie die Übersicht: `calcStats`,
+  `calcWater`, `calcMash`), `diffRecipes` mit den sechs Bereichen. `pages/recipe/VersionCompareDialog.tsx`
+  nach dem Muster von `MashProfileDialog` (`dialogScrim`/`dialogFrame`/`dialogSheet`), lädt die nicht
+  geöffneten Versionen per `getRecipe` und hält sie im Dialog. `VersionsCard` mit Link „Vergleichen“,
+  `OverviewTab` öffnet den Dialog, `RecipeEditPage` reicht `dirty` durch (`TabProps.dirty`).
+- **Abweichungen vom Plan:** Die Konversion als eigene Zeile gibt es nur, wenn sie die Grundlage der
+  Brauerei ist (sonst rechnet das Rezept nicht mit `conversionPct`). Sobald eine Seite mehrere
+  Teilschüttungen hat, nennen beide Seiten die Schüttung (die ungeteilte „Schüttung 1“), sonst wäre jedes
+  Malz allein deshalb geändert. „Nur Unterschiede“ kürzt geänderte Einträge auf ihre geänderten Felder.
+- **Doku:** Konzept-Doc (Stand 4b, „Übernehmen“ gestrichen), PLAN.md (4b raus, nächster Schritt Sud 5a).
+- **Prüfung:** `pnpm test` (378, neu 18 in `recipeDiff.test.ts`: Zuordnung über id und Schlüssel, gleiche
+  Gaben in Listenreihenfolge, Reihenfolge mit Entferntem, Rundung, Differenztext, eingefügter und
+  umsortierter Maischschritt, Teilschüttung nur rechts, fehlendes Sudhaus, alle Bereiche), `typecheck`,
+  `build`. Im Node-Mock (Sudhaus aus der Vorlage „Maische-/Würzepfanne + Läuterbottich“, Brauerei mit zwei
+  Wässern, ein Rezept mit v1 bis v3 und Unterschieden in jedem Bereich): v2 gegen v3 und v1 gegen v3 mit
+  neu, geändert, entfernt und den Rechenwerten je Bereich; Auswahl sperrt die Version der anderen Seite;
+  Ausschlagmenge im Editor ungespeichert geändert, der Dialog zeigt den Wert und „ungespeichert“; „Nur
+  Unterschiede“ mit „Keine Unterschiede“ beim Würzekochen; 375 px ohne Querscrollen, Auswahlfelder bleiben
+  oben stehen; Konsole ohne Fehler. Kein Gerätetest (die Firmware ist unverändert).
+## 2026-10-12 — Log-Charts: umschaltbare Zeitachse
+
+Bei langen Aufzeichnungen gingen die jüngsten Änderungen im Chart unter. Die Zeitachse lässt sich
+jetzt je Log umschalten: **Linear** (wie bisher), **Log** (`−ln(1 + a/60 s)`) und **Quadr.**
+(`−√a`), mit `a` = Alter gegenüber dem neuesten Punkt, der damit immer rechts steht und am breitesten ist.
+
+- **Umsetzung Web:** `web/src/timeAxis.ts` (reine Funktionen: `makeScale`, `ageSplits`, `ageLabel`) und
+  `ChartCard.tsx` mit einer uPlot-Skala `distr: 100` (`fwd`/`bwd`). Die Daten bleiben in Epoch-Sekunden,
+  deshalb brauchten `cursorX`, `interpAt` und `isZoomed` keine Änderung. Ticks stehen in den nichtlinearen
+  Modi bei runden Altern und tragen mehrzeilige Beschriftungen: Alter („−2 h“), Uhrzeit und, wenn der Tick
+  an einem anderen Tag liegt als der neueste Punkt, das Datum. uPlots x-Achse hat feste 50 px, darum
+  wächst sie über `axis.size` mit der Zeilenzahl. Umschalter `TimeAxisSwitch.tsx` im Kopf der
+  Karte (Dashboard, Logs-Seite), das Archiv zeigt den gespeicherten Modus ohne Schalter.
+  **Falle:** `distr: 100` erbt uPlots Tick-Filter der Log-Achse (`sc.log == 10`), der die meisten Splits
+  auf `null` setzt — die Achse braucht ein eigenes `filter`.
+- **Ablage:** pro Log auf dem Gerät (`LogConfig.timeAxis`, Default `linear`). Eigene Route
+  `POST /api/logs/{id}/timeaxis` statt des normalen Updates, weil `LogStore::update()` die Session
+  zurücksetzt; `fillFromJson` behält den gespeicherten Wert, wenn der Body keinen mitbringt.
+  `openapi.yaml` (Schema `TimeAxis`) und README-Routentabelle im selben Zug.
+- **Prüfung:** `pnpm test` (331, neu `timeAxis.test.ts`: Umkehrbarkeit, Monotonie, Splits),
+  `typecheck`, `build`, redocly (nur die bekannte info-license-Warnung). Im Browser gegen einen
+  Wegwerf-Mock: 3 Tage Daten mit schnellem Anstieg in den letzten 10 min, alle drei Modi, Legende
+  liefert die Uhrzeit unter dem Cursor, die Route wird mit dem richtigen Body aufgerufen.
+  **Nicht geprüft:** Firmware-Compile (`pio` ist in der Cloud-Umgebung nicht installiert), Flash-Größe
+  des esp32dev (97,9 %, ~40 KB Luft; die Änderung ist klein) und alles am Gerät.
+## 2026-10-12 — Zutaten-Seite mit eigenen Zutaten und Lager
+
+Bisher gab es Zutaten nur als Vorschläge im Namensfeld des Rezepteditors, aus dem statischen Katalog.
+Neu ist der Menüpunkt **Zutaten** (`/zutaten/<tab>`, Rezeptpaket): ein Tab je Art mit dem Lager dieser Art
+oben und Katalog + eigenen Zutaten darunter, dazu „Lager gesamt“. Eigene Zutaten lassen sich anlegen,
+Katalog- und eigene Zutaten als Lagerposten mit Menge, Jahrgang, Form, MHD und eigenen Datenblattwerten
+übernehmen. Rezeptzeilen können auf einen Posten zeigen und rechnen dann mit dessen Werten (Branch
+`zutaten-lager`, eigener Worktree).
+
+- **Firmware:** zwei neue Sammlungen nach dem Muster der Sudhäuser, `/api/ingredients` (`/ingredients`)
+  und `/api/stock` (`/stock`), über eine Hilfsfunktion `WebUI::serveJsonDocDir_` (nur SD-Boards). Die
+  Routen der Sudhäuser und Maischprofile sind gleich gebaut und könnten sie ebenfalls nutzen, sind aber
+  unverändert. `openapi.yaml` (Tag Ingredients, Schemas `UserIngredient`/`StockLot`) und
+  README-Routentabelle im selben Zug.
+- **Web:** `ingredientSource.ts` lädt Katalog, eigene Zutaten und Lager (ohne Gerät bleibt der Katalog
+  nutzbar, `storeFailed`) und hat `reloadCatalog()` für die Seite; das Lesen aus `localStorage`
+  (`bc.userIngredients`, nie geschrieben) entfällt. `stockLots.ts` (rein): `effectiveIngredient`,
+  `withLotEntries`, `entryOf`; `Catalog.entries` hängt je Posten einen effektiven Eintrag mit der Id der
+  Zutat an, darum finden einfache Id-Suchen weiter die Zutat. `Ingredient.stockLotId`, Rechnungen
+  (`recipeStats`, `mashPh`, `recipeTreatment`, `IngredientCard`) über `entryOf`. Feldtabelle
+  `ingredientFields.ts`; Seite `pages/IngredientsPage.tsx`, Dialoge in `pages/ingredients/`.
+  Ids eigener Zutaten `user-…` statt `user:…` (Dateiname), Beispiel-JSON angepasst.
+- **Prüfung:** `pnpm test` (409, neu `stockLots.test.ts`, Speicherzugriff und Lager-Suche in
+  `ingredientSource.test.ts`, IBU mit Lagerposten in `recipeStats.test.ts`), `typecheck`, `build`,
+  redocly (nur die bekannte info-license-Warnung). Im Browser gegen einen Wegwerf-Mock der Sammlungen:
+  Motueka ins Lager mit Alpha 9,2, eigene Zutat angelegt, „Lager gesamt“, im Rezept den Posten gewählt —
+  die Bittere steigt von 23 auf 31 IBU (Katalog 6,5–7,5 %); 390 px Breite ohne Querscrollen der Seite.
+  Firmware-Compile und native Tests (176) nach dem Merge lokal vom Nutzer grün; in der Cloud-Umgebung
+  ist die PlatformIO-Registry gesperrt. **Nicht geprüft:** alles am Gerät.
+- **Nachtrag Hopfenlagerung:** Hopfen-Lagerposten erfassen Lagertemperatur, Verpackung (fünf Stufen
+  wie in Hosoms Hop Freshness Calculator) und „Alpha-Wert vom“, die Zeile zeigt z. B. „−18 °C ·
+  vakuumiert“. Noch ohne Rechnung; Modell und Faktoren für die spätere Alterung in PLAN.md.
+
+
+## 2026-10-12 — Gärkeller: Gärplätze und Gebinde (Branch `feat/gaerkeller`)
+
+Vor dem Sud (5a), damit er den Gärplatz später aus echten Daten wählen kann. Nur die Stammdaten; der
+Belegungsplan kommt mit dem Sud. Entscheidungen und Begründung stehen in `rezept-sud-editor.md` › Gärkeller.
+
+- **Ablage (Nutzerentscheidung):** zwei Sammlungen, je Objekt eine Datei, `/fermenters/<id>.json` und
+  `/containers/<id>.json`, Routen `/api/fermenters` und `/api/containers` (GET, PUT/DELETE `/<id>`). Keine
+  neue Firmware-Logik: zwei Konstanten und zwei Aufrufe der von der Zutaten-Session eingeführten
+  `WebUI::serveJsonDocDir_`, im SD-Block (`#ifndef BREWCTL_USE_LITTLEFS`). `openapi.yaml` (Tag Cellar, Schemas
+  `Fermenter`/`Container`), README-Routentabelle und der Routenkommentar in `WebUI.h` im selben Zug.
+- **Remote (Nutzerentscheidung):** Remote-Sensoren und -Aktoren sind lokale Proxys im Snapshot, die
+  Verknüpfung trägt sie schon. Einen Remote-Regler gibt es nicht (`Discovery.h`); der Regler läuft auf dem
+  Board mit der Brauanlage, der Editor sagt das am Feld. Der Proxy steht als Punkt in PLAN.md.
+- **Web:** `web/src/cellar.ts` (rein: Modell, `checkFermenter`/`checkContainer`, `setTempering`, Normalisierung,
+  API) und `pages/CellarSection.tsx` (Listen und Dialoge) auf der Seite Brauanlage. Verknüpfung am Gärplatz:
+  Temperierung (ohne, kühlen, heizen, beides), „von Hand“ oder angeschlossen mit Regler oder Aktor, dazu ein
+  Temperaturfühler. Trubverlust und Abfüllverlust sind ohne Wert „wie im Rezept“ bzw. 0, es gibt keine erfundene
+  Vorgabe. `Select`, `TextInput`, `Opt` und `itemText` sind aus `BrewhouseEditPage.tsx` nach `recipe/fields.tsx`
+  gezogen (reine Verschiebung).
+- **Backup (Nutzerentscheidung):** gemeinsam später; der Punkt in PLAN.md nennt Gärplätze und Gebinde.
+- **Prüfung:** `pnpm test` 436 (neu `cellar.test.ts`, 27 Fälle: jeder Fehler- und Hinweisfall, Wechsel der
+  Temperierung, Normalisierung, API mit `fetch`-Stub), `typecheck`, `build`, redocly (nur die bekannte
+  info-license-Warnung). Bundle: Gärkeller-Code nur im Paket-Chunk (250,3 statt 238,9 kB, gzip 78,6 statt 75,7);
+  das Basis-Bundle blieb bei 469,72 kB (gzip 147,48 statt 147,47, der Unterschied ist der Hash des Chunk-Namens),
+  gebaut gegen den unveränderten `dev`-Stand. Im Browser (Playwright gegen einen Wegwerf-Mock): Speichern
+  gesperrt ohne Namen und Volumen und bei „angeschlossen“ ohne Verknüpfung, Einheitenhinweis (Regler auf kg)
+  sperrt nicht, Anlegen, Bearbeiten (Wechsel auf „ohne Temperierung“ verwirft den Regler, der Fühler bleibt),
+  Keg-Hinweis, Bruchzahl als Anzahl gesperrt, Löschen, `PUT`/`DELETE` auf der gespeicherten ID, 375 px ohne
+  Querscrollen.
+- **Nicht in der Cloud geprüft** (PlatformIO ist dort nicht installiert, die Registry gesperrt), **nach dem
+  Merge (#93) lokal vom Nutzer:** Firmware kompiliert, alle nativen Tests grün. `esp32dev`: Flash 98,0 %
+  (1 862 805 von 1 900 544 Byte, 37 739 Byte frei), RAM 18,7 % (61 176 von 327 680 Byte). Die Erwartung
+  „bleibt bei 1 860 097 Byte“ aus dem PR war falsch gestellt: Die Zahl stammte vom Stand vor mehreren
+  Merges, und der letzte gemessene Wert vor #93 war 1 861 753 Byte (PLAN.md, esp32dev-Flash). Der Zuwachs von
+  1 052 Byte gilt für alles, was seither in `dev` kam (u. a. die Zeitachsen-Route der Log-Charts, die Zutaten-
+  und die Gärkeller-Routen); wie viel davon der Gärkeller ist, ist nicht getrennt gemessen. Die
+  Gärkeller-Routen stehen im SD-Block und gehören nicht ins `esp32dev`-Image; ob `/api/fermenters` im ELF
+  fehlt, ist nicht geprüft. Offen bleibt alles am Gerät; Punkt unter „Hardware-Verifikation offen“ in PLAN.md.
+## 2026-10-12 — Sud 5a: das Gerüst
+
+Der Sud ist in drei Etappen geteilt (5a Gerüst, 5b Brautag mit Messwerten, 5c Gärung, Reifung, Abfüllung mit
+Belegungsplan). 5a legt das Datenmodell fest. Entscheidungen des Nutzers: Der Sud verweist auf die
+Rezeptversion und kopiert beim Start Sudhaus, Brauerei, Gärplatz und die Werte seiner Zutaten; abgebucht wird
+beim Start über einen Dialog; die Belegung steht im Sud-Index statt in `/bookings`; die Sicherung kommt schon
+jetzt (Branch `feat/sud-geruest`, eigener Worktree).
+
+- **Firmware:** `GET /api/brews`, `GET|PUT|DELETE /api/brews/{id}` mit Index wie die Rezepte. `RecipeStore`
+  bekam einen Verzeichnis-Parameter (Standard `/recipes`), `RecipeFiles.h` den Helfer `summaryLineOf`;
+  `recipeSummaryLine` nutzt ihn unverändert, neu `brewSummaryLine` mit allen Feldern, die der Belegungsplan
+  braucht. `openapi.yaml` (Tag Brews, `BrewSummary`, `Brew`) und README im selben Zug.
+- **Web:** `brews.ts` (Modell, Daten, Nummer, Belegung und Überschneidung, Speicher, Sicherung) und
+  `brewStart.ts` (Kopien, Lagerplan, Abbuchen, Start), getrennt, damit die Sicherungsseite den Katalogcode
+  nicht ins Hauptbundle zieht (der Sud-Export lädt per `import()`). `docBundle.ts`: gemeinsames Format für
+  Rezept- und Sud-Sicherung, `recipes.ts` reicht durch. Seiten `BrewsPage` (`/sude`, Menüpunkt „Sude“),
+  `BrewPage` (Kopf, Phasen-Tabs leer, „⋯“ mit Brautag starten, Abschließen, Löschen mit Zurückbuchen),
+  `brew/StartBrewDialog`; im Rezept der Tab „Sude“ und die Versionsregel (Speichern einer Version mit Suden
+  legt eine neue an, Löschen gesperrt, auch in der Rezeptliste; ohne geladene Sude ist Speichern gesperrt).
+  `BackupPage`: die Rezept-Karten wurden zur Komponente `DocBackup`, die Sude nutzen sie mit.
+- **Prüfung:** `pnpm test` (449, neu `brews.test.ts` mit 13 Tests), `typecheck`, `build` (Hauptbundle
+  +1,3 KB, Sud-Export als eigener 2,7-KB-Chunk), redocly (bekannte info-license-Warnung). `RecipeFiles.h`
+  samt neuen Tests mit g++ und Unity (von GitHub) außerhalb von PlatformIO gebaut: 12/12 grün;
+  `RecipeStore.cpp` mit Stub-Headern auf Syntax geprüft. Im Browser gegen einen Wegwerf-Mock: Sud aus
+  fertigem Rezept, Gärplatz wählen und speichern, Start bucht 30 g Motueka ab (250 → 220) und schreibt die
+  Kopien, Rezept speichern legt v2 an, v1 und das Rezept lassen sich nicht löschen, Löschen mit Zurückbuchen
+  (220 → 250), Sud-Export, 390 px ohne Querscrollen, Konsole ohne Fehler. Firmware-Compile und
+  `pio test` (178) nach dem Merge lokal vom Nutzer grün; in der Cloud-Umgebung ist die PlatformIO-Registry
+  gesperrt. **Nicht geprüft:** alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Rohstoffverwaltung: Entwurf im Design-Canvas
+
+Im Canvas des Rezept- und Sud-Editors gibt es eine neue Reihe „Zutaten & Lager“: Lager-Übersicht, Katalog,
+Einkaufsliste, Buchungs-Journal, dazu die Dialoge Lagerposten und Buchen sowie ein neuer Punkt in der
+Navigationsleiste. Rezept › Zutaten und Übersicht zeigen Bestand, Fehlmengen und Zutatenkosten, Sud ›
+Vorbereitung die gewählten Posten. Der Entwurf ist frei neu aufgebaut (eine Tabelle über alle Arten statt
+eines Tabs je Art) und ergänzt Buchungen mit Verlauf, Reservierung, Meldebestand mit Einkaufsliste sowie
+Preise und Kosten; es bleibt bei einem Lager. Die Vorschläge und offenen Punkte stehen in
+`BrewControl/docs/rezept-sud-editor.md` › „Entwurf Rohstoffverwaltung“. **Nur Entwurf:** kein Code geändert,
+die Seiten sind mit dem Nutzer noch nicht im Detail durchgesprochen und wurden nicht gerendert geprüft.
+
+## 2026-10-13 — Sud 5b-1: Messwerte und Vorbereitung
+
+Plan 5b (Brautag in vier Teil-Etappen, je Session und PR) ist jetzt in `BrewControl/docs/rezept-sud-editor.md`
+› „Plan 5b“ eingetragen; der Doku-Commit der Planungssession fehlte. 5b-1 legt das Muster für alle
+Brautag-Tabs. Entscheidungen des Nutzers: neuer Sudhaus-Messwert `strikeTemp`; Ist-Menge je Gabe unter der
+Gruppe aus Zutat und Posten; Soll für Haupt- und Nachguss ist die Einfüllmenge; Branch `feat/sud-5b-1` mit
+PR.
+
+- **Rechnung:** `brewDay.ts` mit `brewTargets` (Kette der Rezept-Tabs auf den Kopien, mit dem Sudhaus des
+  Suds), neu die Stammwürze vor dem Kochen (ohne Kochzucker) und die Vorderwürze nach Troesters Mash Gravity
+  Test (`TODO(verify)`); `measuredEfficiency` als exakte Umkehrung (Maischeeffizienz, Sudhausausbeute,
+  Konversion, Läutereffizienz); `deviation` mit den Toleranzen an einer Stelle. `wortExtract` gibt dafür
+  Grist und `boilOtherKg` zurück.
+- **Modell und Speichern:** `measurements`, `checked`, `rowAmounts`, `phaseNotes` am Sud, ohne Migration.
+  `patchBrew` lädt frisch, setzt ein Feld und schreibt; auch das Kopf-Speichern setzt nur die Kopf-Felder,
+  „Abschließen“ ebenso. `rebook`/`lotTarget`/`withBooking` in `brewStart.ts`.
+- **UI:** `MeasureRow` (Soll, Ist, Abzeichen, Live-Wert eines verknüpften Fühlers mit „übernehmen“,
+  Stammwürze in °P/SG/°Bx), `PrepTab` (Wasser mit Dosen zum Abhaken, Zutaten nach Art mit Ist-Mengen und
+  Lagerwarnung, Notiz der Phase). Der Snapshot wird an die Sud-Seite durchgereicht.
+- **Prüfung:** `pnpm test` (469, neu `brewDay.test.ts` mit 11 Tests, `brews.test.ts` +9), `typecheck`,
+  `build` (Hauptbundle 471,03 kB, +0,03; Rezeptpaket +10,9 kB, gzip +3,8 kB), redocly (bekannte Warnung).
+  Im Browser gegen einen Wegwerf-Mock (Vorlage `herms3`, Fühler für Hauptgusstemperatur und Spindel):
+  Sollwerte vor dem Start, Start bucht ab, Messwert von Hand und per „übernehmen“, zwei Tabs setzen
+  verschiedene Felder und behalten beide, Kopf-Speichern danach lässt die Messwerte stehen, Reload zeigt den
+  Wert, Ist-Mengen buchen nach (5 → 5,4 kg) und zurück (→ 4,5 kg), Hopfen über den Bestand hinaus bleibt bei
+  der Buchung mit Hinweis, 390 px ohne Querscrollen, Konsole ohne Fehler. **Größe:** 29 Rezeptzeilen, alle
+  21 Messwerte, Haken, Ist-Mengen und Notiz: 9 539 Byte (Kopien 5,5 KB bei 8 eingefrorenen Zutaten; je
+  weitere Zutat etwa 0,4 KB). Firmware unverändert. **Nicht geprüft:** alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Sud 5b-2: Maischen
+
+Umsetzung von „Plan 5b › 5b-2“ in `BrewControl/docs/rezept-sud-editor.md` (Stand 5b-2 dort). Entscheidungen des
+Nutzers: Aufheizen wartet auf „Weiter“, mit verknüpftem Fühler endet es von selbst und meldet sich per
+`notify`; Säurevorschlag auch unter Kolbach; das Programm wird bei „Abschließen“/„Löschen“ des Suds und mit
+„Timer abbrechen“ gelöscht; der Timer zeigt die Programm-Karte des Dashboards. Gearbeitet auf `dev` (die
+Session war daran gebunden), kein eigener PR.
+
+- **Firmware:** `ProgramStep.notify` (lesen/schreiben in `ProgramSteps.*`, damit auch in Profilen und Backup).
+  `ProgramRunner::enterStep_` meldet beim ersten Vorwärts-Betreten (`notifiesOnEntry` in neuem header-only
+  `ProgramEvents.h`, dieselbe Regel wie die Impulse), der Status-Callback trägt den Schrittnamen; `awaiting`
+  nennt den aktuellen Schritt. `AlarmStore::Alert` hat `step[40]` (Ring ~7,4 KB statt ~5,8 KB), JSON `step`,
+  `onProgramStatus` kennt `notify` (Info). Die Push-Texte für Programme stehen jetzt in
+  `describeProgramAlert` (`ProgramEvents.h`). OpenAPI: `ProgramStep.notify`, `Alert.step`, `detail` `notify`.
+- **Web:** `brewDay.ts` mit `mashAcidSuggestion` (Säurehilfe auf der am Messwert verankerten Mash-Spalte),
+  Soll „pH Maische“ jetzt vor der Gabe nach pH-Messung, Soll „pH nach der Säure“ = Ziel-pH. Neu
+  `brewPrograms.ts` (`mashTimerProgram`, `isRegulated`) und `pages/brew/MashTab.tsx` (pH und Säure,
+  Vorderwürze mit Konversion, Rasten mit Ist-Temperatur, Timer mit `ProgramCard`). Ist-Mengen-Logik und
+  `AmountInput` aus `PrepTab` nach `pages/brew/amounts.tsx` gezogen. Sud-Felder `restTemps`,
+  `mashProgramId`. Meldungen zeigen den Schritt (`AlertCenter`), der Programm-Editor hat „Melden“, die
+  Karte 🔔 und lässt „Steuert“ ohne Ziele weg.
+- **Prüfung:** `pnpm test` (479; neu `brewPrograms.test.ts` 6, `brewDay.test.ts` +4), `typecheck`, `build`
+  (Hauptbundle 471,57 kB, +0,54, gzip +0,16; Rezeptpaket +9,5 kB, gzip +2,8), redocly (bekannte Warnung).
+  Firmware: `test_program_events` (6) und `test_program_targets` (14) mit g++, Unity und ArduinoJson 7.4.2 von
+  GitHub grün; `ProgramSteps.cpp`, `ProgramRunner.cpp`, `AlarmStore.cpp` mit Stub-Headern ohne Fehler
+  übersetzt, der Push-Zweig als Ausschnitt. Im Browser (Chromium per Skript) gegen einen Wegwerf-Mock
+  (Vorlage `herms3`, Heizung von Hand, Fühler für Maischetemperatur und pH): Start bucht ab, pH 5,62 ergibt
+  4,1 ml Milchsäure, „übernehmen“ bucht von 2 auf 4,1 ml nach (Lager 98 → 95,9), Vorderwürze ergibt die
+  Konversion mit Abweichung, Rast-Ist bleibt nach dem Neuladen, „Maischen starten“ legt sechs Schritte an
+  (Fühler-Ende und `notify` beim Aufheizen der Maische, `confirm` beim Hauptguss ohne Fühler), „Weiter“ geht
+  weiter, „Timer abbrechen“ und „Abschließen“ löschen das Programm, 390 px ohne Querscrollen, Konsole ohne
+  Fehler. Gefunden und behoben: Der Name der Schüttung stand auch bei nur einer im Schritt.
+- **Nicht geprüft:** `pio test -e native` (erwartet 184), `pio run -e esp32dev` und alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Sud 5b-3: Würzekochen
+
+Umsetzung von „Plan 5b › 5b-3“ in `BrewControl/docs/rezept-sud-editor.md` (Stand 5b-3 dort). Entscheidungen des
+Nutzers: „Kochen starten“ beim Anheizen (Vorderwürze und Kochbeginn mit „Weiter“), das Programm führt den
+Whirlpool mit, „min vor Kochende“ im Rezept für jede Kochgabe. Branch `feat/sud-5b-3`.
+
+- **Web:** `brewPrograms.ts` mit `boilAdditions`, `boilTimerProgram` und `boilProgress`; `brewDay.ts` mit
+  `withResults`, Soll für pH der Würze (nur mit Würze-Gabe) und Luftdruck. Neu `pages/brew/BoilTab.tsx`
+  (Kochtimer mit Kopfzeile, Messwerte vor/nach dem Kochen mit Maischeeffizienz und Sudhausausbeute, Gaben
+  mit Haken, Uhrzeit und Ist-Menge, Würze abzweigen) und `BrewTimer.tsx` (aus dem Rasten-Timer gezogen, von
+  beiden Tabs genutzt). Sud-Felder `boilProgramId`, `addedAt`, Messwerte `speiseVolume`/`dipWortVolume`,
+  Ergebnisfelder `ogPlato`, `ogActual`, `mashEffPct`, `yieldPct`, `bottledL`. Rezept-Tab „Sude“ mit Spalten
+  und `EfficiencyChart.tsx`. `IngredientCard` zeigt das Zeitfeld für alle Kochgaben.
+- **Firmware:** `brewSummaryLine` trägt die fünf Ergebnisfelder; `AlarmStore::setField` schneidet über
+  `utf8PrefixLen` (`ProgramEvents.h`) an einer Zeichengrenze. OpenAPI: `BrewSummary` und die Beschreibung von
+  `Brew`.
+- **Beim Prüfen gefunden und behoben:** Zwei schnell hintereinander gestartete Feld-Speicherungen derselben
+  Seite überschrieben einander (jede liest den Sud frisch); die Sud-Seite reiht sie jetzt auf. Betraf auch
+  5b-1/5b-2. Die Haken im neuen Tab lasen die Checkbox erst beim Speichern und blieben leer.
+- **Prüfung:** `pnpm test` (497; `brewPrograms.test.ts` +10, `brewDay.test.ts` +5, `brews.test.ts` +2,
+  `EfficiencyChart.test.ts` 1), `typecheck`, `build` (Hauptbundle 471,59 kB, +0,01; Rezeptpaket 295,77 kB,
+  +10,3, gzip +3,6), redocly (bekannte Warnung). Firmware: `pio test -e native` 186 grün (neu je ein Test in
+  `test_recipe_files` und `test_program_events`), `pio run -e esp32dev` übersetzt, Flash 98,1 %
+  (1 864 169 von 1 900 544 Byte, 36 375 frei). Damit sind auch die bei 5b-2 offenen lokalen Läufe erledigt.
+  Im Browser gegen einen Wegwerf-Mock (Vorlage `herms3`, Programm-Uhr 20-fach): Start bucht ab, „Kochen
+  starten“ legt sieben Schritte an (Vorderwürze und Kochbeginn mit `confirm`, „Noch 10 min“ mit drei Gaben
+  und `notify`, Kochende, Whirlpool), „Weiter“ startet die Kochuhr, die Kopfzeile zählt Kochende und nächste
+  Gabe, vier Haken auf einmal bleiben mit Uhrzeit, Ist-Menge 18 → 21 g bucht nach (Lager 82 → 79), Messwerte
+  ergeben 72,2 % Maischeeffizienz und 55,2 % Sudhausausbeute, die Index-Zeile trägt die Ergebnisse, der
+  Maischen-Timer läuft nach dem Umzug, „Timer abbrechen“ und „Abschließen“ löschen die Programme, der
+  Rezept-Tab „Sude“ zeigt Spalten und Diagramm, 390 px ohne Querscrollen, Konsole ohne Fehler. Sud im Mock
+  am Ende 5 672 Byte.
+- **Nicht geprüft:** alles am Gerät (PLAN.md).
+
+## 2026-10-13 — Sud 5b-4: Maischverlauf und Geräte
+
+Umsetzung von „Plan 5b › 5b-4“ in `BrewControl/docs/rezept-sud-editor.md` (Stand 5b-4 dort). Entscheidungen des
+Nutzers, abweichend vom Plan: Zeitanker ist das Einmaischen (Knopf „Eingemaischt“); das Diagramm steht in
+jedem Maischen-Tab, nicht nur bei Regelung; die Liste zeigt Geräte statt Transfers, dazu Rührwerk, Ventile,
+Kühler und Kondensator; Laufzeit und Menge werden nicht gespeichert; Läutern und Nachguss stehen in beiden
+Tabs. Branch `feat/sud-5b-4` von `dev`. Nur Web, Firmware unverändert.
+
+- **Web:** Neu `pages/brew/MashCourse.tsx` (Karte „Verlauf“: `sollCourse` legt die Maische-Linie aus
+  `curveOf` am Einmaischen auf die Uhr, `pickLog` schlägt das Log mit dem Maischefühler vor, `sessionFor`
+  wählt die Log-Session, `istCourse` schneidet Temperatur und Heizleistung auf das Fenster, `heatActuatorOf`
+  findet den Aktor über den Regler der Heizquelle; uPlot mit `uPlot.join`, Live-Punkte alle 5 s),
+  `brewDevices.ts` (Geräte der Schritte und Transfer-Pumpen, je Gerät eine Zeile) und
+  `pages/brew/DeviceList.tsx` (Karte „Pumpen & Geräte“ mit Hauptschalter, Zustand und Sperre nach
+  `ownership.ts`). Sud-Felder `logId` und `phaseStartedAt` mit `setPhaseStart`. `outputPct` aus
+  `ControllerCard.tsx` exportiert. `MashTab` und `BoilTab` binden beides ein; der 5b-4-Hinweis bei
+  geregelter Maische ist ersetzt. OpenAPI: Beschreibung von `Brew`.
+- **Beim Prüfen gefunden und behoben:** Fehlte eine Spalte im Log, las `istCourse` die Zeitspalte als
+  Temperatur (Test). Das Feld „Eingemaischt um“ las beim Verlassen den Wert aus dem Zustand statt aus dem
+  Feld und konnte eine Eingabe verlieren. Die Legende zeigte als Soll den nächsten Eckpunkt des Plans; jetzt
+  liest sie ihn linear dazwischen (`fillLinear`).
+- **Prüfung:** `pnpm test` (510; neu `MashCourse.test.ts` 8, `brewDevices.test.ts` 4, `brews.test.ts` +1),
+  `typecheck`, `build` (Hauptbundle 471,68 kB, +0,09; Rezeptpaket 304,33 kB, +8,6, gzip 96,06 kB), redocly
+  (bekannte Warnung). Im Browser gegen einen Wegwerf-Mock (Vorlage `herms3` mit Regler an der Heizung,
+  Pumpen, Rührwerk und Kühler auf Aktoren, Log mit einer Maische, die vor 50 min begann, Snapshot per SSE):
+  Das Log mit dem Maischefühler ist vorgeschlagen, „Eingemaischt“ speichert Anker und `logId`, die auf
+  −50 min geänderte Zeit legt die Soll-Kurve auf die Messung (63 °C, Rampe, 72 °C), Heizleistung aus der
+  CSV, Live-Punkte laufen nach, die Legende liest Soll, Ist und Heizleistung; ein Log ohne Aktor bzw. ohne
+  Fühler ergibt den jeweiligen Hinweis. Geräte: Pumpe 2 schaltet (`{"enabled":true}`), das Rührwerk auf
+  seinem Minimum bekommt erst `{"v":100}`, Pumpe 1 ist durch einen Regler gesperrt, der Kühler im Koch-Tab
+  durch ein Programm, ein Aktor, den es nicht gibt, steht als Hinweis da; Läutern und Nachguss in beiden
+  Tabs. Sudhaus von Hand: Diagramm ohne Heizleistung, Timer und Rasten wie bisher, keine Geräte-Karte.
+  390 px ohne Querscrollen, Konsole ohne Fehler. Sud im Mock 4 478 Byte, die beiden Felder kosten 59 Byte.
+- **Nicht geprüft:** alles am Gerät, auch ein abgeschlossener Sud mit archivierter Log-Session und das
+  Schalten bei eingerastetem Not-Aus (PLAN.md).
+
+## 2026-10-14 — Sud 5b am LilyGo geprüft, vier Korrekturen
+
+Die Prüfpunkte „Sud 5b-1 … 5b-4 am Gerät“ aus PLAN.md, am LilyGo (`v0.5.0-104-g43952e3`, Oberfläche aus
+`dev` mit Stilvergleich) mit dem Nutzer. Für Timer in Minuten liegt auf dem Board das Rezept „Gerätetest“
+(Rasten 23/26 °C je 1 min, 3 min Kochen mit Gaben bei 3/2/1/0 min), dazu die Sudhäuser „Gerätetest von Hand“
+und „Gerätetest geregelt“ (aus „Ein-Topf“, Maischefühler = `HLT`, Rührwerk = `agitator`, Umwälzpumpe =
+`kettle`) und die Sude #2 und #3; sie bleiben dort. Branch `fix/sud-5b-geraetepruefung`.
+
+- **5b-1:** Start bucht ab (Lagerposten 5 → 4 kg), Messwert von Hand und „übernehmen“ vom Fühler (mit `src`),
+  ein zweites Gerät, das zwischendurch ein anderes Feld schreibt, bleibt erhalten, die Ist-Menge bucht nach
+  (→ 3,8 kg). Ein Sud-Dokument von 15 956 Byte wird gespeichert und identisch zurückgelesen, 16 756 Byte
+  lehnt die Firmware mit 413 ab.
+- **5b-2:** „Maischen starten“ legt fünf Schritte an; der Heiz-Schritt endet von selbst, sobald `HLT` über
+  der Schwelle liegt (Fühler in der Hand), „Einmaischen“ wartet auf Freigabe. Fünf Meldungen mit
+  Schrittnamen, fünf Pushes am Desktop, je einmal. Drei Neustarts per API (in einer Rast, in einem
+  Fühler-Schritt, in einer Rast mit `notify`): Das Programm macht am selben Schritt weiter, die Uhr läuft
+  durch (59 s → 39 s), keine Meldung wiederholt sich.
+- **5b-3:** „Kochen starten“ legt acht Schritte an, ein Neustart mitten im Kochen ändert nichts. Lange
+  Schrittnamen enden in der Meldung sauber nach 39 Byte („… 2,5 g Irish Mos“). Vier Haken in 1,5 s bleiben
+  alle mit Uhrzeit, Ist-Menge und Messwerte bleiben; `ogPlato`, `ogActual`, `mashEffPct` und `yieldPct`
+  stehen in `/brews/index.jsonl` und im Rezept-Tab „Sude“. „Abschließen“ löscht beide Programme.
+- **5b-4:** Das Log mit dem Maischefühler ist vorgeschlagen, „Eingemaischt“ und die korrigierte Zeit legen
+  die Soll-Kurve richtig, Ist und Heizleistung kommen aus dem Log (934 KB), ein Punkt kurz nach dem Laden
+  stammt aus dem Live-Snapshot. Nach dem Leeren des Logs liest der Sud die archivierte Session
+  (`?session=…`, 3,6 s). `agitator` und `kettle` lassen sich schalten; ein laufendes Programm und ein
+  eingeschalteter Regler auf `kettle` sperren den Schalter mit Grund (beide Hilfsobjekte wieder gelöscht).
+- **Gefunden und behoben:**
+  - `ProgramCard` und `TimerCard` definierten ihre Knopf-Komponente `Btn` im Rumpf der Karte. Preact sah bei
+    jedem Neuzeichnen (jede Sekunde) eine neue Komponente und baute „Zurück/Weiter/Stop“ neu auf; ein Tipp
+    in diesem Moment konnte verloren gehen. `Btn` steht jetzt auf Modulebene. Am Gerät: dieselben Knoten
+    über 4 s.
+  - Ein Aktor im Intervall (`agitator`, 4 von 5 s) sprang in „Pumpen & Geräte“ zwischen 55 % und 0 %. Die
+    Zeile zeigt jetzt den Sollwert, das Intervall steht im Tooltip. Am Gerät: 7 s lang 55 %.
+  - Die Schwelle eines Fühler-Schritts war ungerundet („HLT > 22.76841“); jetzt auf 0,1 K (Test).
+  - Bei eingerastetem Not-Aus ließ sich `agitator` über „Pumpen & Geräte“ wieder einschalten. Die Karte
+    sperrt ihre Schalter jetzt („Not-Aus aktiv“, im Mock geprüft). Dass die Firmware die Freigabe annimmt
+    und das Dashboard nicht sperrt, steht in PLAN.md.
+- **Prüfung:** `pnpm test` (511, +1), `typecheck`, `build` (Hauptbundle 471,85 kB, +0,17).
+- **Danach am Gerät:** Not-Aus aufgehoben, `agitator` (55 %), `IDS1` und Regler `Maischen` wie vorher
+  eingeschaltet, `kettle` aus mit Sollwert 0,63. Lagerposten wieder 5 kg, die Abbuchungen aus den beiden
+  Test-Suden genommen. Das Log „Maischen“ hat seit 00:10 eine neue Session.
+- **Offen:** Beim Kochtimer sind vier von sieben Pushes bestätigt (PLAN.md).
+
+## 2026-10-14 — Sud 5b-5: Maischprogramm für geregelte Maischen
+
+PLAN.md › Rezept- und Sud-Editor, „Nächster Schritt“. Branch `feat/maischprogramm-geregelt`. Einzelheiten und
+alle Entscheidungen des Nutzers: `BrewControl/docs/rezept-sud-editor.md` › „Stand 5b-5“.
+
+- **Programm:** Bei geregelter Maische legt „Maischen starten“ ein Programm an, das dem Regler der
+  Maisch-Heizquelle die Sollwerte setzt (`mashTimerProgram(…, control)`, `mashControlOf`). Aufheizen und
+  Abkühlen setzen den Sollwert beim Beginn und enden am Fühler; ein Schritt mit Freigabe setzt nichts, der
+  Schritt danach bringt die neue Temperatur. Der Hauptguss gehört dazu, wenn er am selben Regler hängt, und
+  wartet nach dem Aufheizen auf „Weiter“. Am Ende hält „Maischen beendet“ den Sollwert bis zur Freigabe,
+  dann gehen die Regler aus. Pumpe und Rührwerk schaltet das Programm nicht.
+- **Dekoktion:** Ziehen, Rasten und Kochen der Teilmaische und Zurückgeben sind einzelne Schritte; der Regler
+  der Maische ist währenddessen aus, ein Regler am Dekoktionskessel bekommt die Sollwerte.
+- **Firmware:** „Stop“ schaltet alle Regler und Aktoren aus, die ein Programm anspricht
+  (`ProgramRunner::control`, `targetIds` in `ProgramTargets.h`). Vorher blieb alles stehen, auch im
+  Dashboard; das gilt jetzt für jedes Programm. `docs/openapi.yaml` und README nachgezogen.
+- **Sud:** „Timer abbrechen“, „Abschließen“ und „Löschen“ stoppen ein laufendes Programm, bevor sie es
+  löschen (`dropProgram`). Vor einem Start, der sofort heizt, fragt der Tab nach. „Weiter“ am Einmaischen
+  setzt die Zeit „Eingemaischt“ (`mashedInAt`), auch beim Rasten-Timer von Hand.
+- **Nebenbei geändert:** Ein Sudhaus mit Aufguss (Heizquelle am Regler, aber in einem anderen Behälter ohne
+  Spirale und Pumpe) zählt nicht mehr als geregelt und bekommt den Rasten-Timer von Hand; der Regler hält
+  dort das Wasser heiß, nicht die Maische.
+- **Prüfung:** `pnpm test` (528, +17), `typecheck`, `build` (Hauptbundle 471,94 kB); `pio test -e native`
+  (187, +1), `pio run` für `lilygo_t_display_s3_amoled` und `esp32dev`. Im Browser gegen einen Mock: Start
+  mit Rückfrage, acht Schritte bis „Regler aus“ mit den Sollwerten am Mock-Regler, „Eingemaischt“ nach dem
+  „Weiter“ am Einmaischen, Abbrechen (Stop, Löschen, Regler aus), die Hinweise zu Fühler, Umwälzpumpe und
+  fehlendem Regler, Dekoktion mit Regler am zweiten Kessel (zwölf Schritte).
+- **Nicht geprüft:** alles am Gerät (PLAN.md). Die SD-Karte des LilyGo hing während der Session nach einem
+  Einschalten nicht ein, die Testdaten waren deshalb nicht lesbar.
+
+## 2026-10-14 — Maischeplan: Restmaische halten, Aufheizzeit zählt zur Rast
+
+Zwei Schalter aus der Planung des Maischprogramms (Entscheidungen des Nutzers vom 2026-10-14). Branch
+`feat/maischplan-schalter`, aufbauend auf `feat/maischprogramm-geregelt`. Einzelheiten:
+`BrewControl/docs/rezept-sud-editor.md` › „Stand 3e“ und „Stand 5b-5“. Nur Web.
+
+- **Restmaische halten** (`Decoction.holdRest`, Haken je Dekoktion): Der Maischeplan rechnet die Restmaische
+  ohne Wärmeverlust, wenn der Maischbehälter beheizt ist; sonst ein Hinweis. Das Maischprogramm lässt den
+  Regler der Maische dann während der Dekoktion an.
+- **Aufheizzeit zählt zur Rast** (`Recipe.mashRampInRest`, Haken unter dem Maischeplan): Die Dauer einer
+  Rast läuft ab Beginn des Aufheizens oder Abkühlens; auf Temperatur bleibt Dauer minus Übergang, die
+  Maischdauer wird kürzer. Gilt auch für die Rasten der Teilmaische. Im Programm entfällt für solche Rasten
+  „Aufheizen auf T“: Die Rast setzt den Sollwert und läuft ihre ganze Dauer; von Hand meldet sie sich beim
+  Beginn.
+- **Versionsvergleich:** je eine Zeile für beide Schalter. Maischprofile tragen sie nicht.
+- **Prüfung:** `pnpm test` (536, +8), `typecheck`, `build`. Im Browser gegen einen Mock: beide Haken im
+  Rezept-Editor (Maischdauer 0:32 → 0:31 h im Prüfrezept, gespeichert als `holdRest` und `mashRampInRest`),
+  im Sud das Programm mit beiden Schaltern (keine Aufheiz-Schritte, Rasten mit Sollwert, Regler der Maische
+  bleibt bei der Dekoktion an).
+- **Nicht geprüft:** am Gerät (PLAN.md, beim Prüfpunkt des Maischprogramms).
+
+## 2026-10-14 — Maischprogramm am LilyGo geprüft, Regler-Ausgang bleibt stehen
+
+Firmware und Oberfläche aus `dev` (`v0.5.0-113-gd48a5b6`, mit Stilvergleich) per OTA auf den LilyGo, Prüf-Sud #4
+aus „Gerätetest“ mit „Gerätetest geregelt“, ohne Lagerbuchung gestartet und danach abgeschlossen. Keine Platte an
+`IDS1`; die Fühler-Schritte wurden mit „Weiter“ übersprungen.
+
+- **Geprüft:**
+  - Rückfrage beim Start („… heizt auf 23,3 °C“), sieben Schritte wie erwartet.
+  - Am Regler `Maischen` je Schritt der Sollwert: 23,3 → 23 → 26 °C; „Maischen beendet“ hält 26 °C, „Weiter“
+    schaltet ihn aus, das Programm ist fertig.
+  - „Weiter“ am Einmaischen setzt „Eingemaischt“ (10:17:27) und das Log.
+  - „Stop“ in der Programm-Karte schaltet den Regler aus (neu in der Firmware). „Timer entfernen“ löscht ein
+    gestopptes oder fertiges Programm nur. „Timer abbrechen“ stoppt, löscht und schaltet aus.
+- **Gefunden:** Ein ausgeschalteter Regler lässt seinen Aktor auf dem letzten Wert stehen. Nach „Stop“ und „Regler
+  aus“ stand `IDS1` auf 1, eine Platte hätte weitergeheizt. Ursache in SensActCtrl (`Controller::setEnabled` setzt
+  nur ein Flag); gilt auch für den Dashboard-Schalter. Auf Wunsch des Nutzers erst in PLAN.md, nicht behoben.
+- **Nicht geprüft:** das Ende der Fühler-Schritte bei echtem Heizen und der Haken „Aufheizzeit zählt zur Rast“ am
+  Gerät (PLAN.md).
+- **Danach am Gerät:** Regler `Maischen` an mit 16 °C (`IDS1` ging dadurch wieder auf 0), `agitator` 55 % im
+  Intervall, `kettle` aus mit 0,63, keine Programme des Prüf-Suds, Lager unverändert 5 kg.
+
+## 2026-10-14 — Sud 5c: Plan (nur Doku)
+
+Planungssession für Gärung, Reifung, Abfüllung und den Belegungsplan; gebaut wird in eigenen Sessions.
+Der Plan steht in `BrewControl/docs/rezept-sud-editor.md` › Plan 5c.
+
+- **Befund:** Die Rezept-Seite der Gärung ist kaum gebaut. Es gibt nur Phasen mit Name, Temperatur und Dauer.
+  Rampe, Druck, Karbonisierung, Hopfenform an der Gabe, Stopfen-Tag und Abfüllmenge fehlen. Die Formeln
+  liegen in `brewMath.ts`, nur der Rechner nutzt sie. Deshalb kommt das Rezept zuerst.
+- **Schnitt:** sechs PRs.
+  - 5c-1: Rezept mit Gärführung, Karbonisierung und Abfüllmenge.
+  - 5c-1b: Heiß/Kalt-Schalter.
+  - 5c-2: Belegungsplan, Gärplatz-Wahl und Anstellen.
+  - 5c-3: Gärprogramm mit Rampe in der Firmware und Stopfgaben.
+  - 5c-4: Messreihen von Hand und Gärverlauf.
+  - 5c-5: Reifung, Abfüllung, Bilanz und Index-Felder.
+- **Entscheidungen:**
+  - Der Belegungsplan steht oben auf der Sude-Liste.
+  - Messreihen von Hand bekommen die neue Route `/api/brews/{id}/readings`.
+  - Die Rampe kommt in die Firmware (`rampSec`).
+  - Der Druck wird nur gemeldet.
+  - Stopfgaben melden sich per `notify` bei Zugabe und Entnahme.
+  - Am Programmende hält der Regler bis „Weiter“, dann geht er aus.
+  - Die Index-Zeile bekommt Alkohol, Endvergärungsgrad und Restextrakt.
+  - Der Gärplatz bekommt einen Dichtesensor.
+  - Dip Hopping bekommt keinen Soll.
+  - Mehrere Gebinde gibt es schon im Rezept.
+- **Abhängigkeit:** 5c-3 braucht eine Lösung für den Regler, der beim Ausschalten seinen Aktor stehen lässt
+  (PLAN.md › Bugs).
+- **Doku:** Konzept-Doc (Plan 5c, Verweise in Gärung, Gärkeller, Anknüpfung, Offen) und PLAN.md (Punkt
+  Rezept- und Sud-Editor, Manueller Sensor). Keine Code-Änderung.
+
+## 2026-10-14 — Sud 5c-1: Rezept – Gärführung, Karbonisierung, Abfüllmenge
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-1, nur Web. Einzelheiten stehen dort unter
+„Gärung › Stand 5c-1“.
+
+- **Modell:** Phase mit `rampDays`, `pressureBar`; Rezept mit `pressureFermentation`, `trubLossL`, `carbonation`,
+  `bottling.containers`; Hopfengabe mit `form`, `dryHopDay`, `dryHopDays`. Lot-Einträge im Katalog tragen ihre
+  Form (`lotForm`), `hopFormOf` nimmt Zeile, dann Lager, dann T90.
+- **Rechnung:** neues `web/src/fermentation.ts` (Hopfenaufnahme je Form, `wortDraw`, `calcBottling`,
+  `calcCarbonation`). In `brewMath.ts` neu sind `krausenRackingPlato` und `forcedCarbonationBar`, beide
+  `TODO(verify)`. Ein Plausibilitätstest liegt bei: 2,5 vol bei 4 °C ergibt etwa 0,8 bar, das Schlauchen liegt etwa
+  0,8 °P über dem Restextrakt.
+- **Entscheidungen des Nutzers:**
+  - Hopfen im Kessel und Speise gehen schon jetzt überall ein: in `fermenterIntake`/`resolveDilution`, also auch in
+    den Verschnitt im Gärbehälter, und in die Effizienz im Gärbehälter.
+  - Abweichung, im Plan freigegeben: Die Effizienz zieht die Speise nicht ab, sonst entstünde bei der Grundlage
+    „Brewhouse-Efficiency“ ein Zirkel.
+  - Zwangskarbonisierung bei der Temperatur der letzten Phase; Trub ohne Angabe 0 l.
+- **UI:** Gärung-Tab in eigener Datei mit den Karten Gärführung (Druck-Schalter, Rampe, Druck), Zutaten (Form,
+  Stopfen), Karbonisierung und Abfüllmenge (Trub, Gebindezeilen mit Restzeile, Kennzahlen, Balken, Berechnung).
+  Gärplätze und Gebinde lädt der Tab selbst. Der Versionsvergleich zeigt die neuen Felder.
+- **Verifikation:**
+  - `pnpm test` 553 grün (neu: `fermentation.test.ts` mit Bilanz der Kette, Gebinde-Restzeile, Hopfenform,
+    Speise mit Verschnitt nach Stammwürze, Formeln; dazu ein Test im Versionsvergleich).
+  - Zwei Erwartungen in `recipeStats.test.ts` sind angepasst, weil 20 g T90 im Kessel jetzt 0,1 l zurückhalten.
+  - `pnpm typecheck`, `pnpm build`.
+  - Browser gegen einen Node-Mock (25 l, Verschnitt 2 l im Gärbehälter, Hopfen T90/T45-Lager/Stopfen, Speise,
+    Keg 19 l + Flaschen-Restzeile) bei 390 px ohne Querscrollen: Die Kette geht auf (25 + 2 = 26,9 l + Rundung),
+    der Wasser-Tab zeigt dieselbe Anstellmenge. Zucker, Grünschlauchen, Zwangskarbonisierung und der Druckhinweis
+    sind durchgeklickt.
+  - Kein Gerät.
+
+## 2026-10-14 — Sud 5c-1b: Heiß/Kalt-Schalter
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-1b, nur Web. Einzelheiten stehen dort unter
+„Wasser › Wassermenge › Heiß/Kalt-Schalter“.
+
+- **Modell:** `volumeBasis?: 'hot' | 'cold'` am Rezept, ohne Angabe heiß. Bei „kalt“ ist `volumeL` die Anstellwürze.
+- **Rechnung:** `knockOutL` in `recipeStats.ts` löst die Vorwärtskette nach dem Ausschlag auf (Regula falsi), weil der
+  Ausschlag über Effizienz, Speise und Verschnitt nach °P in sich selbst zurückwirkt. `pitchL` in `recipeWater.ts`
+  ist jetzt die eine Definition der Anstellwürze (auch für `calcBottling`).
+- **Leser:** Übersicht, Wasser, Maischen, Gärung, Versionsvergleich und `brewTargets` rechnen mit der Kopie aus
+  `atKnockOut`. `calcTreatment` nimmt die Farbe jetzt vom Ausschlag aus `Water`, deshalb können Aufbereitung und
+  Automatik beim Original-Rezept bleiben. Abweichung vom Doc-Wortlaut, im Plan freigegeben: Die Kettenfunktionen
+  selbst lesen weiter `volumeL` (der Kopie), sonst würde die Lösung rekursiv.
+- **Entscheidungen des Nutzers:**
+  - Ist eine Anstellwürze nicht erreichbar, gibt es einen Hinweis, nichts wird gesperrt.
+  - Umschalten rechnet die Menge um.
+  - Die Rezeptliste bekommt keinen Bezug, das bleibt offen (PLAN.md).
+- **UI:** Das Mengenfeld der Übersicht heißt „Ausschlagmenge“ oder „Anstellwürze“ und hat den Schalter heiß/kalt. Bei
+  kalt zeigt es den Ausschlag darunter. In den Berechnungen von Wasser und Gärung steht „Rezept“ an der Anstellwürze.
+  Der Versionsvergleich hat das Feld „Mengenbezug“.
+- **Verifikation:**
+  - `pnpm test` 576 grün, die bestehenden Tests sind unverändert. Neu sind die Rundreise heiß ↔ kalt in neun Fällen
+    (ohne Sudhaus, Verluste, Speise, Verschnitt in Pfanne und Gärbehälter nach Menge und °P, Grundlagen
+    Brewhouse-Efficiency und Konversion), dazu ohne Katalog, nicht erreichbar, Versionsvergleich und `brewTargets`.
+  - `pnpm typecheck`, `pnpm build`.
+  - Browser gegen den Mock aus 5c-1 bei 390 px ohne Querscrollen: Umschalten 25 l heiß → 21,3 l kalt bei gleichen
+    Kennwerten, zurück wieder 25 l. Die Gärung rechnet vom Ausschlag 25,0 l auf 21,3 l Anstellwürze, der Wasser-Tab
+    zeigt „Ausschlag (aus der Anstellwürze)“. Hinweis bei 1,5 l. Keine Konsolenfehler.
+  - Kein Gerät.
+
+## 2026-10-14 — Sud 5c-2: Belegungsplan, Gärplatz-Wahl, Anstellen
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-2, nur Web. Einzelheiten stehen dort unter
+„Sud › Stand 5c-2“.
+
+- **Belegungsplan** (`occupancy.ts`, `CellarPlan.tsx`) oben auf der Sude-Liste: acht Wochen ab der Vorwoche, eine
+  Zeile je Gärplatz, belegt/reserviert/abgeschlossen, Überschneidung rot mit Hinweis, laufende Sude über ihre
+  Belegung hinaus bis heute („überfällig“).
+- **Tab Gärung** (`FermentTab.tsx`): Gärplatz nach dem Start wählen (erneuert `frozen.fermenter`, Optionen mit
+  Belegung), Hinweise zu Volumen, Druck und Temperierung; Anstellen mit Anstellwürze, Stammwürze (neu
+  `pitchGravity`), Anstelltemperatur und Gesamteffizienz als Ist; Gaben „Anstellen“ und „Dip Hopping“;
+  „Angestellt“ mit Korrektur der Zeit, die Belegung wandert mit (`pitchBrew`); Gärführung mit aktueller Phase.
+- **Rechnung:** `brewTargets` hat die Sollwerte des Anstellens und der Speise und nimmt den Trub des Gärplatzes.
+  `measuredFermenterPct` rechnet die Gesamteffizienz zurück. Die Index-Zeile führt Soll und Ist der Stammwürze als
+  Paar: an der Anstellwürze, sobald sie gemessen ist.
+- **Entscheidungen des Nutzers:**
+  - Neues Feld **Umgebungstemperatur am Gärplatz** (`ambientTempC`), weil der Gärplatz ein Behälter ist und an
+    verschiedenen Orten stehen kann. Leer = kein Temperierungs-Hinweis, Toleranz 2 K.
+  - Dip-Gaben in beiden Tabs mit demselben Zustand.
+  - Die Sperre der Gärplatz-Wahl bei laufendem Gärprogramm kommt mit 5c-3.
+- **Abweichung vom Plan:** Die Index-Zeile stellt auch `ogPlato` um, nicht nur `ogActual`.
+- **Umbau:** Die Zeile einer Gabe (`AdditionRow`), die Effizienz-Zeile (`EffRow`) und `toLocalInput` sind geteilt.
+  `Patch` kann Kopffelder in den Entwurf übernehmen, damit „Speichern“ sie nicht zurückschreibt.
+- **Verifikation:**
+  - `pnpm test` 596 grün (neu: `occupancy.test.ts`, dazu `pitchBrew`, Sollwerte des Anstellens, Trub des
+    Gärplatzes, Rundreise der Gesamteffizienz, Paar-Regel der Index-Zeile, `fermentationSchedule`,
+    `fermenterHints`).
+  - `pnpm typecheck`, `pnpm build`, Redocly-Lint (`Fermenter.ambientTempC`, Beschreibung `ogPlato`/`ogActual`).
+  - Browser gegen einen Mock bei 390 px ohne Querscrollen der Seite: Plan mit Überschneidung, überfällig, Blättern
+    und „ohne Gärplatz“; Brautag starten, Gärplatz wechseln, Hinweise, „Angestellt“ und Korrektur der Zeit,
+    Messwerte, Index-Zeile, Speise-Soll. Keine Konsolenfehler.
+  - Kein Gerät.
+
+## 2026-10-15 — Regler aus/an: sicherer Ausgang, Kopplung an den Aktor-Schalter
+
+Bug aus PLAN.md (2026-10-14, „Ein ausgeschalteter Regler lässt seinen Aktor auf dem letzten Wert stehen“) und ein
+zweiter, vom Nutzer beim Prüfen gemeldeter: Aktor aus, Regler ein → der Aktor bekam die richtige Leistung als Ziel,
+blieb aber aus; die Regler-Karte zeigte 0 %, weil `Actuator::state()` bei ausgeschaltetem Aktor `min` meldet.
+
+- **Root Cause:** `Controller::setEnabled` in SensActCtrl setzte nur ein Flag. PID und Zweipunkt kehren in `tick()`
+  bei `!enabled()` sofort zurück und schreiben nichts mehr; DualStage/SplitRange schrieben erst im nächsten Tick 0.
+  Dashboard (`ControllerCard`) und Display schrieben deshalb nach dem Ausschalten selbst `min`/0 — Programm-„Stop“,
+  Programmschritte `{enabled:false}` und Timer hatten diesen Umweg nicht. Der Regler-Schalter wirkte außerdem nie
+  auf den Hauptschalter des Aktors.
+- **Entscheidung des Nutzers:** Der Regler-Schalter wird in beide Richtungen an den Hauptschalter seiner Aktoren
+  gekoppelt.
+- **Umsetzung:**
+  - `Controller::setEnabled` nach dem Muster von `Actuator`: nur bei echtem Wechsel, ruft den neuen geschützten
+    Hook `applyEnabled(bool)`. PID schreibt beim Ausschalten `minOutput`, Zweipunkt 0 (und vergisst „an“),
+    DualStage/SplitRange `writeOff()`; danach werden die Aktoren aus- bzw. beim Einschalten eingeschaltet.
+    `RateLimitedController` reicht weiter wie bisher.
+  - Firmware: `POST /api/controllers/<id>/params` lehnt bei eingerastetem Not-Aus `enabled:true` und
+    `autotune:"start"` mit 409 `estop latched` ab (sonst gäbe „Regler an“ die Aktoren frei); `openapi.yaml`
+    nachgezogen. Der Schreib-Umweg im Display-Power-Knopf ist raus.
+  - Web: Der Schreib-Umweg in `ControllerCard` ist raus. „Aktor schalten und Regler deaktivieren“ schaltet jetzt
+    erst den Regler aus und dann den Aktor — sonst hätte das Ausschalten des Reglers den Aktor gleich wieder
+    ausgeschaltet.
+  - Neustart: `RuntimeState` stellt erst Regler, dann Aktoren wieder her, der gespeicherte Zustand bleibt also
+    erhalten.
+  - Doku: `SensActCtrl/README.md` (Semantik von `setEnabled` beim Controller), `BrewControl/README.md`
+    (Display-Power-Knopf).
+- **Verifikation:**
+  - SensActCtrl `pio test -e native` 364 grün (neu: je Regler „Ausschalten schreibt den sicheren Wert sofort und
+    schaltet die Aktoren aus“, „Einschalten schaltet sie ein“, wiederholtes Ausschalten schreibt nichts, Kopplung
+    durch `RateLimitedController`; die neuen Tests schlugen vor der Umsetzung fehl).
+  - BrewControl-Firmware `pio test -e native` 187 grün, `pio run -e esp32dev` und
+    `-e lilygo_t_display_s3_amoled` erfolgreich (esp32dev Flash 98,1 %; LilyGo nur mit kurzem `PLATFORMIO_WORKSPACE_DIR`, weil der Worktree-Pfad beim Entpacken von WebSockets die Windows-Pfadgrenze sprengt).
+  - Web `pnpm typecheck`, `pnpm test` 596 grün; Redocly-Lint ohne neue Warnung.
+  - **Am LilyGo** (Firmware `v0.5.0-123-gee9741d-dirty` per OTA, UI mit Stilvergleich): Die Platte war nicht
+    angeschlossen; ihre Anbindung ist laut Nutzer schon geprüft. Statt `IDS1` diente deshalb `agitator` (Relais mit
+    LED) unter einem vorübergehenden Zweipunktregler `testregler` (`HLT` → `agitator`, 25 °C).
+    - Per API: `IDS1` aus → `Maischen` an schaltet `IDS1` ein, aus schaltet ihn wieder aus (Ziel 0). Bei
+      eingerastetem Not-Aus lehnt die Firmware `enabled:true` und `autotune:"start"` mit 409 ab, `enabled:false`
+      geht durch.
+    - Programm mit den Schritten „Regeln“ (15 s) und „Regler aus“: Zu Beginn von „Regler aus“ geht `agitator` im
+      selben Moment auf 0 und aus. „Stop“ während „Regeln“ schaltet ebenso aus, der Start schaltet ihn wieder ein.
+    - Vom Nutzer geprüft: Regler-Schalter im Dashboard (aus: LED aus, Aktor-Schalter aus; an: LED an, Schalter in
+      Mittelstellung mit Hintergrund, Regler-Karte 100 %), Power-Knopf am Display, „Aktor schalten“ und „Aktor
+      schalten und Regler deaktivieren“ (Regler aus, Aktor an mit 0). Danach hat der Nutzer noch mit einem
+      binären Schalter getestet, auch das funktionierte.
+    - Testregler und Testprogramm gelöscht; den übrigen Gerätezustand hat der Nutzer selbst eingestellt.
+- **Offen gelassen (PLAN.md):** Reihenfolge Regler/Aktor im selben Programmschritt; großes dt im ersten PID-Schritt
+  nach dem Wiedereinschalten.
+
+## 2026-10-15 — Sud 5c-3: Gärprogramm, Firmware-Rampe, Stopfgaben
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-3, auf dem Regler-Fix von PR #107. Einzelheiten
+stehen dort unter „Sud › Stand 5c-3“.
+
+- **Firmware:** Schrittfeld `rampSec` (`ProgramSteps`, `openapi.yaml`, `types.ts`). Regler-Sollwerte laufen linear
+  vom vorigen Wert des Programms; die Rechnung steckt rein in `ProgramRamp.h`, der `ProgramRunner` setzt sie beim
+  Schrittbeginn, nach Neustart, `resume` und `prev` ein, führt sie im `tick` nach (je Sekunde, ab 0,05 K) und setzt
+  das Ziel, wenn der Schritt endet oder auf Freigabe wartet. Eine Pause friert sie ein.
+- **Web:** Feld „Rampe“ im Programm-Editor, ↗ in der Programmkarte. Generator `fermentationProgram` mit
+  `fermentControlOf` und `dryHops`; Karte „Gärprogramm“ im Tab Gärung, Sperre der Gärplatz-Wahl, aktuelle Phase vom
+  Programm; Stopfgaben zum Abhaken mit „entnommen“ (`DryHopList`), neuer Tab Reifung (`MaturationTab`).
+- **Entscheidungen des Nutzers:**
+  - Der Regler-Bug wird in einem eigenen PR vorher behoben (PR #107).
+  - Der erste Programmschritt ist das Anstellen; die Anstellzeit kommt von dessen „Weiter“ (`pitchedAtOf`), ein
+    Aufholen auf eine ältere Anstellzeit gibt es nicht. „Angestellt“ ist in diesem Schritt das „Weiter“.
+  - Stopfgaben nach Zeitpunkt: Hauptgärung im Tab Gärung, Reifung im Tab Reifung.
+- **Annahmen:** Tag d einer Stopfgabe = d × 24 h nach dem Anstellen. Gaben ohne Tag meldet das Programm nicht. Die
+  erste Phase rampt nicht. Ohne Regler gibt es keinen Endschritt.
+- **Nebenbei:** `AdditionRow` zeigt bei einer Gabe von einem anderen Tag das Datum zur Uhrzeit und nimmt einen
+  Abschluss (`extra`) für den Haken „entnommen“.
+- **Verifikation:**
+  - Firmware `pio test -e native` 194 grün (neu: `test_program_ramp`, 7 Fälle: linear, Ende, kein Vorwert,
+    stückweise, Schwelle). `pio run -e esp32dev` (Flash 98,2 %) und `-e lilygo_t_display_s3_amoled` erfolgreich.
+  - Web `pnpm typecheck`, `pnpm test` 604 grün (neu: Generator mit Rampen-Teilung, gleichzeitige Gaben, Druck,
+    ohne Regler, `pitchedAtOf`, `fermentControlOf`), `pnpm build`.
+  - Redocly-Lint ohne neue Warnung.
+  - Browser gegen einen Mock mit simuliertem Programm-Runner bei 390 px ohne Querscrollen: Start mit Rückfrage,
+    „Angestellt“ schaltet das Programm weiter und übernimmt dessen Zeit, Sperre, aktuelle Phase vom Programm,
+    Stopfgaben in beiden Tabs mit Speichern von `addedAt` und `removed:<id>`, Feld „Rampe“ mit Wert aus einem Profil.
+  - **Am LilyGo geprüft** (Firmware `v0.5.0-127-g80be251-dirty` per OTA, UI `webui-full.tar` mit Stilvergleich):
+    - Rampentest mit einem vorübergehenden Zweipunktregler `testregler` (`HLT` → `agitator`) und einem Programm von
+      Hand (20 → 22 °C in 120 s): Der Sollwert folgt dem Erwartungswert in 0,05-K-Stufen und landet genau auf 22,00.
+      Neustart nach 40 s der Rampe: weiter bei 20,77 (erwartet 20,78). Pause: bleibt bei 21,13, „Fortsetzen“ ohne
+      Sprung (21,17 wie erwartet). „Weiter“ bei 20,45 setzt sofort 22,00. „Regler aus“ schaltet Regler und `agitator`
+      aus. Die Meldung des Rampenschritts kommt.
+    - Echtes Gärprogramm aus dem Tab Gärung: Rezept „Gerätetest“ v2 (`geraetetest-v2`, drei Phasen à 0,002 d mit
+      Rampen, Stopfgaben Citra in der Hauptgärung und Mosaic in der Reifung), Gärplatz „Testgärplatz“ (`fm-test`) am
+      `testregler`, Sud #5 „Gärtest 5c-3“ ohne Lagerbuchung. Rückfrage beim Start, „Angestellt“ schaltet das Programm
+      weiter und übernimmt dessen Zeit, Gärplatz-Wahl gesperrt, aktuelle Phase vom Programm. Alle Schritte zur
+      erwarteten Zeit, die Teilung der Kaltlagerungs-Rampe bei Mosaic genau auf 20,0 °C. Der Nutzer hat alle Pushes
+      bekommen (Stopfen/Entnehmen beider Gaben, Freigabe, fertig). Haken „zugegeben“ und „entnommen“ in beiden Tabs
+      gespeichert. „Weiter“ am Ende schaltet den Regler aus, „Abschließen“ nimmt das Programm mit.
+    - Danach Testregler und Programme gelöscht, `agitator` auf 64 %, Intervall 4/5 s zurück. Rezept v2, Gärplatz
+      und Sud #5 bleiben als Prüfdaten. `IDS1` steht nach dem OTA-Neustart auf 0 statt vorher 1 (Regler `Maischen`
+      aus); laut Nutzer so lassen.
+
+## 2026-10-15 — Sud 5c-4: Messungen von Hand und Gärverlauf
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-4. Einzelheiten stehen dort unter „Sud › Stand 5c-4“.
+
+- **Firmware:** Route `GET/PUT /api/brews/<id>/readings` (`/brewreadings/<id>.json` über `JsonDocDir::write`, nur
+  SD-Boards), `DELETE /api/brews/<id>` löscht die Messungen mit. Die Handler stehen vor denen von `/api/brews/<id>`;
+  dazu bekamen `GetPrefixHandler` und `PutJsonPrefixHandler` ein optionales Suffix, und `brewReadingsId` in
+  `RecipeFiles.h` holt die Id (nativ getestet). `openapi.yaml` (Pfad, Schema `BrewReadings`, `Fermenter.densitySensor`,
+  `Brew.fermentLogId`) und die README-Tabelle sind nachgezogen.
+- **Web:** `brewReadings.ts` (Modell, Laden/Speichern, `entryToReading`, `readingText`), Karte „Messungen“ in
+  Gärung und Reifung, `densitySensor` am Gärplatz (Feld im Dialog, Hinweis bei fremder Einheit), Sud-Sicherung mit
+  `readings`, `fermentSollCourse` (Plan als Linie in Tagen) und `fermentCourse.ts` (Spalten aus Plan, Log und
+  Messungen), Karte „Gärverlauf“ (`FermentCourse`, uPlot mit °C links und °P rechts, Log-Wahl `fermentLogId`).
+- **Annahmen:** Der Körper der Route ist ein Objekt `{ id, readings }`, weil `PutJsonPrefixHandler` nur Objekte
+  nimmt. Die Grenze ist der Body von 16 KB (etwa 300 Messungen), kein eigener Check in der Firmware; das Web prüft
+  vorher. Die neuen Typen stehen in `brewReadings.ts`, nicht in `types.ts` (dort stehen nur die Snapshot-Formen).
+  Ein °Bx-Wert wird roh gespeichert und mit der Stammwürze (`pitchGravity`, sonst Soll) umgerechnet. `fermentLogId`
+  wird nicht beim Anstellen gesetzt, ohne Wahl gilt das erste Log mit dem Fühler. Der Verlauf liegt nur im Tab
+  Gärung, die Reifung hat nur die Karte „Messungen“.
+- **Abweichung vom Plan:** Die Dichte-Eingabe ist ein eigenes Textfeld mit Einheiten-Schalter statt `GravityInput`,
+  weil dieses den Wert bei jedem Tastendruck neu formatiert und eine Eingabe wie „1,0“ nicht zulässt. Die Liste
+  zeigt die Messungen älteste zuerst (die Reihenfolge der Datei), nicht neueste zuerst.
+- **Nebenbei:** `UNIT_FITS` aus `brewhouse.ts` ist jetzt exportiert (der Hinweis des Gärplatzes nimmt die Einheiten
+  für °P), `makeBundle` hat einen Parameter `extra`.
+- **Verifikation:**
+  - Firmware `pio test -e native` 197 grün (neu: drei Fälle für `brewReadingsId`). `pio run -e esp32dev` (Flash 98,2 %,
+    die Route ist dort nicht gebaut) und `-e lilygo_t_display_s3_amoled` erfolgreich.
+  - Web `pnpm typecheck`, `pnpm test` 640 grün (neu: `brewReadings`, `fermentCourse`, `fermentSollCourse`, Sicherung
+    mit und ohne Messungen, Dichtesensor-Hinweis), `pnpm build`.
+  - Redocly-Lint ohne neue Warnung (nur die bekannte `info-license`).
+  - Browser gegen einen Wegwerf-Mock mit Log, Regler und Spindel: Verlauf mit Plan, Ist, Regler-Soll, Dichte aus dem
+    Log und Punkt einer Handmessung, Eintragen (SG → 5,6 °P) und Löschen, Karte in der Reifung, bei 375 px kein
+    Querscrollen der Seite (nur die Tab-Leiste scrollt wie bisher).
+  - **Kein Gerät:** Route, Löschen mit dem Sud und das Zurückspielen der Sicherung sind am Gerät nicht geprüft
+    (PLAN.md › Hardware-Verifikation).
+- **Offen gelassen (PLAN.md):** nur die jüngste Log-Session im Verlauf und das Laden der ganzen Session, Messungen
+  nur löschbar, `tilt`-Sensoren nicht in °P umgerechnet.
+
+## 2026-10-16 — Sud 5c-5: Reifung, Abfüllung, Bilanz, Index
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-5. Einzelheiten stehen dort unter „Sud › Stand 5c-5“.
+Damit ist Plan 5c abgeschlossen.
+
+- **Web:** `bottlingDay.ts` (`beerNow`, `carbonationNow`, `carbonationPlan`, Gebinde-Rechnungen), `brewDay.ts` (Soll für
+  Restextrakt, Höchsttemperatur, Abfüllmenge; `BrewInputs.containers`, `BrewTargets.bottling`; `actualBeer`, `plannedBeer`;
+  `withResults` mit den neuen Index-Feldern), `brews.ts` (`bottleBrew`, `setContainerCount`, `containerCounts`),
+  `brewReadings.ts` (`lastGravity`), Tab Abfüllung (`BottlingTab`), Karte „Messwerte nach der Gärung“ in der Reifung
+  (`FinishRow`), `MeasureRow` mit `suggest`, `ResultRow`, drei neue Spalten im Rezept-Tab „Sude“.
+- **Firmware:** `brewSummaryLine` nimmt `abvPct`, `attenuationPct`, `fgPlato` auf (Test erweitert); `openapi.yaml` und die
+  README-Zeile von `/api/brews` nachgezogen. Keine neue Route.
+- **Annahmen** (beim Genehmigen des Plans genannt): Gebinde nicht eingefroren, live aus `/api/containers`; Ist-Jungbier aus der
+  gemessenen Anstellwürze abzüglich Trub und Stopfhopfen plus Speise; Speise-Urteil mit dem Vergärungsgrad der Hefe; Ist-Alkohol nur
+  mit Stammwürze der Anstellwürze (ohne Verschnitt im Kessel auch nach dem Kochen), ohne die Gärung der Speise; „Abgefüllt“ schließt
+  den Sud nicht ab.
+- **Abweichung vom Plan:** Die Spaltenköpfe des Rezept-Tabs „Sude“ (und die Namen der Spalten im Wert) wechseln von `sm` auf `xl`,
+  weil die Zeile mit neun Spalten schon bei 820 px umbrach und die Werte dort ohne Namen standen. `bottledL` im Index wird jetzt wie
+  die anderen Ergebnisse aus der Messung gesetzt und entfällt ohne sie (vorher blieb ein vorhandener Wert stehen; nichts schrieb ihn).
+- **Verifikation:**
+  - Web `pnpm typecheck`, `pnpm test` 668 grün (neu: `bottlingDay`, `lastGravity`, `bottleBrew`, `setContainerCount`,
+    Soll und Index in `brewDay`, `calcCarbonation` mit Temperatur), `pnpm build`.
+  - Firmware `pio test -e native` 197 grün; `pio run` für `esp32dev` (Flash 98,2 %, unverändert) und
+    `lilygo_t_display_s3_amoled` (32,4 %) erfolgreich.
+  - Redocly-Lint ohne neue Warnung (nur die bekannte `info-license`).
+  - Browser gegen einen Wegwerf-Mock: Vorschläge übernehmen, Höchsttemperatur ändert Restkohlensäure und Zucker, Gebinde ändern,
+    „Abgefüllt“ setzt `occupiedUntil`, Speise-Urteil, Bilanz, Spalten im Rezept-Tab; 375 und 820 px ohne Querscrollen.
+  - **Kein Gerät:** das `PUT` mit den neuen Index-Feldern und die Spalten am echten Gerät sind nicht geprüft (PLAN.md ›
+    Hardware-Verifikation).
+- **Offen gelassen (PLAN.md):** Gebinde-Bestand wird nicht abgebucht; der Alkohol zählt die Gärung der Speise nicht mit.

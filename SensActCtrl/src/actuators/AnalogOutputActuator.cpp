@@ -3,9 +3,10 @@
 
 #if defined(ARDUINO)
   #include <Arduino.h>
-  // dacWrite is only available on the original ESP32 (GPIO 25/26 DAC).
-  // ESP32-S2 and ESP32-S3 have no DAC peripheral.
-  #if defined(CONFIG_IDF_TARGET_ESP32)
+  #include <soc/soc_caps.h>
+  // dacWrite needs an on-chip DAC: ESP32 (GPIO 25/26) and ESP32-S2 (GPIO 17/18).
+  // ESP32-S3 has none.
+  #if defined(SOC_DAC_SUPPORTED)
     #define SENSACTCTRL_HAS_DAC 1
   #endif
 #else
@@ -18,6 +19,8 @@
   static uint32_t lastRawWritten_ = 0;
   static void   ledcWrite(uint8_t, uint32_t raw) { lastRawWritten_ = raw; }
   static void   dacWrite(uint8_t, uint8_t raw)   { lastRawWritten_ = raw; }
+  static uint32_t mockMillis_ = 0;
+  static uint32_t millis() { return mockMillis_; }
   #define SENSACTCTRL_HAS_DAC 1  // stubs cover it in native builds
 #endif
 
@@ -27,6 +30,9 @@ uint8_t AnalogOutputActuator::nextChannel_ = 0;
 
 AnalogOutputActuator::AnalogOutputActuator(const char* id, int pin, Mode mode)
     : id_(id), pin_(pin), mode_(mode) {}
+
+AnalogOutputActuator::AnalogOutputActuator(const char* id, DacOutput& out)
+    : id_(id), pin_(-1), mode_(Mode::Dac), ext_(&out) {}
 
 void AnalogOutputActuator::setRange(Quantity q, const char* unit,
                                      float min, float max, float resolution) {
@@ -47,6 +53,7 @@ ActuatorMeta AnalogOutputActuator::meta() const {
 }
 
 uint32_t AnalogOutputActuator::rawMax() const {
+    if (ext_) return ext_->rawMax();
     return (mode_ == Mode::Dac) ? 255u : ((1u << resBits_) - 1u);
 }
 
@@ -74,6 +81,11 @@ void AnalogOutputActuator::applyOutput() {
     // Single choke point: while disabled the peripheral is driven to the
     // range minimum, but state_ keeps the commanded value for the re-enable.
     const uint32_t raw = valueToRaw(enabled_ ? state_ : valueMin_);
+    if (ext_) {
+        dacFault_ = !ext_->write(static_cast<uint16_t>(raw));
+        lastWriteMs_ = millis();
+        return;
+    }
     if (mode_ == Mode::Dac) {
 #if defined(SENSACTCTRL_HAS_DAC)
         dacWrite(static_cast<uint8_t>(pin_), static_cast<uint8_t>(raw));
@@ -85,7 +97,15 @@ void AnalogOutputActuator::applyOutput() {
     }
 }
 
+void AnalogOutputActuator::tick() {
+    if (ext_ && millis() - lastWriteMs_ >= kRefreshMs) applyOutput();
+}
+
 void AnalogOutputActuator::begin() {
+    if (ext_) {
+        write(valueMin_);
+        return;
+    }
 #if !defined(SENSACTCTRL_HAS_DAC)
     if (mode_ == Mode::Dac) mode_ = Mode::Pwm;
 #endif
@@ -99,6 +119,7 @@ void AnalogOutputActuator::begin() {
 
 void AnalogOutputActuator::end() {
     write(valueMin_);
+    if (ext_) return;
     // Dac mode drives the pin via the DAC peripheral directly (no GPIO
     // matrix routing), so there's nothing to detach there.
     if (mode_ == Mode::Pwm) {
@@ -113,6 +134,10 @@ uint8_t analogOutputActuatorLedcDetachCallCountForTest() {
 
 uint32_t analogOutputActuatorLastRawForTest() {
     return lastRawWritten_;
+}
+
+void analogOutputActuatorSetMillisForTest(uint32_t ms) {
+    mockMillis_ = ms;
 }
 #endif
 

@@ -7,7 +7,7 @@
 namespace BrewControl {
 
 // A directory on the SD card holding one JSON document per file, <dir>/<id>.json,
-// with no index: for the few documents of a kind (brewhouses), where listing
+// with no index: for the few documents of a kind (brewhouses, mash profiles), where listing
 // returns the full objects anyway. The firmware does not interpret a document
 // beyond its id. Every call takes SdLock itself; ids must pass isValidRecipeId.
 namespace JsonDocDir {

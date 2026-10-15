@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "DeviceConfig.h"
 #include "ImuTypes.h"
 
 namespace BrewControl {
@@ -62,13 +63,20 @@ inline void collectAddresses(JsonObjectConst cfg, std::vector<AddressUse>& out) 
   }
 }
 
-// Checks a new or replacing item config against the reserved addresses of its
-// bus (onboard devices of a fixed bus) and the addresses already in use on
-// that bus. replaceId names the item being replaced, whose own address does
-// not count as taken.
-inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCount,
-                                     const std::vector<AddressUse>& uses,
-                                     JsonObjectConst cfg, const char* replaceId = "") {
+// The addresses the peripheral devices (DeviceConfig.h) occupy, with the
+// device id as the user.
+inline void collectDeviceAddresses(const std::vector<DeviceDef>& devices,
+                                   std::vector<AddressUse>& out) {
+  for (const DeviceDef& d : devices) out.push_back({d.id, d.bus, d.address});
+}
+
+// Checks one address use u against the reserved addresses of its bus
+// (onboard devices of a fixed bus) and the addresses already in use on that
+// bus. replaceId names the item or device being replaced, whose own address
+// does not count as taken.
+inline AddressCheck checkAddressUse(const AddrDef* reserved, size_t reservedCount,
+                                    const std::vector<AddressUse>& uses,
+                                    const AddressUse& u, const char* replaceId = "") {
   AddressCheck r;
   auto fail = [&](const std::string& msg) {
     r.ok = false;
@@ -77,11 +85,6 @@ inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCou
     return r;
   };
   const std::string replace = replaceId ? replaceId : "";
-
-  std::vector<AddressUse> mine;
-  collectAddresses(cfg, mine);
-  if (mine.empty()) return r;
-  const AddressUse& u = mine[0];
 
   char hex[6];
   snprintf(hex, sizeof(hex), "0x%02x", u.addr);
@@ -95,6 +98,17 @@ inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCou
     return fail(std::string(hex) + " already used by " + e.item);
   }
   return r;
+}
+
+// Checks a new or replacing item config (see checkAddressUse). Item types
+// without an I2C address always pass.
+inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCount,
+                                     const std::vector<AddressUse>& uses,
+                                     JsonObjectConst cfg, const char* replaceId = "") {
+  std::vector<AddressUse> mine;
+  collectAddresses(cfg, mine);
+  if (mine.empty()) return {};
+  return checkAddressUse(reserved, reservedCount, uses, mine[0], replaceId);
 }
 
 }  // namespace BrewControl

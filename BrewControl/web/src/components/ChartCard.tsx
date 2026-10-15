@@ -4,7 +4,8 @@ import 'uplot/dist/uPlot.min.css';
 import type { Snapshot, LogConfig, TimeSettings } from '../types';
 import { getLogData, getSnapshot, resolveRef } from '../api';
 import { unitOf } from '../refs';
-import { formatTime, formatDateTime, loadTimeSettings } from '../time';
+import { formatTime, formatDate, formatDateTime, loadTimeSettings } from '../time';
+import { ageSplits, tickLabel, makeScale, type TimeAxisMode } from '../timeAxis';
 
 // Distinct line colors, reused cyclically across series.
 const PALETTE = [
@@ -62,12 +63,13 @@ interface Props {
   fill?: boolean;   // stretch to the parent's rendered height instead of a fixed `height`
   session?: number;   // when set, render that archived session read-only (no live)
   legendHost?: HTMLElement | null;   // when set, move uPlot's legend into this element (e.g. the card's title row)
+  timeAxis?: TimeAxisMode;   // older values compressed; default linear
 }
 
 // Renders one log session as a uPlot line chart. Without `session` it shows the
 // current session live (hydrate from CSV, then append a point per snapshot);
 // with `session` it shows that archived session read-only.
-export function ChartCard({ log, snap, height = 240, fill, session, legendHost }: Props) {
+export function ChartCard({ log, snap, height = 240, fill, session, legendHost, timeAxis = 'linear' }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const uRef = useRef<uPlot | null>(null);
   const dataRef = useRef<(number | null)[][]>([[]]);
@@ -123,6 +125,11 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
           } satisfies uPlot.Axis,
         };
       });
+      // Non-linear modes map the age of a point onto the axis (see timeAxis.ts);
+      // the data stays in epoch seconds. tMax follows the live data.
+      const tMax = () => { const xs = dataRef.current[0]; return xs.length ? (xs[xs.length - 1] as number) : 0; };
+      const nonLinear = timeAxis !== 'linear';
+      const scale = nonLinear ? makeScale(timeAxis, tMax) : null;
       return {
         width: el!.clientWidth || 600,
         height: heightRef.current,
@@ -142,11 +149,23 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
             },
           })),
         ],
+        scales: scale ? { x: { time: true, distr: 100, fwd: scale.fwd, bwd: scale.bwd } } : undefined,
         axes: [
           {
             stroke: axisColor, grid: { stroke: gridColor }, ticks: { stroke: gridColor },
-            // Use the configured time format (with seconds) instead of uPlot's default.
-            values: (_u, splits) => splits.map((t) => formatTime(t, tset)),
+            ...(scale ? {
+              // Round ages before "now", labelled with the age plus the clock time.
+              // distr 100 would inherit uPlot's log-axis tick filter, which nulls most splits.
+              filter: (_u: uPlot, splits: number[]) => splits,
+              // uPlot's x axis has a fixed 50 px; grow it by 18 px per extra label line.
+              size: (_u: uPlot, values: string[] | null) =>
+                32 + 18 * Math.max(2, ...(values ?? []).map((v) => v.split('\n').length)),
+              splits: (u: uPlot) => ageSplits(u.scales.x.min!, u.scales.x.max!, tMax(), scale.fwd),
+              values: (_u: uPlot, splits: number[]) => splits.map((t) => tickLabel(t, tMax(), (x) => formatTime(x, tset), (x) => formatDate(x, tset))),
+            } : {
+              // Use the configured time format (with seconds) instead of uPlot's default.
+              values: (_u: uPlot, splits: number[]) => splits.map((t) => formatTime(t, tset)),
+            }),
           },
           ...yAxes.map((y) => y.axis),
         ],
@@ -219,7 +238,7 @@ export function ChartCard({ log, snap, height = 240, fill, session, legendHost }
       uRef.current?.destroy();
       uRef.current = null;
     };
-  }, [log.id, seriesKey, height, fill, session, legendHost]);
+  }, [log.id, seriesKey, height, fill, session, legendHost, timeAxis]);
 
   // Append a live point per snapshot (server timestamp drives the x value).
   // Skipped for archived sessions, which are read-only.

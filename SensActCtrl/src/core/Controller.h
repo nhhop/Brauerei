@@ -39,7 +39,14 @@ class Controller {
   virtual size_t paramsJson(char* buf, size_t bufSize) const = 0;
   virtual bool setParamsJson(const char* json) = 0;
 
-  virtual void setEnabled(bool e) { enabled_ = e; }
+  // Master on/off switch. Coupled to the master switch of the controller's
+  // actuators: disabling first drives the outputs to their safe value (see
+  // applyEnabled), then disables the actuators; enabling enables them again.
+  virtual void setEnabled(bool e) {
+    if (e == enabled_) return;
+    enabled_ = e;
+    applyEnabled(e);
+  }
   virtual bool enabled() const { return enabled_; }
 
   // Optional display range for the setpoint (e.g. a UI slider's scale).
@@ -52,6 +59,12 @@ class Controller {
   }
   virtual float rangeMin() const { return rangeMin_; }
   virtual float rangeMax() const { return rangeMax_; }
+
+ protected:
+  // Called on an actual enable-state change (never on a redundant set).
+  // Subclasses write their safe output on disable — tick() stops writing
+  // once disabled — and switch their actuators along. Default: nothing.
+  virtual void applyEnabled(bool /*e*/) {}
 
  private:
   bool enabled_ = true;

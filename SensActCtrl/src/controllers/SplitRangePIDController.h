@@ -76,6 +76,9 @@ class SplitRangePIDController : public Controller {
   size_t paramsJson(char* buf, size_t bufSize) const override;
   bool setParamsJson(const char* json) override;
 
+ protected:
+  void applyEnabled(bool e) override;
+
  private:
   void writeOff();
   void syncFromBackend();

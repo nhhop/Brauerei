@@ -10,7 +10,7 @@ import { AlertCenter } from './components/AlertCenter';
 import { EmergencyStopBanner } from './components/EmergencyStopBanner';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
-import { AnlageRoute, RecipesRoute, RechnerRoute } from './pages/PackageRoutes';
+import { AnlageRoute, BrewsRoute, IngredientsRoute, RecipesRoute, RechnerRoute } from './pages/PackageRoutes';
 import { SettingsIndex } from './pages/SettingsIndex';
 import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
@@ -18,6 +18,7 @@ import { DisplayPage } from './pages/DisplayPage';
 import { EnergyPage } from './pages/EnergyPage';
 import { DevicesPage } from './pages/DevicesPage';
 import { BusesPage } from './pages/BusesPage';
+import { PeripheralsPage } from './pages/PeripheralsPage';
 import { FirmwarePage } from './pages/FirmwarePage';
 import { SystemStatusPage } from './pages/SystemStatusPage';
 import { BackupPage } from './pages/BackupPage';
@@ -190,6 +191,9 @@ export function App() {
         <ProfilesPage path="/profiles" snap={snap} />
         <RecipesRoute path="/rezepte" />
         <RecipesRoute path="/rezepte/:id" />
+        <BrewsRoute path="/sude" snap={snap} />
+        <BrewsRoute path="/sude/:id" snap={snap} />
+        <IngredientsRoute path="/zutaten/:tab?" />
         <RechnerRoute path="/rechner" />
         <RechnerRoute path="/rechner/:calc" />
         <SettingsIndex path="/settings" />
@@ -200,6 +204,7 @@ export function App() {
         <EnergyPage path="/settings/energy" snap={snap} />
         <DevicesPage path="/settings/devices" snap={snap} />
         <BusesPage path="/settings/buses" />
+        <PeripheralsPage path="/settings/peripherals" />
         <FirmwarePage path="/settings/firmware" />
         <SystemStatusPage path="/settings/system" />
         <BackupPage path="/settings/backup" />

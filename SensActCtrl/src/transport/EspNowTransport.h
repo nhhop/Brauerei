@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <deque>
 #include <map>
 #include <mutex>
 #include <string>
@@ -58,6 +59,7 @@ class EspNowTransport : public ITransport {
 
   // Called from the static ESP-Now receive / send callbacks. Public so the
   // static bridges can reach them; not part of the user-facing API.
+  // dispatchIncoming() only queues (WiFi task); tick() delivers.
   void dispatchIncoming(const uint8_t* mac, const uint8_t* data, int length);
   void onSendStatus(const uint8_t* mac, bool delivered);
 
@@ -71,11 +73,25 @@ class EspNowTransport : public ITransport {
   bool ensurePeer_(const EspNowPeerTable::Mac& mac);
   void sendRetainedRequest_();
   void handleRetainedRequest_();
+  // Runs one queued packet on the caller's (loop) task; see dispatchIncoming().
+  void processIncoming_(const uint8_t* mac, const uint8_t* data, int length);
   // Broadcasts a Retained-Request if the throttle window has elapsed,
   // otherwise marks one as pending so tick() sends it once it has.
   void requestRetained_();
 
   static constexpr uint32_t kRetainedRequestThrottleMs = 1000;
+
+  // Packets received on the WiFi task wait here until tick() delivers them, so
+  // subscriber callbacks (e.g. an actuator's /set) run on the loop task like
+  // MQTT's — under the host's registry lock. A full queue drops the newest.
+  struct Incoming {
+    uint8_t mac[6];
+    uint8_t len;
+    uint8_t data[250];
+  };
+  static constexpr size_t kIncomingQueueSize = 16;
+  std::mutex incomingMutex_;
+  std::deque<Incoming> incoming_;
 
   uint8_t channel_;
   bool initialized_ = false;

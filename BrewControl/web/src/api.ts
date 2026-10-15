@@ -1,4 +1,5 @@
-import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo } from './types';
+import type { AuthStatus, PushStatus, Snapshot, BusScanResult, BusesInfo,DiscoveredItem, DiscoveredPeer, PairResult, ConfigSnapshot, DashboardConfig, LogConfig, LogSession, AppSettings, UpdateStatus, HeapDiag, NetworkStatus, ScanNetwork, ProgramConfig, ProgramAction, TimerConfig, TimerAction, ProfileConfig, ProfileLibrary, FileListing, AlarmConfig, Alert, CalibrationInfo, CalibrationMode, PinsInfo, PeripheralsInfo } from './types';
+import type { TimeAxisMode } from './timeAxis';
 
 // Central failure path for every call below. A 401 means the device is
 // password-protected and this client has no valid session (or it expired) —
@@ -330,6 +331,10 @@ export function setLogEnabled(id: string, enabled: boolean): Promise<void> {
   return postJson(`/api/logs/${encodeURIComponent(id)}/enable`, { enabled });
 }
 
+export function setLogTimeAxis(id: string, timeAxis: TimeAxisMode): Promise<void> {
+  return postJson(`/api/logs/${encodeURIComponent(id)}/timeaxis`, { timeAxis });
+}
+
 export function clearLog(id: string): Promise<void> {
   return postJson(`/api/logs/${encodeURIComponent(id)}/clear`, {});
 }
@@ -587,6 +592,27 @@ export function deleteBus(id: string): Promise<void> {
   return deleteItem(`/api/buses/${encodeURIComponent(id)}`);
 }
 
+// ── Peripheral devices ───────────────────────────────────────────────────────
+
+export async function getPeripherals(): Promise<PeripheralsInfo> {
+  const r = await fetch('/api/peripherals');
+  if (!r.ok) await failed(r);
+  return (await r.json()) as PeripheralsInfo;
+}
+
+// def: { type, bus, address, label? } — the firmware derives the id.
+export function createPeripheral(def: object): Promise<void> {
+  return postJson('/api/peripherals', def);
+}
+
+export function updatePeripheral(id: string, def: object): Promise<void> {
+  return putJson(`/api/peripherals/${encodeURIComponent(id)}`, def);
+}
+
+export function deletePeripheral(id: string): Promise<void> {
+  return deleteItem(`/api/peripherals/${encodeURIComponent(id)}`);
+}
+
 export async function scanBus(id: string): Promise<BusScanResult> {
   const r = await fetch(`/api/bus/scan?bus=${encodeURIComponent(id)}`);
   if (!r.ok) await failed(r);
@@ -712,6 +738,18 @@ export async function downloadBackup(): Promise<void> {
   const a = document.createElement('a');
   a.href = url;
   a.download = `brewcontrol-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Offers `text` as a JSON file download.
+export function saveJson(text: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();

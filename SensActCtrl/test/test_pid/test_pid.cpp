@@ -200,6 +200,40 @@ void test_range_defaults_unset_then_settable() {
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"rangeMax\":80.0000"));
 }
 
+void test_disable_writes_min_output_and_disables_actuator() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.2f, 1.0f);
+  pid.setTunings(0.5f, 0.0f, 0.0f);
+  pid.setSetpoint(70.0f);
+  pid.begin();
+
+  s.value = 65.0f;  // error +5 -> output well above min
+  s.tick();
+  pid.tick();
+  TEST_ASSERT_TRUE(a.writes.back() > 0.2f);
+
+  pid.setEnabled(false);  // no tick() needed
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.2f, a.writes.back());
+  TEST_ASSERT_FALSE(a.enabled());
+
+  const size_t n = a.writes.size();
+  pid.setEnabled(false);  // redundant -> no further write
+  TEST_ASSERT_EQUAL(n, a.writes.size());
+}
+
+void test_enable_enables_actuator() {
+  MockSensor s("t1", tempMeta());
+  MockActuator a("o1", dutyMeta());
+  PIDController pid("pid", s, a, 0.0f, 1.0f);
+  TEST_ASSERT_TRUE(a.enabled());  // construction leaves the actuator alone
+
+  pid.setEnabled(false);
+  TEST_ASSERT_FALSE(a.enabled());
+  pid.setEnabled(true);
+  TEST_ASSERT_TRUE(a.enabled());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -217,5 +251,7 @@ int main(int, char**) {
   RUN_TEST(test_autotune_progress_starts_at_zero_cycles);
   RUN_TEST(test_autotune_progress_reaches_full_when_done);
   RUN_TEST(test_range_defaults_unset_then_settable);
+  RUN_TEST(test_disable_writes_min_output_and_disables_actuator);
+  RUN_TEST(test_enable_enables_actuator);
   return UNITY_END();
 }

@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "ProgramEvents.h"
 #include "SdLock.h"
 
 namespace BrewControl {
@@ -20,12 +21,13 @@ struct ScopedLock {
   ScopedLock& operator=(const ScopedLock&) = delete;
 };
 
-// Copies into a fixed-width field, always NUL-terminated.
+// Copies into a fixed-width field, always NUL-terminated; a text too long is
+// cut at a character boundary.
 template <size_t N>
 void setField(char (&dst)[N], const char* src) {
-  if (!src) { dst[0] = 0; return; }
-  strncpy(dst, src, N - 1);
-  dst[N - 1] = 0;
+  const size_t n = src ? utf8PrefixLen(src, N - 1) : 0;
+  if (n) memcpy(dst, src, n);
+  dst[n] = 0;
 }
 
 // Below this the system clock has not been set by NTP yet (2000-01-01).
@@ -114,6 +116,7 @@ void AlarmStore::alertToJson_(const Alert& a, JsonObject o) const {
   if (a.name[0])   o["name"]   = a.name;
   if (a.rule[0])   o["rule"]   = a.rule;
   if (a.detail[0]) o["detail"] = a.detail;
+  if (a.step[0])   o["step"]   = a.step;
   if (a.hasV)      o["v"]      = a.v;
 }
 
@@ -227,7 +230,8 @@ AlarmStore::EdgeState& AlarmStore::edge_(const std::string& key) {
 
 void AlarmStore::raise_(const char* kind, const char* src, const char* name,
                         const char* rule, Severity sev, bool cleared,
-                        const float* v, const char* detail, time_t nowEpoch) {
+                        const float* v, const char* detail, time_t nowEpoch,
+                        const char* step) {
   Alert& a = ring_[ringHead_];
   a = Alert();
   a.seq     = nextSeq_++;
@@ -241,6 +245,7 @@ void AlarmStore::raise_(const char* kind, const char* src, const char* name,
   setField(a.name, name);
   setField(a.rule, rule);
   setField(a.detail, detail);
+  setField(a.step, step);
 
   ringHead_ = (ringHead_ + 1) % kRing;
   if (ringCount_ < kRing) ++ringCount_;
@@ -391,17 +396,18 @@ void AlarmStore::tickAutotune_(SensActCtrl::Registry& reg, time_t nowEpoch) {
 }
 
 void AlarmStore::onProgramStatus(const char* id, const char* name,
-                                 const char* status, time_t nowEpoch,
-                                 uint32_t nowMs) {
+                                 const char* status, const char* step,
+                                 time_t nowEpoch, uint32_t nowMs) {
   (void)nowMs;
   Severity sev;
-  if (strcmp(status, "done") == 0)          sev = SevInfo;
-  else if (strcmp(status, "awaiting") == 0) sev = SevWarning;
+  if (strcmp(status, "done") == 0 || strcmp(status, "notify") == 0) sev = SevInfo;
+  else if (strcmp(status, "awaiting") == 0)                         sev = SevWarning;
   else                                      return;  // the rest is not alertable
 
   ScopedLock lk(mutex_);
   const std::string src = std::string("program/") + id;
-  raise_("program", src.c_str(), name, "", sev, false, nullptr, status, nowEpoch);
+  raise_("program", src.c_str(), name, "", sev, false, nullptr, status, nowEpoch,
+         step);
 }
 
 void AlarmStore::onTimerExpired(const char* id, const char* name,

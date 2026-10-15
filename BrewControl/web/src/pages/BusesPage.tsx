@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { BusInfo, BusesInfo, BusType, PinsInfo, ScannedDevice } from '../types';
-import { createBus, deleteBus, getBuses, getPins, scanBus, updateBus } from '../api';
+import type { BusInfo, BusesInfo, BusType, DeviceInfo, PinsInfo, ScannedDevice } from '../types';
+import { createBus, deleteBus, getBuses, getPeripherals, getPins, scanBus, updateBus } from '../api';
 import { BUS_TYPE_LABEL, busPinsText, pinLabel } from '../buses';
+import { DEVICE_TYPE_LABEL, hexAddr } from '../peripherals';
 import { riskyPins } from '../pins';
 import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
@@ -42,6 +43,7 @@ interface EditorState {
 export function BusesPage(_: { path?: string }) {
   const [info, setInfo] = useState<BusesInfo | null>(null);
   const [pins, setPins] = useState<PinsInfo | null>(null);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BusInfo | null>(null);
@@ -53,6 +55,7 @@ export function BusesPage(_: { path?: string }) {
   function reload() {
     getBuses().then(setInfo).catch((e) => setLoadErr(String(e)));
     getPins().then(setPins).catch(() => setPins(null));
+    getPeripherals().then((p) => setDevices(p.devices)).catch(() => setDevices([]));
   }
   useEffect(reload, []);
 
@@ -135,7 +138,7 @@ export function BusesPage(_: { path?: string }) {
                   <p class="px-1 text-sm text-faint">Keiner angelegt. {TYPE_HINT[t.type]}</p>
                 )}
                 {list.map((b) => (
-                  <BusCard key={b.id} bus={b} scanning={scanning === b.id} scan={scans[b.id]}
+                  <BusCard key={b.id} bus={b} devices={devices.filter((d) => d.bus === b.id)} scanning={scanning === b.id} scan={scans[b.id]}
                     onScan={b.type === 'spi' ? undefined : () => void runScan(b)}
                     onEdit={b.fixed ? undefined : () => openEdit(b)}
                     onDelete={b.fixed ? undefined : () => { setDeleteErr(null); setDeleteTarget(b); }} />
@@ -166,8 +169,9 @@ export function BusesPage(_: { path?: string }) {
   );
 }
 
-function BusCard({ bus, scanning, scan, onScan, onEdit, onDelete }: {
+function BusCard({ bus, devices, scanning, scan, onScan, onEdit, onDelete }: {
   bus: BusInfo;
+  devices: DeviceInfo[]; // peripheral devices on this bus
   scanning: boolean;
   scan?: ScannedDevice[] | string;
   onScan?: () => void;
@@ -175,7 +179,15 @@ function BusCard({ bus, scanning, scan, onScan, onEdit, onDelete }: {
   onDelete?: () => void;
 }) {
   const inUse = bus.users.length > 0;
-  const reservedNote = (addr: string) => bus.reserved?.find((r) => r.address === addr)?.note;
+  // Onboard chip or peripheral device known to sit on a scanned address.
+  const addrNote = (addr: string) => {
+    const r = bus.reserved?.find((x) => x.address === addr);
+    if (r) return r.note;
+    const d = devices.find((x) => hexAddr(x.address) === addr);
+    return d && `${d.label || d.id} (${DEVICE_TYPE_LABEL[d.type] ?? d.type})`;
+  };
+  // Users are item ids and device ids; a device shows its label.
+  const userName = (id: string) => devices.find((d) => d.id === id)?.label || id;
   const iconBtn = 'rounded border border-border px-2 py-1 transition-colors hover:bg-fg/10 disabled:opacity-40';
 
   return (
@@ -199,7 +211,7 @@ function BusCard({ bus, scanning, scan, onScan, onEdit, onDelete }: {
             </p>
           )}
           <p class="mt-1 text-xs text-faint">
-            {inUse ? `Genutzt von ${bus.users.join(', ')}` : 'Noch kein Gerät an diesem Bus'}
+            {inUse ? `Genutzt von ${bus.users.map(userName).join(', ')}` : 'Noch kein Gerät an diesem Bus'}
           </p>
         </div>
         <div class="flex shrink-0 items-center gap-2 text-xs">
@@ -232,8 +244,8 @@ function BusCard({ bus, scanning, scan, onScan, onEdit, onDelete }: {
               {scan.map((d) => (
                 <li key={d.address} class="font-mono text-fg">
                   {bus.type === 'onewire' ? d.address.match(/.{2}/g)!.join(':') : d.address}
-                  {reservedNote(d.address) && (
-                    <span class="ml-2 font-sans text-faint">{reservedNote(d.address)}</span>
+                  {addrNote(d.address) && (
+                    <span class="ml-2 font-sans text-faint">{addrNote(d.address)}</span>
                   )}
                 </li>
               ))}
@@ -260,7 +272,6 @@ function BusEditor({ state, info, pins, full, onChange, onClose, onSaved }: {
   const [riskyWarn, setRiskyWarn] = useState<string[]>([]);
 
   const isNew = state.bus === null;
-  const pinsLocked = !isNew && state.bus!.users.length > 0;
   const keys = info.types.find((t) => t.type === state.type)?.pins ?? [];
   const selfId = state.bus?.id;
 
@@ -327,20 +338,19 @@ function BusEditor({ state, info, pins, full, onChange, onClose, onSaved }: {
             {keys.map((k) => (
               <div key={k}>
                 <label class={lbl}>{pinLabel(k)} (GPIO)</label>
-                <input type="number" value={state.pins[k] ?? ''} disabled={pinsLocked} class={inp}
+                <input type="number" value={state.pins[k] ?? ''} class={inp}
                   onInput={(e) => setPin(k, (e.target as HTMLInputElement).value)} required />
-                {!pinsLocked && (
-                  <PinHint pins={pins} value={state.pins[k] ?? ''} selfId={selfId}
-                    output={OUTPUT_PINS.has(k)} suggest exclude={picked(k)}
-                    onPick={(g) => setPin(k, String(g))} />
-                )}
+                <PinHint pins={pins} value={state.pins[k] ?? ''} selfId={selfId}
+                  output={OUTPUT_PINS.has(k)} suggest exclude={picked(k)}
+                  onPick={(g) => setPin(k, String(g))} />
               </div>
             ))}
           </div>
-          {pinsLocked && (
+          {!isNew && state.bus!.users.length > 0 && (
             <p class="text-xs text-caution">
-              An diesem Bus hängen {state.bus!.users.join(', ')} — die Pins lassen sich erst
-              ändern, wenn kein Gerät mehr daran hängt. Der Name geht jederzeit.
+              An diesem Bus hängen {state.bus!.users.join(', ')} — neue Pins gelten sofort, die
+              Verkabelung muss danach folgen.
+              {state.type === 'spi' && ' Die MAX31865 werden dabei neu aufgebaut.'}
             </p>
           )}
 

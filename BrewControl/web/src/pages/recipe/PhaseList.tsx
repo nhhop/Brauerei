@@ -1,11 +1,13 @@
+import type { ComponentChildren } from 'preact';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-preact';
 import { uid, type Phase } from '../../recipes';
 import { inp } from '../../ui';
-import { Card, NumInput } from './fields';
+import { Card, NumInput, OptNum } from './fields';
 
-// Ordered list of mash rests / fermentation phases: name, temperature,
-// duration. Order is the sequence, changed with the arrow buttons.
-export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empty, items, onChange }: {
+// Ordered list of fermentation phases: name, temperature, duration, the ramp
+// from the previous phase (not for the first) and, with `pressure`, the
+// pressure. Order is the sequence, changed with the arrow buttons.
+export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empty, items, onChange, pressure, top }: {
   title: string;
   addLabel: string;
   namePlaceholder: string;
@@ -13,6 +15,8 @@ export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empt
   empty: string;
   items: Phase[];
   onChange: (next: Phase[]) => void;
+  pressure?: boolean;
+  top?: ComponentChildren;  // above the list (the pressure switch)
 }) {
   function patch(id: string, p: Partial<Phase>) {
     onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -30,36 +34,52 @@ export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empt
     <Card title={title}
       action={
         <button type="button"
-          onClick={() => onChange([...items, { id: uid(), name: '', tempC: 65, duration: 30 }])}
+          onClick={() => onChange([...items, { id: uid(), name: '', tempC: 20, duration: 7 }])}
           class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
           <Plus size={12} /> {addLabel}
         </button>
       }>
+      {top}
       {items.length === 0 ? (
         <p class="text-sm text-muted">{empty}</p>
       ) : (
         <div class="space-y-2">
           {items.map((p, i) => (
-            <div key={p.id} class="flex flex-wrap items-center gap-2">
-              <span class="w-5 text-xs text-faint">{i + 1}</span>
-              <input class={`${inp} min-w-0 flex-1 basis-40`} placeholder={namePlaceholder} value={p.name}
-                onInput={(e) => patch(p.id, { name: e.currentTarget.value })} />
-              <div class="flex items-center gap-1 text-xs text-muted">
-                <NumInput value={p.tempC} onChange={(n) => patch(p.id, { tempC: n })} class="w-20" /> °C
+            <div key={p.id}>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="w-5 text-xs text-faint">{i + 1}</span>
+                <input class={`${inp} min-w-0 flex-1 basis-40`} placeholder={namePlaceholder} value={p.name}
+                  onInput={(e) => patch(p.id, { name: e.currentTarget.value })} />
+                <div class="flex items-center gap-1 text-xs text-muted">
+                  <NumInput value={p.tempC} onChange={(n) => patch(p.id, { tempC: n })} class="w-20" /> °C
+                </div>
+                <div class="flex items-center gap-1 text-xs text-muted">
+                  <NumInput value={p.duration} onChange={(n) => patch(p.id, { duration: n })} class="w-20" /> {durationUnit}
+                </div>
+                {i > 0 && (
+                  <div class="flex items-center gap-1 text-xs text-muted" title="Zeit, in der die Temperatur von der vorigen Phase hierher läuft; zählt zur Dauer">
+                    Rampe <OptNum value={p.rampDays} placeholder="0" onChange={(n) => patch(p.id, { rampDays: n || undefined })} class="w-16" /> {durationUnit}
+                  </div>
+                )}
+                {pressure && (
+                  <div class="flex items-center gap-1 text-xs text-muted">
+                    Druck <OptNum value={p.pressureBar} placeholder="0" onChange={(n) => patch(p.id, { pressureBar: n || undefined })} class="w-16" /> bar
+                  </div>
+                )}
+                <button type="button" title="Nach oben" disabled={i === 0} onClick={() => move(i, -1)} class={iconBtn}>
+                  <ArrowUp size={14} />
+                </button>
+                <button type="button" title="Nach unten" disabled={i === items.length - 1} onClick={() => move(i, 1)} class={iconBtn}>
+                  <ArrowDown size={14} />
+                </button>
+                <button type="button" title="Entfernen" onClick={() => onChange(items.filter((x) => x.id !== p.id))}
+                  class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
+                  <Trash2 size={14} />
+                </button>
               </div>
-              <div class="flex items-center gap-1 text-xs text-muted">
-                <NumInput value={p.duration} onChange={(n) => patch(p.id, { duration: n })} class="w-20" /> {durationUnit}
-              </div>
-              <button type="button" title="Nach oben" disabled={i === 0} onClick={() => move(i, -1)} class={iconBtn}>
-                <ArrowUp size={14} />
-              </button>
-              <button type="button" title="Nach unten" disabled={i === items.length - 1} onClick={() => move(i, 1)} class={iconBtn}>
-                <ArrowDown size={14} />
-              </button>
-              <button type="button" title="Entfernen" onClick={() => onChange(items.filter((x) => x.id !== p.id))}
-                class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
-                <Trash2 size={14} />
-              </button>
+              {i > 0 && (p.rampDays ?? 0) > p.duration && (
+                <p class="mt-1 pl-7 text-xs text-caution">Die Rampe ist länger als die Phase.</p>
+              )}
             </div>
           ))}
         </div>

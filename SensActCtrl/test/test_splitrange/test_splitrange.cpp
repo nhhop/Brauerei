@@ -235,6 +235,27 @@ void test_autotune_progress_reaches_full_when_done() {
   TEST_ASSERT_NOT_NULL(strstr(buf, "\"autotuneCyclesTotal\":10"));
 }
 
+void test_disable_writes_both_off_immediately() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", pwmMeta()), cl("c", pwmMeta());
+  SplitRangePIDController c("ctrl", s, &h, &cl);
+  c.setSetpoint(20.0f);
+  c.setTunings(0.1f, 0.0f, 0.0f);
+
+  step(s, c, 10.0f, 1000);  // heat on
+  TEST_ASSERT_TRUE(h.writes.back() > 0.0f);
+
+  c.setEnabled(false);  // no tick() needed
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, h.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, cl.writes.back());
+  TEST_ASSERT_FALSE(h.enabled());
+  TEST_ASSERT_FALSE(cl.enabled());
+
+  c.setEnabled(true);
+  TEST_ASSERT_TRUE(h.enabled());
+  TEST_ASSERT_TRUE(cl.enabled());
+}
+
 void setUp() { splitRangeSetMillisForTest(0); }
 void tearDown() {}
 
@@ -255,5 +276,6 @@ int main(int, char**) {
   RUN_TEST(test_stop_autotune_idempotent_when_idle);
   RUN_TEST(test_autotune_progress_starts_at_zero_cycles);
   RUN_TEST(test_autotune_progress_reaches_full_when_done);
+  RUN_TEST(test_disable_writes_both_off_immediately);
   return UNITY_END();
 }

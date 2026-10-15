@@ -7,7 +7,7 @@ import { useModule } from '../optionalModules';
 import { badgeCaution } from '../ui';
 import {
   Palette, Cpu, CloudDownload, DatabaseBackup, Clock, Wifi, Network, FolderOpen,
-  ShieldCheck, BellRing, Monitor, Activity, BatteryMedium, Cable, Factory,
+  ShieldCheck, BellRing, Monitor, Activity, BatteryMedium, Cable, Factory, Microchip,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -30,6 +30,7 @@ const GROUPS: Group[] = [
   { title: 'Hardware', entries: [
     { href: '/settings/devices', icon: Cpu, title: 'Geräte', desc: 'Sensoren, Regler, Aktoren verwalten' },
     { href: '/settings/buses', icon: Cable, title: 'Bus-Schnittstellen', desc: 'I²C, OneWire, SPI: Pins festlegen, Busse scannen' },
+    { href: '/settings/peripherals', icon: Microchip, title: 'Peripheriegeräte', desc: 'Bausteine am Bus, z. B. DAC für Analogausgänge' },
     { href: '/settings/display', icon: Monitor, title: 'Gerätedisplay', desc: 'Dimmen, Ausschalten, Pixel-Shift' },
     { href: '/settings/energy', icon: BatteryMedium, title: 'Energiemanagement', desc: 'Batteriespannung' },
   ] },

@@ -22,6 +22,7 @@ import { EBC_PER_SRM } from './brewMath';
 import type { CatalogIngredient, Fermentable } from './ingredientCatalog';
 import { rangeValue } from './recipeStats';
 import type { Recipe } from './recipes';
+import { entryOf } from './stockLots';
 import { figuresOf, type WaterState } from './waterChem';
 
 export type PhModel = 'troester' | 'kolbach';
@@ -76,7 +77,7 @@ export function gristOf(recipe: Recipe, catalog: CatalogIngredient[] | null): { 
   const mashed = recipe.ingredients.filter((i) => i.kind === 'fermentable' && i.timing === 'mash');
   let unlinked = 0;
   const parts = mashed.flatMap((i) => {
-    const c = catalog?.find((x) => x.id === i.ingredientId);
+    const c = entryOf(i, catalog);
     if (c?.kind !== 'fermentable') {
       unlinked++;
       return [];

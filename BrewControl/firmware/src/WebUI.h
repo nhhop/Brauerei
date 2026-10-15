@@ -107,6 +107,15 @@ namespace BrewControl {
 //   GET  /api/brewhouses                   — all brewhouses, full objects (SD boards only)
 //   PUT  /api/brewhouses/<id>              — create or replace a brewhouse
 //   DELETE /api/brewhouses/<id>            — remove a brewhouse
+//   GET  /api/mash-profiles                — all mash profiles, full objects (SD boards only)
+//   PUT  /api/mash-profiles/<id>           — create or replace a mash profile
+//   DELETE /api/mash-profiles/<id>         — remove a mash profile
+//   GET  /api/fermenters                   — all fermenters (Gärplätze), full objects (SD boards only)
+//   PUT  /api/fermenters/<id>              — create or replace a fermenter
+//   DELETE /api/fermenters/<id>            — remove a fermenter
+//   GET  /api/containers                   — all containers (Gebinde), full objects (SD boards only)
+//   PUT  /api/containers/<id>              — create or replace a container
+//   DELETE /api/containers/<id>            — remove a container
 //   GET  /api/brewery                      — brewery site values (404 until saved)
 //   PUT  /api/brewery                      — replace the brewery site values
 //   GET  /api/bus/scan?type=onewire&pin=N  — enumerate ROM addresses on OneWire bus
@@ -187,6 +196,11 @@ class WebUI {
   // the length of a network round trip (it serves every request and the SSE
   // stream). Same deferral as rebootAtMs_ below.
   void runPendingPairing_();
+#ifndef BREWCTL_USE_LITTLEFS
+  // Registers GET <base> and PUT/DELETE <base>/:id over the SD directory `dir`
+  // (one JSON document per id, JsonDocDir.h). `dir` must outlive the server.
+  void serveJsonDocDir_(const char* base, const char* dir);
+#endif
   // Emergency-stop latch, persisted to /config/estop.json so a reboot can't
   // quietly undo a stop. loadEstop_() runs from begin(), i.e. after
   // registry.begin() has put every item into its default state, and disables

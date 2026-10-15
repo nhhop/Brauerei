@@ -1024,17 +1024,8 @@ void DisplayPages::onToggle_(lv_event_t* e) {
     if (p.kind == Kind::Controller) {
       Controller* c = self->reg_->findController(p.id.c_str());
       if (!c) return;
-      const bool turnOff = c->enabled();
-      c->setEnabled(!turnOff);
-      // Like ControllerCard.doToggle(): a controller switched off leaves its
-      // outputs where it last drove them, so put them at rest.
-      JsonDocument doc;
-      if (turnOff && controllerParams(*c, doc)) {
-        if (Actuator* a = self->reg_->findActuator(doc["actuator"] | ""))
-          a->write(doc["min"] | 0.0f);
-        for (const char* key : {"heatActuator", "coolActuator"})
-          if (Actuator* a = self->reg_->findActuator(doc[key] | "")) a->write(0);
-      }
+      // Switches the actuators along and puts them at rest (Controller.h).
+      c->setEnabled(!c->enabled());
     } else if (Actuator* a = self->reg_->findActuator(p.id.c_str())) {
       a->setEnabled(!a->enabled());
     }

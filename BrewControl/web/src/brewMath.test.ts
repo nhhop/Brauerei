@@ -4,6 +4,7 @@ import {
   strikeWaterTempC, extractEfficiencyPercent, primingSugarGrams, hydrometerCorrectedSg,
   overrangeConcentration, apparentExtractFromRefractometer, originalExtractFromDualMeasurement,
   ballingBeerAnalysis, platoFromExtract, moreyEbc, tinsethUtilization, relativeUtilization, hopIbu,
+  pressureAtAltitudeHpa, boilingPointC,
 } from './brewMath';
 import { platoToSg } from './gravityUnits';
 
@@ -187,4 +188,17 @@ describe('hopIbu', () => {
     expect(wp).toBeGreaterThan(0);
     expect(wp).toBeLessThan(hopIbu(base));
   });
+  it('isomerises less when the wort boils below 100 °C', () => {
+    expect(hopIbu({ ...base, boilTempC: 100 })).toBeCloseTo(hopIbu(base), 6);
+    expect(hopIbu({ ...base, boilTempC: 98 })).toBeLessThan(hopIbu({ ...base, boilTempC: 100 }));
+  });
 });
+
+describe('boilingPointC', () => {
+  it('is 100 °C at sea level and about 98.3 °C at 500 m', () => {
+    expect(boilingPointC(pressureAtAltitudeHpa(0))).toBeCloseTo(100, 6);
+    expect(pressureAtAltitudeHpa(500)).toBeCloseTo(954.6, 1);
+    expect(boilingPointC(pressureAtAltitudeHpa(500))).toBeCloseTo(98.3, 1);
+  });
+});
+

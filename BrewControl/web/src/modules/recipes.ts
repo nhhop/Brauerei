@@ -3,6 +3,9 @@
 // is installed on the device (optionalModules.ts).
 export { RecipesPage } from '../pages/RecipesPage';
 export { RecipeEditPage } from '../pages/RecipeEditPage';
+export { BrewsPage } from '../pages/BrewsPage';
+export { BrewPage } from '../pages/BrewPage';
+export { IngredientsPage } from '../pages/IngredientsPage';
 export { RechnerIndex } from '../pages/RechnerIndex';
 export { RechnerDetail } from '../pages/RechnerDetail';
 export { BrewhousePage } from '../pages/BrewhousePage';

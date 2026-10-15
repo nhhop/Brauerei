@@ -13,22 +13,27 @@ namespace BrewControl {
 // files stay the truth, but a file put on the card by hand is not listed until
 // it is saved through the API. Every call takes SdLock itself; ids must pass
 // isValidRecipeId.
+// Brews use the same store in their own directory (`dir`, /brews), with
+// brewSummaryLine for the index.
 namespace RecipeStore {
+
+constexpr const char* kRecipeDir = "/recipes";
 
 // JSON array with one summary per recipe (id and the list fields). "[]" if there
 // are none or the card is missing.
-std::string list(fs::FS& fs);
+std::string list(fs::FS& fs, const char* dir = kRecipeDir);
 
 // False if the recipe does not exist.
-bool read(fs::FS& fs, const char* id, std::string& out);
+bool read(fs::FS& fs, const char* id, std::string& out, const char* dir = kRecipeDir);
 
 // Creates or replaces the recipe and its index line (`summary`, see
 // recipeSummaryLine). Files are written to a temp file first, so a power cut
 // mid-save leaves the previous version in place. False if the card refused a write.
-bool write(fs::FS& fs, const char* id, const std::string& json, const std::string& summary);
+bool write(fs::FS& fs, const char* id, const std::string& json, const std::string& summary,
+           const char* dir = kRecipeDir);
 
 // False if the recipe does not exist; its index line goes either way.
-bool remove(fs::FS& fs, const char* id);
+bool remove(fs::FS& fs, const char* id, const char* dir = kRecipeDir);
 
 }  // namespace RecipeStore
 }  // namespace BrewControl

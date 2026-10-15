@@ -42,6 +42,20 @@ export function RecipesRoute({ id }: { path?: string; id?: string }) {
   return id ? <r.mod.RecipeEditPage id={id} /> : <r.mod.RecipesPage />;
 }
 
+// Route for /sude and /sude/:id.
+export function BrewsRoute({ id, snap }: { path?: string; id?: string; snap: Snapshot | null }) {
+  const r = usePackage('Sude', 'Die Sudverwaltung ist');
+  if ('page' in r) return r.page;
+  return id ? <r.mod.BrewPage id={id} snap={snap} /> : <r.mod.BrewsPage />;
+}
+
+// Route for /zutaten and /zutaten/:tab.
+export function IngredientsRoute({ tab }: { path?: string; tab?: string }) {
+  const r = usePackage('Zutaten', 'Die Zutatenverwaltung ist');
+  if ('page' in r) return r.page;
+  return <r.mod.IngredientsPage tab={tab} />;
+}
+
 // Route for /rechner and /rechner/:calc.
 export function RechnerRoute({ calc }: { path?: string; calc?: string }) {
   const r = usePackage('Rechner', 'Die Rechner sind');
@@ -58,5 +72,5 @@ export function AnlageRoute({ id, vorlage, von, snap }: {
   if ('page' in r) return r.page;
   return id
     ? <r.mod.BrewhouseEditPage id={id} vorlage={vorlage} von={von} snap={snap} />
-    : <r.mod.BrewhousePage />;
+    : <r.mod.BrewhousePage snap={snap} />;
 }

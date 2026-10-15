@@ -69,6 +69,18 @@ constexpr size_t kMaxBodyBytes = 16384;
 // Brewhouse configuration of the recipe package (SD boards only).
 constexpr const char* kBrewhouseDir = "/brewhouses";
 constexpr const char* kBreweryFile = "/brewery.json";
+// Brews ("Sude"), one file each plus an index like the recipes.
+constexpr const char* kBrewDir = "/brews";
+// A brew's hand-entered readings (gravity, temperature, pH), one file per brew.
+constexpr const char* kBrewReadingsDir = "/brewreadings";
+// Mash profiles (rest sequences of the recipe editor), not the controller programs.
+constexpr const char* kMashProfileDir = "/mashprofiles";
+// The user's own ingredients and stock lots (ingredient page of the recipe package).
+constexpr const char* kIngredientDir = "/ingredients";
+constexpr const char* kStockDir = "/stock";
+// The fermentation cellar: fermenters (Gärplätze) and containers (Gebinde).
+constexpr const char* kFermenterDir = "/fermenters";
+constexpr const char* kContainerDir = "/containers";
 #endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
@@ -349,34 +361,39 @@ class BodyPrefixHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
-// Matches GET <prefix>* requests where the URL carries a path param.
+// Matches GET <prefix>* requests where the URL carries a path param. With a
+// `suffix` the URL has to end in it too (GET /api/brews/<id>/readings).
 class GetPrefixHandler : public AsyncWebHandler {
  public:
   using Cb = std::function<void(AsyncWebServerRequest*)>;
-  GetPrefixHandler(const char* prefix, Cb cb)
-      : prefix_(prefix), cb_(std::move(cb)) {}
+  GetPrefixHandler(const char* prefix, Cb cb, const char* suffix = "")
+      : prefix_(prefix), suffix_(suffix), cb_(std::move(cb)) {}
 
   bool canHandle(AsyncWebServerRequest* req) const override {
-    return req->method() == HTTP_GET && req->url().startsWith(prefix_);
+    return req->method() == HTTP_GET && req->url().startsWith(prefix_) &&
+           req->url().endsWith(suffix_);
   }
   void handleRequest(AsyncWebServerRequest* req) override { cb_(req); }
   bool isRequestHandlerTrivial() const override { return false; }
 
  private:
   String prefix_;
+  String suffix_;
   Cb cb_;
 };
 
 // Matches PUT <prefix>* requests and delivers the parsed JSON body; the URL
 // carries the item id. Same body collection and auth as BodyPrefixHandler.
+// With a `suffix` the URL has to end in it too (PUT /api/brews/<id>/readings).
 class PutJsonPrefixHandler : public AsyncWebHandler {
  public:
   using Cb = std::function<void(AsyncWebServerRequest*, JsonVariant&)>;
-  PutJsonPrefixHandler(const char* prefix, Cb cb)
-      : prefix_(prefix), cb_(std::move(cb)) {}
+  PutJsonPrefixHandler(const char* prefix, Cb cb, const char* suffix = "")
+      : prefix_(prefix), suffix_(suffix), cb_(std::move(cb)) {}
 
   bool canHandle(AsyncWebServerRequest* req) const override {
-    return req->method() == HTTP_PUT && req->url().startsWith(prefix_);
+    return req->method() == HTTP_PUT && req->url().startsWith(prefix_) &&
+           req->url().endsWith(suffix_);
   }
   void handleRequest(AsyncWebServerRequest* req) override {
     if (req->contentLength() == 0) req->send(400, "text/plain", "missing body");
@@ -399,6 +416,7 @@ class PutJsonPrefixHandler : public AsyncWebHandler {
 
  private:
   String prefix_;
+  String suffix_;
   Cb cb_;
 };
 
@@ -752,6 +770,11 @@ void WebUI::begin(bool serve) {
           return;
         }
         String id = url.substring(strlen("/api/actuators/"));
+        // Under the registry lock: loop() ticks the same actuator, and on a
+        // port expander or external DAC both write to one shared chip — an
+        // unlocked write could be overwritten by a tick that started before.
+        RegistryTryLock lock(kRegistryWaitMs);
+        if (!lock.locked()) { req->send(503, "text/plain", "busy, retry"); return; }
         auto* a = reg_.findActuator(id.c_str());
         if (!a) { req->send(404); return; }
         bool hasEnabled = !doc["enabled"].isNull();
@@ -771,6 +794,7 @@ void WebUI::begin(bool serve) {
         }
         if (hasV) a->write(doc["v"].as<float>());
         pushSnapshot_();
+        lock.release();
         req->send(204);
       }));
 
@@ -785,12 +809,21 @@ void WebUI::begin(bool serve) {
   // on the next boot. Like a mechanical E-stop it stays engaged until it is
   // released deliberately via DELETE /api/estop. Deliberately unauthenticated
   // — stopping must work from a locked UI; releasing must not.
+  //
+  // Switched off under the registry lock, so no tick() of loop() drives an
+  // output again afterwards (a time-proportional output that had already read
+  // "enabled", a port expander's shared output register). Stopping must never
+  // fail, though: if loop() holds the lock too long, it switches off without.
   server_.on("/api/estop", HTTP_POST, [this](AsyncWebServerRequest* req) {
-    for (auto* a : reg_.actuators()) a->setEnabled(false);
-    for (auto* c : reg_.controllers()) c->setEnabled(false);
-    programs_.pauseAllRunning(reg_);
+    {
+      RegistryTryLock lock(kRegistryWaitMs);
+      if (!lock.locked()) Serial.println(F("emergency stop: registry busy, stopping without lock"));
+      for (auto* a : reg_.actuators()) a->setEnabled(false);
+      for (auto* c : reg_.controllers()) c->setEnabled(false);
+      programs_.pauseAllRunning(reg_);
+      timers_.pauseAllRunning();
+    }
     programs_.saveToSD(fs_);
-    timers_.pauseAllRunning();
     timers_.saveToSD(fs_);
     estop_ = true;
     saveEstop_();
@@ -844,6 +877,13 @@ void WebUI::begin(bool serve) {
           if (isnan(v)) { req->send(400, "text/plain", "missing v"); return; }
           c->setSetpoint(v);
         } else {
+          // Enabling a controller enables its actuators too (Controller.h),
+          // so a latched stop must refuse it rather than let it through.
+          if (estop_ && ((doc["enabled"] | false) ||
+                         strcmp(doc["autotune"] | "", "start") == 0)) {
+            req->send(409, "text/plain", "estop latched");
+            return;
+          }
           String raw;
           serializeJson(doc, raw);
           if (!c->setParamsJson(raw.c_str())) {
@@ -1049,14 +1089,14 @@ void WebUI::begin(bool serve) {
     req->send(200, "application/json", out);
   });
 
-  // Bus mutations run under the registry lock: item creation reads the bus
-  // table. They change no item, so no snapshot push.
+  // Bus and device mutations run under the registry lock: item creation
+  // reads the bus and device tables. They change no item, so no snapshot push.
   auto busDone = [this](AsyncWebServerRequest* req, const DynamicItems::Result& r,
                         const std::string& id, int okStatus) {
     if (!r.ok) {
-      const int status = strcmp(r.error, "bus not found") == 0 ? 404
-                         : r.conflict                         ? 409
-                                                              : 400;
+      const bool notFound =
+          strcmp(r.error, "bus not found") == 0 || strcmp(r.error, "device not found") == 0;
+      const int status = notFound ? 404 : r.conflict ? 409 : 400;
       req->send(status, "text/plain", r.error);
       return;
     }
@@ -1080,12 +1120,11 @@ void WebUI::begin(bool serve) {
   server_.addHandler(new PutJsonPrefixHandler("/api/buses/",
       [this, busDone](AsyncWebServerRequest* req, JsonVariant& json) {
         const String oldId = req->url().substring(strlen("/api/buses/"));
-        std::string id;
         DynamicItems::Result r{false};
         if (!underRegistryLock(req, r, [&] {
-              return items_.updateBus(oldId.c_str(), json.as<JsonObject>(), id);
+              return items_.updateBus(oldId.c_str(), json.as<JsonObject>(), reg_);
             })) return;
-        busDone(req, r, id, 200);
+        busDone(req, r, oldId.c_str(), 200);
       }));
 
   server_.addHandler(new DeletePrefixHandler("/api/buses/",
@@ -1093,6 +1132,45 @@ void WebUI::begin(bool serve) {
         const String id = req->url().substring(strlen("/api/buses/"));
         DynamicItems::Result r{false};
         if (!underRegistryLock(req, r, [&] { return items_.removeBus(id.c_str()); })) return;
+        busDone(req, r, "", 204);
+      }));
+
+  // ── Peripheral devices (DeviceConfig.h) ──────────────────────────────────
+  // GET before the POST handler, as for /api/buses. Whether a device answers
+  // the UI checks with GET /api/bus/scan; a failing write shows as the
+  // actuator's fault.
+  server_.on("/api/peripherals", HTTP_GET, [this](AsyncWebServerRequest* req) {
+    JsonDocument doc;
+    items_.writeDevices(doc.to<JsonObject>());
+    String out;
+    serializeJson(doc, out);
+    req->send(200, "application/json", out);
+  });
+
+  server_.addHandler(new PostJsonHandler("/api/peripherals",
+      [this, busDone](AsyncWebServerRequest* req, JsonVariant& json) {
+        std::string id;
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.addDevice(json.as<JsonObject>(), id); })) return;
+        busDone(req, r, id, 201);
+      }));
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/peripherals/",
+      [this, busDone](AsyncWebServerRequest* req, JsonVariant& json) {
+        const String oldId = req->url().substring(strlen("/api/peripherals/"));
+        std::string id;
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] {
+              return items_.updateDevice(oldId.c_str(), json.as<JsonObject>(), id);
+            })) return;
+        busDone(req, r, id, 200);
+      }));
+
+  server_.addHandler(new DeletePrefixHandler("/api/peripherals/",
+      [this, busDone](AsyncWebServerRequest* req) {
+        const String id = req->url().substring(strlen("/api/peripherals/"));
+        DynamicItems::Result r{false};
+        if (!underRegistryLock(req, r, [&] { return items_.removeDevice(id.c_str()); })) return;
         busDone(req, r, "", 204);
       }));
 
@@ -1247,7 +1325,8 @@ void WebUI::begin(bool serve) {
   // ── Pins (board table + occupancy, PinMap.h) ─────────────────────────────
   server_.on("/api/pins", HTTP_GET, [this](AsyncWebServerRequest* req) {
     JsonDocument doc;
-    writePinsJson(currentBoard(), BREWCTL_VARIANT, items_.pinUses(), doc.to<JsonObject>());
+    writePinsJson(currentBoard(), BREWCTL_VARIANT, items_.pinUses(), doc.to<JsonObject>(),
+                  items_.devices());
     String out;
     serializeJson(doc, out);
     req->send(200, "application/json", out);
@@ -1368,6 +1447,7 @@ void WebUI::begin(bool serve) {
 
   // POST /api/logs/:id           — update config (resets session)
   // POST /api/logs/:id/enable    — {"enabled":bool} toggle logging
+  // POST /api/logs/:id/timeaxis  — {"timeAxis":"linear|log|sqrt"} chart x-axis (no session reset)
   // POST /api/logs/:id/clear     — close current session, start a fresh one
   server_.addHandler(new BodyPrefixHandler("/api/logs/",
       [this](AsyncWebServerRequest* req, const uint8_t* data, size_t len) {
@@ -1381,6 +1461,15 @@ void WebUI::begin(bool serve) {
           String id = tail.substring(0, tail.length() - strlen("/enable"));
           bool en = doc["enabled"] | true;
           if (!logs_.setEnabled(id.c_str(), en)) { req->send(404); return; }
+          logs_.saveToSD(fs_);
+          req->send(204);
+          return;
+        }
+        if (tail.endsWith("/timeaxis")) {
+          String id = tail.substring(0, tail.length() - strlen("/timeaxis"));
+          const char* mode = doc["timeAxis"] | "";
+          if (!LogStore::isTimeAxis(mode)) { req->send(400, "text/plain", "timeAxis must be linear, log or sqrt"); return; }
+          if (!logs_.setTimeAxis(id.c_str(), mode)) { req->send(404); return; }
           logs_.saveToSD(fs_);
           req->send(204);
           return;
@@ -1815,6 +1904,92 @@ void WebUI::begin(bool serve) {
         req->send(204);
       }));
 
+  // ── Brews ───────────────────────────────────────────────────────────────────
+  // One file per brew in /brews, with its own index (RecipeStore.h, brewSummaryLine).
+  server_.on(AsyncURIMatcher::exact("/api/brews"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", RecipeStore::list(fs_, kBrewDir).c_str());
+  });
+
+  // GET/PUT /api/brews/:id/readings — registered before the plain /api/brews/:id
+  // handlers below, which would take the sub-path for an (invalid) id.
+  server_.addHandler(new GetPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req) {
+        const std::string id = brewReadingsId(req->url().c_str());
+        std::string body;
+        if (id.empty() || !readText(fs_, (std::string(kBrewReadingsDir) + "/" + id + ".json").c_str(), body)) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(200, "application/json", body.c_str());
+      }, "/readings"));
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        const std::string id = brewReadingsId(req->url().c_str());
+        if (id.empty()) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, kBrewReadingsDir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }, "/readings"));
+
+  // GET /api/brews/:id
+  server_.addHandler(new GetPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/brews/"));
+        std::string body;
+        if (!RecipeStore::read(fs_, id.c_str(), body, kBrewDir)) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(200, "application/json", body.c_str());
+      }));
+
+  // PUT /api/brews/:id — create or replace; the id is chosen by the client
+  server_.addHandler(new PutJsonPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(strlen("/api/brews/"));
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!RecipeStore::write(fs_, id.c_str(), body, brewSummaryLine(json, id.c_str()), kBrewDir)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // DELETE /api/brews/:id
+  server_.addHandler(new DeletePrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/brews/"));
+        // The readings go with the brew, whether or not the brew file was there.
+        if (isValidRecipeId(id.c_str())) JsonDocDir::remove(fs_, kBrewReadingsDir, id.c_str());
+        if (!RecipeStore::remove(fs_, id.c_str(), kBrewDir)) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
   // ── Brewhouses ──────────────────────────────────────────────────────────────
   // One file per brewhouse, /brewhouses/<id>.json, no index (JsonDocDir.h).
   server_.on(AsyncURIMatcher::exact("/api/brewhouses"), HTTP_GET,
@@ -1853,6 +2028,54 @@ void WebUI::begin(bool serve) {
         }
         req->send(204);
       }));
+
+  // ── Mash profiles ───────────────────────────────────────────────────────────
+  // One file per profile, /mashprofiles/<id>.json, no index (JsonDocDir.h). Not
+  // to be confused with the controller programs under /api/profiles.
+  server_.on(AsyncURIMatcher::exact("/api/mash-profiles"), HTTP_GET,
+             [this](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", JsonDocDir::list(fs_, kMashProfileDir).c_str());
+  });
+
+  // PUT /api/mash-profiles/:id — create or replace; the id is chosen by the client
+  server_.addHandler(new PutJsonPrefixHandler("/api/mash-profiles/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(strlen("/api/mash-profiles/"));
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, kMashProfileDir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // DELETE /api/mash-profiles/:id
+  server_.addHandler(new DeletePrefixHandler("/api/mash-profiles/",
+      [this](AsyncWebServerRequest* req) {
+        String id = req->url().substring(strlen("/api/mash-profiles/"));
+        if (!JsonDocDir::remove(fs_, kMashProfileDir, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+
+  // ── Own ingredients and stock ───────────────────────────────────────────────
+  serveJsonDocDir_("/api/ingredients", kIngredientDir);
+  serveJsonDocDir_("/api/stock", kStockDir);
+
+  // ── Fermentation cellar ─────────────────────────────────────────────────────
+  serveJsonDocDir_("/api/fermenters", kFermenterDir);
+  serveJsonDocDir_("/api/containers", kContainerDir);
 
   // ── Brewery ─────────────────────────────────────────────────────────────────
   // Site values shared by all brewhouses, one file; opaque to the firmware.
@@ -2511,6 +2734,48 @@ void WebUI::begin(bool serve) {
   HeapDiag::mark("routes");
   server_.begin();
 }
+
+#ifndef BREWCTL_USE_LITTLEFS
+// GET <base>, PUT and DELETE <base>/:id over one JsonDocDir, the same contract
+// as /api/brewhouses: the id is chosen by the client and must match the body.
+void WebUI::serveJsonDocDir_(const char* base, const char* dir) {
+  String prefix = String(base) + "/";
+  server_.on(AsyncURIMatcher::exact(base), HTTP_GET,
+             [this, dir](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", JsonDocDir::list(fs_, dir).c_str());
+  });
+
+  server_.addHandler(new PutJsonPrefixHandler(prefix.c_str(),
+      [this, dir, prefix](AsyncWebServerRequest* req, JsonVariant& json) {
+        String id = req->url().substring(prefix.length());
+        if (!isValidRecipeId(id.c_str())) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, dir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }));
+
+  server_.addHandler(new DeletePrefixHandler(prefix.c_str(),
+      [this, dir, prefix](AsyncWebServerRequest* req) {
+        String id = req->url().substring(prefix.length());
+        if (!JsonDocDir::remove(fs_, dir, id.c_str())) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(204);
+      }));
+}
+#endif
 
 // Drives another board's POST /api/settings so it connects to our hub. Runs
 // from tick(), i.e. loopTask: HTTPClient is synchronous, and blocking the

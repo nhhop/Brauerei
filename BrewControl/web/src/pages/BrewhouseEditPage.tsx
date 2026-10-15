@@ -4,7 +4,7 @@ import { route } from 'preact-router';
 import { Check, Plus, Trash2 } from 'lucide-preact';
 import {
   CHILLER_TYPES, DEFAULT_GRAIN_ABSORPTION, DEVICE_KINDS, DRIVES, MEASUREMENTS, STEPS, TEMPLATES, VESSEL_PRESETS,
-  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
+  addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, decoctionVesselOf, duplicateBrewhouse, heatingOf, heatingText, listBrewhouses,
   newDevice, removeDevice, removeVessel, saveBrewhouse, stepLabel, stepsOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type DeviceKind, type Issue, type StepConfig, type StepKey, type Transfer, type Vessel,
 } from '../brewhouse';
@@ -16,7 +16,7 @@ import { TabBtn } from '../components/TabBtn';
 import type { Snapshot } from '../types';
 import { badgeAccent, badgeCaution, badgeCritical, btnPrimary, inp } from '../ui';
 import { BrewhouseSchema } from './BrewhouseSchema';
-import { Card, Field, NumInput, OptNum } from './recipe/fields';
+import { Card, Field, NumInput, OptNum, Select, TextInput, itemText, type Opt } from './recipe/fields';
 
 const LIST_URL = '/settings/anlage';
 const LAUTER_METHODS = ['Senkboden', 'Schlitzrohr', 'Malzrohr', 'Malzkorb', 'Sack', 'Ablassen in Zwischenbehälter'];
@@ -200,37 +200,6 @@ type SectionProps = { bh: Brewhouse; set: (bh: Brewhouse) => void };
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────
 
-function TextInput({ value, onChange, placeholder, list, class: cls = 'w-full' }: {
-  value: string; onChange: (s: string) => void; placeholder?: string; list?: string; class?: string;
-}) {
-  return (
-    <input class={`${inp} ${cls}`} value={value} placeholder={placeholder} list={list}
-      onInput={(e) => onChange(e.currentTarget.value)} />
-  );
-}
-
-type Opt = { value: string; text: string };
-
-// A <select> over `groups`; a value that is not among them stays selectable as
-// "<value> (fehlt)", like the program editor's columns.
-function Select({ value, groups, onChange, empty = '— keins —', missing, class: cls = 'w-full' }: {
-  value: string; groups: { label?: string; opts: Opt[] }[]; onChange: (v: string) => void;
-  empty?: string | null; missing?: string; class?: string;
-}) {
-  const listed = groups.some((g) => g.opts.some((o) => o.value === value));
-  return (
-    <select class={`${inp} ${cls}`} value={value} onChange={(e) => onChange(e.currentTarget.value)}>
-      {empty !== null && <option value="">{empty}</option>}
-      {value !== '' && !listed && <option value={value}>{missing ?? `${value} (fehlt)`}</option>}
-      {groups.map((g, i) => g.opts.length === 0 ? null : g.label
-        ? <optgroup key={i} label={g.label}>{g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>)}</optgroup>
-        : g.opts.map((o) => <option key={o.value} value={o.value}>{o.text}</option>))}
-    </select>
-  );
-}
-
-const itemText = (item: { id: string; label?: string }) => (item.label ? `${item.label} (${item.id})` : item.id);
-
 function RemoveButton({ title, onClick }: { title: string; onClick: () => void }) {
   return (
     <button type="button" title={title} onClick={onClick}
@@ -271,13 +240,22 @@ function GeneralSection({ bh, set }: SectionProps) {
       <div class={`${card} grid gap-3 sm:grid-cols-2`}>
         <Field label="Name"><TextInput value={bh.name} onChange={(name) => set({ ...bh, name })} /></Field>
         <div class="flex flex-wrap gap-4">
-          <Field label="Maische-Effizienz (%)">
+          <Field label="Konversion (%)">
             <NumInput value={bh.mashEfficiencyPct} onChange={(n) => set({ ...bh, mashEfficiencyPct: n })} />
           </Field>
           <Field label="Abkühlschwund (%)">
             <NumInput value={bh.coolingShrinkPct} onChange={(n) => set({ ...bh, coolingShrinkPct: n })} />
           </Field>
+          <Field label="Läutereffizienz Fly Sparge (%)">
+            <OptNum value={bh.lauterEfficiencyPct} placeholder="geschätzt"
+              onChange={(n) => set({ ...bh, lauterEfficiencyPct: n })} />
+          </Field>
         </div>
+        <p class="text-xs text-muted sm:col-span-2">
+          Konversion: Anteil des Extraktpotenzials, der sich in der Maische löst (gut sind 95–100 %).
+          Die Läutereffizienz rechnet das Rezept aus Vollguss oder Batch Sparge; für Fly Sparge gibt es kein Modell,
+          ohne Festwert gilt Batch Sparge mit 2 Gaben.
+        </p>
         <div class="sm:col-span-2">
           <Field label="Beschreibung">
             <textarea class={`${inp} w-full`} rows={2} value={bh.description}
@@ -310,6 +288,10 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
   const steps = stepsOf(bh, v.id);
   const preset = vesselPreset(bh, v);
   const patch = (p: Partial<Vessel>) => set({ ...bh, vessels: bh.vessels.map((x) => (x.id === v.id ? { ...x, ...p } : x)) });
+  // The vessel boils: the wort, a decoction, or the mash itself when it is
+  // heated directly (Kochrast).
+  const boils = steps.includes('boil') || decoctionVesselOf(bh)?.vessel.id === v.id
+    || (steps.includes('mash') && heatingOf(bh, 'mash').direct);
 
   // A preset only ticks steps; steps ticked elsewhere move here.
   function applyPreset(i: number) {
@@ -330,9 +312,14 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
       <div class="mb-3 flex flex-wrap gap-4">
         <Field label="Volumen (l)"><NumInput value={v.volumeL} onChange={(volumeL) => patch({ volumeL })} /></Field>
         <Field label="Totraum (l)"><NumInput value={v.deadSpaceL} onChange={(deadSpaceL) => patch({ deadSpaceL })} /></Field>
-        {steps.includes('boil') && (
+        {boils && (
           <Field label="Verdampfung (l/h)">
             <OptNum value={v.evaporationLPerH} onChange={(evaporationLPerH) => patch({ evaporationLPerH })} />
+          </Field>
+        )}
+        {steps.includes('mash') && (
+          <Field label="Wärmeverlust (K/h)">
+            <OptNum value={v.heatLossKPerH} placeholder="0" onChange={(heatLossKPerH) => patch({ heatLossKPerH })} />
           </Field>
         )}
         {steps.includes('lauter') && (

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { downloadBackup, restoreBackup } from '../api';
+import { downloadBackup, restoreBackup, saveJson } from '../api';
 import { useModule } from '../optionalModules';
 import { exportRecipes, importRecipes } from '../recipes';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -11,24 +11,8 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { btnSecondary } from '../ui';
 import { TriangleAlert, Download, Upload } from 'lucide-preact';
 
-function saveJson(text: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 export function BackupPage(_: { path?: string }) {
   const hasRecipes = useModule('recipes');
-  const [recipeFile, setRecipeFile] = useState<File | null>(null);
-  const [recipeBusy, setRecipeBusy] = useState(false);
-  const [recipeProgress, setRecipeProgress] = useState(0);
-  const [recipeMsg, setRecipeMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const recipeFileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -58,37 +42,6 @@ export function BackupPage(_: { path?: string }) {
       setPendingFile(null);
       clearFileInput();
     }
-  };
-
-  const closeRecipeDialog = () => {
-    setRecipeFile(null);
-    if (recipeFileRef.current) recipeFileRef.current.value = '';
-  };
-
-  const exportRecipeFile = async () => {
-    setRecipeBusy(true);
-    setRecipeMsg(null);
-    try {
-      saveJson(await exportRecipes(), `brewcontrol-recipes-${new Date().toISOString().slice(0, 10)}.json`);
-    } catch (e) {
-      setRecipeMsg({ ok: false, text: `Fehler: ${e}` });
-    }
-    setRecipeBusy(false);
-  };
-
-  const confirmRecipeImport = async () => {
-    if (!recipeFile) return;
-    setRecipeBusy(true);
-    setRecipeProgress(0);
-    try {
-      const n = await importRecipes(await recipeFile.text(),
-        (done, total) => setRecipeProgress(total ? Math.round((done / total) * 100) : 100));
-      setRecipeMsg({ ok: true, text: `${n} Rezepte eingespielt.` });
-    } catch (e) {
-      setRecipeMsg({ ok: false, text: `Fehler: ${e}` });
-    }
-    setRecipeBusy(false);
-    closeRecipeDialog();
   };
 
   return (
@@ -130,46 +83,16 @@ export function BackupPage(_: { path?: string }) {
         </SettingsGroup>
 
         {hasRecipes && (
-          <div class="mt-6">
-            <SettingsGroup>
-              <SettingsCard title="Rezepte exportieren" icon={Download}
-                desc="Das Backup oben enthält keine Rezepte. Lädt alle Rezepte der SD-Karte als eigene JSON-Datei herunter."
-                control={
-                  <button onClick={exportRecipeFile} disabled={recipeBusy} class={btnSecondary}>
-                    Rezepte herunterladen
-                  </button>
-                } />
-              <SettingsCard title="Rezepte importieren" icon={Upload}
-                desc="Rezepte aus einer Rezept-Datei zurückspielen. Rezepte mit gleicher ID werden überschrieben, das Gerät startet nicht neu."
-                control={
-                  <button type="button" class={btnSecondary} disabled={recipeBusy}
-                    onClick={() => recipeFileRef.current?.click()}>
-                    Durchsuchen…
-                  </button>
-                }>
-                <input type="file" accept=".json,application/json" ref={recipeFileRef} class="hidden"
-                  onChange={(e) => {
-                    const f = (e.currentTarget as HTMLInputElement).files?.[0];
-                    if (f) { setRecipeMsg(null); setRecipeFile(f); }
-                  }} />
-                {recipeMsg && (
-                  <div class={`text-sm ${recipeMsg.ok ? '' : 'text-critical'}`}>{recipeMsg.text}</div>
-                )}
-              </SettingsCard>
-            </SettingsGroup>
-          </div>
+          <>
+            <DocBackup what="Rezepte" one="Rezept" file="brewcontrol-recipes" exportFile={exportRecipes} importFile={importRecipes} />
+            {/* brews.ts loads on use, so the main bundle of the small boards stays as it was */}
+            <DocBackup what="Sude" one="Sud" file="brewcontrol-brews"
+              exportFile={() => import('../brews').then((m) => m.exportBrews())}
+              importFile={(text, onProgress) => import('../brews').then((m) => m.importBrews(text, onProgress))}
+              note="Der Lagerbestand bleibt dabei unverändert." />
+          </>
         )}
       </div>
-
-      <ConfirmModal open={recipeFile !== null} title="Rezepte importieren?"
-        confirmLabel="Importieren" cancelLabel="Abbrechen"
-        pending={recipeBusy}
-        onCancel={() => { if (!recipeBusy) closeRecipeDialog(); }}
-        onConfirm={confirmRecipeImport}>
-        Die Rezepte aus <span class="font-mono">{recipeFile?.name}</span> werden auf das Gerät
-        geschrieben. Rezepte mit gleicher ID werden überschrieben.
-        {recipeBusy && <div class="mt-3"><ProgressBar label="Import" pct={recipeProgress} /></div>}
-      </ConfirmModal>
 
       <ConfirmModal open={pendingFile !== null} title="Backup wiederherstellen?"
         confirmLabel="Wiederherstellen" cancelLabel="Abbrechen" destructive
@@ -180,5 +103,94 @@ export function BackupPage(_: { path?: string }) {
         komplette Konfiguration. Das Gerät startet danach neu.
       </ConfirmModal>
     </PageShell>
+  );
+}
+
+// Export and import of the documents the backup above leaves out (recipes,
+// brews), one file each.
+function DocBackup({ what, one, file, exportFile, importFile, note }: {
+  what: string;   // "Rezepte"
+  one: string;    // "Rezept"
+  file: string;   // file name stem
+  exportFile: () => Promise<string>;
+  importFile: (text: string, onProgress: (done: number, total: number) => void) => Promise<number>;
+  note?: string;  // appended to the import text
+}) {
+  const [pending, setPending] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const close = () => {
+    setPending(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const download = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      saveJson(await exportFile(), `${file}-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (e) {
+      setMsg({ ok: false, text: `Fehler: ${e}` });
+    }
+    setBusy(false);
+  };
+
+  const confirmImport = async () => {
+    if (!pending) return;
+    setBusy(true);
+    setProgress(0);
+    try {
+      const n = await importFile(await pending.text(),
+        (done, total) => setProgress(total ? Math.round((done / total) * 100) : 100));
+      setMsg({ ok: true, text: `${n} ${what} eingespielt.` });
+    } catch (e) {
+      setMsg({ ok: false, text: `Fehler: ${e}` });
+    }
+    setBusy(false);
+    close();
+  };
+
+  return (
+    <div class="mt-6">
+      <SettingsGroup>
+        <SettingsCard title={`${what} exportieren`} icon={Download}
+          desc={`Das Backup oben enthält keine ${what}. Lädt alle ${what} der SD-Karte als eigene JSON-Datei herunter.`}
+          control={
+            <button onClick={download} disabled={busy} class={btnSecondary}>
+              {what} herunterladen
+            </button>
+          } />
+        <SettingsCard title={`${what} importieren`} icon={Upload}
+          desc={`${what} aus einer ${one}-Datei zurückspielen. ${what} mit gleicher ID werden überschrieben, das Gerät startet nicht neu.${note ? ` ${note}` : ''}`}
+          control={
+            <button type="button" class={btnSecondary} disabled={busy}
+              onClick={() => fileRef.current?.click()}>
+              Durchsuchen…
+            </button>
+          }>
+          <input type="file" accept=".json,application/json" ref={fileRef} class="hidden"
+            onChange={(e) => {
+              const f = (e.currentTarget as HTMLInputElement).files?.[0];
+              if (f) { setMsg(null); setPending(f); }
+            }} />
+          {msg && (
+            <div class={`text-sm ${msg.ok ? '' : 'text-critical'}`}>{msg.text}</div>
+          )}
+        </SettingsCard>
+      </SettingsGroup>
+
+      <ConfirmModal open={pending !== null} title={`${what} importieren?`}
+        confirmLabel="Importieren" cancelLabel="Abbrechen"
+        pending={busy}
+        onCancel={() => { if (!busy) close(); }}
+        onConfirm={confirmImport}>
+        Die {what} aus <span class="font-mono">{pending?.name}</span> werden auf das Gerät
+        geschrieben. {what} mit gleicher ID werden überschrieben.
+        {busy && <div class="mt-3"><ProgressBar label="Import" pct={progress} /></div>}
+      </ConfirmModal>
+    </div>
   );
 }

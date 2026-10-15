@@ -3,6 +3,7 @@ import { TEMPLATES } from './brewhouse';
 import { calcStats, rangeValue, wortExtract } from './recipeStats';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 import type { CatalogIngredient } from './ingredientCatalog';
+import { withLotEntries } from './stockLots';
 
 const catalog = [
   { id: 'malt:pils', kind: 'fermentable', type: 'malt', name: 'Pilsner', colorEbc: [2.5, 4.5], extractDryPct: [80.5, null], moisturePct: [null, 5] },
@@ -95,6 +96,15 @@ describe('calcStats', () => {
       expect(s.notes.some((x) => x.startsWith('1 Hopfengaben'))).toBe(true);
     });
 
+    it('takes the alpha of a linked stock lot, and the catalog\'s once the lot is gone', () => {
+      const entries = withLotEntries(catalog, [{ id: 'lot1', ref: 'hop:motueka', amount: 100, overrides: { alphaPct: [14, 14] } }]);
+      const linked = hop({ stockLotId: 'lot1' });
+      const plain = calcStats(recipeWith([pils, linked]), catalog).ibu!;
+      expect(calcStats(recipeWith([pils, linked]), entries).ibu).toBeCloseTo(plain * 2, 6);
+      expect(calcStats(recipeWith([pils, hop({ stockLotId: 'gone' })]), entries).ibu).toBeCloseTo(plain, 9);
+      expect(calcStats(recipeWith([pils, hop({})]), entries).ibu).toBeCloseTo(plain, 9);
+    });
+
     it('needs a wort strength', () => {
       const s = calcStats(recipeWith([hop({})]), catalog);
       expect(s.ibu).toBeUndefined();
@@ -121,8 +131,8 @@ describe('calcStats', () => {
     it('thins gravity, colour and bitterness in the fermenter', () => {
       const plain = calcStats(recipeWith([pils, hop], { volumeL: 30 }), catalog, herms);
       const s = calcStats(at('fermenter', 5), catalog, herms);
-      // 30 l · 0.96 − 2 l dead space − 1 l line = 25.8 l arrive, then 5 l water
-      const factor = 25.8 / 30.8;
+      // 30 l · 0.96 − 2 l dead space − 1 l line − 20 g T90 × 5 ml/g = 25.7 l arrive, then 5 l water
+      const factor = 25.7 / 30.7;
       expect(s.ogPlato).toBeLessThan(plain.ogPlato! * 0.9);
       expect(s.ogPlato).toBeGreaterThan(plain.ogPlato! * factor);
       expect(s.ebc).toBeCloseTo(plain.ebc! * factor, 9);
@@ -132,7 +142,8 @@ describe('calcStats', () => {
     it('takes the whole knock-out without a brewhouse, and says so', () => {
       const s = calcStats(at('fermenter', 5), catalog);
       expect(s.notes).toContain('Ohne Sudhaus kommt die ganze Ausschlagmenge in den Gärbehälter.');
-      expect(s.ebc).toBeCloseTo(calcStats(recipeWith([pils], { volumeL: 30 }), catalog).ebc! * 30 / 35, 9);
+      // The hops in the kettle hold back 0.1 l.
+      expect(s.ebc).toBeCloseTo(calcStats(recipeWith([pils], { volumeL: 30 }), catalog).ebc! * 29.9 / 34.9, 9);
     });
 
     it('shares the extract with the water tab', () => {

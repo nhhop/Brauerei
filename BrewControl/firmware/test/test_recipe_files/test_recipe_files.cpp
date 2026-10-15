@@ -41,6 +41,26 @@ void test_body_must_carry_the_id_of_the_url() {
   TEST_ASSERT_FALSE(recipeBodyMatchesId(numeric, "1"));
 }
 
+void test_readings_url_gives_the_brew_id() {
+  TEST_ASSERT_EQUAL_STRING("abc", brewReadingsId("/api/brews/abc/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("mv9yy47j88f0jp", brewReadingsId("/api/brews/mv9yy47j88f0jp/readings").c_str());
+}
+
+void test_other_urls_are_no_readings_urls() {
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/abc").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews//readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/abc/readings/x").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/recipes/abc/readings").c_str());
+}
+
+void test_readings_url_with_an_id_that_could_form_a_path_is_rejected() {
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/../readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/a/b/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/a.b/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId(("/api/brews/" + std::string(33, 'a') + "/readings").c_str()).c_str());
+}
+
 void test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id() {
   JsonDocument doc;
   const char* recipe =
@@ -69,6 +89,45 @@ void test_summary_line_leaves_out_fields_the_recipe_lacks() {
   JsonDocument doc;
   deserializeJson(doc, "{\"id\":\"abc\",\"name\":\"Pils\"}");
   TEST_ASSERT_EQUAL_STRING("{\"id\":\"abc\",\"name\":\"Pils\"}", recipeSummaryLine(doc, "abc").c_str());
+}
+
+void test_summary_line_carries_the_version_fields() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"id\":\"k9x2\",\"name\":\"Pils\",\"rootId\":\"abc\",\"version\":2,\"mash\":[]}");
+  TEST_ASSERT_EQUAL_STRING("{\"id\":\"k9x2\",\"name\":\"Pils\",\"rootId\":\"abc\",\"version\":2}",
+                           recipeSummaryLine(doc, "k9x2").c_str());
+}
+
+void test_brew_summary_line_keeps_the_occupancy_fields() {
+  JsonDocument doc;
+  deserializeJson(doc,
+      "{\"status\":\"planned\",\"id\":\"b1\",\"number\":7,\"name\":\"Pils\",\"recipeId\":\"k9x2\","
+      "\"rootId\":\"abc\",\"version\":2,\"brewDate\":\"2026-10-20\",\"fermenterId\":\"f1\","
+      "\"occupiedFrom\":\"2026-10-20\",\"occupiedUntil\":\"2026-11-03\",\"updatedAt\":5,"
+      "\"frozen\":{\"entries\":[]},\"booked\":[]}");
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"id\":\"b1\",\"number\":7,\"name\":\"Pils\",\"recipeId\":\"k9x2\",\"rootId\":\"abc\",\"version\":2,"
+      "\"status\":\"planned\",\"brewDate\":\"2026-10-20\",\"fermenterId\":\"f1\","
+      "\"occupiedFrom\":\"2026-10-20\",\"occupiedUntil\":\"2026-11-03\",\"updatedAt\":5}",
+      brewSummaryLine(doc, "b1").c_str());
+}
+
+void test_brew_summary_line_carries_the_results() {
+  JsonDocument doc;
+  deserializeJson(doc,
+      "{\"id\":\"b3\",\"number\":2,\"ogPlato\":12.5,\"ogActual\":12.3,\"mashEffPct\":71.5,"
+      "\"yieldPct\":57.2,\"bottledL\":18,\"abvPct\":5.1,\"attenuationPct\":79.4,\"fgPlato\":2.6,"
+      "\"measurements\":{\"mashPh\":{\"v\":5.4,\"at\":1}}}");
+  TEST_ASSERT_EQUAL_STRING(
+      "{\"id\":\"b3\",\"number\":2,\"ogPlato\":12.5,\"ogActual\":12.3,\"mashEffPct\":71.5,"
+      "\"yieldPct\":57.2,\"bottledL\":18,\"abvPct\":5.1,\"attenuationPct\":79.4,\"fgPlato\":2.6}",
+      brewSummaryLine(doc, "b3").c_str());
+}
+
+void test_brew_summary_line_leaves_out_fields_the_brew_lacks() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"id\":\"b2\",\"number\":1,\"style\":\"Pils\"}");
+  TEST_ASSERT_EQUAL_STRING("{\"id\":\"b2\",\"number\":1}", brewSummaryLine(doc, "b2").c_str());
 }
 
 void test_index_line_is_matched_by_the_whole_id() {
@@ -122,8 +181,15 @@ int main(int, char**) {
   RUN_TEST(test_ids_the_web_ui_generates_are_valid);
   RUN_TEST(test_ids_that_could_form_a_path_are_rejected);
   RUN_TEST(test_body_must_carry_the_id_of_the_url);
+  RUN_TEST(test_readings_url_gives_the_brew_id);
+  RUN_TEST(test_other_urls_are_no_readings_urls);
+  RUN_TEST(test_readings_url_with_an_id_that_could_form_a_path_is_rejected);
   RUN_TEST(test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id);
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
+  RUN_TEST(test_summary_line_carries_the_version_fields);
+  RUN_TEST(test_brew_summary_line_keeps_the_occupancy_fields);
+  RUN_TEST(test_brew_summary_line_carries_the_results);
+  RUN_TEST(test_brew_summary_line_leaves_out_fields_the_brew_lacks);
   RUN_TEST(test_index_line_is_matched_by_the_whole_id);
   RUN_TEST(test_splice_adds_replaces_and_removes_one_line);
   RUN_TEST(test_splice_drops_blank_lines_and_copes_with_a_missing_final_newline);

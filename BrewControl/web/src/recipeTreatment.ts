@@ -9,6 +9,7 @@ import {
   type GristPart, type PhModel,
 } from './mashPh';
 import { beerEbc, wortExtract } from './recipeStats';
+import { entryOf } from './stockLots';
 import type { Water } from './recipeWater';
 import { SCOPE_TIMINGS, type Ingredient, type PhKey, type Recipe, type Timing, type WaterKey } from './recipes';
 import {
@@ -36,7 +37,7 @@ export interface Agent { agent: WaterAgent; strengthPct: number; unit: 'g' | 'ml
 
 // The water agent behind a row, from its catalog entry.
 export function agentOf(i: Ingredient, catalog: CatalogIngredient[] | null): Agent | undefined {
-  const entry = catalog?.find((c) => c.id === i.ingredientId);
+  const entry = entryOf(i, catalog);
   if (entry?.kind !== 'auxiliary' || !entry.waterAgent) return undefined;
   const agent = WATER_AGENTS[entry.waterAgent];
   return {
@@ -194,7 +195,7 @@ export function calcTreatment(recipe: Recipe, w: Water, brewery: Brewery | null,
 
   if (model === 'kolbach') {
     const colors = catalog ? wortExtract(recipe, catalog).colors : [];
-    if (colors.length > 0) mash.raTarget = raRangeForColor(beerEbc(colors, recipe.volumeL, d));
+    if (colors.length > 0) mash.raTarget = raRangeForColor(beerEbc(colors, w.knockOutL, d));
     else notes.push('Für den RA-Zielbereich fehlt die Bierfarbe (Vergärbares verknüpfen).');
   }
 

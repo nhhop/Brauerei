@@ -208,6 +208,27 @@ void test_params_json_roundtrip() {
   TEST_ASSERT_FALSE(c2.enabled());
 }
 
+void test_disable_writes_both_off_immediately() {
+  MockSensor s("t", tempMeta());
+  MockActuator h("h", switchMeta()), cl("c", switchMeta());
+  DualStageController c("ctrl", s, &h, &cl);
+  c.setSetpoint(20.0f);
+  c.setDifferentials(0.5f, 0.5f);
+
+  step(s, c, 19.0f, 1000);  // heat on
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, h.writes.back());
+
+  c.setEnabled(false);  // no tick() needed
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, h.writes.back());
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, cl.writes.back());
+  TEST_ASSERT_FALSE(h.enabled());
+  TEST_ASSERT_FALSE(cl.enabled());
+
+  c.setEnabled(true);
+  TEST_ASSERT_TRUE(h.enabled());
+  TEST_ASSERT_TRUE(cl.enabled());
+}
+
 void setUp() { dualStageSetMillisForTest(0); }
 void tearDown() {}
 
@@ -225,5 +246,6 @@ int main(int, char**) {
   RUN_TEST(test_disabled_drives_both_off);
   RUN_TEST(test_invalid_reading_drives_both_off);
   RUN_TEST(test_params_json_roundtrip);
+  RUN_TEST(test_disable_writes_both_off_immediately);
   return UNITY_END();
 }

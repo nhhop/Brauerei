@@ -85,6 +85,19 @@ void test_stored_form_round_trips() {
   TEST_ASSERT_EQUAL_STRING(R"({"id":"i2c-4-5","type":"i2c","sda":4,"scl":5,"port":1})", json.c_str());
 }
 
+// A re-pinned bus keeps its id; it is read back from storage only.
+void test_stored_id_survives_pin_change() {
+  const char* stored = R"({"id":"i2c-4-5","type":"i2c","sda":16,"scl":17,"port":1})";
+  JsonDocument doc = parse(stored);
+  BusDef d;
+  std::string err;
+  TEST_ASSERT_TRUE(parseBusDef(doc.as<JsonObjectConst>(), d, err, true));
+  TEST_ASSERT_EQUAL_STRING("i2c-4-5", d.id.c_str());
+  TEST_ASSERT_EQUAL(16, d.pins[0]);
+  TEST_ASSERT_TRUE(parseBusDef(doc.as<JsonObjectConst>(), d, err));  // from the API
+  TEST_ASSERT_EQUAL_STRING("i2c-16-17", d.id.c_str());
+}
+
 void test_fixed_bus_has_no_pin_uses() {
   const std::vector<BusDef> fixed = lilygoFixed();
   TEST_ASSERT_EQUAL(1, fixed.size());
@@ -174,6 +187,7 @@ int main(int, char**) {
   RUN_TEST(test_parse_derives_id_from_pins);
   RUN_TEST(test_parse_rejects_bad_definitions);
   RUN_TEST(test_stored_form_round_trips);
+  RUN_TEST(test_stored_id_survives_pin_change);
   RUN_TEST(test_fixed_bus_has_no_pin_uses);
   RUN_TEST(test_i2c_ports);
   RUN_TEST(test_migrate_ds18b20_shares_one_bus);

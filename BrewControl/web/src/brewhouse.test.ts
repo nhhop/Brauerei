@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  DEFAULT_GRAIN_ABSORPTION, OUT, TEMPLATES, VESSEL_PRESETS, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, getBrewery, grainAbsorptionOf, heatingOf, heatingText,
+  DEFAULT_GRAIN_ABSORPTION, OUT, TEMPLATES, VESSEL_PRESETS, addDevice, anchor, assignStep, brewhouseSummary, checkBrewhouse, decoctionVesselOf, getBrewery, grainAbsorptionOf, heatingOf, heatingText,
   listBrewhouses, newDevice, removeDevice, removeVessel, saveBrewhouse, schemaOf, vesselLabel, vesselPreset,
   type Brewhouse, type Device, type Vessel,
 } from './brewhouse';
@@ -75,6 +75,26 @@ describe('grainAbsorptionOf', () => {
     expect(grainAbsorptionOf(template('pot'))).toBe(0.6);
     expect(grainAbsorptionOf(template('pot-pipe'))).toBe(0.8);
     expect(grainAbsorptionOf(minimal())).toBe(DEFAULT_GRAIN_ABSORPTION);
+  });
+});
+
+describe('decoctionVesselOf', () => {
+  it('finds a second heated vessel that does not heat the mash', () => {
+    expect(decoctionVesselOf(template('kettle-lauter'))?.vessel.name).toBe('Einkocher');
+    const herms = decoctionVesselOf(template('herms3'));
+    expect(herms?.vessel.name).toBe('Würzepfanne');
+    expect(herms?.heater.name).toBe('Heizstab Würzepfanne');
+  });
+
+  it('none in one pot, nor in the vessel that heats the mash (HERMS coil)', () => {
+    for (const key of ['pot', 'pot-pipe', 'herms2', 'empty']) expect(decoctionVesselOf(template(key))).toBeUndefined();
+  });
+
+  it('carries the heat rate of a step its heater has, as a fallback', () => {
+    const bh = template('herms3');
+    expect(decoctionVesselOf(bh)?.stepRateKPerMin).toBeUndefined();
+    const withRate: Brewhouse = { ...bh, steps: { ...bh.steps, boil: { ...bh.steps.boil!, heatRateKPerMin: 1.5 } } };
+    expect(decoctionVesselOf(withRate)?.stepRateKPerMin).toBe(1.5);
   });
 });
 
