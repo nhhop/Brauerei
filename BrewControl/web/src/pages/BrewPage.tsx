@@ -302,6 +302,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
       ) : tab === 'maturation' ? (
         !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
           <MaturationTab brew={saved} recipe={recipe} inputs={day.inputs} editable={!planned} patch={patch}
+            og={saved.measurements?.pitchGravity?.v ?? day.targets.values.pitchGravity}
             notes={draft.phaseNotes?.maturation} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, maturation: t } })} />
         )
       ) : (

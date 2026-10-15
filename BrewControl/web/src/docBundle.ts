@@ -16,8 +16,10 @@ export interface BundleKind {
   many: string;    // "Rezepten" (dative plural)
 }
 
-export function makeBundle<T>(kind: BundleKind, docs: T[]): string {
-  return JSON.stringify({ type: kind.type, version: 1, [kind.key]: docs });
+// `extra`: further properties of the bundle (the brews' readings), which an
+// older reader of the file leaves alone.
+export function makeBundle<T>(kind: BundleKind, docs: T[], extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ type: kind.type, version: 1, [kind.key]: docs, ...extra });
 }
 
 export function parseBundle<T extends { id: string }>(kind: BundleKind, text: string): T[] {

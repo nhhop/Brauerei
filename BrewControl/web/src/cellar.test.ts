@@ -108,6 +108,15 @@ describe('checkFermenter hints', () => {
       .toEqual(['Regler „c“ regelt auf kg, erwartet ist °C.']);
   });
 
+  it('warn about a density sensor that is missing or does not measure gravity', () => {
+    const s = snap({ sensors: [sensor('tilt', '°'), sensor('spindel', 'SG'), sensor('refr', '°Bx'), sensor('plato', '°P')] });
+    expect(hintsOf(fermenter({ densitySensor: 'ghost' }), s)).toEqual(['Dichtesensor „ghost“ fehlt in der Registry.']);
+    expect(hintsOf(fermenter({ densitySensor: 'tilt' }), s)).toEqual([
+      'Dichtesensor „tilt“ misst in °, erwartet ist °P, SG oder °Bx; der Gärverlauf zeichnet ihn nicht.',
+    ]);
+    for (const id of ['spindel', 'refr', 'plato']) expect(hintsOf(fermenter({ densitySensor: id }), s)).toEqual([]);
+  });
+
   it('skip the checks without a snapshot', () => {
     expect(hintsOf(fermenter({ sensor: 'probe' }), null)).toEqual([]);
   });

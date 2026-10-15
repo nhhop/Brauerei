@@ -28,6 +28,19 @@ inline bool recipeBodyMatchesId(JsonVariantConst body, const char* id) {
   return strcmp(body["id"] | "", id) == 0;
 }
 
+// The brew id of "/api/brews/<id>/readings", empty for any other URL (the
+// plain "/api/brews/<id>" routes take those). The id has to be valid, so no
+// path can be formed through it.
+inline std::string brewReadingsId(const std::string& url) {
+  static const std::string kPrefix = "/api/brews/";
+  static const std::string kSuffix = "/readings";
+  if (url.size() <= kPrefix.size() + kSuffix.size()) return "";
+  if (url.compare(0, kPrefix.size(), kPrefix) != 0) return "";
+  if (url.compare(url.size() - kSuffix.size(), kSuffix.size(), kSuffix) != 0) return "";
+  const std::string id = url.substr(kPrefix.size(), url.size() - kPrefix.size() - kSuffix.size());
+  return isValidRecipeId(id.c_str()) ? id : "";
+}
+
 // ── The list index ────────────────────────────────────────────────────────────
 // Listing by opening every recipe costs ~60 ms each on the SD card (measured on
 // the LilyGo), which stalls the AsyncTCP task: 42 recipes took 2.7 s, and its

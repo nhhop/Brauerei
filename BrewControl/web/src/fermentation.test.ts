@@ -4,7 +4,7 @@ import type { EfficiencyBasis } from './efficiency';
 import { forcedCarbonationBar, krausenRackingPlato, primingSugarGrams, residualCo2Volumes, speiseVolumeL } from './brewMath';
 import type { Container, Fermenter } from './cellar';
 import {
-  calcBottling, calcCarbonation, dryHopL, fermentationSchedule, fermenterHints, kettleHopL, maxPhasePressureBar,
+  calcBottling, calcCarbonation, dryHopL, fermentationSchedule, fermenterHints, fermentSollCourse, kettleHopL, maxPhasePressureBar,
 } from './fermentation';
 import type { CatalogIngredient, StockLot } from './ingredientCatalog';
 import { atKnockOut, calcStats, knockOutL, pitchedL, wortExtract } from './recipeStats';
@@ -264,6 +264,40 @@ describe('fermentationSchedule', () => {
     expect(s.map((p) => p.state)).toEqual(['done', 'current', 'next']);
     expect(s[1].fromAt).toBe(at + 10 * day);
     expect(fermentationSchedule(phases, at, at + 30 * day).every((p) => p.state === 'done')).toBe(true);
+  });
+});
+
+describe('fermentSollCourse', () => {
+  const s = 1 / 86400;
+  const p = (tempC: number, duration: number, rampDays?: number) => ({ id: String(tempC), name: 'P', tempC, duration, rampDays });
+
+  it('holds one phase for its duration', () => {
+    expect(fermentSollCourse([p(12, 10)])).toEqual({ xs: [0, 10], ys: [12, 12] });
+  });
+
+  it('runs a ramp linearly from the phase before, inside the phase', () => {
+    expect(fermentSollCourse([p(12, 10), p(18, 3, 1)])).toEqual({ xs: [0, 10, 11, 13], ys: [12, 12, 18, 18] });
+  });
+
+  it('lets a phase that is all ramp end at its target', () => {
+    expect(fermentSollCourse([p(12, 10), p(1, 4, 4)])).toEqual({ xs: [0, 10, 14], ys: [12, 12, 1] });
+  });
+
+  it('caps a ramp longer than its phase and gives the first phase none', () => {
+    expect(fermentSollCourse([p(12, 5, 3), p(20, 2, 9)])).toEqual({ xs: [0, 5, 7], ys: [12, 12, 20] });
+  });
+
+  it('jumps in a second of its own without a ramp', () => {
+    const c = fermentSollCourse([p(12, 10), p(2, 14)]);
+    expect(c.ys).toEqual([12, 12, 2, 2]);
+    expect(c.xs[2]).toBeCloseTo(10 + s, 9);
+    expect(c.xs[3]).toBe(24);
+    expect(c.xs.every((x, i) => i === 0 || x > c.xs[i - 1])).toBe(true);
+  });
+
+  it('leaves out a phase without a duration, and has no line without phases', () => {
+    expect(fermentSollCourse([p(12, 0), p(20, 4)])).toEqual({ xs: [0, 4], ys: [20, 20] });
+    expect(fermentSollCourse([])).toEqual({ xs: [], ys: [] });
   });
 });
 

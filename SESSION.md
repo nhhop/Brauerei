@@ -2669,3 +2669,41 @@ stehen dort unter „Sud › Stand 5c-3“.
     - Danach Testregler und Programme gelöscht, `agitator` auf 64 %, Intervall 4/5 s zurück. Rezept v2, Gärplatz
       und Sud #5 bleiben als Prüfdaten. `IDS1` steht nach dem OTA-Neustart auf 0 statt vorher 1 (Regler `Maischen`
       aus); laut Nutzer so lassen.
+
+## 2026-10-15 — Sud 5c-4: Messungen von Hand und Gärverlauf
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-4. Einzelheiten stehen dort unter „Sud › Stand 5c-4“.
+
+- **Firmware:** Route `GET/PUT /api/brews/<id>/readings` (`/brewreadings/<id>.json` über `JsonDocDir::write`, nur
+  SD-Boards), `DELETE /api/brews/<id>` löscht die Messungen mit. Die Handler stehen vor denen von `/api/brews/<id>`;
+  dazu bekamen `GetPrefixHandler` und `PutJsonPrefixHandler` ein optionales Suffix, und `brewReadingsId` in
+  `RecipeFiles.h` holt die Id (nativ getestet). `openapi.yaml` (Pfad, Schema `BrewReadings`, `Fermenter.densitySensor`,
+  `Brew.fermentLogId`) und die README-Tabelle sind nachgezogen.
+- **Web:** `brewReadings.ts` (Modell, Laden/Speichern, `entryToReading`, `readingText`), Karte „Messungen“ in
+  Gärung und Reifung, `densitySensor` am Gärplatz (Feld im Dialog, Hinweis bei fremder Einheit), Sud-Sicherung mit
+  `readings`, `fermentSollCourse` (Plan als Linie in Tagen) und `fermentCourse.ts` (Spalten aus Plan, Log und
+  Messungen), Karte „Gärverlauf“ (`FermentCourse`, uPlot mit °C links und °P rechts, Log-Wahl `fermentLogId`).
+- **Annahmen:** Der Körper der Route ist ein Objekt `{ id, readings }`, weil `PutJsonPrefixHandler` nur Objekte
+  nimmt. Die Grenze ist der Body von 16 KB (etwa 300 Messungen), kein eigener Check in der Firmware; das Web prüft
+  vorher. Die neuen Typen stehen in `brewReadings.ts`, nicht in `types.ts` (dort stehen nur die Snapshot-Formen).
+  Ein °Bx-Wert wird roh gespeichert und mit der Stammwürze (`pitchGravity`, sonst Soll) umgerechnet. `fermentLogId`
+  wird nicht beim Anstellen gesetzt, ohne Wahl gilt das erste Log mit dem Fühler. Der Verlauf liegt nur im Tab
+  Gärung, die Reifung hat nur die Karte „Messungen“.
+- **Abweichung vom Plan:** Die Dichte-Eingabe ist ein eigenes Textfeld mit Einheiten-Schalter statt `GravityInput`,
+  weil dieses den Wert bei jedem Tastendruck neu formatiert und eine Eingabe wie „1,0“ nicht zulässt. Die Liste
+  zeigt die Messungen älteste zuerst (die Reihenfolge der Datei), nicht neueste zuerst.
+- **Nebenbei:** `UNIT_FITS` aus `brewhouse.ts` ist jetzt exportiert (der Hinweis des Gärplatzes nimmt die Einheiten
+  für °P), `makeBundle` hat einen Parameter `extra`.
+- **Verifikation:**
+  - Firmware `pio test -e native` 197 grün (neu: drei Fälle für `brewReadingsId`). `pio run -e esp32dev` (Flash 98,2 %,
+    die Route ist dort nicht gebaut) und `-e lilygo_t_display_s3_amoled` erfolgreich.
+  - Web `pnpm typecheck`, `pnpm test` 640 grün (neu: `brewReadings`, `fermentCourse`, `fermentSollCourse`, Sicherung
+    mit und ohne Messungen, Dichtesensor-Hinweis), `pnpm build`.
+  - Redocly-Lint ohne neue Warnung (nur die bekannte `info-license`).
+  - Browser gegen einen Wegwerf-Mock mit Log, Regler und Spindel: Verlauf mit Plan, Ist, Regler-Soll, Dichte aus dem
+    Log und Punkt einer Handmessung, Eintragen (SG → 5,6 °P) und Löschen, Karte in der Reifung, bei 375 px kein
+    Querscrollen der Seite (nur die Tab-Leiste scrollt wie bisher).
+  - **Kein Gerät:** Route, Löschen mit dem Sud und das Zurückspielen der Sicherung sind am Gerät nicht geprüft
+    (PLAN.md › Hardware-Verifikation).
+- **Offen gelassen (PLAN.md):** nur die jüngste Log-Session im Verlauf und das Laden der ganzen Session, Messungen
+  nur löschbar, `tilt`-Sensoren nicht in °P umgerechnet.

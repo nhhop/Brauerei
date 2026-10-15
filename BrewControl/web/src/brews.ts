@@ -7,6 +7,7 @@
 // behind /api/brews, with an index like the recipes (RecipeFiles.h).
 import { failed } from './api';
 import type { Brewery, Brewhouse, MeasureKey } from './brewhouse';
+import { getReadings, saveReadings, type BrewReadings } from './brewReadings';
 import type { Fermenter } from './cellar';
 import { importBundle, makeBundle, type BundleKind } from './docBundle';
 import type { CatalogIngredient } from './ingredientCatalog';
@@ -76,6 +77,7 @@ export interface Brew {
   addedAt?: Record<string, number>;      // when a boil addition or dry hop went in, per recipe row id
   phaseNotes?: Partial<Record<PhaseId, string>>;
   logId?: string;                        // the device log the mash course is drawn from
+  fermentLogId?: string;                 // ... the fermentation course (5c-4)
   phaseStartedAt?: Partial<Record<PhaseId, number>>;  // epoch ms; mash: when the grain went in
   // Results for the list (brewDay.withResults), set whenever the brew is saved.
   ogPlato?: number;          // gravity of the pitched wort (else after the boil): target
@@ -286,15 +288,30 @@ const BUNDLE: BundleKind = {
   type: 'brewcontrol-brews', key: 'brews', backup: 'Sud-Sicherung', list: 'Sudliste', one: 'Sud', many: 'Suden',
 };
 
+// The hand-entered readings (brewReadings.ts) go in the same file under
+// `readings`, one document per brew that has any.
 export async function exportBrews(): Promise<string> {
   const brews: Brew[] = [];
+  const readings: BrewReadings[] = [];
   for (const { id } of await fetchList()) {
     const b = await getBrew(id);
-    if (b) brews.push(b);
+    if (!b) continue;
+    brews.push(b);
+    const r = await getReadings(id);
+    if (r.readings.length > 0) readings.push(r);
   }
-  return makeBundle(BUNDLE, brews);
+  return makeBundle(BUNDLE, brews, { readings });
 }
 
-// Same id → overwritten, updatedAt kept. Stock is not touched.
-export const importBrews = (text: string, onProgress?: (done: number, total: number) => void) =>
-  importBundle<Brew>(BUNDLE, text, put, onProgress);
+// Same id → overwritten, updatedAt kept. Stock is not touched. A file from before
+// the readings has none, which is fine.
+export async function importBrews(text: string, onProgress?: (done: number, total: number) => void): Promise<number> {
+  const done = await importBundle<Brew>(BUNDLE, text, put, onProgress);
+  const docs = (JSON.parse(text) as { readings?: BrewReadings[] }).readings;
+  for (const doc of Array.isArray(docs) ? docs : []) {
+    try { await saveReadings(doc); } catch (e) {
+      throw new Error(`${done} Suden eingespielt, dann bei den Messungen von ${doc?.id}: ${e}`);
+    }
+  }
+  return done;
+}

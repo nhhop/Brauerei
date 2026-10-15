@@ -220,6 +220,10 @@ function FermenterDialog({ fermenter, snap, onSave, onClose }: {
         <Select value={f.sensor ?? ''} groups={[{ opts: optionsOf(snap?.sensors) }]}
           onChange={(v) => set({ sensor: v || undefined })} />
       </Field>
+      <Field label="Dichtesensor">
+        <Select value={f.densitySensor ?? ''} groups={[{ opts: optionsOf(snap?.sensors) }]}
+          onChange={(v) => set({ densitySensor: v || undefined })} />
+      </Field>
       {connected && (
         <p class="text-xs text-muted sm:col-span-2">
           Liegt das Gerät auf einem anderen Board, lege dort einen Remote-Sensor und einen Remote-Aktor an. Der Regler läuft dann

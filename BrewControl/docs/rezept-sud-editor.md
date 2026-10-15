@@ -7,8 +7,8 @@ Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen 
 der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und der Brautag: die Vorbereitung (5b-1), das
 Maischen (5b-2), das Würzekochen (5b-3) und der Maischverlauf mit den Geräten des Sudhauses (5b-4), das
 Maischprogramm (5b-5), der Gärung-Tab des Rezepts (5c-1, 5c-1b), der Belegungsplan mit dem Anstellen
-(5c-2) und das Gärprogramm mit den Stopfgaben (5c-3); es folgen Messreihen, Reifung und Abfüllung (5c-4,
-5c-5). Das UI ist
+(5c-2), das Gärprogramm mit den Stopfgaben (5c-3) und die Messungen von Hand mit dem Gärverlauf (5c-4); es
+folgen Reifung und Abfüllung (5c-5). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -988,7 +988,8 @@ mehrere Wochen (belegt, frei, reserviert für geplante Sude) kommt mit dem Sud, 
   **Umgebungstemperatur** (`ambientTempC`, seit 5c-2) ist die Temperatur dort, wo der Behälter steht; leer =
   unbekannt. Ein Gärplatz ist ein Behälter mit seiner Temperierung, kein Ort, deshalb steht sie am Gärplatz
   und nicht an der Brauerei (Entscheidung 2026-10-14). Ein
-  **Dichtesensor** (z. B. iSpindel als Remote-Sensor) kommt mit Plan 5c › 5c-4.
+  **Dichtesensor** (`densitySensor`, seit 5c-4; z. B. iSpindel als Remote-Sensor) ist ein eigenes Feld; misst er
+  nicht in °P, SG oder °Bx, steht ein Hinweis, und der Gärverlauf lässt ihn aus.
 - **Gerät auf einem anderen Board:** Remote-Sensoren und -Aktoren sind lokale Proxys und stehen im Snapshot
   wie lokale Items; die Verknüpfung trägt sie ohne Änderung. Einen **Remote-Regler gibt es nicht**
   (`Discovery.h`: „no remote controller proxy exists“), ein Regler, der nur auf dem anderen Board läuft,
@@ -1389,6 +1390,31 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
 - **Am LilyGo geprüft** (2026-10-15): Rampe mit Neustart, Pause und „Weiter“ mitten darin; das echte Gärprogramm
   mit kurzen Phasen von „Angestellt“ bis „Regler aus“, alle Pushes angekommen (SESSION.md).
 
+**Stand 5c-4 (2026-10-15, Firmware `WebUI.cpp`, `RecipeFiles.h`; Web `brewReadings.ts`, `fermentCourse.ts`,
+`fermentation.ts`, `pages/brew/Readings.tsx`, `FermentCourse.tsx`):** Messungen von Hand, Gärverlauf.
+- **Route** `GET/PUT /api/brews/<id>/readings` → `/brewreadings/<id>.json` (nur SD-Boards). Der Körper ist
+  `{ id, readings: [{ at, kind, v, note? }] }` (`kind`: `gravity` in °P, `brix` roh, `temp`, `ph`), geschrieben
+  über `JsonDocDir::write` (Temp-Datei). Die Grenze ist der Body von 16 KB (etwa 300 Messungen); das Web prüft
+  vorher (`fitsLimit`). Ohne Datei antwortet GET 404, das Web liest das als „keine Messung“.
+  - Die Handler stehen vor denen von `/api/brews/<id>`, die die Id sonst als ungültig ablehnen (`GetPrefixHandler`
+    und `PutJsonPrefixHandler` bekamen ein optionales Suffix; die Id kommt aus `brewReadingsId`, nativ getestet).
+  - `DELETE /api/brews/<id>` löscht die Messungen mit, auch wenn der Sud selbst fehlte.
+- **Sud-Sicherung** (`brewcontrol-brews`) trägt die Messungen unter `readings` mit (je Sud ein Dokument, nur wenn
+  er welche hat); eine ältere Sicherung ohne den Schlüssel lässt sich einspielen.
+- **Gärplatz:** `densitySensor` (Auswahl im Dialog nach dem Temperaturfühler, Hinweis bei fremder Einheit).
+- **Karte „Messungen“** in Gärung und Reifung: Dichte (°P/SG/°Bx), Temperatur, pH mit Zeit und Notiz, sofort
+  gespeichert. SG wird beim Eintragen zu °P, °Bx bleibt roh und wird mit der Stammwürze (`pitchGravity`, sonst
+  Soll) über `apparentExtractFromRefractometer` zur Dichte; ohne Stammwürze bleibt der Punkt ungezeichnet. Das
+  Eingabefeld ist ein eigenes Textfeld statt `GravityInput`, weil dieses bei jedem Tastendruck neu formatiert.
+- **Gärverlauf** (Karte in Gärung, uPlot, x = Tage ab Anstellen, °C links, °P rechts): Soll aus Phasen und Rampen
+  (`fermentSollCourse`, dieselbe Linie wie der Programm-Generator), Ist-Temperatur, Regler-Sollwert und Dichte aus
+  dem Log, Handmessungen als Punkte. Das Log ist `fermentLogId`, sonst das erste, das den Fühler des Gärplatzes
+  aufzeichnet. Fehlende Spalten im Log erklärt ein Hinweis; bei mehr als 20 000 Zeilen steht ein Hinweis zum
+  Intervall, weil die ganze Session geladen wird. Bei mehreren Sessions zeigt der Verlauf nur die jüngste, die vor
+  dem Planende begann.
+- **Im Mock geprüft** (Wegwerf-Mock mit Log, Regler, Spindel): Verlauf mit zwei Skalen und Punkt, Eintragen und
+  Löschen, Karte in der Reifung, 375 px ohne Querscrollen. Am Gerät nicht geprüft.
+
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.
 - **Messwerte** stehen überall als Zeile Messwert | Soll laut Rezept | Ist | Abweichung. Die Abweichung ist
@@ -1642,7 +1668,7 @@ Diese Teile aus 5b nutzt 5c, ohne dass gespeicherte Sude umgebaut werden müssen
   (`batchVolume`, `pitchTemp`), Restextrakt und Abfüllmenge.
   - **Messreihen der Gärung** (Spindel und Temperatur über Wochen) gehören **nicht** ins Sud-Dokument,
     wegen der 16-KB-Grenze. Sie kommen aus dem Gerätelog, gewählt wie in 5b-4 über `logId`.
-  - Von Hand eingetragene Messreihen kommen in eine eigene Datei je Sud (Route siehe Plan 5c › 5c-4).
+  - Von Hand eingetragene Messreihen kommen in eine eigene Datei je Sud (seit 5c-4, siehe „Stand 5c-4“).
 - **Gärführung als Programm:** Der Generator aus 5b-2/5b-3 (`brewPrograms.ts`) bekommt eine Variante für
   die Gärphasen des Rezepts (`recipe.fermentation`). Sie setzt Sollwerte auf den Regler des Gärplatzes
   (`frozen.fermenter.controller`), meldet Stopfgaben mit `notify` und gehört wie die anderen Programme dem

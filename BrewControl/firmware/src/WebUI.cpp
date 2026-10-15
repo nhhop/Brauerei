@@ -71,6 +71,8 @@ constexpr const char* kBrewhouseDir = "/brewhouses";
 constexpr const char* kBreweryFile = "/brewery.json";
 // Brews ("Sude"), one file each plus an index like the recipes.
 constexpr const char* kBrewDir = "/brews";
+// A brew's hand-entered readings (gravity, temperature, pH), one file per brew.
+constexpr const char* kBrewReadingsDir = "/brewreadings";
 // Mash profiles (rest sequences of the recipe editor), not the controller programs.
 constexpr const char* kMashProfileDir = "/mashprofiles";
 // The user's own ingredients and stock lots (ingredient page of the recipe package).
@@ -359,34 +361,39 @@ class BodyPrefixHandler : public AsyncWebHandler {
   Cb cb_;
 };
 
-// Matches GET <prefix>* requests where the URL carries a path param.
+// Matches GET <prefix>* requests where the URL carries a path param. With a
+// `suffix` the URL has to end in it too (GET /api/brews/<id>/readings).
 class GetPrefixHandler : public AsyncWebHandler {
  public:
   using Cb = std::function<void(AsyncWebServerRequest*)>;
-  GetPrefixHandler(const char* prefix, Cb cb)
-      : prefix_(prefix), cb_(std::move(cb)) {}
+  GetPrefixHandler(const char* prefix, Cb cb, const char* suffix = "")
+      : prefix_(prefix), suffix_(suffix), cb_(std::move(cb)) {}
 
   bool canHandle(AsyncWebServerRequest* req) const override {
-    return req->method() == HTTP_GET && req->url().startsWith(prefix_);
+    return req->method() == HTTP_GET && req->url().startsWith(prefix_) &&
+           req->url().endsWith(suffix_);
   }
   void handleRequest(AsyncWebServerRequest* req) override { cb_(req); }
   bool isRequestHandlerTrivial() const override { return false; }
 
  private:
   String prefix_;
+  String suffix_;
   Cb cb_;
 };
 
 // Matches PUT <prefix>* requests and delivers the parsed JSON body; the URL
 // carries the item id. Same body collection and auth as BodyPrefixHandler.
+// With a `suffix` the URL has to end in it too (PUT /api/brews/<id>/readings).
 class PutJsonPrefixHandler : public AsyncWebHandler {
  public:
   using Cb = std::function<void(AsyncWebServerRequest*, JsonVariant&)>;
-  PutJsonPrefixHandler(const char* prefix, Cb cb)
-      : prefix_(prefix), cb_(std::move(cb)) {}
+  PutJsonPrefixHandler(const char* prefix, Cb cb, const char* suffix = "")
+      : prefix_(prefix), suffix_(suffix), cb_(std::move(cb)) {}
 
   bool canHandle(AsyncWebServerRequest* req) const override {
-    return req->method() == HTTP_PUT && req->url().startsWith(prefix_);
+    return req->method() == HTTP_PUT && req->url().startsWith(prefix_) &&
+           req->url().endsWith(suffix_);
   }
   void handleRequest(AsyncWebServerRequest* req) override {
     if (req->contentLength() == 0) req->send(400, "text/plain", "missing body");
@@ -409,6 +416,7 @@ class PutJsonPrefixHandler : public AsyncWebHandler {
 
  private:
   String prefix_;
+  String suffix_;
   Cb cb_;
 };
 
@@ -1903,6 +1911,39 @@ void WebUI::begin(bool serve) {
     req->send(200, "application/json", RecipeStore::list(fs_, kBrewDir).c_str());
   });
 
+  // GET/PUT /api/brews/:id/readings — registered before the plain /api/brews/:id
+  // handlers below, which would take the sub-path for an (invalid) id.
+  server_.addHandler(new GetPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req) {
+        const std::string id = brewReadingsId(req->url().c_str());
+        std::string body;
+        if (id.empty() || !readText(fs_, (std::string(kBrewReadingsDir) + "/" + id + ".json").c_str(), body)) {
+          req->send(404, "text/plain", "not found");
+          return;
+        }
+        req->send(200, "application/json", body.c_str());
+      }, "/readings"));
+
+  server_.addHandler(new PutJsonPrefixHandler("/api/brews/",
+      [this](AsyncWebServerRequest* req, JsonVariant& json) {
+        const std::string id = brewReadingsId(req->url().c_str());
+        if (id.empty()) {
+          req->send(400, "text/plain", "invalid id");
+          return;
+        }
+        if (!recipeBodyMatchesId(json, id.c_str())) {
+          req->send(400, "text/plain", "id mismatch");
+          return;
+        }
+        std::string body;
+        serializeJson(json, body);
+        if (!JsonDocDir::write(fs_, kBrewReadingsDir, id.c_str(), body)) {
+          req->send(500, "text/plain", "write failed");
+          return;
+        }
+        req->send(204);
+      }, "/readings"));
+
   // GET /api/brews/:id
   server_.addHandler(new GetPrefixHandler("/api/brews/",
       [this](AsyncWebServerRequest* req) {
@@ -1940,6 +1981,8 @@ void WebUI::begin(bool serve) {
   server_.addHandler(new DeletePrefixHandler("/api/brews/",
       [this](AsyncWebServerRequest* req) {
         String id = req->url().substring(strlen("/api/brews/"));
+        // The readings go with the brew, whether or not the brew file was there.
+        if (isValidRecipeId(id.c_str())) JsonDocDir::remove(fs_, kBrewReadingsDir, id.c_str());
         if (!RecipeStore::remove(fs_, id.c_str(), kBrewDir)) {
           req->send(404, "text/plain", "not found");
           return;

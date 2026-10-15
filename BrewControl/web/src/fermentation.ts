@@ -194,6 +194,30 @@ export function fermentationSchedule(phases: Phase[], pitchedAt: number | undefi
   });
 }
 
+// The temperature line the phases ask for, x in days after pitching. The line
+// is the one fermentationProgram sets on the device (brewPrograms.ts): the first
+// phase does not ramp, a later one runs linearly from the one before over
+// `rampDays` (at most its duration), a phase without a duration is not on it.
+// A jump gets a second of its own, so each x is there once.
+export function fermentSollCourse(phases: Phase[]): { xs: number[]; ys: number[] } {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const point = (x: number, y: number) => {
+    xs.push(xs.length > 0 && x <= xs[xs.length - 1] ? xs[xs.length - 1] + 1 / 86400 : x);
+    ys.push(y);
+  };
+  let day = 0;
+  phases.forEach((p) => {
+    const d = Math.max(p.duration || 0, 0);
+    if (d <= 0) return;
+    const ramp = xs.length === 0 ? 0 : Math.min(Math.max(p.rampDays ?? 0, 0), d);
+    point(day + ramp, p.tempC);
+    if (ramp < d) point(day + d, p.tempC);
+    day += d;
+  });
+  return { xs, ys };
+}
+
 // A phase this far off the fermenter's surroundings needs cooling or heating.
 export const AMBIENT_TOLERANCE_K = 2;
 

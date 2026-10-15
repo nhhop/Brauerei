@@ -1,4 +1,5 @@
 import { failed } from './api';
+import { UNIT_FITS } from './brewhouse';
 import { VALID_ID, uid } from './recipes';
 import { unitOf } from './refs';
 import type { Snapshot } from './types';
@@ -44,6 +45,7 @@ export interface Fermenter {
   controller?: string;      // snapshot ids; a device on another board is a Remote item here
   actuator?: string;
   sensor?: string;          // temperature probe, with or without tempering
+  densitySensor?: string;   // e.g. an iSpindel as a remote sensor; the fermentation course draws it
 }
 
 export type ContainerKind = 'bottle' | 'keg';
@@ -140,6 +142,13 @@ export function checkFermenter(f: Fermenter, snap: Snapshot | null): Check {
       const unit = notCelsius(`sensor/${f.sensor}`);
       if (!snap.sensors.some((s) => s.id === f.sensor)) hints.push(`Fühler „${f.sensor}“ fehlt in der Registry.`);
       else if (unit) hints.push(`Fühler „${f.sensor}“ misst in ${unit}, erwartet ist °C.`);
+    }
+    if (f.densitySensor) {
+      const unit = unitOf(snap, `sensor/${f.densitySensor}`);
+      if (!snap.sensors.some((s) => s.id === f.densitySensor)) hints.push(`Dichtesensor „${f.densitySensor}“ fehlt in der Registry.`);
+      else if (unit && !UNIT_FITS['°P'].includes(unit.toLowerCase())) {
+        hints.push(`Dichtesensor „${f.densitySensor}“ misst in ${unit}, erwartet ist °P, SG oder °Bx; der Gärverlauf zeichnet ihn nicht.`);
+      }
     }
   }
   return { errors, hints };
