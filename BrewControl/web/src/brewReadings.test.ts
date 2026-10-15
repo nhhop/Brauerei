@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addReading, entryToReading, fitsLimit, getReadings, readingPlato, readingText, removeReading, saveReadings, type BrewReadings,
+  addReading, entryToReading, fitsLimit, getReadings, lastGravity, readingPlato, readingText, removeReading, saveReadings, type BrewReadings,
 } from './brewReadings';
 import { apparentExtractFromRefractometer } from './brewMath';
 
@@ -55,6 +55,26 @@ describe('readingPlato', () => {
   it('has no gravity for a temperature or a pH', () => {
     expect(readingPlato({ at: 1, kind: 'temp', v: 18 }, 12)).toBeNull();
     expect(readingPlato({ at: 1, kind: 'ph', v: 4.5 }, 12)).toBeNull();
+  });
+});
+
+describe('lastGravity', () => {
+  const doc = (readings: BrewReadings['readings']): BrewReadings => ({ id: 'b', readings });
+
+  it('takes the newest reading that gives a gravity', () => {
+    const d = doc([{ at: 1, kind: 'gravity', v: 6 }, { at: 2, kind: 'gravity', v: 3.456 }, { at: 3, kind: 'temp', v: 20 }, { at: 4, kind: 'ph', v: 4.4 }]);
+    expect(lastGravity(d, 12)).toEqual({ plato: 3.46, reading: d.readings[1] });
+  });
+
+  it('counts a refractometer reading with the original gravity, and skips it without', () => {
+    const d = doc([{ at: 1, kind: 'gravity', v: 6 }, { at: 2, kind: 'brix', v: 8 }]);
+    expect(lastGravity(d, 12)!.plato).toBeCloseTo(apparentExtractFromRefractometer(12, 8), 2);
+    expect(lastGravity(d, undefined)!.reading.at).toBe(1);
+  });
+
+  it('is unset without a reading', () => {
+    expect(lastGravity(doc([{ at: 1, kind: 'temp', v: 20 }]), 12)).toBeUndefined();
+    expect(lastGravity(null, 12)).toBeUndefined();
   });
 });
 

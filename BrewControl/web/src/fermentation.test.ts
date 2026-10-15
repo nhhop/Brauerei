@@ -151,6 +151,14 @@ describe('calcCarbonation', () => {
     expect(c.sugarG).toBeCloseTo(primingSugarGrams(20, 2.6, 20, 'traubenzucker'), 9);
   });
 
+  it('counts with the measured temperature after the fermentation, also without phases', () => {
+    const r = recipe({ carbonation: { method: 'sugar', targetVol: 2.6 }, fermentation: [] });
+    const c = calcCarbonation(r, { beerL: 20, speiseL: 0, tempC: 17 })!;
+    expect(c.residualTempC).toBe(17);
+    expect(c.sugarG).toBeCloseTo(primingSugarGrams(20, 2.6, 17, 'saccharose'), 9);
+    expect(c.sugarG!).toBeLessThan(primingSugarGrams(20, 2.6, 22, 'saccharose'));
+  });
+
   it('takes the last phase for a forced carbonation', () => {
     const c = calcCarbonation(recipe({ carbonation: { method: 'forced', targetVol: 2.5 } }), { beerL: 20, speiseL: 0 })!;
     expect(c.storageTempC).toBe(2);

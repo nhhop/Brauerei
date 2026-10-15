@@ -31,8 +31,11 @@ export type PhaseId = (typeof PHASES)[number]['id'];
 
 // A brew day value: the brewhouse's measurements plus the mash pH after the
 // acid (5b-2), the wort drawn off at the knock-out (5b-3) and the gravity of
-// the pitched wort (5c-2). Gravities in °P. `src` is the sensor it was taken from.
-export type MeasureId = MeasureKey | 'mashPhAcid' | 'speiseVolume' | 'dipWortVolume' | 'pitchGravity';
+// the pitched wort (5c-2) and, after the fermentation, the final gravity, the
+// highest temperature after its end and the volume filled (5c-5). Gravities in
+// °P. `src` is the sensor it was taken from.
+export type MeasureId = MeasureKey | 'mashPhAcid' | 'speiseVolume' | 'dipWortVolume' | 'pitchGravity'
+  | 'finalGravity' | 'maxTempAfter' | 'bottledVolume';
 export interface Measurement { v: number; at: number; src?: string }
 
 export interface Frozen {
@@ -70,6 +73,7 @@ export interface Brew {
                                          // `removed:<row id>` (a dry hop taken out again)
   rowAmounts?: Record<string, number>;   // amount actually used per recipe row, in the row's unit
                                          // (`mashPh:<entry id>`: an acid or base the recipe does not have)
+  containerCounts?: Record<string, number>;  // containers filled per container id (5c-5); unset = the recipe's plan
   restTemps?: Record<string, Measurement>;  // temperature measured per mash step id
   mashProgramId?: string;                // the rest timer on the device (brewPrograms.ts)
   boilProgramId?: string;                // the boil timer with its additions
@@ -84,17 +88,21 @@ export interface Brew {
   ogActual?: number;         // ... and measured
   mashEffPct?: number;       // measured
   yieldPct?: number;
-  bottledL?: number;         // 5c
+  bottledL?: number;         // measured
+  abvPct?: number;           // measured gravities: alcohol by volume,
+  attenuationPct?: number;   // ... apparent attenuation
+  fgPlato?: number;          // ... and the final gravity (apparent), °P
 }
 
 // What GET /api/brews returns: the firmware's brewSummaryLine.
 export type BrewSummary = Pick<Brew, 'id' | 'number' | 'name' | 'recipeId' | 'rootId' | 'version' | 'status'
   | 'brewDate' | 'fermenterId' | 'occupiedFrom' | 'occupiedUntil' | 'updatedAt'
-  | 'ogPlato' | 'ogActual' | 'mashEffPct' | 'yieldPct' | 'bottledL'>;
+  | 'ogPlato' | 'ogActual' | 'mashEffPct' | 'yieldPct' | 'bottledL' | 'abvPct' | 'attenuationPct' | 'fgPlato'>;
 
 export const SUMMARY_FIELDS = [
   'id', 'number', 'name', 'recipeId', 'rootId', 'version', 'status', 'brewDate', 'fermenterId', 'occupiedFrom',
-  'occupiedUntil', 'updatedAt', 'ogPlato', 'ogActual', 'mashEffPct', 'yieldPct', 'bottledL',
+  'occupiedUntil', 'updatedAt', 'ogPlato', 'ogActual', 'mashEffPct', 'yieldPct', 'bottledL', 'abvPct', 'attenuationPct',
+  'fgPlato',
 ] as const satisfies readonly (keyof BrewSummary)[];
 
 export const summaryOf = (b: Brew): BrewSummary =>
@@ -203,6 +211,22 @@ export function pitchBrew(b: Brew, at: number | undefined): Brew {
   const from = todayIso(new Date(at));
   const span = b.occupiedFrom && b.occupiedUntil ? daysBetween(b.occupiedFrom, b.occupiedUntil) : undefined;
   return { ...out, occupiedFrom: from, occupiedUntil: span === undefined ? b.occupiedUntil : addDays(from, span) };
+}
+
+// "Abgefüllt": the bottling starts, and the fermenter is free after that day.
+// Unset removes the time; the booking stays.
+export function bottleBrew(b: Brew, at: number | undefined): Brew {
+  const out = setPhaseStart(b, 'bottling', at);
+  return at === undefined ? out : { ...out, occupiedUntil: todayIso(new Date(at)) };
+}
+
+// The containers filled: one count changes, the others stay. Without counts of
+// the brew yet it starts from the recipe's plan (`plan`, count per container id).
+// Unset removes the container from the list.
+export function setContainerCount(b: Brew, containerId: string, count: number | undefined, plan: Record<string, number>): Brew {
+  const containerCounts = { ...(b.containerCounts ?? plan) };
+  if (count === undefined) delete containerCounts[containerId]; else containerCounts[containerId] = count;
+  return { ...b, containerCounts };
 }
 
 export function setRowAmount(b: Brew, rowId: string, amount: number | undefined): Brew {

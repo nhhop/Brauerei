@@ -5508,7 +5508,10 @@ components:
         ogActual: { type: number, description: "Original gravity as measured, °P, at the same point as `ogPlato`." }
         mashEffPct: { type: number, description: "Mash efficiency as measured, percent." }
         yieldPct: { type: number, description: "Brewhouse yield (Sudhausausbeute) as measured, percent." }
-        bottledL: { type: number, description: "Bottled volume in litres (not written yet)." }
+        bottledL: { type: number, description: "Bottled volume in litres, as measured." }
+        abvPct: { type: number, description: "Alcohol by volume as counted from the measured original and final gravity, percent." }
+        attenuationPct: { type: number, description: "Apparent attenuation as counted from the measured gravities, percent." }
+        fgPlato: { type: number, description: "Final gravity (apparent) as measured, °P." }
 
     Brew:
       type: object
@@ -5518,7 +5521,8 @@ components:
         fields of `BrewSummary`: `brewhouseId`, `startedAt`, `frozen` (copies
         of brewhouse, brewery, fermenter and ingredient values taken at the
         start), `booked` (amounts taken from stock lots), `notes` and the
-        brew day values `measurements`, `checked`, `rowAmounts`, `restTemps`,
+        brew day values `measurements`, `checked`, `rowAmounts`,
+        `containerCounts` (containers filled, per container id), `restTemps`,
         `addedAt`, `phaseNotes` and `phaseStartedAt` (epoch ms per phase;
         `mash`: when the grain went in), the ids of the brew's programs on the
         device (`mashProgramId`, `boilProgramId`) and of the device log the

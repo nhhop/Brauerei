@@ -30,6 +30,27 @@ export function EffRow({ label, soll, ist, sub }: { label: string; soll?: number
   );
 }
 
+// One line label | Soll | Ist | Abweichung for a value that is counted, not
+// entered: `unit` formats both; `devKey` names a measurement of the same unit to
+// mark a deviation by its tolerance (volumes, gravities), without it none is.
+export function ResultRow({ label, soll, ist, unit, digits = 1, devKey, sub, sollTitle = 'Soll' }: {
+  label: string; soll?: number; ist?: number; unit: string; digits?: number; devKey?: MeasureId; sub?: string; sollTitle?: string;
+}) {
+  const dev = devKey ? deviation(devKey, soll, ist) : undefined;
+  const text = (n: number | undefined) => (n === undefined ? '—' : `${fmtNum(n, digits)} ${unit}`);
+  return (
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2 text-sm last:border-b-0">
+      <div class="min-w-[9rem] flex-1">
+        <div>{label}</div>
+        {sub && <div class="text-xs text-muted">{sub}</div>}
+      </div>
+      <span class="w-24 text-muted" title={sollTitle}>{text(soll)}</span>
+      <span class="w-[6.75rem]">{text(ist)}</span>
+      <span class="w-28">{dev && <span class={dev.level === 'ok' ? badgeSuccess : badgeCaution}>{dev.text}</span>}</span>
+    </div>
+  );
+}
+
 const digitsOf = (unit: string) => (unit === 'pH' ? 2 : 1);
 
 // A sensor's value in the measurement's unit: gravities in °P.
@@ -44,13 +65,14 @@ export function sensorValue(s: Sensor | undefined, unit: string): number | undef
 // One line Messwert | Soll | Ist | Abweichung. The value is saved when the
 // field is confirmed (Enter or leaving it); a linked sensor offers its live
 // value. Gravities are kept in °P, the field converts.
-export function MeasureRow({ id, label, sub, soll, value, sensor, disabled, onSave }: {
+export function MeasureRow({ id, label, sub, soll, value, sensor, suggest, disabled, onSave }: {
   id: MeasureId;
   label: string;
   sub?: ComponentChildren;
   soll?: number;
   value?: Measurement;
   sensor?: Sensor;          // linked in the brewhouse; unset = "von Hand"
+  suggest?: { v: number; text: string };  // a value to take over, in the measurement's unit (°P for gravities)
   disabled?: boolean;
   onSave: (m: Measurement | undefined) => Promise<void>;
 }) {
@@ -112,6 +134,15 @@ export function MeasureRow({ id, label, sub, soll, value, sensor, disabled, onSa
           <span>{sensor.label ?? sensor.id}: {live === undefined ? 'kein Wert' : `${fmtNum(shown(live), digits)} ${gravity ? g.label : unit}`}</span>
           <button type="button" class={`${btnSecondary} px-2 py-0.5 text-xs`} disabled={disabled || busy || live === undefined}
             onClick={() => save({ v: live!, at: Date.now(), src: sensor.id })}>
+            übernehmen
+          </button>
+        </div>
+      )}
+      {suggest && (
+        <div class="flex w-full items-center gap-2 text-xs text-muted">
+          <span>{suggest.text}</span>
+          <button type="button" class={`${btnSecondary} px-2 py-0.5 text-xs`} disabled={disabled || busy || value?.v === suggest.v}
+            onClick={() => save({ v: suggest.v, at: Date.now() })}>
             übernehmen
           </button>
         </div>

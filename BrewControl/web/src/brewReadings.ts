@@ -93,3 +93,14 @@ export async function saveReadings(doc: BrewReadings): Promise<void> {
   });
   if (!res.ok) await failed(res);
 }
+
+// The newest reading that gives a gravity, in °P with two decimals: what the
+// final gravity is suggested from. `doc` is sorted, newest last.
+export function lastGravity(doc: BrewReadings | null, originalPlato: number | undefined): { plato: number; reading: Reading } | undefined {
+  for (let i = (doc?.readings.length ?? 0) - 1; i >= 0; i--) {
+    const reading = doc!.readings[i];
+    const p = readingPlato(reading, originalPlato);
+    if (p !== null) return { plato: round(p, 2), reading };
+  }
+  return undefined;
+}

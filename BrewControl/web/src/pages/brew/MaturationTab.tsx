@@ -1,19 +1,22 @@
-import type { BrewInputs } from '../../brewDay';
+import type { BrewInputs, BrewTargets } from '../../brewDay';
 import { dryHops } from '../../brewPrograms';
 import type { Brew } from '../../brews';
 import type { Recipe } from '../../recipes';
 import { inp } from '../../ui';
 import { Card, Field } from '../recipe/fields';
 import { DryHopList } from './DryHopList';
+import { FinishRow, finalGravitySuggestion } from './FinishRow';
 import type { Patch } from './PrepTab';
 import { Readings, useReadings } from './Readings';
 
-// Tab "Reifung": the dry hops of the maturation to tick off and the readings by
-// hand. Values, carbonation and the bottling follow with 5c-5.
-export function MaturationTab({ brew, recipe, inputs, editable, patch, og, notes, onNotes }: {
+// Tab "Reifung": the dry hops of the maturation to tick off, the readings by
+// hand and the values the maturation ends with (final gravity, highest
+// temperature). Carbonation and the bottling are in the next tab.
+export function MaturationTab({ brew, recipe, inputs, targets, editable, patch, og, notes, onNotes }: {
   brew: Brew;                  // as saved; the page keeps the head's draft
   recipe: Recipe;
   inputs: BrewInputs;
+  targets: BrewTargets;
   editable: boolean;
   patch: Patch;
   og: number | undefined;      // gravity of the pitched wort, °P: what a refractometer reading is set against
@@ -33,6 +36,12 @@ export function MaturationTab({ brew, recipe, inputs, editable, patch, og, notes
       </Card>
 
       <Readings doc={readings} onDoc={setReadings} og={og} editable={editable} />
+
+      <Card title="Messwerte nach der Gärung">
+        <FinishRow id="finalGravity" brew={brew} targets={targets} editable={editable} patch={patch}
+          suggest={finalGravitySuggestion(readings, og)} />
+        <FinishRow id="maxTempAfter" brew={brew} targets={targets} editable={editable} patch={patch} />
+      </Card>
 
       <Card title="Notizen zur Reifung">
         <Field label="Gespeichert mit „Speichern“">

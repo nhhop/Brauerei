@@ -1,14 +1,14 @@
 # Rezept- und Sud-Editor — Konzept
 
-Stand: 2026-10-15. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
+Stand: 2026-10-16. Umgesetzt sind Rezepte (Liste, Editor, Ablage auf der SD), das Sudhaus-Modell der
 Brauanlage (Etappe 1), die Wassermengen (Etappe 2a), die Aufbereitung von Hand mit High Gravity (Etappe
 2b-1), die pH-Modelle (2b-2), die Automatik mit Zielprofilen (2b-3), der Maischeplan (3a), die
 Effizienz-Kette (3b), die Maischprofile (3c), die Dekoktion (3d), die Versionen (4a) mit ihrem Vergleich (4b)
 der Gärkeller (Gärplätze und Gebinde), das Gerüst des Suds (5a) und der Brautag: die Vorbereitung (5b-1), das
 Maischen (5b-2), das Würzekochen (5b-3) und der Maischverlauf mit den Geräten des Sudhauses (5b-4), das
 Maischprogramm (5b-5), der Gärung-Tab des Rezepts (5c-1, 5c-1b), der Belegungsplan mit dem Anstellen
-(5c-2), das Gärprogramm mit den Stopfgaben (5c-3) und die Messungen von Hand mit dem Gärverlauf (5c-4); es
-folgen Reifung und Abfüllung (5c-5). Das UI ist
+(5c-2), das Gärprogramm mit den Stopfgaben (5c-3) und die Messungen von Hand mit dem Gärverlauf (5c-4) sowie
+Reifung, Abfüllung und Bilanz (5c-5). Das UI ist
 als Design-Canvas entworfen:
 <https://claude.ai/artifact/7XMzdDVVShLUghHVhsSgWW> („Rezept- & Sud-Editor“, privat).
 
@@ -1414,6 +1414,44 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   dem Planende begann.
 - **Im Mock geprüft** (Wegwerf-Mock mit Log, Regler, Spindel): Verlauf mit zwei Skalen und Punkt, Eintragen und
   Löschen, Karte in der Reifung, 375 px ohne Querscrollen. Am Gerät nicht geprüft.
+
+**Stand 5c-5 (2026-10-16, Web `bottlingDay.ts`, `brewDay.ts`, `pages/brew/BottlingTab.tsx`, `FinishRow.tsx`,
+`MaturationTab.tsx`; Firmware `RecipeFiles.h`):** Reifung und Abfüllung, Bilanz, Index.
+- **Messwerte** (`MeasureId`, im Sud gespeichert wie die übrigen):
+  - `finalGravity` (Restextrakt, scheinbar): Soll = Stammwürze der Anstellwürze × (1 − Vergärungsgrad der Hefe), dasselbe wie
+    `fgPlato` des Rezepts. Vorschlag mit „übernehmen“ ist die letzte Dichte-Messung von Hand (`lastGravity`; °Bx mit der
+    Stammwürze umgerechnet).
+  - `maxTempAfter`: Höchsttemperatur nach dem Gärende, Soll = höchste Phasentemperatur. Von Hand, ohne Vorschlag.
+  - `bottledVolume`: Soll aus der Kette mit den Abfüllverlusten der Gebinde (`calcBottling`). Vorschlag ist die Summe der
+    Gebinde-Zeilen.
+  - Restextrakt und Höchsttemperatur stehen in der Reifung (Karte „Messwerte nach der Gärung“) **und** in der Abfüllung, mit
+    demselben Zustand (`FinishRow`); die Abfüllmenge nur in der Abfüllung. `MeasureRow` bekam dafür `suggest`.
+- **Karbonisierung** (Karte Rezept | Jetzt): neu gerechnet mit dem Bier, wie es gebraut wurde (`beerNow`: gemessene Anstellwürze,
+  sonst Soll, ohne Trub und Stopfhopfen, plus die abgezweigte Speise), der gemessenen Höchsttemperatur (`calcCarbonation` bekam
+  `tempC`) und dem gemessenen Restextrakt. Bei Speise steht darunter, ob die abgezweigte Menge reicht oder wie viel fehlt (0,05 l
+  Spielraum); die nötige Menge rechnet `speiseVolumeL` mit der Ausschlag-Stammwürze (gemessen, sonst Soll) und dem Vergärungsgrad der
+  Hefe, nicht dem gemessenen.
+- **Gebinde und Abfüllen:**
+  - Zeilen Gebinde × Anzahl, vorbelegt aus dem Rezept (Spalte „Rezept“). Die Anzahl je Gebinde steht im Sud als `containerCounts`
+    (Id → Anzahl, feldweise gespeichert); fehlt das Feld, gilt der Plan. Gebinde lassen sich hinzufügen und entfernen.
+  - **Gebinde sind nicht eingefroren:** Der Sud liest sie live aus `/api/containers` (`BrewInputs.containers`), die Abfüllverluste im Soll
+    sind die von heute. Der Bestand (`Container.count`) wird nicht abgebucht (PLAN.md).
+  - Rezeptzeilen mit Zeitpunkt „Abfüllung“ (Zucker, Abfüllhefe) als `AdditionRow` mit Haken und Ist-Menge (`rebook`).
+  - **„Abgefüllt“** (`bottleBrew`) setzt `phaseStartedAt.bottling` und `occupiedUntil` auf den Tag; die Zeit lässt sich korrigieren wie
+    „Angestellt um“, das verschiebt das Ende der Belegung. Eine geleerte Zeit lässt die Belegung, wie sie ist. Der Sud bleibt „Läuft“,
+    bis er abgeschlossen wird.
+- **Bilanz:** Volumen entlang der Kette (Ausschlag, Anstellwürze, Speise, Jungbier, Abgefüllt) und Effizienzen (Maische, Sudhausausbeute,
+  Gesamt) als Soll | Ist | Abweichung; dazu Stammwürze, Restextrakt, Alkohol und Endvergärungsgrad. Das Jungbier hat nur mit gemessener
+  Anstellwürze ein Ist.
+- **Alkohol und Endvergärungsgrad** (`actualBeer`, nach Balling aus `ballingBeerAnalysis`): Die Stammwürze ist die der Anstellwürze
+  (`pitchGravity`), ohne Verschnitt im Kessel auch die nach dem Kochen; sonst bleibt der Alkohol leer. Die Gärung einer Speise zählt nicht mit.
+- **Index-Zeile:** `withResults` füllt `fgPlato`, `abvPct`, `attenuationPct` und `bottledL` (alles Ist) und entfernt sie, wenn die Messung
+  fehlt. `brewSummaryLine` (Firmware) nimmt die drei neuen Felder auf, `openapi.yaml` (`BrewSummary`, `Brew.containerCounts`) ist
+  nachgezogen. Der Rezept-Tab „Sude“ zeigt Alkohol, Endvergärung und Restextrakt; die Spaltenköpfe erscheinen erst ab 1280 px (davor
+  steht der Name der Spalte im Wert), weil die Zeile mit neun Spalten schon bei 820 px umbrach.
+- **Im Mock geprüft** (Wegwerf-Mock mit Sud, Rezept, Gebinden und Messungen): Vorschläge übernehmen, Höchsttemperatur ändert die
+  Restkohlensäure und den Zucker, Gebinde ändern, „Abgefüllt“ setzt `occupiedUntil`, Speise-Urteil („es fehlen 0,2 l“), Bilanz,
+  Spalten im Rezept-Tab; 375 px und 820 px ohne Querscrollen. **Am Gerät nicht geprüft** (PLAN.md).
 
 - **Kopf:** Status, Rezeptversion, Brautag, Sudhaus und Gärplatz; die Phasen als nummerierte Tabs mit
   erledigt/aktuell.

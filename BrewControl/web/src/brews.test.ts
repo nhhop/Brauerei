@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addDays, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, pitchBrew, setAddedAt, setChecked,
-  setMeasurement, setPhaseStart, setRowAmount, summaryOf, todayIso, withHead, type Brew, type BrewSummary,
+  addDays, bottleBrew, exportBrews, fermentationDays, importBrews, moveBrewDate, newBrew, occupancyOverlaps, pitchBrew, setAddedAt,
+  setChecked, setContainerCount, setMeasurement, setPhaseStart, setRowAmount, summaryOf, todayIso, withHead, type Brew, type BrewSummary,
 } from './brews';
 import { bookStock, freezeEntries, lotTarget, rebook, startBrew, stockPlan, unbookStock, withBooking } from './brewStart';
 import type { CatalogIngredient, Hop, StockLot } from './ingredientCatalog';
@@ -63,6 +63,40 @@ describe('pitchBrew', () => {
     expect(p.phaseStartedAt?.fermentation).toBeUndefined();
     expect(p.occupiedFrom).toBe('2026-10-16');
     expect(pitchBrew({ ...b, occupiedUntil: undefined }, at).occupiedUntil).toBeUndefined();
+  });
+});
+
+describe('bottleBrew', () => {
+  const b = { ...newBrew(recipe(), [], '2026-10-14'), occupiedFrom: '2026-10-14', occupiedUntil: '2026-11-04' };
+  const at = new Date(2026, 10, 2, 18, 30).getTime();
+
+  it('frees the fermenter after the day it was filled', () => {
+    const p = bottleBrew(b, at);
+    expect(p.phaseStartedAt?.bottling).toBe(at);
+    expect([p.occupiedFrom, p.occupiedUntil]).toEqual(['2026-10-14', '2026-11-02']);
+    expect(bottleBrew(p, new Date(2026, 10, 3, 8).getTime()).occupiedUntil).toBe('2026-11-03');
+  });
+
+  it('removes only the time', () => {
+    const p = bottleBrew(bottleBrew(b, at), undefined);
+    expect(p.phaseStartedAt?.bottling).toBeUndefined();
+    expect(p.occupiedUntil).toBe('2026-11-02');
+  });
+});
+
+describe('setContainerCount', () => {
+  const b = newBrew(recipe(), [], '2026-10-20');
+  const plan = { keg: 1, bottle: 30 };
+
+  it('starts from the plan and keeps the other counts', () => {
+    const p = setContainerCount(b, 'bottle', 24, plan);
+    expect(p.containerCounts).toEqual({ keg: 1, bottle: 24 });
+    expect(setContainerCount(p, 'crown', 5, plan).containerCounts).toEqual({ keg: 1, bottle: 24, crown: 5 });
+    expect(b.containerCounts).toBeUndefined();
+  });
+
+  it('takes a container off the list', () => {
+    expect(setContainerCount(setContainerCount(b, 'bottle', 24, plan), 'keg', undefined, plan).containerCounts).toEqual({ bottle: 24 });
   });
 });
 

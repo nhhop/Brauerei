@@ -2,16 +2,17 @@
 // of the tabs (recipeStats → recipeWater → mashPlan → recipeTreatment) on the
 // brew's frozen copies, the efficiencies counted back from what was measured,
 // and how far a value is off. Pure, like recipeStats.ts.
-import { platoFromExtract, pressureAtAltitudeHpa } from './brewMath';
+import { ballingBeerAnalysis, platoFromExtract, pressureAtAltitudeHpa } from './brewMath';
 import { MEASUREMENTS, breweryBoilC, type Brewery, type Brewhouse, type MeasureKey } from './brewhouse';
 import type { Brew, MeasureId } from './brews';
-import type { Fermenter } from './cellar';
+import type { Container, Fermenter } from './cellar';
 import type { Efficiency, Grist } from './efficiency';
+import { calcBottling, residualTempC, type Bottling } from './fermentation';
 import { platoToSg } from './gravityUnits';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { DEFAULT_MASH_PH, mashPh } from './mashPh';
 import { calcMash, type MashPlan } from './mashPlan';
-import { atKnockOut, wortExtract } from './recipeStats';
+import { atKnockOut, wortExtract, yeastAttenuation } from './recipeStats';
 import { calcTreatment, suggestAgent, type Column } from './recipeTreatment';
 import { calcWater, fermenterShare, pitchL, type Water } from './recipeWater';
 import { DEFAULT_SPARGE_TEMP, type Recipe } from './recipes';
@@ -23,17 +24,21 @@ export interface BrewInputs {
   brewery: Brewery | null;
   entries: CatalogIngredient[] | null;  // null = the catalog did not load (yet)
   fermenter?: Fermenter;
+  containers?: Container[] | null;  // today's: the brew does not freeze them (5c-5); null = not loaded
 }
 
 export function brewInputs(
   brew: Brew,
-  live: { brewhouses: Brewhouse[] | null; brewery: Brewery | null; entries: CatalogIngredient[] | null; fermenters?: Fermenter[] | null },
+  live: {
+    brewhouses: Brewhouse[] | null; brewery: Brewery | null; entries: CatalogIngredient[] | null;
+    fermenters?: Fermenter[] | null; containers?: Container[] | null;
+  },
 ): BrewInputs {
   const f = brew.frozen;
-  if (f) return { bh: f.brewhouse, brewery: f.brewery, entries: f.entries, fermenter: f.fermenter };
+  if (f) return { bh: f.brewhouse, brewery: f.brewery, entries: f.entries, fermenter: f.fermenter, containers: live.containers };
   return {
     bh: live.brewhouses?.find((b) => b.id === brew.brewhouseId), brewery: live.brewery, entries: live.entries,
-    fermenter: live.fermenters?.find((x) => x.id === brew.fermenterId),
+    fermenter: live.fermenters?.find((x) => x.id === brew.fermenterId), containers: live.containers,
   };
 }
 
@@ -55,6 +60,7 @@ export interface BrewTargets {
   efficiency?: Efficiency;
   ctx?: EfficiencyContext;
   dilutionInKettle: boolean;  // the knock-out target is before it
+  bottling?: Bottling;        // the volume chain from the knock-out to the containers (5c-5)
   notes: string[];
 }
 
@@ -68,7 +74,7 @@ const dissolvedOf = (plato: number, waterKg: number) => (waterKg * plato) / (100
 // Extract (kg) in a cold volume of wort at `plato`, the inverse of platoFromExtract.
 const extractIn = (volumeL: number, plato: number) => volumeL * platoToSg(plato) * (plato / 100);
 
-export function brewTargets(recipe: Recipe, { bh, brewery, entries, fermenter }: BrewInputs): BrewTargets {
+export function brewTargets(recipe: Recipe, { bh, brewery, entries, fermenter, containers }: BrewInputs): BrewTargets {
   // The brew may use another brewhouse than the recipe names; a cold volume
   // gives its knock-out with that brewhouse. The fermenter's trub replaces the
   // recipe's assumption (it reaches the Speise).
@@ -115,7 +121,16 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries, fermenter }:
   values.pitchGravity = d.finalPlato;
   values.pitchTemp = r.fermentation[0]?.tempC;
 
+  // After the fermentation (5c-5): the final gravity from the yeast's attenuation
+  // (the same as recipeStats.calcStats), the highest phase temperature (what
+  // the CO₂ left in the beer follows) and the volume filled.
+  const att = entries ? yeastAttenuation(r, entries) : undefined;
+  if (d.finalPlato !== undefined && att !== undefined) values.finalGravity = d.finalPlato * (1 - att / 100);
+  values.maxTempAfter = residualTempC(r);
+
   if (!wort) return out;
+  out.bottling = calcBottling(r, bh, d, wort.draw, containers ?? null);
+  values.bottledVolume = out.bottling.bottledL;
   const { grist, boilOtherKg, efficiency } = wort;
   const shrink = bh.coolingShrinkPct / 100;
   out.ctx = {
@@ -219,20 +234,48 @@ export function measuredFermenterPct(m: Partial<Record<MeasureId, number>>, t: B
 export const measuredValues = (brew: Pick<Brew, 'measurements'>): Partial<Record<MeasureId, number>> =>
   Object.fromEntries(Object.entries(brew.measurements ?? {}).map(([k, x]) => [k, x!.v]));
 
+// Alcohol and apparent attenuation (Balling) from the measured original and
+// final gravity. The original gravity is the pitched wort's; the knock-out's
+// serves without a dilution in the kettle, with one it is not the beer's. The
+// fermentation of a Speise is not counted. Unset without both gravities.
+export function actualBeer(m: Partial<Record<MeasureId, number>>, t: Pick<BrewTargets, 'dilutionInKettle'>):
+  { abvPct: number; attenuationPct: number } | undefined {
+  const og = m.pitchGravity ?? (t.dilutionInKettle ? undefined : m.postBoilGravity);
+  const fg = m.finalGravity;
+  if (og === undefined || fg === undefined || !(og > 0)) return undefined;
+  const a = ballingBeerAnalysis(og, fg);
+  return { abvPct: a.abvPercent, attenuationPct: a.apparentAttenuationPercent };
+}
+
+// The same for the recipe's targets: the pitched wort down to the final gravity.
+export function plannedBeer(t: Pick<BrewTargets, 'values'>): { abvPct: number; attenuationPct: number } | undefined {
+  const { pitchGravity: og, finalGravity: fg } = t.values;
+  if (og === undefined || fg === undefined || !(og > 0)) return undefined;
+  const a = ballingBeerAnalysis(og, fg);
+  return { abvPct: a.abvPercent, attenuationPct: a.apparentAttenuationPercent };
+}
+
 // The brew with its results for the list (brews.ts): the original gravity as
-// target and as measured, and the measured efficiencies. Target and measured
-// value stay a pair: the pitched wort's once measured, else after the boil (with
-// a dilution in the kettle before it). A value that does not follow is removed.
+// target and as measured, the measured efficiencies, and after the fermentation
+// the final gravity, alcohol, attenuation and the volume filled. Target and
+// measured value stay a pair: the pitched wort's once measured, else after the
+// boil (with a dilution in the kettle before it). A value that does not follow
+// is removed.
 export function withResults(brew: Brew, t: BrewTargets): Brew {
   const m = measuredValues(brew);
   const e = t.ctx ? measuredEfficiency(m, t.ctx) : {};
+  const beer = actualBeer(m, t);
   const round = (n: number | undefined) => (n === undefined || !Number.isFinite(n) ? undefined : Math.round(n * 100) / 100);
   const og = m.pitchGravity !== undefined ? 'pitchGravity' : 'postBoilGravity';
   const out: Brew = {
     ...brew, ogPlato: round(t.values[og]), ogActual: round(m[og]),
     mashEffPct: round(e.mashPct), yieldPct: round(e.yieldPct),
+    fgPlato: round(m.finalGravity), abvPct: round(beer?.abvPct), attenuationPct: round(beer?.attenuationPct),
+    bottledL: round(m.bottledVolume),
   };
-  for (const k of ['ogPlato', 'ogActual', 'mashEffPct', 'yieldPct'] as const) if (out[k] === undefined) delete out[k];
+  for (const k of ['ogPlato', 'ogActual', 'mashEffPct', 'yieldPct', 'fgPlato', 'abvPct', 'attenuationPct', 'bottledL'] as const) {
+    if (out[k] === undefined) delete out[k];
+  }
   return out;
 }
 
@@ -243,7 +286,8 @@ export function withResults(brew: Brew, t: BrewTargets): Brew {
 export const TOLERANCE: Record<string, number> = { '°P': 0.2, l: 2.5, pH: 0.1, '°C': 1, '%': 2 };
 
 export const unitOfMeasure = (key: MeasureId): string =>
-  key === 'mashPhAcid' ? 'pH' : key === 'speiseVolume' || key === 'dipWortVolume' ? 'l' : key === 'pitchGravity' ? '°P'
+  key === 'mashPhAcid' ? 'pH' : key === 'speiseVolume' || key === 'dipWortVolume' || key === 'bottledVolume' ? 'l'
+    : key === 'pitchGravity' || key === 'finalGravity' ? '°P' : key === 'maxTempAfter' ? '°C'
     : MEASUREMENTS.find((x) => x.key === (key as MeasureKey))?.unit ?? '';
 
 const signed = (n: number, digits: number) =>

@@ -2707,3 +2707,34 @@ Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-4. Ein
     (PLAN.md › Hardware-Verifikation).
 - **Offen gelassen (PLAN.md):** nur die jüngste Log-Session im Verlauf und das Laden der ganzen Session, Messungen
   nur löschbar, `tilt`-Sensoren nicht in °P umgerechnet.
+
+## 2026-10-16 — Sud 5c-5: Reifung, Abfüllung, Bilanz, Index
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-5. Einzelheiten stehen dort unter „Sud › Stand 5c-5“.
+Damit ist Plan 5c abgeschlossen.
+
+- **Web:** `bottlingDay.ts` (`beerNow`, `carbonationNow`, `carbonationPlan`, Gebinde-Rechnungen), `brewDay.ts` (Soll für
+  Restextrakt, Höchsttemperatur, Abfüllmenge; `BrewInputs.containers`, `BrewTargets.bottling`; `actualBeer`, `plannedBeer`;
+  `withResults` mit den neuen Index-Feldern), `brews.ts` (`bottleBrew`, `setContainerCount`, `containerCounts`),
+  `brewReadings.ts` (`lastGravity`), Tab Abfüllung (`BottlingTab`), Karte „Messwerte nach der Gärung“ in der Reifung
+  (`FinishRow`), `MeasureRow` mit `suggest`, `ResultRow`, drei neue Spalten im Rezept-Tab „Sude“.
+- **Firmware:** `brewSummaryLine` nimmt `abvPct`, `attenuationPct`, `fgPlato` auf (Test erweitert); `openapi.yaml` und die
+  README-Zeile von `/api/brews` nachgezogen. Keine neue Route.
+- **Annahmen** (beim Genehmigen des Plans genannt): Gebinde nicht eingefroren, live aus `/api/containers`; Ist-Jungbier aus der
+  gemessenen Anstellwürze abzüglich Trub und Stopfhopfen plus Speise; Speise-Urteil mit dem Vergärungsgrad der Hefe; Ist-Alkohol nur
+  mit Stammwürze der Anstellwürze (ohne Verschnitt im Kessel auch nach dem Kochen), ohne die Gärung der Speise; „Abgefüllt“ schließt
+  den Sud nicht ab.
+- **Abweichung vom Plan:** Die Spaltenköpfe des Rezept-Tabs „Sude“ (und die Namen der Spalten im Wert) wechseln von `sm` auf `xl`,
+  weil die Zeile mit neun Spalten schon bei 820 px umbrach und die Werte dort ohne Namen standen. `bottledL` im Index wird jetzt wie
+  die anderen Ergebnisse aus der Messung gesetzt und entfällt ohne sie (vorher blieb ein vorhandener Wert stehen; nichts schrieb ihn).
+- **Verifikation:**
+  - Web `pnpm typecheck`, `pnpm test` 668 grün (neu: `bottlingDay`, `lastGravity`, `bottleBrew`, `setContainerCount`,
+    Soll und Index in `brewDay`, `calcCarbonation` mit Temperatur), `pnpm build`.
+  - Firmware `pio test -e native` 197 grün; `pio run` für `esp32dev` (Flash 98,2 %, unverändert) und
+    `lilygo_t_display_s3_amoled` (32,4 %) erfolgreich.
+  - Redocly-Lint ohne neue Warnung (nur die bekannte `info-license`).
+  - Browser gegen einen Wegwerf-Mock: Vorschläge übernehmen, Höchsttemperatur ändert Restkohlensäure und Zucker, Gebinde ändern,
+    „Abgefüllt“ setzt `occupiedUntil`, Speise-Urteil, Bilanz, Spalten im Rezept-Tab; 375 und 820 px ohne Querscrollen.
+  - **Kein Gerät:** das `PUT` mit den neuen Index-Feldern und die Spalten am echten Gerät sind nicht geprüft (PLAN.md ›
+    Hardware-Verifikation).
+- **Offen gelassen (PLAN.md):** Gebinde-Bestand wird nicht abgebucht; der Alkohol zählt die Gärung der Speise nicht mit.
