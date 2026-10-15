@@ -41,6 +41,26 @@ void test_body_must_carry_the_id_of_the_url() {
   TEST_ASSERT_FALSE(recipeBodyMatchesId(numeric, "1"));
 }
 
+void test_readings_url_gives_the_brew_id() {
+  TEST_ASSERT_EQUAL_STRING("abc", brewReadingsId("/api/brews/abc/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("mv9yy47j88f0jp", brewReadingsId("/api/brews/mv9yy47j88f0jp/readings").c_str());
+}
+
+void test_other_urls_are_no_readings_urls() {
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/abc").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews//readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/abc/readings/x").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/recipes/abc/readings").c_str());
+}
+
+void test_readings_url_with_an_id_that_could_form_a_path_is_rejected() {
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/../readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/a/b/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/a.b/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId(("/api/brews/" + std::string(33, 'a') + "/readings").c_str()).c_str());
+}
+
 void test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id() {
   JsonDocument doc;
   const char* recipe =
@@ -160,6 +180,9 @@ int main(int, char**) {
   RUN_TEST(test_ids_the_web_ui_generates_are_valid);
   RUN_TEST(test_ids_that_could_form_a_path_are_rejected);
   RUN_TEST(test_body_must_carry_the_id_of_the_url);
+  RUN_TEST(test_readings_url_gives_the_brew_id);
+  RUN_TEST(test_other_urls_are_no_readings_urls);
+  RUN_TEST(test_readings_url_with_an_id_that_could_form_a_path_is_rejected);
   RUN_TEST(test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id);
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
   RUN_TEST(test_summary_line_carries_the_version_fields);

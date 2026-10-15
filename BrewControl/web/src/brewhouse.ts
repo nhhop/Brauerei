@@ -170,7 +170,7 @@ export const MEASUREMENTS: { key: MeasureKey; step: StepKey; label: string; unit
 ];
 
 // Sensor units that fit a measurement's unit (compared case-insensitively).
-const UNIT_FITS: Record<string, string[]> = {
+export const UNIT_FITS: Record<string, string[]> = {
   '°C': ['°c'],
   l: ['l'],
   '°P': ['°p', 'sg', '°bx', 'brix'],

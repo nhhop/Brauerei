@@ -149,6 +149,38 @@ describe('brew backup file', () => {
     expect(files.get('b1')!.recipeId).toBe('r2');
   });
 
+  it('takes the hand-entered readings along and restores them', async () => {
+    const files = new Map<string, unknown>([
+      ['b1', { ...newBrew(recipe(), [], '2026-10-20'), id: 'b1' }],
+      ['b2', { ...newBrew(recipe(), [], '2026-10-21'), id: 'b2' }],
+    ]);
+    const readings = new Map<string, unknown>([['b1', { id: 'b1', readings: [{ at: 5, kind: 'gravity', v: 9.5 }] }]]);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const parts = url.split('/');
+      const store = parts.pop() === 'readings' ? readings : files;
+      const id = store === readings ? parts.pop()! : url.split('/').pop()!;
+      if (url === '/api/brews') return new Response(JSON.stringify([...files.keys()].map((id) => ({ id }))));
+      if (init?.method === 'PUT') { store.set(id, JSON.parse(init.body as string)); return new Response(null, { status: 204 }); }
+      return store.has(id) ? new Response(JSON.stringify(store.get(id))) : new Response('not found', { status: 404 });
+    }));
+    const text = await exportBrews();
+    // only the brew that has readings gets an entry
+    expect(JSON.parse(text).readings).toEqual([{ id: 'b1', readings: [{ at: 5, kind: 'gravity', v: 9.5 }] }]);
+    files.clear();
+    readings.clear();
+    expect(await importBrews(text)).toBe(2);
+    expect(readings.get('b1')).toEqual({ id: 'b1', readings: [{ at: 5, kind: 'gravity', v: 9.5 }] });
+    expect(readings.has('b2')).toBe(false);
+  });
+
+  it('still imports a backup from before the readings', async () => {
+    const put = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', put);
+    const text = JSON.stringify({ type: 'brewcontrol-brews', version: 1, brews: [{ ...newBrew(recipe(), [], '2026-10-20'), id: 'b1' }] });
+    expect(await importBrews(text)).toBe(1);
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a recipe backup', async () => {
     vi.stubGlobal('fetch', vi.fn());
     await expect(importBrews(JSON.stringify({ type: 'brewcontrol-recipes', version: 1, recipes: [] }))).rejects.toThrow('keine Sud-Sicherung');

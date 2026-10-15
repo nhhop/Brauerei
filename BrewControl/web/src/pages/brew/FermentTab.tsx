@@ -18,9 +18,11 @@ import { AdditionRow } from './AdditionRow';
 import { num } from './amounts';
 import { BrewTimer, isActive } from './BrewTimer';
 import { DryHopList } from './DryHopList';
+import { FermentCourse } from './FermentCourse';
 import { formatIsoDate, toLocalInput } from './format';
 import { EffRow, MeasureRow } from './MeasureRow';
 import type { Patch } from './PrepTab';
+import { Readings, useReadings } from './Readings';
 
 const LABEL: Partial<Record<MeasureId, string>> = { pitchGravity: 'Stammwürze' };
 const labelOf = (key: MeasureId) => LABEL[key] ?? MEASUREMENTS.find((m) => m.key === key)!.label;
@@ -108,6 +110,10 @@ export function FermentTab({ brew, recipe, inputs, targets, snap, editable, patc
   const dips = boilAdditions(recipe, inputs.entries, brew.rowAmounts).filter((a) => a.group === 'dip');
   const dilutedHere = targets.water?.dilution.at === 'fermenter' && targets.water.dilution.volumeL > 0;
   const overall = measuredFermenterPct(measuredValues(brew), targets);
+
+  // ── Readings by hand ──
+  const [readings, setReadings] = useReadings(brew.id);
+  const og = brew.measurements?.pitchGravity?.v ?? values.pitchGravity;
 
   const group = (title: string, rows: { row: Ingredient; amount: number; unit: string }[]) => rows.length > 0 && (
     <div class="mt-3">
@@ -220,6 +226,11 @@ export function FermentTab({ brew, recipe, inputs, targets, snap, editable, patc
         <DryHopList brew={brew} recipe={recipe} title="Stopfen" hops={hops.filter((h) => h.row.timing === 'primary')}
           pitchedAt={pitchedAt} editable={editable} patch={patch} />
       </Card>
+
+      <FermentCourse brew={brew} fermenter={current} phases={recipe.fermentation} snap={snap} editable={editable} patch={patch}
+        readings={readings} og={og} />
+
+      <Readings doc={readings} onDoc={setReadings} og={og} editable={editable} />
 
       <Card title="Notizen zur Gärung">
         <Field label="Gespeichert mit „Speichern“">

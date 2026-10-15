@@ -2529,11 +2529,57 @@ paths:
       summary: Delete a brew
       description: |
         Also drops the brew's line from the list index, whether or not the
-        file still existed (`404` then, but a stale entry is gone).
+        file still existed (`404` then, but a stale entry is gone). The brew's
+        readings (`/api/brews/{id}/readings`) are deleted with it.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/brews/{id}/readings:
+    parameters: [{ $ref: "#/components/parameters/BrewId" }]
+    get:
+      tags: [Brews]
+      operationId: getBrewReadings
+      summary: Get a brew's hand-entered readings
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: The readings exactly as they were stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BrewReadings" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Brews]
+      operationId: putBrewReadings
+      summary: Create or replace a brew's readings
+      description: |
+        Gravity, temperature and pH values the brewer measured during
+        fermentation and maturation. Written to `/brewreadings/<id>.json` via a
+        temporary file, so a power cut during the save leaves the previous
+        version. Not part of the brew, which keeps to its 16 KB; the brew's
+        delete removes the file. The body limit is 16 KB as well.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BrewReadings" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
 
   # ── Brewhouse ──────────────────────────────────────────────────────────────
   /api/brewhouses:
@@ -5476,7 +5522,8 @@ components:
         `addedAt`, `phaseNotes` and `phaseStartedAt` (epoch ms per phase;
         `mash`: when the grain went in), the ids of the brew's programs on the
         device (`mashProgramId`, `boilProgramId`) and of the device log the
-        mash course is drawn from (`logId`). The UI saves those one at a
+        mash course is drawn from (`logId`; `fermentLogId` for the fermentation
+        course). The UI saves those one at a
         time onto a freshly read copy (read, change, `PUT`) and writes the
         results of `BrewSummary` with every save. The firmware keeps whatever
         it is given, so only
@@ -5484,6 +5531,31 @@ components:
       properties:
         id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       additionalProperties: true
+
+    BrewReadings:
+      type: object
+      required: [id, readings]
+      description: |
+        Owned by the web UI (`web/src/brewReadings.ts`). `id` is the brew's id. The
+        firmware checks only `id`; it keeps the rest as given. The 16 KB body limit
+        applies, which is about 300 readings.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        readings:
+          type: array
+          items:
+            type: object
+            required: [at, kind, v]
+            properties:
+              at: { type: integer, format: int64, description: Unix epoch milliseconds. }
+              kind:
+                type: string
+                enum: [gravity, brix, temp, ph]
+                description: |
+                  `gravity` in °P, `brix` as read on the refractometer (raw), `temp`
+                  in °C.
+              v: { type: number }
+              note: { type: string }
 
     Recipe:
       type: object
@@ -5611,6 +5683,12 @@ components:
         controller: { type: string, description: "Controller id in this board's registry." }
         actuator: { type: string, description: "Actuator id in this board's registry." }
         sensor: { type: string, description: "Temperature probe id, with or without tempering." }
+        densitySensor:
+          type: string
+          description: |
+            Sensor id of a density probe (e.g. an iSpindel as a remote sensor). The
+            brew's fermentation course draws its log values in °P; the sensor's unit
+            is `SG`, `°P` or `°Bx`.
 
     Container:
       type: object
