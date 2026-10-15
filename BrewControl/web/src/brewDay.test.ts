@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, measuredFermenterPct, unitOfMeasure, withResults,
-  type BrewInputs,
+  actualBeer, brewInputs, brewTargets, deviation, mashAcidSuggestion, measuredEfficiency, measuredFermenterPct, plannedBeer, unitOfMeasure,
+  withResults, type BrewInputs,
 } from './brewDay';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
+import { ballingBeerAnalysis } from './brewMath';
 import type { Brew, MeasureId, Measurement } from './brews';
-import type { Fermenter } from './cellar';
+import type { Container, Fermenter } from './cellar';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { calcMash } from './mashPlan';
 import { calcStats, pitchedL, wortExtract } from './recipeStats';
@@ -226,7 +227,7 @@ describe('withResults', () => {
     const b = withResults(brew({}, { ogActual: 12, mashEffPct: 70, yieldPct: 55, bottledL: 18 }), t);
     expect(b.ogPlato).toBeCloseTo(t.values.postBoilGravity!, 2);
     expect('ogActual' in b || 'mashEffPct' in b || 'yieldPct' in b).toBe(false);
-    expect(b.bottledL).toBe(18);
+    expect('bottledL' in b).toBe(false);
   });
 
   it('leaves the results out without a brewhouse', () => {
@@ -294,5 +295,61 @@ describe('pitching (5c-2)', () => {
     expect([before.ogPlato, before.ogActual]).toEqual([Math.round(t.values.postBoilGravity! * 100) / 100, 15]);
     const after = withResults(m({ postBoilGravity: 15, pitchGravity: 13.5 }), t);
     expect([after.ogPlato, after.ogActual]).toEqual([Math.round(t.values.pitchGravity! * 100) / 100, 13.5]);
+  });
+});
+
+describe('after the fermentation (5c-5)', () => {
+  const yeast = row({ id: 'y', kind: 'yeast', name: 'US-05', ingredientId: 'yeast:us05', amount: 11, timing: 'pitch' });
+  const phases = [{ id: 'p1', name: 'Hauptgärung', tempC: 19, duration: 7 }, { id: 'p2', name: 'Kalt', tempC: 2, duration: 14 }];
+  const r = recipe([malt, sugar, yeast], { fermentation: phases, trubLossL: 0.5 });
+  const t = brewTargets(r, inputs());
+  const keg: Container = { id: 'keg', updatedAt: 0, kind: 'keg', sizeL: 19, count: 1 };
+  const m = (values: Partial<Record<MeasureId, number>>) => ({
+    id: 'b', number: 1, name: 'x', recipeId: 'r', rootId: 'r', version: 1, status: 'active', updatedAt: 0,
+    measurements: Object.fromEntries(Object.entries(values).map(([k, v]) => [k, { v: v!, at: 1 }])),
+  }) as Brew;
+
+  it('targets the final gravity of the yeast, the highest phase temperature and the volume filled', () => {
+    const stats = calcStats(own(r), catalog, herms, brewery);
+    expect(t.values.finalGravity).toBeCloseTo(stats.fgPlato!, 9);
+    expect(t.values.maxTempAfter).toBe(19);
+    expect(t.bottling!.bottledL).toBe(t.values.bottledVolume);
+    const withKeg = brewTargets({ ...r, bottling: { containers: [{ containerId: 'keg' }] } }, { ...inputs(), containers: [keg] });
+    expect(withKeg.bottling!.lines[0].count).toBe(Math.floor(withKeg.bottling!.beerL / 19));
+    expect(withKeg.values.bottledVolume).toBe(19 * withKeg.bottling!.lines[0].count);
+    expect(unitOfMeasure('finalGravity')).toBe('°P');
+    expect(unitOfMeasure('maxTempAfter')).toBe('°C');
+    expect(unitOfMeasure('bottledVolume')).toBe('l');
+  });
+
+  it('has no final gravity without a yeast of the catalog', () => {
+    expect(brewTargets(recipe(), inputs()).values.finalGravity).toBeUndefined();
+    expect(plannedBeer(brewTargets(recipe(), inputs()))).toBeUndefined();
+  });
+
+  it('plans the alcohol of the recipe from the pitched wort to the final gravity', () => {
+    const stats = calcStats(own(r), catalog, herms, brewery);
+    expect(plannedBeer(t)!.abvPct).toBeCloseTo(stats.abv!, 9);
+  });
+
+  it('puts alcohol, attenuation, final gravity and volume into the list', () => {
+    const b = withResults(m({ pitchGravity: 12.5, finalGravity: 2.5, bottledVolume: 18.4 }), t);
+    const a = ballingBeerAnalysis(12.5, 2.5);
+    expect([b.fgPlato, b.bottledL]).toEqual([2.5, 18.4]);
+    expect(b.abvPct).toBeCloseTo(a.abvPercent, 2);
+    expect(b.attenuationPct).toBeCloseTo(a.apparentAttenuationPercent, 2);
+  });
+
+  it('takes the knock-out gravity for alcohol only without a dilution in the kettle', () => {
+    expect(actualBeer({ postBoilGravity: 12.5, finalGravity: 2.5 }, { dilutionInKettle: false })?.abvPct).toBeGreaterThan(5);
+    expect(actualBeer({ postBoilGravity: 12.5, finalGravity: 2.5 }, { dilutionInKettle: true })).toBeUndefined();
+    expect(actualBeer({ pitchGravity: 12.5, postBoilGravity: 15, finalGravity: 2.5 }, { dilutionInKettle: true })?.abvPct)
+      .toBeCloseTo(ballingBeerAnalysis(12.5, 2.5).abvPercent, 9);
+    expect(actualBeer({ pitchGravity: 12.5 }, { dilutionInKettle: false })).toBeUndefined();
+  });
+
+  it('drops the results the measurements no longer give', () => {
+    const b = withResults({ ...m({ pitchGravity: 12.5 }), fgPlato: 2.5, abvPct: 5, attenuationPct: 80, bottledL: 18 }, t);
+    expect('fgPlato' in b || 'abvPct' in b || 'attenuationPct' in b || 'bottledL' in b).toBe(false);
   });
 });

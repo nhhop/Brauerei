@@ -18,7 +18,7 @@ export function BrewsTab({ brews, onCreate, createBlock }: {
   // A column's name stands in the head line; where the row wraps, at its value.
   const cell = (label: string, text: string, width: string) => (
     <span class={`${width} text-right tabular-nums`}>
-      <span class="mr-1 text-xs text-muted sm:hidden">{label}</span>{text}
+      <span class="mr-1 text-xs text-muted xl:hidden">{label}</span>{text}
     </span>
   );
   return (
@@ -36,13 +36,16 @@ export function BrewsTab({ brews, onCreate, createBlock }: {
           <p class="text-sm text-muted">Aus diesem Rezept wurde noch kein Sud angelegt.</p>
         ) : (
           <>
-            <div class="hidden items-center gap-x-3 border-b border-border px-2 pb-1 text-xs font-semibold text-muted sm:flex">
+            <div class="hidden items-center gap-x-3 border-b border-border px-2 pb-1 text-xs font-semibold text-muted xl:flex">
               <span class="min-w-0 flex-1">Sud</span>
               <span class="w-24">Brautag</span>
               <span class="w-28">Status</span>
               <span class="w-32 text-right">Stammwürze Soll / Ist</span>
               <span class="w-24 text-right">Maischeeffizienz</span>
               <span class="w-24 text-right">Sudhausausbeute</span>
+              <span class="w-20 text-right">Alkohol</span>
+              <span class="w-24 text-right">Endvergärung</span>
+              <span class="w-24 text-right">Restextrakt</span>
             </div>
             <ul class="divide-y divide-border">
               {brews.map((b) => (
@@ -59,6 +62,9 @@ export function BrewsTab({ brews, onCreate, createBlock }: {
                     {cell('Stammwürze', `${fmt(b.ogPlato)} / ${fmt(b.ogActual)} °P`, 'w-32')}
                     {cell('Maische', b.mashEffPct === undefined ? '–' : `${fmt(b.mashEffPct)} %`, 'w-24')}
                     {cell('Ausbeute', b.yieldPct === undefined ? '–' : `${fmt(b.yieldPct)} %`, 'w-24')}
+                    {cell('Alkohol', b.abvPct === undefined ? '–' : `${fmt(b.abvPct)} %`, 'w-20')}
+                    {cell('Endvergärung', b.attenuationPct === undefined ? '–' : `${fmt(b.attenuationPct)} %`, 'w-24')}
+                    {cell('Restextrakt', b.fgPlato === undefined ? '–' : `${fmt(b.fgPlato)} °P`, 'w-24')}
                   </button>
                 </li>
               ))}

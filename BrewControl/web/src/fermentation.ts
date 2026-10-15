@@ -129,12 +129,14 @@ export interface CarbonationResult {
 }
 
 // Unset without a planned carbonation. `fgPlato` from recipeStats, `speiseL`
-// from the dilution (recipeWater.resolveDilution).
-export function calcCarbonation(recipe: Recipe, p: { beerL: number; fgPlato?: number; speiseL: number }): CarbonationResult | undefined {
+// from the dilution (recipeWater.resolveDilution). `tempC` is the highest
+// temperature after the fermentation when it was measured (5c-5), else the
+// phases' highest.
+export function calcCarbonation(recipe: Recipe, p: { beerL: number; fgPlato?: number; speiseL: number; tempC?: number }): CarbonationResult | undefined {
   const c = recipe.carbonation;
   if (!c) return undefined;
   const notes: string[] = [];
-  const tempC = residualTempC(recipe);
+  const tempC = p.tempC ?? residualTempC(recipe);
   const out: CarbonationResult = { notes, residualTempC: tempC };
   if (tempC === undefined && c.method !== 'forced') {
     notes.push('Die Restkohlensäure braucht die Gärphasen.');

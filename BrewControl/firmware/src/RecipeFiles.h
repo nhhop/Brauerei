@@ -67,13 +67,14 @@ inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
 
 // Brews (/brews) use the same index. Their line also carries the fermenter and
 // its booked period, so the occupancy plan needs nothing but the list, and the
-// brew's results (gravity, efficiencies, bottled volume) for the recipe's list
+// brew's results (gravity, efficiencies, final gravity, alcohol, bottled volume) for the recipe's list
 // of brews. A field missing here takes a firmware update, hence the whole set
 // up front.
 inline std::string brewSummaryLine(JsonVariantConst brew, const char* id) {
   return summaryLineOf(brew, id, {"number", "name", "recipeId", "rootId", "version", "status", "brewDate",
                                   "fermenterId", "occupiedFrom", "occupiedUntil", "updatedAt",
-                                  "ogPlato", "ogActual", "mashEffPct", "yieldPct", "bottledL"});
+                                  "ogPlato", "ogActual", "mashEffPct", "yieldPct", "bottledL",
+                                  "abvPct", "attenuationPct", "fgPlato"});
 }
 
 inline bool recipeLineHasId(const std::string& line, const char* id) {

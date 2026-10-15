@@ -116,10 +116,11 @@ void test_brew_summary_line_carries_the_results() {
   JsonDocument doc;
   deserializeJson(doc,
       "{\"id\":\"b3\",\"number\":2,\"ogPlato\":12.5,\"ogActual\":12.3,\"mashEffPct\":71.5,"
-      "\"yieldPct\":57.2,\"bottledL\":18,\"measurements\":{\"mashPh\":{\"v\":5.4,\"at\":1}}}");
+      "\"yieldPct\":57.2,\"bottledL\":18,\"abvPct\":5.1,\"attenuationPct\":79.4,\"fgPlato\":2.6,"
+      "\"measurements\":{\"mashPh\":{\"v\":5.4,\"at\":1}}}");
   TEST_ASSERT_EQUAL_STRING(
       "{\"id\":\"b3\",\"number\":2,\"ogPlato\":12.5,\"ogActual\":12.3,\"mashEffPct\":71.5,"
-      "\"yieldPct\":57.2,\"bottledL\":18}",
+      "\"yieldPct\":57.2,\"bottledL\":18,\"abvPct\":5.1,\"attenuationPct\":79.4,\"fgPlato\":2.6}",
       brewSummaryLine(doc, "b3").c_str());
 }
 

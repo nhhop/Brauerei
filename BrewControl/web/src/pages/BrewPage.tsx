@@ -8,7 +8,7 @@ import {
 import { brewInputs, brewTargets, withResults } from '../brewDay';
 import { unbookStock } from '../brewStart';
 import { getBrewery, listBrewhouses, type Brewery, type Brewhouse } from '../brewhouse';
-import { listFermenters, type Fermenter } from '../cellar';
+import { listContainers, listFermenters, type Container, type Fermenter } from '../cellar';
 import { reloadCatalog, saveStockLot, useCatalog } from '../ingredientSource';
 import { getRecipe, type Recipe } from '../recipes';
 import type { Snapshot } from '../types';
@@ -19,6 +19,7 @@ import { TabBtn } from '../components/TabBtn';
 import { btnPrimary, btnSecondary, inp } from '../ui';
 import { Card, Field, MenuItem } from './recipe/fields';
 import { BoilTab } from './brew/BoilTab';
+import { BottlingTab } from './brew/BottlingTab';
 import { dropProgram } from './brew/BrewTimer';
 import { FermentTab } from './brew/FermentTab';
 import { MaturationTab } from './brew/MaturationTab';
@@ -41,6 +42,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
   const [all, setAll] = useState<BrewSummary[]>([]);
   const [brewhouses, setBrewhouses] = useState<Brewhouse[] | null>(null);
   const [fermenters, setFermenters] = useState<Fermenter[] | null>(null);
+  const [containers, setContainers] = useState<Container[] | null>(null);
   const [brewery, setBrewery] = useState<Brewery | null>(null);
   const [tab, setTab] = useState<string>(PHASES[0].id);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -54,9 +56,9 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
   // The recipe chain is heavy; the page re-renders with every live snapshot.
   const day = useMemo(() => {
     if (!recipe || !saved) return undefined;
-    const inputs = brewInputs(saved, { brewhouses, brewery, entries: catalog?.entries ?? null, fermenters });
+    const inputs = brewInputs(saved, { brewhouses, brewery, entries: catalog?.entries ?? null, fermenters, containers });
     return { inputs, targets: brewTargets(recipe, inputs) };
-  }, [recipe, saved?.frozen, saved?.brewhouseId, saved?.fermenterId, brewhouses, fermenters, brewery, catalog]);
+  }, [recipe, saved?.frozen, saved?.brewhouseId, saved?.fermenterId, brewhouses, fermenters, containers, brewery, catalog]);
 
   useEffect(() => {
     let alive = true;
@@ -73,6 +75,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
     listBrews().then((l) => alive && setAll(l)).catch(() => {});
     listBrewhouses().then((l) => alive && setBrewhouses(l)).catch(() => {});
     listFermenters().then((l) => alive && setFermenters(l)).catch(() => {});
+    listContainers().then((l) => alive && setContainers(l)).catch(() => {});
     getBrewery().then((b) => alive && setBrewery(b)).catch(() => {});
     return () => { alive = false; };
   }, [id]);
@@ -301,12 +304,16 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
         )
       ) : tab === 'maturation' ? (
         !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
-          <MaturationTab brew={saved} recipe={recipe} inputs={day.inputs} editable={!planned} patch={patch}
+          <MaturationTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets} editable={!planned} patch={patch}
             og={saved.measurements?.pitchGravity?.v ?? day.targets.values.pitchGravity}
             notes={draft.phaseNotes?.maturation} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, maturation: t } })} />
         )
       ) : (
-        <p class="text-sm text-muted">Inhalt folgt mit der Abfüllung (Etappe 5c-5).</p>
+        !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
+          <BottlingTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets} editable={!planned} patch={patch}
+            og={saved.measurements?.pitchGravity?.v ?? day.targets.values.pitchGravity}
+            notes={draft.phaseNotes?.bottling} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, bottling: t } })} />
+        )
       )}
 
       {dialog === 'start' && recipe && brewery && (

@@ -789,7 +789,7 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/profile-categories/<id>` | POST, DELETE | Kategorie umbenennen / mit ihren Profilen löschen |
 | `/api/recipes` | GET | Rezeptliste (Kopfdaten), nur SD-Boards |
 | `/api/recipes/<id>` | GET, PUT, DELETE | Rezept lesen / anlegen oder ersetzen / löschen (`/recipes/<id>.json` auf der SD) |
-| `/api/brews` | GET | alle Sude, nur die Index-Felder inkl. Gärplatz, Belegung und Ergebnissen (Stammwürze, Effizienzen; `/brews/index.jsonl`), nur SD-Boards |
+| `/api/brews` | GET | alle Sude, nur die Index-Felder inkl. Gärplatz, Belegung und Ergebnissen (Stammwürze, Effizienzen, Restextrakt, Alkohol, Endvergärung, Abfüllmenge; `/brews/index.jsonl`), nur SD-Boards |
 | `/api/brews/<id>` | GET, PUT, DELETE | Sud lesen / anlegen oder ersetzen / löschen (`/brews/<id>.json`); DELETE entfernt auch die Messungen des Suds |
 | `/api/brews/<id>/readings` | GET, PUT | Messungen von Hand (Dichte, Temperatur, pH) des Suds lesen (404 = keine) / ersetzen (`/brewreadings/<id>.json`, bis 16 KB), nur SD-Boards |
 | `/api/brewhouses` | GET | alle Sudhäuser, vollständig (`/brewhouses/<id>.json`, kein Index), nur SD-Boards |
