@@ -691,7 +691,9 @@ zurück (siehe „Zustand nach Neustart“).
 - **Schlafdauer:** das Intervall ab Beginn des Kurz-Wach (nach Voll-Wach das
   volle Intervall), gekürzt auf 1 s nach dem nächsten festen Ereignis eines
   laufenden Programms (Ende eines Halte-Schritts) oder Timers (Ablauf).
-  Sensor-Schritte und wartende Programme haben kein festes Ende.
+  Sensor-Schritte und wartende Programme haben kein festes Ende. Eine
+  Sollwert-Rampe (`rampSec`) weckt nicht eigens; sie wird bei jedem Aufwachen
+  auf den Wert zur Uhrzeit gesetzt.
 - **Regler** blockieren den Schlaf nicht; sie regeln nur, solange das Gerät
   wach ist.
 - **Aktoren sind im Schlaf aus:** vor dem Einschlafen wird ein noch nicht

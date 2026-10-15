@@ -30,6 +30,8 @@ export interface StepRow {
   cells: Cell[];                // aligned with StepsDraft.cols
   hold: string;
   holdUnit: HoldUnit;
+  ramp: string;                 // '' = no ramp
+  rampUnit: HoldUnit;
   confirm: boolean;
   notify: boolean;
   end: 'hold' | 'sensor';
@@ -57,7 +59,7 @@ function cellIsEmpty(c: Cell): boolean {
 
 function emptyRow(cols: number): StepRow {
   return {
-    name: '', cells: Array.from({ length: cols }, emptyCell), hold: '', holdUnit: 'min',
+    name: '', cells: Array.from({ length: cols }, emptyCell), hold: '', holdUnit: 'min', ramp: '', rampUnit: 'min',
     confirm: false, notify: false, end: 'hold', ref: '', op: 'gt', value: '', hyst: '0',
   };
 }
@@ -95,11 +97,14 @@ export function draftFromSteps(steps: ProgramStep[] | undefined): StepsDraft {
   const cols = programIds(list);
   const rows = list.map((s): StepRow => {
     const holdUnit = pickHoldUnit(s.holdSec);
+    const rampUnit = pickHoldUnit(s.rampSec ?? 0);
     return {
       name: s.name ?? '',
       cells: cols.map((id) => cellFromTarget(s.targets[id])),
       hold: String(s.holdSec / holdUnitMultiplier(holdUnit)),
       holdUnit,
+      ramp: s.rampSec ? String(s.rampSec / holdUnitMultiplier(rampUnit)) : '',
+      rampUnit,
       confirm: s.confirm ?? false,
       notify: s.notify ?? false,
       end: s.end ?? 'hold',
@@ -125,6 +130,8 @@ export function stepsFromDraft(d: StepsDraft): ProgramStep[] {
       holdSec: Math.max(0, Math.round((num(r.hold) || 0) * holdUnitMultiplier(r.holdUnit))),
       confirm: r.confirm,
     };
+    const rampSec = Math.round((num(r.ramp) || 0) * holdUnitMultiplier(r.rampUnit));
+    if (rampSec > 0) step.rampSec = rampSec;
     if (r.notify) step.notify = true;
     if (r.end === 'sensor') {
       step.end = 'sensor';
@@ -160,6 +167,7 @@ export function draftProblem(d: StepsDraft, snap: Snapshot | null, requireExisti
       }
     }
     if (r.end === 'hold' && r.hold.trim() !== '' && !(num(r.hold) >= 0)) return 'Eine Haltezeit ist ungültig.';
+    if (r.ramp.trim() !== '' && !(num(r.ramp) >= 0)) return 'Eine Rampe ist ungültig.';
     if (r.end === 'sensor' && (r.ref === '' || !Number.isFinite(num(r.value))))
       return 'Ein Sensor-Schritt braucht einen überwachten Wert und einen Grenzwert.';
   }
@@ -411,6 +419,20 @@ export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: 
                     </select>
                   </label>
                 )}
+                <label class="flex items-center gap-1 text-xs text-muted"
+                  title="Regler-Sollwerte laufen in dieser Zeit linear vom vorigen Wert des Programms auf den Wert des Schritts">
+                  Rampe
+                  <input type="text" inputMode="decimal"
+                    class={`${inp} w-20! text-right`}
+                    value={r.ramp} placeholder="–"
+                    onInput={(e) => patchRow(i, { ramp: (e.target as HTMLInputElement).value })} />
+                  <select class={`${inp} w-16!`} value={r.rampUnit} title="Einheit"
+                    onChange={(e) => patchRow(i, { rampUnit: (e.target as HTMLSelectElement).value as HoldUnit })}>
+                    <option value="min">min</option>
+                    <option value="h">h</option>
+                    <option value="d">d</option>
+                  </select>
+                </label>
               </div>
               {r.end === 'sensor' && (
                 <ConditionFields snap={snap} refValue={r.ref} op={r.op} value={r.value} hyst={r.hyst}

@@ -345,6 +345,7 @@ export function ProgramCard({ program, snap, onChanged, onEdit, onDelete, fill, 
                   {s.name || `Schritt ${i + 1}`}
                   {s.confirm && <span class="ml-1 text-[10px] text-caution" title="Freigabe abwarten">✋</span>}
                   {s.notify && <span class="ml-1 text-[10px]" title="Meldet beim Beginn">🔔</span>}
+                  {s.rampSec ? <span class="ml-1 text-[10px] text-muted" title="Sollwert-Rampe">↗ {fmtDuration(s.rampSec)}</span> : null}
                 </span>
                 {what && <span class="block truncate text-[11px] font-normal text-faint">{what}</span>}
               </span>

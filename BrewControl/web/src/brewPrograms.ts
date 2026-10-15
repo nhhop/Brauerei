@@ -8,7 +8,8 @@ import type { CatalogIngredient } from './ingredientCatalog';
 import { unitOfEntry } from './ingredientSource';
 import type { MashRow } from './mashPlan';
 import { programIds } from './program';
-import type { Decoction, Ingredient, Recipe } from './recipes';
+import type { Fermenter } from './cellar';
+import { isDryHop, type Decoction, type Ingredient, type Phase, type Recipe } from './recipes';
 import { entryOf } from './stockLots';
 import type { Controller, ProgramConfig, ProgramStep, Snapshot } from './types';
 
@@ -303,4 +304,152 @@ export function boilProgress(p: Pick<ProgramConfig, 'steps' | 'status' | 'curren
     phase: j < p.steps.length ? 'boil' : 'whirlpool', remainingSec,
     ...(next && { next: { name: next.name ?? '', inSec } }),
   };
+}
+
+// ── Fermentation (5c-3) ──────────────────────────────────────────────────────
+
+const DAY_S = 86400;
+const PITCH = 'Anstellen';  // how the pitching step's name begins (pitchedAtOf)
+
+// What the program drives at the fermenter: its controller, when tempering
+// is linked to one that is in the registry. Else the program is a timer by hand.
+export interface FermentControl { controller: string }
+
+export function fermentControlOf(f: Fermenter | undefined, snap: Snapshot | null): FermentControl | undefined {
+  if (!f || f.manual || f.tempering === 'none' || !f.controller || !snap) return undefined;
+  return snap.controllers.some((c) => c.id === f.controller) ? { controller: f.controller } : undefined;
+}
+
+export interface DryHop {
+  row: Ingredient;
+  amount: number;   // as used (rowAmounts), else the recipe's
+  unit: string;
+  day?: number;     // goes in on this day after pitching
+  days?: number;    // and comes out after so many days
+}
+
+// The dry hops of the main fermentation and the maturation, in recipe order.
+export function dryHops(
+  recipe: Pick<Recipe, 'ingredients'>, entries: CatalogIngredient[] | null, rowAmounts?: Record<string, number>,
+): DryHop[] {
+  return recipe.ingredients.filter(isDryHop).map((row) => ({
+    row, amount: rowAmounts?.[row.id] ?? row.amount, unit: unitOfEntry(row.kind, entryOf(row, entries)),
+    day: row.dryHopDay, days: row.dryHopDays,
+  }));
+}
+
+const daysText = (n: number) => `${fmt(n)} ${n === 1 ? 'Tag' : 'Tagen'}`;
+
+// The fermentation program, started at the fermenter before pitching. It
+// starts with "Anstellen", which waits for "Weiter" (with a controller, that
+// already holds the first phase's temperature); from there the phases run on
+// the clock, day d of the recipe being d × 24 h after "Weiter". A dry hop going
+// in or coming out splits its phase: that step reports itself, the clock keeps
+// running, and things due at the same time share a step. With a controller
+// every phase sets its temperature, ramped over its rampDays from the one
+// before (piecewise where a split falls into the ramp); the end holds the last
+// temperature until "Weiter", then switches the controller off. Without one,
+// each phase start tells the brewer what to set. Pressure (the caller passes
+// pressureBar only with Recipe.pressureFermentation) is announced at its
+// phase's start. Dry hops without a day are not part of it.
+//
+// phaseOf[i] is the index in `phases` that step i belongs to, -1 for the
+// pitching and the end.
+export function fermentationProgram(
+  brewNumber: number, phases: Phase[], hops: DryHop[], control?: FermentControl,
+): { name: string; steps: ProgramStep[]; phaseOf: number[] } {
+  // Phases on the time line (days after pitching); one without a duration has no place on it.
+  const line: { i: number; from: number; to: number; rampTo: number; fromC: number }[] = [];
+  let day = 0;
+  phases.forEach((p, i) => {
+    const d = Math.max(p.duration || 0, 0);
+    if (d <= 0) return;
+    const prev = line[line.length - 1];
+    const ramp = prev ? Math.min(Math.max(p.rampDays ?? 0, 0), d) : 0;
+    line.push({ i, from: day, to: day + d, rampTo: day + ramp, fromC: prev ? phases[prev.i].tempC : p.tempC });
+    day += d;
+  });
+  const total = day;
+  const tempAt = (seg: (typeof line)[number], t: number) => {
+    const to = phases[seg.i].tempC;
+    return t >= seg.rampTo ? to : seg.fromC + ((to - seg.fromC) * (t - seg.from)) / (seg.rampTo - seg.from);
+  };
+
+  const clamp = (t: number) => Math.min(Math.max(t, 0), total);
+  const events = new Map<number, { add: DryHop[]; remove: DryHop[] }>();
+  const at = (t: number) => {
+    if (!events.has(t)) events.set(t, { add: [], remove: [] });
+    return events.get(t)!;
+  };
+  for (const h of hops) {
+    if (h.day === undefined) continue;
+    at(clamp(h.day)).add.push(h);
+    if (h.days !== undefined) at(clamp(h.day + h.days)).remove.push(h);
+  }
+  const eventText = (t: number) => {
+    const e = events.get(t);
+    if (!e) return [];
+    return [
+      ...(e.add.length > 0 ? [`Stopfen: ${e.add.map((h) => `${qty(h.amount)} ${h.unit} ${h.row.name}`).join(', ')}`] : []),
+      ...(e.remove.length > 0 ? [`Hopfen entnehmen: ${e.remove.map((h) => h.row.name).join(', ')}`] : []),
+    ];
+  };
+
+  const first = phases[line[0]?.i ?? 0];
+  const steps: ProgramStep[] = [{
+    ...act(`${PITCH}${first ? ` bei ${fmtC(first.tempC)}` : ''} – Weiter, wenn die Hefe drin ist`),
+    ...(control && first && { targets: on(control.controller, first.tempC) }),
+  }];
+  const phaseOf = [-1];
+
+  const cuts = [...new Set([...line.map((s) => s.from), ...[...events.keys()].filter((t) => t < total)])].sort((a, b) => a - b);
+  cuts.forEach((t, j) => {
+    const end = cuts[j + 1] ?? total;
+    const seg = [...line].reverse().find((s) => s.from <= t)!;
+    const p = phases[seg.i];
+    const start = t === seg.from;
+    const ramping = t < seg.rampTo;
+    const rampEnd = Math.min(end, seg.rampTo);
+    const text: string[] = [];
+    if (start) {
+      text.push(control || seg === line[0] ? `${p.name || 'Phase'} · ${fmtC(p.tempC)}`
+        : ramping ? `${p.name || 'Phase'}: in ${daysText(seg.rampTo - seg.from)} auf ${fmtC(p.tempC)}`
+        : `${p.name || 'Phase'}: auf ${fmtC(p.tempC)} stellen`);
+      if (p.pressureBar) text.push(`Spundapparat auf ${fmt(p.pressureBar)} bar`);
+    }
+    const hopText = eventText(t);
+    text.push(...hopText);
+    const step: ProgramStep = { name: text.join(' · '), targets: {}, holdSec: Math.round((end - t) * DAY_S) };
+    if (control && (start || ramping)) {
+      step.targets = { [control.controller]: { v: Math.round(tempAt(seg, rampEnd) * 10) / 10, ...(start && { enabled: true }) } };
+      if (ramping) step.rampSec = Math.round((rampEnd - t) * DAY_S);
+    }
+    // The first phase follows "Weiter": the brewer is at the fermenter.
+    if (hopText.length > 0 || (start && (p.pressureBar || (!control && seg !== line[0])))) step.notify = true;
+    steps.push(step);
+    phaseOf.push(seg.i);
+  });
+  // Dry hops coming out at the very end.
+  const last = eventText(total);
+  if (last.length > 0 && line.length > 0) {
+    steps.push({ name: last.join(' · '), targets: {}, holdSec: 0, notify: true });
+    phaseOf.push(line[line.length - 1].i);
+  }
+
+  if (control) {
+    steps.push(act('Gärführung beendet – Weiter: Regler aus'));
+    steps.push({ name: 'Regler aus', targets: { [control.controller]: { enabled: false } }, holdSec: 0 });
+    phaseOf.push(-1, -1);
+  }
+  return { name: `Sud #${brewNumber} Gärung`, steps, phaseOf };
+}
+
+// When the yeast went in, by a fermentation program (epoch ms): the moment it
+// left the pitching step, on the program's clock (a pause shifts it, as it
+// shifts the phases). Undefined until then and once the program is no longer active.
+export function pitchedAtOf(p: Pick<ProgramConfig, 'steps' | 'status' | 'currentStep' | 'stepStartedEpoch'>): number | undefined {
+  const active = p.status === 'running' || p.status === 'awaiting' || p.status === 'paused';
+  if (!active || !p.steps[0]?.name?.startsWith(PITCH) || p.currentStep < 1 || !(p.stepStartedEpoch > 0)) return undefined;
+  const before = p.steps.slice(1, p.currentStep).reduce((s, x) => s + x.holdSec, 0);
+  return (p.stepStartedEpoch - before) * 1000;
 }

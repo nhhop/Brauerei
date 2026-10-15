@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  REACHED_MARGIN_K, boilAdditions, boilProgress, boilTimerProgram, isRegulated, mashControlOf, mashTimerProgram, mashedInAt, type MashControl,
+  REACHED_MARGIN_K, boilAdditions, boilProgress, boilTimerProgram, dryHops, fermentControlOf, fermentationProgram, isRegulated, mashControlOf,
+  mashTimerProgram, mashedInAt, pitchedAtOf, type MashControl,
 } from './brewPrograms';
 import { TEMPLATES, type Brewhouse } from './brewhouse';
 import type { MashRow, Transition } from './mashPlan';
-import type { Ingredient, MashStep, MashStepKind } from './recipes';
+import type { Fermenter } from './cellar';
+import type { Ingredient, MashStep, MashStepKind, Phase } from './recipes';
 import type { ProgramStatus, ProgramStep, Snapshot } from './types';
 
 const tr = (kind: Transition['kind']): Transition => ({ kind, min: 0, text: '' });
@@ -409,6 +411,145 @@ describe('boil timer', () => {
       expect(at(1, undefined, 'awaiting')).toBeUndefined();
       expect(at(2, 1200, 'paused')).toBeUndefined();
       expect(at(0, 0, 'idle')).toBeUndefined();
+    });
+  });
+});
+
+describe('fermentation program', () => {
+  const DAY = 86400;
+  const phase = (name: string, tempC: number, duration: number, p: Partial<Phase> = {}): Phase => ({ id: name, name, tempC, duration, ...p });
+  const phases = [phase('Hauptgärung', 12, 7), phase('Diacetylrast', 18, 3, { rampDays: 2 }), phase('Kaltlagerung', 2, 14, { rampDays: 2 })];
+  const dry = (id: string, name: string, amount: number, dryHopDay?: number, dryHopDays?: number, timing: Ingredient['timing'] = 'primary'): Ingredient =>
+    ({ id, kind: 'hop', name, amount, timing, dryHopDay, dryHopDays });
+  const program = (ingredients: Ingredient[], ph = phases, control: { controller: string } | undefined = { controller: 'gaer' }) =>
+    fermentationProgram(7, ph, dryHops({ ingredients }, null), control);
+  const sumHold = (steps: ProgramStep[]) => steps.reduce((s, x) => s + x.holdSec, 0);
+
+  it('pitches first, then sets every phase with its ramp, and switches off at the end', () => {
+    const p = program([]);
+    expect(p.name).toBe('Sud #7 Gärung');
+    expect(p.steps.map((s) => s.name)).toEqual([
+      'Anstellen bei 12 °C – Weiter, wenn die Hefe drin ist',
+      'Hauptgärung · 12 °C',
+      'Diacetylrast · 18 °C',
+      'Kaltlagerung · 2 °C',
+      'Gärführung beendet – Weiter: Regler aus',
+      'Regler aus',
+    ]);
+    expect(p.steps.map((s) => s.targets)).toEqual([
+      { gaer: { v: 12, enabled: true } },
+      { gaer: { v: 12, enabled: true } },
+      { gaer: { v: 18, enabled: true } },
+      { gaer: { v: 2, enabled: true } },
+      {},
+      { gaer: { enabled: false } },
+    ]);
+    expect(p.steps.map((s) => s.holdSec)).toEqual([0, 7 * DAY, 3 * DAY, 14 * DAY, 0, 0]);
+    expect(p.steps.map((s) => s.rampSec)).toEqual([undefined, undefined, 2 * DAY, 2 * DAY, undefined, undefined]);
+    expect(p.steps.map((s) => !!s.confirm)).toEqual([true, false, false, false, true, false]);
+    expect(p.steps.map((s) => !!s.notify)).toEqual([false, false, false, false, false, false]);
+    expect(p.phaseOf).toEqual([-1, 0, 1, 2, -1, -1]);
+  });
+
+  it('splits a ramp where a dry hop goes in or comes out', () => {
+    // Citra in on day 8 (inside the ramp 7–9), out on day 11 (inside the ramp 10–12).
+    const p = program([dry('c', 'Citra', 50, 8, 3)]);
+    expect(p.steps.map((s) => s.name)).toEqual([
+      'Anstellen bei 12 °C – Weiter, wenn die Hefe drin ist',
+      'Hauptgärung · 12 °C',
+      'Diacetylrast · 18 °C',
+      'Stopfen: 50 g Citra',
+      'Kaltlagerung · 2 °C',
+      'Hopfen entnehmen: Citra',
+      'Gärführung beendet – Weiter: Regler aus',
+      'Regler aus',
+    ]);
+    expect(p.steps.slice(1, 6).map((s) => s.targets)).toEqual([
+      { gaer: { v: 12, enabled: true } },
+      { gaer: { v: 15, enabled: true } },
+      { gaer: { v: 18 } },
+      { gaer: { v: 10, enabled: true } },
+      { gaer: { v: 2 } },
+    ]);
+    expect(p.steps.slice(1, 6).map((s) => s.holdSec)).toEqual([7 * DAY, DAY, 2 * DAY, DAY, 13 * DAY]);
+    expect(p.steps.slice(1, 6).map((s) => s.rampSec)).toEqual([undefined, DAY, DAY, DAY, DAY]);
+    expect(p.steps.slice(1, 6).map((s) => !!s.notify)).toEqual([false, false, true, false, true]);
+    expect(p.phaseOf).toEqual([-1, 0, 1, 1, 2, 2, -1, -1]);
+    expect(sumHold(p.steps)).toBe(24 * DAY);
+  });
+
+  it('puts what is due at the same time into one step', () => {
+    const p = program([
+      dry('c', 'Citra', 50, 7, 3),            // in at the start of the rest, out at the start of the cold storage
+      dry('m', 'Mosaic', 30, 10, undefined, 'maturation'),
+      dry('x', 'Saaz', 20),                    // no day: not in the program
+      dry('s', 'Simcoe', 20, 20, 10),          // out after the end: at the end
+    ]);
+    expect(p.steps.map((s) => s.name)).toEqual([
+      'Anstellen bei 12 °C – Weiter, wenn die Hefe drin ist',
+      'Hauptgärung · 12 °C',
+      'Diacetylrast · 18 °C · Stopfen: 50 g Citra',
+      'Kaltlagerung · 2 °C · Stopfen: 30 g Mosaic · Hopfen entnehmen: Citra',
+      'Stopfen: 20 g Simcoe',
+      'Hopfen entnehmen: Simcoe',
+      'Gärführung beendet – Weiter: Regler aus',
+      'Regler aus',
+    ]);
+    expect(p.steps.map((s) => !!s.notify)).toEqual([false, false, true, true, true, true, false, false]);
+    expect(p.steps.map((s) => s.holdSec)).toEqual([0, 7 * DAY, 3 * DAY, 10 * DAY, 4 * DAY, 0, 0, 0]);
+    expect(p.steps[4].targets).toEqual({});
+    expect(p.phaseOf).toEqual([-1, 0, 1, 2, 2, 2, -1, -1]);
+  });
+
+  it('tells the brewer what to set without a controller, and announces the pressure', () => {
+    const p = fermentationProgram(7, [phase('Hauptgärung', 12, 7, { pressureBar: 1.2 }), phase('Diacetylrast', 18, 3, { rampDays: 2 }), phase('Kaltlagerung', 2, 14)], []);
+    expect(p.steps.map((s) => s.name)).toEqual([
+      'Anstellen bei 12 °C – Weiter, wenn die Hefe drin ist',
+      'Hauptgärung · 12 °C · Spundapparat auf 1,2 bar',
+      'Diacetylrast: in 2 Tagen auf 18 °C',
+      'Kaltlagerung: auf 2 °C stellen',
+    ]);
+    expect(p.steps.every((s) => Object.keys(s.targets).length === 0 && !s.rampSec)).toBe(true);
+    expect(p.steps.map((s) => !!s.notify)).toEqual([false, true, true, true]);
+    expect(p.phaseOf).toEqual([-1, 0, 1, 2]);
+  });
+
+  it('leaves out phases without a duration', () => {
+    const p = program([], [phase('Leer', 20, 0), phase('Hauptgärung', 12, 7)]);
+    expect(p.steps.map((s) => s.name).slice(0, 2)).toEqual(['Anstellen bei 12 °C – Weiter, wenn die Hefe drin ist', 'Hauptgärung · 12 °C']);
+    expect(p.phaseOf.slice(0, 2)).toEqual([-1, 1]);
+  });
+
+  describe('pitchedAtOf', () => {
+    const { steps } = program([]);
+    const at = (currentStep: number, status: ProgramStatus = 'running', stepStartedEpoch = 1_791_930_000) =>
+      pitchedAtOf({ steps, status, currentStep, stepStartedEpoch });
+
+    it('is when the program left the pitching, on its clock', () => {
+      expect(at(1)).toBe(1_791_930_000_000);
+      expect(at(3, 'paused')).toBe((1_791_930_000 - 10 * DAY) * 1000);
+      expect(at(4, 'awaiting')).toBe((1_791_930_000 - 24 * DAY) * 1000);
+    });
+
+    it('is unknown before and once the program is no longer active', () => {
+      expect(at(0, 'awaiting')).toBeUndefined();
+      expect(at(2, 'done')).toBeUndefined();
+      expect(at(2, 'running', 0)).toBeUndefined();
+      expect(pitchedAtOf({ steps: steps.slice(1), status: 'running', currentStep: 1, stepStartedEpoch: 1 })).toBeUndefined();
+    });
+  });
+
+  describe('fermentControlOf', () => {
+    const snap = { sensors: [], actuators: [], controllers: [{ id: 'gaer' }] } as unknown as Snapshot;
+    const f = (p: Partial<Fermenter>) => ({ manual: false, tempering: 'cool', controller: 'gaer', ...p }) as Fermenter;
+
+    it('takes the fermenter\'s controller when it is in the registry', () => {
+      expect(fermentControlOf(f({}), snap)).toEqual({ controller: 'gaer' });
+      expect(fermentControlOf(f({ controller: 'weg' }), snap)).toBeUndefined();
+      expect(fermentControlOf(f({ manual: true }), snap)).toBeUndefined();
+      expect(fermentControlOf(f({ tempering: 'none' }), snap)).toBeUndefined();
+      expect(fermentControlOf(f({}), null)).toBeUndefined();
+      expect(fermentControlOf(undefined, snap)).toBeUndefined();
     });
   });
 });

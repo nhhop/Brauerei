@@ -5040,6 +5040,20 @@ components:
             gaer_temp: { enabled: true, v: 10 }
             ruehrer: { v: 30, interval: { onSec: 30, periodSec: 60 } }
         holdSec: { type: integer, description: How long this step lasts. }
+        rampSec:
+          type: integer
+          minimum: 1
+          description: |
+            Omitted when 0 (values jump when the step begins). Otherwise every
+            controller `v` of this step runs linearly over `rampSec` from the
+            `v` the program gave that controller in an earlier step to this
+            step's `v`; without an earlier value it jumps. The setpoint moves
+            in steps of at least 0.05 and lands on the target at the end. The
+            ramp follows the step's elapsed time, so it resumes at the right
+            value after a reboot (or a deep-sleep wake-up) and stands still
+            while the program is paused. A step that ends early (`next`) or
+            waits for confirmation puts the setpoint on its target. Actuator
+            values never ramp.
         end:
           type: string
           enum: [hold, sensor]

@@ -65,13 +65,15 @@ export interface Brew {
   notes?: string;
   // Brew day (5b). Saved one field at a time on a fresh copy (patchBrew).
   measurements?: Partial<Record<MeasureId, Measurement>>;
-  checked?: string[];                    // ticked keys, e.g. `row:<group>`, `dose:<column>:<row id>`
+  checked?: string[];                    // ticked keys, e.g. `row:<group>`, `dose:<column>:<row id>`,
+                                         // `removed:<row id>` (a dry hop taken out again)
   rowAmounts?: Record<string, number>;   // amount actually used per recipe row, in the row's unit
                                          // (`mashPh:<entry id>`: an acid or base the recipe does not have)
   restTemps?: Record<string, Measurement>;  // temperature measured per mash step id
   mashProgramId?: string;                // the rest timer on the device (brewPrograms.ts)
   boilProgramId?: string;                // the boil timer with its additions
-  addedAt?: Record<string, number>;      // when a boil addition went in, per recipe row id
+  fermentProgramId?: string;             // the fermentation program at the fermenter (5c-3)
+  addedAt?: Record<string, number>;      // when a boil addition or dry hop went in, per recipe row id
   phaseNotes?: Partial<Record<PhaseId, string>>;
   logId?: string;                        // the device log the mash course is drawn from
   phaseStartedAt?: Partial<Record<PhaseId, number>>;  // epoch ms; mash: when the grain went in

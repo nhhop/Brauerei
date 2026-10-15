@@ -21,6 +21,7 @@ import { Card, Field, MenuItem } from './recipe/fields';
 import { BoilTab } from './brew/BoilTab';
 import { dropProgram } from './brew/BrewTimer';
 import { FermentTab } from './brew/FermentTab';
+import { MaturationTab } from './brew/MaturationTab';
 import { MashTab } from './brew/MashTab';
 import { PrepTab, type Patch } from './brew/PrepTab';
 import { StartBrewDialog } from './brew/StartBrewDialog';
@@ -135,7 +136,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
 
   // The brew's programs on the device go with it; one already gone is fine.
   const dropPrograms = async () => {
-    for (const id of [saved.mashProgramId, saved.boilProgramId]) if (id) await dropProgram(id);
+    for (const id of [saved.mashProgramId, saved.boilProgramId, saved.fermentProgramId]) if (id) await dropProgram(id);
   };
 
   // Gives the taken amounts back to lots that still exist, then deletes.
@@ -188,7 +189,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
                       onClick={() => run(async () => {
                         await dropPrograms();
                         adopt(await patchBrew(saved.id, (b) => {
-                          const { mashProgramId: _, boilProgramId: __, ...rest } = b;
+                          const { mashProgramId: _, boilProgramId: __, fermentProgramId: ___, ...rest } = b;
                           return results({ ...rest, status: 'done' });
                         }));
                       }, 'Abschließen fehlgeschlagen.')} />
@@ -298,8 +299,13 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
             snap={snap} editable={!planned} patch={patch} fermenters={fermenters} all={all}
             notes={draft.phaseNotes?.fermentation} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, fermentation: t } })} />
         )
+      ) : tab === 'maturation' ? (
+        !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
+          <MaturationTab brew={saved} recipe={recipe} inputs={day.inputs} editable={!planned} patch={patch}
+            notes={draft.phaseNotes?.maturation} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, maturation: t } })} />
+        )
       ) : (
-        <p class="text-sm text-muted">Inhalt folgt mit Reifung und Abfüllung (Etappe 5c).</p>
+        <p class="text-sm text-muted">Inhalt folgt mit der Abfüllung (Etappe 5c-5).</p>
       )}
 
       {dialog === 'start' && recipe && brewery && (

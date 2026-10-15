@@ -11,6 +11,7 @@ bool readSteps(JsonObjectConst cfg, std::vector<ProgramStep>& out) {
     ProgramStep st;
     st.name    = s["name"]    | "";
     st.holdSec = s["holdSec"] | 0;
+    st.rampSec = s["rampSec"] | 0;
     st.confirm = s["confirm"] | false;
     st.notify  = s["notify"]  | false;
     if (!readTargets(s, legacyController, st.targets)) return false;
@@ -30,6 +31,7 @@ void writeSteps(JsonObject cfg, const std::vector<ProgramStep>& steps) {
     if (!s.name.empty()) so["name"] = s.name.c_str();
     writeTargets(so, s.targets);
     so["holdSec"] = s.holdSec;
+    if (s.rampSec) so["rampSec"] = s.rampSec;
     if (s.confirm) so["confirm"] = true;
     if (s.notify)  so["notify"]  = true;
     if (s.end == StepEnd::Sensor) {

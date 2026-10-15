@@ -2622,3 +2622,35 @@ blieb aber aus; die Regler-Karte zeigte 0 %, weil `Actuator::state()` bei ausges
     - Testregler und Testprogramm gelöscht; den übrigen Gerätezustand hat der Nutzer selbst eingestellt.
 - **Offen gelassen (PLAN.md):** Reihenfolge Regler/Aktor im selben Programmschritt; großes dt im ersten PID-Schritt
   nach dem Wiedereinschalten.
+
+## 2026-10-15 — Sud 5c-3: Gärprogramm, Firmware-Rampe, Stopfgaben
+
+Umsetzung nach `BrewControl/docs/rezept-sud-editor.md` › Plan 5c › 5c-3, auf dem Regler-Fix von PR #107. Einzelheiten
+stehen dort unter „Sud › Stand 5c-3“.
+
+- **Firmware:** Schrittfeld `rampSec` (`ProgramSteps`, `openapi.yaml`, `types.ts`). Regler-Sollwerte laufen linear
+  vom vorigen Wert des Programms; die Rechnung steckt rein in `ProgramRamp.h`, der `ProgramRunner` setzt sie beim
+  Schrittbeginn, nach Neustart, `resume` und `prev` ein, führt sie im `tick` nach (je Sekunde, ab 0,05 K) und setzt
+  das Ziel, wenn der Schritt endet oder auf Freigabe wartet. Eine Pause friert sie ein.
+- **Web:** Feld „Rampe“ im Programm-Editor, ↗ in der Programmkarte. Generator `fermentationProgram` mit
+  `fermentControlOf` und `dryHops`; Karte „Gärprogramm“ im Tab Gärung, Sperre der Gärplatz-Wahl, aktuelle Phase vom
+  Programm; Stopfgaben zum Abhaken mit „entnommen“ (`DryHopList`), neuer Tab Reifung (`MaturationTab`).
+- **Entscheidungen des Nutzers:**
+  - Der Regler-Bug wird in einem eigenen PR vorher behoben (PR #107).
+  - Der erste Programmschritt ist das Anstellen; die Anstellzeit kommt von dessen „Weiter“ (`pitchedAtOf`), ein
+    Aufholen auf eine ältere Anstellzeit gibt es nicht. „Angestellt“ ist in diesem Schritt das „Weiter“.
+  - Stopfgaben nach Zeitpunkt: Hauptgärung im Tab Gärung, Reifung im Tab Reifung.
+- **Annahmen:** Tag d einer Stopfgabe = d × 24 h nach dem Anstellen. Gaben ohne Tag meldet das Programm nicht. Die
+  erste Phase rampt nicht. Ohne Regler gibt es keinen Endschritt.
+- **Nebenbei:** `AdditionRow` zeigt bei einer Gabe von einem anderen Tag das Datum zur Uhrzeit und nimmt einen
+  Abschluss (`extra`) für den Haken „entnommen“.
+- **Verifikation:**
+  - Firmware `pio test -e native` 194 grün (neu: `test_program_ramp`, 7 Fälle: linear, Ende, kein Vorwert,
+    stückweise, Schwelle). `pio run -e esp32dev` (Flash 98,2 %) und `-e lilygo_t_display_s3_amoled` erfolgreich.
+  - Web `pnpm typecheck`, `pnpm test` 604 grün (neu: Generator mit Rampen-Teilung, gleichzeitige Gaben, Druck,
+    ohne Regler, `pitchedAtOf`, `fermentControlOf`), `pnpm build`.
+  - Redocly-Lint ohne neue Warnung.
+  - Browser gegen einen Mock mit simuliertem Programm-Runner bei 390 px ohne Querscrollen: Start mit Rückfrage,
+    „Angestellt“ schaltet das Programm weiter und übernimmt dessen Zeit, Sperre, aktuelle Phase vom Programm,
+    Stopfgaben in beiden Tabs mit Speichern von `addedAt` und `removed:<id>`, Feld „Rampe“ mit Wert aus einem Profil.
+  - Am Gerät nicht geprüft (PLAN.md › Hardware-Verifikation, „Gärprogramm am Gerät“).
