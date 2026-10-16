@@ -26,6 +26,7 @@ import { MaturationTab } from './brew/MaturationTab';
 import { MashTab } from './brew/MashTab';
 import { PrepTab, type Patch } from './brew/PrepTab';
 import { StartBrewDialog } from './brew/StartBrewDialog';
+import { TastingTab } from './brew/TastingTab';
 import { formatIsoDate } from './brew/format';
 import { statusBadge } from './BrewsPage';
 
@@ -308,12 +309,14 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
             og={saved.measurements?.pitchGravity?.v ?? day.targets.values.pitchGravity}
             notes={draft.phaseNotes?.maturation} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, maturation: t } })} />
         )
-      ) : (
+      ) : tab === 'bottling' ? (
         !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
           <BottlingTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets} editable={!planned} patch={patch}
             og={saved.measurements?.pitchGravity?.v ?? day.targets.values.pitchGravity}
             notes={draft.phaseNotes?.bottling} onNotes={(t) => set({ phaseNotes: { ...draft.phaseNotes, bottling: t } })} />
         )
+      ) : (
+        <TastingTab brew={saved} editable={!planned} />
       )}
 
       {dialog === 'start' && recipe && brewery && (

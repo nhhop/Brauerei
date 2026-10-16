@@ -207,6 +207,32 @@ describe('brew backup file', () => {
     expect(readings.has('b2')).toBe(false);
   });
 
+  it('takes the tastings along and restores them', async () => {
+    const files = new Map<string, unknown>([
+      ['b1', { ...newBrew(recipe(), [], '2026-10-20'), id: 'b1' }],
+      ['b2', { ...newBrew(recipe(), [], '2026-10-21'), id: 'b2' }],
+    ]);
+    const readings = new Map<string, unknown>();
+    const tasting = new Map<string, unknown>([['b2', { id: 'b2', tastings: [{ id: 't1', at: 7, aroma: { descriptors: ['citrus'] } }] }]]);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const parts = url.split('/');
+      const last = parts.pop();
+      const store = last === 'tasting' ? tasting : last === 'readings' ? readings : files;
+      const id = store === files ? last! : parts.pop()!;
+      if (url === '/api/brews') return new Response(JSON.stringify([...files.keys()].map((id) => ({ id }))));
+      if (init?.method === 'PUT') { store.set(id, JSON.parse(init.body as string)); return new Response(null, { status: 204 }); }
+      return store.has(id) ? new Response(JSON.stringify(store.get(id))) : new Response('not found', { status: 404 });
+    }));
+    const text = await exportBrews();
+    // only the brew that has tastings gets an entry
+    expect(JSON.parse(text).tasting).toEqual([tasting.get('b2')]);
+    files.clear();
+    tasting.clear();
+    expect(await importBrews(text)).toBe(2);
+    expect(tasting.get('b2')).toEqual({ id: 'b2', tastings: [{ id: 't1', at: 7, aroma: { descriptors: ['citrus'] } }] });
+    expect(tasting.has('b1')).toBe(false);
+  });
+
   it('still imports a backup from before the readings', async () => {
     const put = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', put);

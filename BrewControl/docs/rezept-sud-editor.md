@@ -1947,6 +1947,40 @@ Nur Web.
 - **Index:** `brewSummaryLine` bekommt `abvPct`, `attenuationPct` und `fgPlato` (Firmware-Test, `openapi.yaml`,
   `SUMMARY_FIELDS`). `withResults` füllt sie und `bottledL`. Der Rezept-Tab „Sude“ bekommt die Spalten.
 
+##### Verkostung (Stand 2026-10-16)
+- **Entscheidungen des Nutzers:** mehrere Verkostungen je Sud, jede mit Zeitpunkt (Jungbier, Flasche nach zwei und
+  nach sechs Wochen); eigener Tab „Verkostung“ nach der Abfüllung; Auswahl von Begriffen statt Punkten, nur der
+  Genuss-Faktor ist eine Zahl (1 bis 5 Sterne); keine Anzeige in der Sudliste (kein Eingriff in den Firmware-Index).
+  Eine Note für die „technische Ausführung“ gibt es bewusst nicht.
+- **Ablage:** eigenes Dokument je Sud, `/brewtasting/<id>.json` über `GET/PUT /api/brews/<id>/tasting`, nach dem
+  Muster der Messungen von Hand: Der Sud bleibt unter 16 KB, das Dokument geht mit dem Sud weg und in dieselbe
+  Sicherung (Schlüssel `tasting`; ältere Sicherungen ohne ihn lassen sich einspielen). Etwa 12 Verkostungen, die bis
+  zu den Notizen ausgefüllt sind (je 1,2 KB), passen in 15 000 Byte.
+- **Aufbau** (`web/src/brewTasting.ts`), nach den fünf Phasen einer Verkostung, jede mit Notizfeld:
+  1. *Aussehen:* Farbe, Trübung, Schaummenge, Schaumstruktur, Schaumhaltbarkeit. Bei „Kein Schaum“ sind Struktur und
+     Haltbarkeit gesperrt (ein gespeicherter Wert bleibt).
+  2. *Geruch:* Aroma-Begriffe (Mehrfachauswahl).
+  3. *Antrunk:* Rezenz (Kohlensäure-Empfinden), erster Geschmackseindruck.
+  4. *Haupttrunk:* Körper, Geschmacksbalance (malzbetont, ausgewogen, hopfenbetont, säuerlich), Textur (Mehrfachauswahl).
+  5. *Nachtrunk / Abgang:* Intensität und Qualität der Bittere, retronasaler Nachhall (dieselbe Aroma-Liste wie beim
+     Geruch), Nachhall-Dauer, Alkoholwahrnehmung, Trinkbarkeit.
+
+  Danach *Fehlaromen* mit Stufe (leicht, deutlich, stark) und *Gesamteindruck* (Komplexität, Stilgerechtigkeit,
+  Genuss-Faktor in Sternen). Aromen werden nur einmal beim Geruch und einmal als Nachhall abgefragt; Antrunk und
+  Haupttrunk fragen Empfindungen ab, keine Aromen. Die zweite Balance-Achse süß/trocken entfiel (sie steckt in
+  „Malzbetont (süß)“, „Schlank“ und „Knackig“).
+- **Trübung:** eine Skala von glanzfein bis opak. „Opak“ ist das obere Ende der Trübung; für dunkle Biere, bei denen
+  sich Trübung nicht von der Farbe unterscheiden lässt, gibt es „nicht beurteilbar (zu dunkel)“. Die Trübungsart (Hefe,
+  Kälte, Hopfen, Eiweiß) wird nicht gesondert erfasst.
+- **Begriffe** (`web/src/tastingVocab.ts`): eigene deutsche Begriffe in der Art des Bier-Aromarads, gruppiert
+  (Getreide & Malz, Karamell & Süße, Röstig & Rauch, Fruchtig, Hopfig & blumig, Würzig, Sonstiges). Fehlaromen in fünf
+  Gruppen mit Beschreibung und häufigen Ursachen. Viele Auswahlfelder tragen einen Hinweis (typische Stile, was gemeint
+  ist), der unter der gewählten Option steht. Kein Text der BJCP (Urheberrecht, das Repo ist öffentlich). Gespeichert
+  werden stabile Kennungen, nicht die Bezeichnungen.
+- **Oberfläche:** `TastingTab` mit einer Karte je Verkostung (neueste oben, „x Tage nach der Abfüllung“), `TastingForm`
+  mit einklappbaren Abschnitten, `ChipGroup` für die Auswahl, `StarRating` für den Genuss-Faktor. Gespeichert wird von
+  selbst, eine Sekunde nach der letzten Änderung und beim Verlassen des Tabs.
+
 #### Doku und Verifikation je Teil-Etappe
 - **Prüfung:** Tests für neue Rechnungen und Generatoren, `pnpm typecheck`, `pnpm test`, `pnpm build`;
   `npx @redocly/cli lint` bei Routen- oder Feldänderungen. Bei Firmware `pio test -e native` und `pio run`

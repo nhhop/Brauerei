@@ -2530,7 +2530,8 @@ paths:
       description: |
         Also drops the brew's line from the list index, whether or not the
         file still existed (`404` then, but a stale entry is gone). The brew's
-        readings (`/api/brews/{id}/readings`) are deleted with it.
+        readings (`/api/brews/{id}/readings`) and tastings
+        (`/api/brews/{id}/tasting`) are deleted with it.
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
@@ -2565,6 +2566,52 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/BrewReadings" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+
+  /api/brews/{id}/tasting:
+    parameters: [{ $ref: "#/components/parameters/BrewId" }]
+    get:
+      tags: [Brews]
+      operationId: getBrewTasting
+      summary: Get a brew's tastings
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: The tastings exactly as they were stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BrewTasting" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Brews]
+      operationId: putBrewTasting
+      summary: Create or replace a brew's tastings
+      description: |
+        The tasting notes of the brew, one entry per tasting: appearance, smell,
+        attack, main sip and finish, off-flavours and the overall impression,
+        as chosen descriptors plus notes. Written to `/brewtasting/<id>.json` via a temporary file, so
+        a power cut during the save leaves the previous version. Not part of the
+        brew, which keeps to its 16 KB; the brew's delete removes the file. The
+        body limit is 16 KB as well.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BrewTasting" }
       responses:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "204": { $ref: "#/components/responses/NoContent" }
@@ -5560,6 +5607,59 @@ components:
                   in °C.
               v: { type: number }
               note: { type: string }
+
+    BrewTasting:
+      type: object
+      required: [id, tastings]
+      description: |
+        Owned by the web UI (`web/src/brewTasting.ts`). `id` is the brew's id. The
+        firmware checks only `id`; it keeps the rest as given. The 16 KB body limit
+        applies. Choices are stored as stable slugs (`web/src/tastingVocab.ts`).
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        tastings:
+          type: array
+          items:
+            type: object
+            required: [id, at]
+            properties:
+              id: { type: string }
+              at: { type: integer, format: int64, description: Unix epoch milliseconds. }
+              taster: { type: string }
+              appearance:
+                type: object
+                additionalProperties: true
+                description: Colour, clarity, head amount, texture and stability, `notes`.
+              aroma:
+                type: object
+                additionalProperties: true
+                description: "`descriptors` (list of ids) and `notes`."
+              attack:
+                type: object
+                additionalProperties: true
+                description: Carbonation as felt, first impression, `notes`.
+              main:
+                type: object
+                additionalProperties: true
+                description: Body, balance, `textures` (list of ids), `notes`.
+              finish:
+                type: object
+                additionalProperties: true
+                description: |
+                  Bitterness (intensity, quality), `aftertaste` (list of aroma ids),
+                  length, alcohol, drinkability, `notes`.
+              faults:
+                type: array
+                items:
+                  type: object
+                  required: [id, level]
+                  properties:
+                    id: { type: string }
+                    level: { type: string, enum: [slight, clear, strong] }
+              overall:
+                type: object
+                additionalProperties: true
+                description: Complexity, style fit, `enjoyment` (1 to 5 stars), `notes`.
 
     Recipe:
       type: object
