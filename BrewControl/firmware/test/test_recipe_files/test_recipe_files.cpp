@@ -61,6 +61,26 @@ void test_readings_url_with_an_id_that_could_form_a_path_is_rejected() {
   TEST_ASSERT_EQUAL_STRING("", brewReadingsId(("/api/brews/" + std::string(33, 'a') + "/readings").c_str()).c_str());
 }
 
+void test_tasting_url_gives_the_brew_id() {
+  TEST_ASSERT_EQUAL_STRING("abc", brewTastingId("/api/brews/abc/tasting").c_str());
+  TEST_ASSERT_EQUAL_STRING("mv9yy47j88f0jp", brewTastingId("/api/brews/mv9yy47j88f0jp/tasting").c_str());
+}
+
+void test_other_urls_are_no_tasting_urls() {
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/brews/abc").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/brews/abc/readings").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewReadingsId("/api/brews/abc/tasting").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/brews//tasting").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/brews/abc/tasting/x").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/recipes/abc/tasting").c_str());
+}
+
+void test_tasting_url_with_an_id_that_could_form_a_path_is_rejected() {
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/brews/../tasting").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId("/api/brews/a/b/tasting").c_str());
+  TEST_ASSERT_EQUAL_STRING("", brewTastingId(("/api/brews/" + std::string(33, 'a') + "/tasting").c_str()).c_str());
+}
+
 void test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id() {
   JsonDocument doc;
   const char* recipe =
@@ -184,6 +204,9 @@ int main(int, char**) {
   RUN_TEST(test_readings_url_gives_the_brew_id);
   RUN_TEST(test_other_urls_are_no_readings_urls);
   RUN_TEST(test_readings_url_with_an_id_that_could_form_a_path_is_rejected);
+  RUN_TEST(test_tasting_url_gives_the_brew_id);
+  RUN_TEST(test_other_urls_are_no_tasting_urls);
+  RUN_TEST(test_tasting_url_with_an_id_that_could_form_a_path_is_rejected);
   RUN_TEST(test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id);
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
   RUN_TEST(test_summary_line_carries_the_version_fields);

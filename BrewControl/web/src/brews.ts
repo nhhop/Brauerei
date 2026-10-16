@@ -8,6 +8,7 @@
 import { failed } from './api';
 import type { Brewery, Brewhouse, MeasureKey } from './brewhouse';
 import { getReadings, saveReadings, type BrewReadings } from './brewReadings';
+import { getTasting, saveTasting, type BrewTasting } from './brewTasting';
 import type { Fermenter } from './cellar';
 import { importBundle, makeBundle, type BundleKind } from './docBundle';
 import type { CatalogIngredient } from './ingredientCatalog';
@@ -25,6 +26,7 @@ export const PHASES = [
   { id: 'fermentation', label: 'Gärung' },
   { id: 'maturation', label: 'Reifung' },
   { id: 'bottling', label: 'Abfüllung' },
+  { id: 'tasting', label: 'Verkostung' },
 ] as const;
 
 export type PhaseId = (typeof PHASES)[number]['id'];
@@ -313,28 +315,37 @@ const BUNDLE: BundleKind = {
 };
 
 // The hand-entered readings (brewReadings.ts) go in the same file under
-// `readings`, one document per brew that has any.
+// `readings`, the tastings (brewTasting.ts) under `tasting`, one document per
+// brew that has any.
 export async function exportBrews(): Promise<string> {
   const brews: Brew[] = [];
   const readings: BrewReadings[] = [];
+  const tasting: BrewTasting[] = [];
   for (const { id } of await fetchList()) {
     const b = await getBrew(id);
     if (!b) continue;
     brews.push(b);
     const r = await getReadings(id);
     if (r.readings.length > 0) readings.push(r);
+    const t = await getTasting(id);
+    if (t.tastings.length > 0) tasting.push(t);
   }
-  return makeBundle(BUNDLE, brews, { readings });
+  return makeBundle(BUNDLE, brews, { readings, tasting });
 }
 
 // Same id → overwritten, updatedAt kept. Stock is not touched. A file from before
-// the readings has none, which is fine.
+// the readings or the tastings has none, which is fine.
 export async function importBrews(text: string, onProgress?: (done: number, total: number) => void): Promise<number> {
   const done = await importBundle<Brew>(BUNDLE, text, put, onProgress);
-  const docs = (JSON.parse(text) as { readings?: BrewReadings[] }).readings;
-  for (const doc of Array.isArray(docs) ? docs : []) {
+  const sidecars = JSON.parse(text) as { readings?: BrewReadings[]; tasting?: BrewTasting[] };
+  for (const doc of Array.isArray(sidecars.readings) ? sidecars.readings : []) {
     try { await saveReadings(doc); } catch (e) {
       throw new Error(`${done} Suden eingespielt, dann bei den Messungen von ${doc?.id}: ${e}`);
+    }
+  }
+  for (const doc of Array.isArray(sidecars.tasting) ? sidecars.tasting : []) {
+    try { await saveTasting(doc); } catch (e) {
+      throw new Error(`${done} Suden eingespielt, dann bei den Verkostungen von ${doc?.id}: ${e}`);
     }
   }
   return done;

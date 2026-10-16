@@ -2738,3 +2738,34 @@ Damit ist Plan 5c abgeschlossen.
   - **Kein Gerät:** das `PUT` mit den neuen Index-Feldern und die Spalten am echten Gerät sind nicht geprüft (PLAN.md ›
     Hardware-Verifikation).
 - **Offen gelassen (PLAN.md):** Gebinde-Bestand wird nicht abgebucht; der Alkohol zählt die Gärung der Speise nicht mit.
+
+## 2026-10-16 — Sud: Verkostung
+
+Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/rezept-sud-editor.md` › „Verkostung (Stand 2026-10-16)“.
+
+- **Entscheidungen des Nutzers:** mehrere Verkostungen je Sud mit Zeitpunkt; eigener Tab; Auswahl von Begriffen, nur der Genuss-Faktor
+  ist eine Zahl (1 bis 5 Sterne); keine Anzeige in der Sudliste. Aufbau nach den fünf Phasen (Aussehen, Geruch, Antrunk, Haupttrunk,
+  Nachtrunk) plus Fehlaromen und Gesamteindruck; Aromen nur beim Geruch und als Nachhall, nicht in jedem Trunk. Trübung als eine
+  Skala (glanzfein bis opak) plus „nicht beurteilbar (zu dunkel)“; bei „Kein Schaum“ sind Schaumstruktur und -haltbarkeit gesperrt;
+  keine Note für die technische Ausführung. Der erste Entwurf (Aromen in jedem Trunk, zwei Balance-Achsen) wurde noch am selben Tag
+  umgebaut, bevor etwas committet war.
+- **Firmware:** `GET/PUT /api/brews/<id>/tasting` (`/brewtasting/<id>.json`), Löschen mit dem Sud. `brewReadingsId` und
+  `brewTastingId` teilen sich `brewSubId` (`RecipeFiles.h`). `openapi.yaml` (Pfad, Schema `BrewTasting`, `deleteBrew`) und die
+  README (Tabelle, Sicherung) nachgezogen. Kein neues Index-Feld.
+- **Web:** `brewTasting.ts` (Typen, Listen- und Auswahl-Funktionen, `fitsLimit`, Store), `tastingVocab.ts` (Aroma- und
+  Fehlaroma-Begriffe, Auswahllisten mit Hinweisen), `ChipGroup`, `StarRating`, `TastingForm`, `TastingTab` (entprellter Autosave,
+  Speichern beim Verlassen), `PHASES` um `tasting` erweitert, Export und Import der Sud-Sicherung um `tasting`. Etwa 12 voll
+  ausgefüllte Verkostungen (1,2 KB) passen in das Dokument.
+- **Begriffe:** eigene deutsche Fassung in der Art des Bier-Aromarads, kein BJCP-Text (Urheberrecht, öffentliches Repo).
+  Die „häufigen Ursachen“ der Fehlaromen sind eine erste Fassung (PLAN.md).
+- **Verifikation:**
+  - Web `pnpm typecheck`, `pnpm test` 734 grün (neu: `brewTasting`, `tastingVocab`, Sicherung mit `tasting`), `pnpm build`.
+  - Firmware `pio test -e native` 200 grün (neu: drei Tests für `brewTastingId` in `test_recipe_files`); `pio run` für `esp32dev`
+    und `lilygo_t_display_s3_amoled` erfolgreich.
+  - Redocly-Lint ohne neue Warnung (nur die bekannte `info-license`).
+  - Browser gegen einen Wegwerf-Mock bei 375 px: Verkostung anlegen, Auswahl, Hinweis unter der gewählten Option, „Kein Schaum“
+    sperrt Struktur und Haltbarkeit, Sterne setzen und löschen, Fehlaroma mit Stufe, Autosave, Reload (Gruppen mit Auswahl starten
+    offen), Speichern beim Wechsel des Tabs, Löschen; kein Querscrollen. Firmware seit dem Umbau unverändert (die Compiles und
+    Tests oben gelten weiter).
+  - **Kein Gerät:** `GET/PUT /api/brews/<id>/tasting` am echten Gerät nicht geprüft (PLAN.md › Hardware-Verifikation).
+- **Offen gelassen (PLAN.md):** Auswertung in Sudliste und Rezept; Begriffe und Ursachen mit Erfahrung durchsehen.

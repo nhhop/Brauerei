@@ -415,7 +415,8 @@ per `PUT` zurück (gleiche ID wird überschrieben, kein Neustart).
 Sude (`/brews/<id>.json`, Index `/brews/index.jsonl`, `/api/brews`) liegen genauso und haben auf
 „Backup & Restore“ einen eigenen Export/Import (`brewcontrol-brews`); der Lagerbestand bleibt dabei
 unverändert. Die Messungen von Hand (`/brewreadings/<id>.json`, `/api/brews/<id>/readings`) stehen in
-derselben Sicherung unter `readings`; eine ältere Sicherung ohne diesen Schlüssel lässt sich weiter
+derselben Sicherung unter `readings`, die Verkostungen (`/brewtasting/<id>.json`,
+`/api/brews/<id>/tasting`) unter `tasting`; eine ältere Sicherung ohne diese Schlüssel lässt sich weiter
 einspielen.
 
 ## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
@@ -790,8 +791,9 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/recipes` | GET | Rezeptliste (Kopfdaten), nur SD-Boards |
 | `/api/recipes/<id>` | GET, PUT, DELETE | Rezept lesen / anlegen oder ersetzen / löschen (`/recipes/<id>.json` auf der SD) |
 | `/api/brews` | GET | alle Sude, nur die Index-Felder inkl. Gärplatz, Belegung und Ergebnissen (Stammwürze, Effizienzen, Restextrakt, Alkohol, Endvergärung, Abfüllmenge; `/brews/index.jsonl`), nur SD-Boards |
-| `/api/brews/<id>` | GET, PUT, DELETE | Sud lesen / anlegen oder ersetzen / löschen (`/brews/<id>.json`); DELETE entfernt auch die Messungen des Suds |
+| `/api/brews/<id>` | GET, PUT, DELETE | Sud lesen / anlegen oder ersetzen / löschen (`/brews/<id>.json`); DELETE entfernt auch die Messungen und Verkostungen des Suds |
 | `/api/brews/<id>/readings` | GET, PUT | Messungen von Hand (Dichte, Temperatur, pH) des Suds lesen (404 = keine) / ersetzen (`/brewreadings/<id>.json`, bis 16 KB), nur SD-Boards |
+| `/api/brews/<id>/tasting` | GET, PUT | Verkostungen (Aussehen, Geruch, Antrunk, Haupttrunk, Nachtrunk, Fehlaromen, Gesamteindruck) des Suds lesen (404 = keine) / ersetzen (`/brewtasting/<id>.json`, bis 16 KB), nur SD-Boards |
 | `/api/brewhouses` | GET | alle Sudhäuser, vollständig (`/brewhouses/<id>.json`, kein Index), nur SD-Boards |
 | `/api/brewhouses/<id>` | PUT, DELETE | Sudhaus anlegen oder ersetzen / löschen |
 | `/api/mash-profiles` | GET | alle eigenen Maischprofile, vollständig (`/mashprofiles/<id>.json`, kein Index), nur SD-Boards; die mitgelieferten stehen im Web-UI |
