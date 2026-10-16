@@ -67,6 +67,33 @@ inline bool renameRefs(JsonVariant v, const char* from, const char* to) {
   return changed;
 }
 
+// Resolves a controller input "<id>" or "<id>.<key>" to its sensor and channel
+// index. The exact id wins (so ids containing a dot stay addressable), a bare
+// id means channel 0; otherwise the last dot splits sensor id and channel key.
+// Reg is a Registry (findSensor); templated so native tests can use a fake.
+template <class Reg>
+inline auto resolveSensorChannel(Reg& reg, const char* ref, size_t& channel)
+    -> decltype(reg.findSensor(ref)) {
+  channel = 0;
+  if (auto* s = reg.findSensor(ref)) return s;
+  const char* dot = strrchr(ref, '.');
+  if (!dot) return nullptr;
+  auto* s = reg.findSensor(std::string(ref, static_cast<size_t>(dot - ref)).c_str());
+  if (!s) return nullptr;
+  for (size_t i = 0; i < s->channelCount(); ++i) {
+    if (strcmp(s->channel(i).key, dot + 1) == 0) { channel = i; return s; }
+  }
+  return nullptr;
+}
+
+// The ID the snapshot uses for channel `channel` of `s`: "<id>" for an empty
+// key, "<id>.<key>" otherwise.
+template <class Sens>
+inline std::string sensorChannelRef(const Sens& s, size_t channel) {
+  const char* key = s.channel(channel).key;
+  return key && key[0] ? std::string(s.id()) + "." + key : std::string(s.id());
+}
+
 // Whether `key` is one of the comma-separated keys in `list` (exact match), as
 // in a dashboard sensor entry "gyro.pitch,roll,tilt".
 inline bool keyInList(const char* list, const char* key) {

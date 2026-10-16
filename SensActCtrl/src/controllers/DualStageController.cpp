@@ -47,7 +47,7 @@ void DualStageController::applyEnabled(bool e) {
 void DualStageController::tick() {
   if (!enabled()) { writeOff(); return; }
 
-  const Reading r = sensor_->channel(0).reading;
+  const Reading r = sensor_->channel(channel_).reading;
   if (!r.valid) { writeOff(); return; }  // fail-safe: both off on dead sensor
 
   const uint32_t now = millis();
@@ -150,6 +150,8 @@ static bool extractBool(const char* json, const char* key, bool* out) {
 
 size_t DualStageController::paramsJson(char* buf, size_t bufSize) const {
   if (!buf || bufSize == 0) return 0;
+  char ref[96];
+  sensorRef(*sensor_, channel_, ref, sizeof ref);
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"heatDiff\":%.4f,\"coolDiff\":%.4f,"
                          "\"coolMinOnMs\":%u,\"coolMinOffMs\":%u,\"changeoverMs\":%u,"
@@ -162,7 +164,7 @@ size_t DualStageController::paramsJson(char* buf, size_t bufSize) const {
                          static_cast<unsigned>(coolMinOffMs_),
                          static_cast<unsigned>(changeoverMs_),
                          rangeMin(), rangeMax(),
-                         sensor_->id(),
+                         ref,
                          heat_ ? heat_->id() : "",
                          cool_ ? cool_->id() : "",
                          enabled() ? "true" : "false",

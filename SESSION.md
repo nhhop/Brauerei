@@ -2797,3 +2797,20 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
 - **Verifikation:** `pnpm typecheck`, `pnpm test` 738 grün (vier neue Tests). Im Browser gegen das LilyGo (`pnpm dev`, Sud #5):
   „Pfirsich“ eingeben, gewählt in Geruch, als nicht gewählter Vorschlag im Nachhall, `GET /api/brews/<id>/tasting` zeigt
   `["~Pfirsich"]`; die Test-Verkostung danach gelöscht. **Nicht aufgespielt:** Das UI-Tar liegt nicht auf dem Gerät.
+
+## 2026-10-16 — Regler mit Kanal-ID als Eingang
+
+- **Problem:** Regler fanden ihren Sensor nur über die nackte ID und lasen immer `channel(0)`. Ein BME280 regelte so immer auf `temp`;
+  `bme.hum` oder `gyro.roll` waren kein möglicher Eingang, und das Formular (das nur `<id>.<key>` anbietet) fand die gespeicherte
+  nackte ID nicht in der Auswahl.
+- **Umsetzung:** Die vier Regler (`TwoPoint`, `PID`, `DualStage`, `SplitRangePID`) haben `setChannel(idx)` und lesen diesen Kanal;
+  `paramsJson` meldet `sensor` als Snapshot-ID (`core/SensorRef.h`: `<id>.<key>`, bei leerem Key die nackte ID). Die Firmware löst
+  `cfg.sensor` mit `resolveSensorChannel` (`SensorChannels.h`) auf: exakte ID zuerst, sonst Split am letzten Punkt und Key-Suche.
+  `addControllerNoBegin` speichert die kanonische ID in `cfgJson`; eine nackte ID eines Mehrkanal-Sensors (z. B. `gyro`) wird damit
+  beim Laden zu `gyro.pitch` und `loadFromSD` schreibt die Registry zurück. `referencedByController` und die 409-Sperre griffen
+  für `<id>.<key>` schon. `openapi.yaml` und der Kommentar in `brewPrograms.ts` nachgezogen; das Web-Formular brauchte keine Änderung,
+  weil die gespeicherte Konfiguration jetzt immer die ID aus `snap.sensors` trägt.
+- **Verifikation:** `pio test -e native` SensActCtrl 372 (neu: `test_controller_channel`, `MockMultiSensor`), Firmware 204 (neu:
+  Resolver und `sensorChannelRef` in `test_sensor_channels`), `pnpm typecheck`, `brewPrograms.test.ts`, Redocly-Lint.
+  **Nicht am Gerät geprüft:** Regler auf `bme.hum`/`gyro.roll`, Migration eines vorhandenen Reglers auf `gyro`.
+  Downgrade: Ältere Firmware kennt `<id>.<key>` bei Reglern nicht (`sensor not found`); vorher die Registry-Sicherung zurückspielen.

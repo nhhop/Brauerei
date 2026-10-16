@@ -89,7 +89,7 @@ void SplitRangePIDController::applyEnabled(bool e) {
 void SplitRangePIDController::tick() {
   if (!enabled()) { writeOff(); return; }
 
-  const Reading r = sensor_->channel(0).reading;
+  const Reading r = sensor_->channel(channel_).reading;
   if (!r.valid) { writeOff(); return; }  // fail-safe: both off on dead sensor
 
   const uint32_t now = millis();
@@ -236,6 +236,8 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
   int32_t cyclesObserved = autotuneCompleted_ ? cyclesTotal
                              : autotuneStarted_ ? engine_->autotuneObservedCycles() : 0;
   if (cyclesObserved > cyclesTotal) cyclesObserved = cyclesTotal;
+  char ref[96];
+  sensorRef(*sensor_, channel_, ref, sizeof ref);
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,\"Kd\":%.4f,"
                          "\"Ku\":%.4f,\"Tu\":%.4f,\"deadband\":%.4f,"
@@ -251,7 +253,7 @@ size_t SplitRangePIDController::paramsJson(char* buf, size_t bufSize) const {
                          setpoint_, kp_, ki_, kd_, ku_, tu_, deadband_,
                          static_cast<unsigned>(changeoverMs_),
                          rangeMin(), rangeMax(),
-                         sensor_->id(),
+                         ref,
                          heat_ ? heat_->id() : "",
                          cool_ ? cool_->id() : "",
                          enabled() ? "true" : "false",

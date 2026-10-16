@@ -246,7 +246,8 @@ describe('mashControlOf', () => {
   it('takes the controller of the mash heater with the sensor it regulates on', () => {
     const pot = link(template('pot'), 'Heizung', 'mash');
     expect(mashControlOf(pot, snap([['mash', 'pot']], ['pot']), 99)).toEqual({ controller: 'mash', sensor: 'pot', strike: true, boilC: 99 });
-    // A controller names a sensor with channels by its bare id and reads the first.
+    // A controller names the channel it regulates on; an older bare id meant the first.
+    expect(mashControlOf(pot, snap([['mash', 'bme.hum']], ['bme.temp', 'bme.hum']), 99)?.sensor).toBe('bme.hum');
     expect(mashControlOf(pot, snap([['mash', 'bme']], ['bme.temp', 'bme.hum']), 99)?.sensor).toBe('bme.temp');
     expect(mashControlOf(pot, snap([['mash', 'gone']], ['pot']), 99)?.sensor).toBeUndefined();
   });

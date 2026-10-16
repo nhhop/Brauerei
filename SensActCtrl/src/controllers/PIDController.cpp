@@ -93,7 +93,7 @@ void PIDController::tick() {
   // AutoTunePID's contract: don't call update() faster than every 100 ms.
   if (lastTickMs_ != 0 && elapsed < 100) return;
 
-  const Reading r = sensor_->channel(0).reading;
+  const Reading r = sensor_->channel(channel_).reading;
   if (!r.valid) { lastTickMs_ = now; return; }
 
   // Detect autotune completion: started + backend left Tune mode → done.
@@ -202,6 +202,8 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
   int32_t cyclesObserved = autotuneCompleted_ ? cyclesTotal
                              : autotuneStarted_ ? engine_->autotuneObservedCycles() : 0;
   if (cyclesObserved > cyclesTotal) cyclesObserved = cyclesTotal;
+  char ref[96];
+  sensorRef(*sensor_, channel_, ref, sizeof ref);
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"Kp\":%.4f,\"Ki\":%.4f,"
                          "\"Kd\":%.4f,\"Ku\":%.4f,\"Tu\":%.4f,"
@@ -216,7 +218,7 @@ size_t PIDController::paramsJson(char* buf, size_t bufSize) const {
                          setpoint_, kp_, ki_, kd_, ku_, tu_,
                          minOutput_, maxOutput_,
                          rangeMin(), rangeMax(),
-                         sensor_->id(), actuator_->id(),
+                         ref, actuator_->id(),
                          enabled() ? "true" : "false",
                          tuningMethodName(tuningMethod_), state,
                          cyclesObserved, cyclesTotal);

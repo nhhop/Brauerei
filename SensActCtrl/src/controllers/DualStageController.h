@@ -5,6 +5,7 @@
 
 #include "core/Controller.h"
 #include "core/Sensor.h"
+#include "core/SensorRef.h"
 #include "core/Actuator.h"
 
 namespace SensActCtrl {
@@ -38,6 +39,10 @@ class DualStageController : public Controller {
   void setSetpoint(float sp) override { setpoint_ = sp; }
   float setpoint() const override { return setpoint_; }
 
+  // Sensor channel used as input (default 0).
+  void setChannel(size_t idx) { channel_ = clampChannel(*sensor_, idx); }
+  size_t channel() const { return channel_; }
+
   // Both differentials are clamped to >= 0.
   void setDifferentials(float heatDiff, float coolDiff);
   float heatDiff() const { return heatDiff_; }
@@ -68,6 +73,7 @@ class DualStageController : public Controller {
 
   const char* id_;
   Sensor* sensor_;
+  size_t channel_ = 0;
   Actuator* heat_;
   Actuator* cool_;
 

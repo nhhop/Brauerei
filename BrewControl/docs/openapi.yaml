@@ -1430,8 +1430,8 @@ paths:
         the refs `sensor/<id>` in logs, alarms, programs and profiles are
         rewritten to `sensor/<id>.pitch`; a log whose series changed starts a
         new session. Dashboards (where `sensor/<id>` means the whole sensor)
-        and controllers (which take the bare id and read the first channel)
-        are left as they are. The MQTT topic of the angle changes from
+        are left as they are. Controllers on the bare id are moved to the
+        channel id `<id>.pitch` when the firmware loads them. The MQTT topic of the angle changes from
         `…/sensor/<id>` to `…/sensor/<id>/pitch`. The angle itself now follows
         the gyro's Y axis instead of its X axis and learns the gyro offset, so
         it reads up to about a degree differently; an existing `poly`
@@ -4199,7 +4199,9 @@ components:
         `POST /api/controllers`.
       additionalProperties: true
       properties:
-        sensor: { type: string }
+        sensor:
+          type: string
+          description: Input channel id, as `sensors[].id` in the snapshot (`<sensorId>.<channelKey>` for multi-channel sensors).
         actuator: { type: string }
         enabled: { type: boolean }
         Kp: { type: number }
@@ -4473,7 +4475,13 @@ components:
         type: { type: string, enum: [PID, TwoPoint, DualStage, SplitRangePID] }
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
-        sensor: { type: string }
+        sensor:
+          type: string
+          description: |
+            Input channel: a sensor id, or `<sensorId>.<channelKey>` for one
+            channel of a multi-channel sensor (the ids of `sensors[].id` in the
+            snapshot). A bare id of a multi-channel sensor means its first
+            channel and is stored as `<sensorId>.<channelKey>`.
         actuator: { type: string }
         heat_actuator: { type: string, description: DualStage / SplitRangePID. }
         cool_actuator: { type: string, description: DualStage / SplitRangePID. }

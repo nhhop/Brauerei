@@ -40,7 +40,8 @@ export interface MashControl {
 export function mashControlOf(bh: Brewhouse | undefined, snap: Snapshot | null, boilC: number): MashControl | undefined {
   if (!bh || !snap || !isRegulated(bh)) return undefined;
   const controllerOf = (d: Device | undefined) => (d && !d.manual ? snap.controllers.find((c) => c.id === d.controller) : undefined);
-  // A controller names its sensor by the bare id and reads its first channel.
+  // A controller names its input by the snapshot id (`<id>.<key>` on a multi-channel
+  // sensor); an older firmware's bare id meant the first channel.
   const sensorOf = (c: Controller) => {
     const id = c.params?.sensor;
     return id ? snap.sensors.find((s) => s.id === id || s.id.startsWith(`${id}.`))?.id : undefined;

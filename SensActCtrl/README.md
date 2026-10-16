@@ -193,7 +193,10 @@ Hysterese), `PIDController` (AutoTunePID-Wrapper, 5 Tuning-Algorithmen),
 Anti-Short-Cycle), `SplitRangePIDController` (bipolarer PID −1..+1,
 positiv heizt/negativ kühlt, ebenfalls AutoTune-fähig über eine geteilte
 `detail::PidEngine`), `RateLimitedController` (Decorator, begrenzt die
-Sollwert-Änderungsrate °/min für einen beliebigen Regler).
+Sollwert-Änderungsrate °/min für einen beliebigen Regler). Die vier
+Regler lesen standardmäßig Kanal 0 ihres Sensors; `setChannel(idx)` wählt
+einen anderen Kanal eines Mehrkanal-Sensors, und `paramsJson` meldet ihn als
+`sensor: "<id>.<key>"` (bei Einkanal-Sensoren wie bisher die nackte ID).
 
 **Transport** (`src/transport/`): `ITransport`-Interface
 (`publish`/`subscribe`/`tick`/`connected`/`lastErrorMessage`), Implementierungen
