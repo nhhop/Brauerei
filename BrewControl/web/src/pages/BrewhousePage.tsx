@@ -143,15 +143,15 @@ function BreweryCard() {
         </button>
       </div>
       <div class="flex flex-wrap gap-4">
-        <Field label="Malztemperatur (°C)">
-          <NumInput value={draft.grainTempC} onChange={(n) => setDraft({ ...draft, grainTempC: n })} />
+        <Field label="Malztemperatur">
+          <NumInput unit="°C" value={draft.grainTempC} onChange={(n) => setDraft({ ...draft, grainTempC: n })} />
         </Field>
-        <Field label="Leitungswassertemperatur (°C)">
-          <NumInput value={draft.tapWaterTempC} onChange={(n) => setDraft({ ...draft, tapWaterTempC: n })} />
+        <Field label="Leitungswassertemperatur">
+          <NumInput unit="°C" value={draft.tapWaterTempC} onChange={(n) => setDraft({ ...draft, tapWaterTempC: n })} />
         </Field>
         <div class="flex items-end gap-2">
-          <Field label="Höhe (m ü. NN)">
-            <NumInput value={draft.altitudeM ?? 0} onChange={(n) => setDraft({ ...draft, altitudeM: n || undefined })} />
+          <Field label="Höhe">
+            <NumInput unit="m ü. NN" value={draft.altitudeM ?? 0} onChange={(n) => setDraft({ ...draft, altitudeM: n || undefined })} />
           </Field>
           <span class="pb-2 text-xs text-muted" title="Normatmosphäre, ohne Erhöhung durch den Extrakt">
             Siedepunkt {breweryBoilC(draft).toFixed(1).replace('.', ',')} °C

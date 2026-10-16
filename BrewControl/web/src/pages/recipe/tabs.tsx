@@ -175,9 +175,9 @@ function VolumeField({ recipe, onChange, bh, entries, brewery, knockOutL }: Pick
     if (b === 'hot' && cold) onChange({ volumeBasis: undefined, volumeL: round1(knockOutL) });
   };
   return (
-    <Field label={cold ? 'Anstellwürze (l)' : 'Ausschlagmenge (l)'}>
+    <Field label={cold ? 'Anstellwürze' : 'Ausschlagmenge'}>
       <div class="flex flex-wrap items-center gap-2">
-        <NumInput value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
+        <NumInput unit="l" value={recipe.volumeL} onChange={(n) => onChange({ volumeL: n })} />
         <Segmented value={cold ? 'cold' : 'hot'} onChange={setBasis}
           options={[{ value: 'hot', label: 'heiß' }, { value: 'cold', label: 'kalt' }]} />
       </div>
@@ -193,16 +193,16 @@ function VolumeField({ recipe, onChange, bh, entries, brewery, knockOutL }: Pick
 // is the brewhouse's unless the recipe sets its own.
 function EfficiencyField({ recipe, onChange, bh, brewery }: Pick<TabProps, 'recipe' | 'onChange' | 'brewery'> & { bh?: Brewhouse }) {
   const basis = basisOf(brewery);
-  const label = `${BASIS_LABEL[basis]} (%)`;
+  const label = BASIS_LABEL[basis];
   if (basis === 'conversion') {
     return (
-      <Override label={label} value={recipe.conversionPct} brewhouse={bh?.mashEfficiencyPct ?? DEFAULT_CONVERSION}
+      <Override label={label} unit="%" value={recipe.conversionPct} brewhouse={bh?.mashEfficiencyPct ?? DEFAULT_CONVERSION}
         onChange={(conversionPct) => onChange({ conversionPct })} />
     );
   }
   return (
     <Field label={label}>
-      <NumInput value={efficiencyInput(recipe, bh, basis).pct} onChange={(n) => onChange({ efficiencyPct: n })} />
+      <NumInput unit="%" value={efficiencyInput(recipe, bh, basis).pct} onChange={(n) => onChange({ efficiencyPct: n })} />
     </Field>
   );
 }
@@ -294,9 +294,9 @@ export function BoilTab({ recipe, onChange }: TabProps) {
     <>
       <Card title="Kochen & Whirlpool">
         <div class="flex flex-wrap gap-4">
-          <Field label="Kochdauer (min)"><NumInput value={b.durationMin} onChange={(n) => set({ durationMin: n })} /></Field>
-          <Field label="Whirlpool-Temperatur (°C)"><NumInput value={b.whirlpoolTempC} onChange={(n) => set({ whirlpoolTempC: n })} /></Field>
-          <Field label="Whirlpool-Dauer (min)"><NumInput value={b.whirlpoolMin} onChange={(n) => set({ whirlpoolMin: n })} /></Field>
+          <Field label="Kochdauer"><NumInput unit="min" value={b.durationMin} onChange={(n) => set({ durationMin: n })} /></Field>
+          <Field label="Whirlpool-Temperatur"><NumInput unit="°C" value={b.whirlpoolTempC} onChange={(n) => set({ whirlpoolTempC: n })} /></Field>
+          <Field label="Whirlpool-Dauer"><NumInput unit="min" value={b.whirlpoolMin} onChange={(n) => set({ whirlpoolMin: n })} /></Field>
         </div>
       </Card>
       <ProcessIngredients recipe={recipe} onChange={onChange} scope="boil" />

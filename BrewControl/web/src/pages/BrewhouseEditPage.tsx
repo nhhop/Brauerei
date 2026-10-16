@@ -240,14 +240,14 @@ function GeneralSection({ bh, set }: SectionProps) {
       <div class={`${card} grid gap-3 sm:grid-cols-2`}>
         <Field label="Name"><TextInput value={bh.name} onChange={(name) => set({ ...bh, name })} /></Field>
         <div class="flex flex-wrap gap-4">
-          <Field label="Konversion (%)">
-            <NumInput value={bh.mashEfficiencyPct} onChange={(n) => set({ ...bh, mashEfficiencyPct: n })} />
+          <Field label="Konversion">
+            <NumInput unit="%" value={bh.mashEfficiencyPct} onChange={(n) => set({ ...bh, mashEfficiencyPct: n })} />
           </Field>
-          <Field label="Abkühlschwund (%)">
-            <NumInput value={bh.coolingShrinkPct} onChange={(n) => set({ ...bh, coolingShrinkPct: n })} />
+          <Field label="Abkühlschwund">
+            <NumInput unit="%" value={bh.coolingShrinkPct} onChange={(n) => set({ ...bh, coolingShrinkPct: n })} />
           </Field>
-          <Field label="Läutereffizienz Fly Sparge (%)">
-            <OptNum value={bh.lauterEfficiencyPct} placeholder="geschätzt"
+          <Field label="Läutereffizienz Fly Sparge">
+            <OptNum unit="%" value={bh.lauterEfficiencyPct} placeholder="geschätzt"
               onChange={(n) => set({ ...bh, lauterEfficiencyPct: n })} />
           </Field>
         </div>
@@ -310,16 +310,16 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
         <RemoveButton title="Behälter löschen" onClick={() => set(removeVessel(bh, v.id))} />
       </div>
       <div class="mb-3 flex flex-wrap gap-4">
-        <Field label="Volumen (l)"><NumInput value={v.volumeL} onChange={(volumeL) => patch({ volumeL })} /></Field>
-        <Field label="Totraum (l)"><NumInput value={v.deadSpaceL} onChange={(deadSpaceL) => patch({ deadSpaceL })} /></Field>
+        <Field label="Volumen"><NumInput unit="l" value={v.volumeL} onChange={(volumeL) => patch({ volumeL })} /></Field>
+        <Field label="Totraum"><NumInput unit="l" value={v.deadSpaceL} onChange={(deadSpaceL) => patch({ deadSpaceL })} /></Field>
         {boils && (
-          <Field label="Verdampfung (l/h)">
-            <OptNum value={v.evaporationLPerH} onChange={(evaporationLPerH) => patch({ evaporationLPerH })} />
+          <Field label="Verdampfung">
+            <OptNum unit="l/h" value={v.evaporationLPerH} onChange={(evaporationLPerH) => patch({ evaporationLPerH })} />
           </Field>
         )}
         {steps.includes('mash') && (
-          <Field label="Wärmeverlust (K/h)">
-            <OptNum value={v.heatLossKPerH} placeholder="0" onChange={(heatLossKPerH) => patch({ heatLossKPerH })} />
+          <Field label="Wärmeverlust">
+            <OptNum unit="K/h" value={v.heatLossKPerH} placeholder="0" onChange={(heatLossKPerH) => patch({ heatLossKPerH })} />
           </Field>
         )}
         {steps.includes('lauter') && (
@@ -329,8 +329,8 @@ function VesselCard({ bh, set, vessel: v }: SectionProps & { vessel: Vessel }) {
           </Field>
         )}
         {steps.includes('lauter') && (
-          <Field label="Treberverlust (l/kg)">
-            <OptNum value={v.grainAbsorptionLPerKg} placeholder={String(DEFAULT_GRAIN_ABSORPTION)}
+          <Field label="Treberverlust">
+            <OptNum unit="l/kg" value={v.grainAbsorptionLPerKg} placeholder={String(DEFAULT_GRAIN_ABSORPTION)}
               onChange={(grainAbsorptionLPerKg) => patch({ grainAbsorptionLPerKg })} />
           </Field>
         )}
@@ -402,10 +402,10 @@ function DeviceRow({ bh, set, snap, device: d }: SectionProps & { snap: Snapshot
             onChange={(v) => patch({ vesselId: v || undefined })} />
         </Field>
         {d.kind === 'heater' && (
-          <Field label="Leistung (W)"><OptNum value={d.powerW} onChange={(powerW) => patch({ powerW })} /></Field>
+          <Field label="Leistung"><OptNum unit="W" value={d.powerW} onChange={(powerW) => patch({ powerW })} /></Field>
         )}
         {d.kind === 'pump' && (
-          <Field label="Förderleistung (l/min)"><OptNum value={d.flowLPerMin} onChange={(flowLPerMin) => patch({ flowLPerMin })} /></Field>
+          <Field label="Förderleistung"><OptNum unit="l/min" value={d.flowLPerMin} onChange={(flowLPerMin) => patch({ flowLPerMin })} /></Field>
         )}
         {d.kind === 'chiller' && (
           <Field label="Bauart">
@@ -500,8 +500,8 @@ function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heat
           </Field>
         )}
         {heated && (
-          <Field label="Heizrate (K/min)">
-            <OptNum value={cfg.heatRateKPerMin} onChange={(heatRateKPerMin) => patch({ heatRateKPerMin })} />
+          <Field label="Heizrate">
+            <OptNum unit="K/min" value={cfg.heatRateKPerMin} onChange={(heatRateKPerMin) => patch({ heatRateKPerMin })} />
           </Field>
         )}
         {step === 'boil' && (
@@ -512,8 +512,8 @@ function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heat
                   onChange={(v) => patch({ condenserId: v || undefined })} />
               </Field>
             )}
-            <Field label="Heizleistung beim Kochen (%)">
-              <OptNum value={cfg.powerPct} onChange={(powerPct) => patch({ powerPct })} />
+            <Field label="Heizleistung beim Kochen">
+              <OptNum unit="%" value={cfg.powerPct} onChange={(powerPct) => patch({ powerPct })} />
             </Field>
           </>
         )}
@@ -524,8 +524,8 @@ function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heat
                 groups={[{ label: 'Kühler', opts: of('chiller') }, { label: 'Spiralen im Behälter', opts: of('coil', true) }]}
                 onChange={(v) => patch({ chillerId: v || undefined })} />
             </Field>
-            <Field label="Kühldauer (min)">
-              <OptNum value={cfg.coolMinutes} onChange={(coolMinutes) => patch({ coolMinutes })} />
+            <Field label="Kühldauer">
+              <OptNum unit="min" value={cfg.coolMinutes} onChange={(coolMinutes) => patch({ coolMinutes })} />
             </Field>
           </>
         )}
@@ -596,8 +596,8 @@ function TransfersSection({ bh, set }: SectionProps) {
                   <Select class="w-36" value={t.pumpId ?? ''} empty="— wählen —" groups={[{ opts: pumps }]}
                     onChange={(v) => patch(t.id, { pumpId: v || undefined })} />
                 </Field>
-                <Field label="Verlust (l)">
-                  <NumInput value={t.lossL} onChange={(lossL) => patch(t.id, { lossL })} />
+                <Field label="Verlust">
+                  <NumInput unit="l" value={t.lossL} onChange={(lossL) => patch(t.id, { lossL })} />
                 </Field>
                 <label class="flex items-center gap-1.5 pb-2 text-sm">
                   <input type="checkbox" checked={t.recovered} onChange={(e) => patch(t.id, { recovered: e.currentTarget.checked })} />

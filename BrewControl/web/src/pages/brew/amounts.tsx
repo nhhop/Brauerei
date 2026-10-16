@@ -3,7 +3,7 @@ import { setRowAmount, type Brew } from '../../brews';
 import { lotTarget, rebook, withBooking } from '../../brewStart';
 import { reloadCatalog, saveStockLot } from '../../ingredientSource';
 import type { Recipe } from '../../recipes';
-import { inp } from '../../ui';
+import { unitBox, unitInput, unitText } from '../../ui';
 
 export const num = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', ',');
 
@@ -34,8 +34,8 @@ export function AmountInput({ value, placeholder, unit, label, disabled, onSave 
   const [text, setText] = useState(toText(value));
   useEffect(() => setText(toText(value)), [value]);
   return (
-    <span class="flex items-center gap-1">
-      <input type="text" inputMode="decimal" aria-label={label} class={`${inp} w-20`} placeholder={placeholder}
+    <span class={`${unitBox} w-28`}>
+      <input type="text" inputMode="decimal" aria-label={label} class={unitInput} placeholder={placeholder}
         disabled={disabled} value={text}
         onInput={(e) => setText(e.currentTarget.value)}
         onChange={(e) => {
@@ -46,7 +46,7 @@ export function AmountInput({ value, placeholder, unit, label, disabled, onSave 
           else setText(toText(value));
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
-      <span class="w-6 text-xs text-muted">{unit}</span>
+      <span class={unitText}>{unit}</span>
     </span>
   );
 }

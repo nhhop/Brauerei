@@ -236,8 +236,8 @@ function SplitDialog({ recipe, onChange, onClose }: {
                 </select>
               </Field>
             )}
-            <Field label="Abspalten (%)">
-              <NumInput value={pct} onChange={setPct} class="w-20" />
+            <Field label="Abspalten">
+              <NumInput unit="%" value={pct} onChange={setPct} class="w-20" />
             </Field>
           </div>
           {grains.length === 0 ? (

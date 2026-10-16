@@ -23,6 +23,7 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
   Aktive Phasen: Vorbereitung, Maischen, Würzekochen, Gärung, Reifung, Abfüllung.
 - **Sudhaus:** der Heißbereich der Anlage, bis einschließlich Ausschlagen. Rezepte wählen ein Sudhaus-Profil.
 - **Gärkeller:** der Kaltbereich, also mehrere Gärplätze und Gebinde. Der Gärplatz wird erst im Sud gewählt.
+- **Zahlenfelder:** Die Einheit steht im Feld (grau, rechts, die Zahl rechtsbündig davor), nicht im Label und nicht daneben.
 
 ## Rezept
 

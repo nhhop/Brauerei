@@ -38,6 +38,18 @@ export const inp =
   'shadow-[inset_0_-1px_0_0_var(--color-border)] focus:outline-none ' +
   'focus:shadow-[inset_0_-2px_0_0_var(--color-accent)]';
 
+// Number field with its unit inside the frame: the frame carries the TextBox
+// look (and the focus underline via focus-within), the input in it is bare and
+// right-aligned, the unit sits grey behind the digits. Frame width comes from
+// the caller (`w-24` …), like `inp`.
+export const unitBox =
+  'flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-sm text-fg ' +
+  'shadow-[inset_0_-1px_0_0_var(--color-border)] focus-within:shadow-[inset_0_-2px_0_0_var(--color-accent)]';
+export const unitInput =
+  'min-w-0 flex-1 border-0 bg-transparent py-1.5 text-right tabular-nums text-fg focus:outline-none ' +
+  '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+export const unitText = 'whitespace-nowrap text-[13px] text-muted';
+
 // Status badges — WinUI InfoBadge style: tinted fill (semantic hue mixed over the
 // card surface, so it adapts to light/dark) + matching legible text/icon color.
 export const badge =

@@ -2842,3 +2842,17 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
   sind davon nicht berührt.
 - **Verifikation:** `pio test -e native` 206 grün (zwei neue Tests für `controllersFirst`), `pio run -e esp32dev` erfolgreich. **Nicht am
   Gerät geprüft:** `ProgramRunner.cpp` ist nicht Teil der nativen Tests, die Anwendung der Reihenfolge ist nur kompiliert.
+
+## 2026-10-17 — Einheiten im Eingabefeld (wie im Canvas-Mockup)
+
+- **Problem:** Einheiten standen als „(l)“ im Label über dem Feld (Rezept, Sud, Sudhaus, Lager, Zutaten, Geräte-Dialoge) oder als Text
+  neben dem Feld (Rechner, Ist-Mengen im Sud). Das Canvas-Mockup (`.ninp`) setzt sie ins Feld.
+- **Umsetzung:** `unitBox`/`unitInput`/`unitText` in `ui.ts` (Rahmen mit Fokus-Unterstrich per `focus-within`, rahmenloses rechtsbündiges
+  Input mit `tabular-nums`, Einheit grau rechts, Spinner aus), dazu `components/UnitBox.tsx`. `NumInput`/`OptNum`/`Override`
+  (`recipe/fields.tsx`) haben `unit?`, ohne Einheit bleibt alles wie vorher. Umgestellt: `NumberField` (Rechner), `AmountInput`, alle
+  Rezept-/Sudhaus-/Gärkeller-/Lager-Felder (rund 45 Labels, auch `%`, `°C`, `°P`, `l/kg`), `FieldInput` (Einheit aus `ingredientFields.ts`,
+  bei „von–bis“ an beiden Feldern) sowie die zehn Felder mit fester Einheit in `AddItemModal` und `EnergyPage` (ms, s, Ω, kΩ).
+  Felder mit wählbarer Einheit (`GravityInput`, Zykluslänge, Haltezeit) und Felder ohne Einheit blieben unverändert.
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 744 grün; im Browser mit dem Node-Mock geprüft: Rezept Übersicht und Wasser,
+  Sudhaus bearbeiten, Rechner Maischeeffizienz (dunkel). **Nicht angesehen:** hell, schmale Breite, Tabellenzellen (Aufbereitung), die
+  Geräte-Dialoge und die übrigen Felder der Sud-Seiten.

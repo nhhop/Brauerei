@@ -10,7 +10,8 @@ import { PinHint } from '../components/PinHint';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { lipoPercent, freeBatteryId } from '../energy';
-import { inp, btnPrimary, btnSecondary } from '../ui';
+import { inp, btnPrimary, btnSecondary, unitInput } from '../ui';
+import { UnitBox } from '../components/UnitBox';
 import { AlarmClock, BatteryMedium, Info, Moon, Plus, Timer, Wifi } from 'lucide-preact';
 
 const DEFAULT: EnergySettings = {
@@ -193,14 +194,14 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
                       onInput={(e) => setPin((e.target as HTMLInputElement).value)} />
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs text-muted">R1 (kΩ)</label>
-                    <input type="number" step="any" min="0" value={r1} class={inp}
-                      onInput={(e) => setR1((e.target as HTMLInputElement).value)} />
+                    <label class="mb-1 block text-xs text-muted">R1</label>
+                    <UnitBox unit="kΩ"><input type="number" step="any" min="0" value={r1} class={unitInput}
+                      onInput={(e) => setR1((e.target as HTMLInputElement).value)} /></UnitBox>
                   </div>
                   <div>
-                    <label class="mb-1 block text-xs text-muted">R2 (kΩ)</label>
-                    <input type="number" step="any" min="0" value={r2} class={inp}
-                      onInput={(e) => setR2((e.target as HTMLInputElement).value)} />
+                    <label class="mb-1 block text-xs text-muted">R2</label>
+                    <UnitBox unit="kΩ"><input type="number" step="any" min="0" value={r2} class={unitInput}
+                      onInput={(e) => setR2((e.target as HTMLInputElement).value)} /></UnitBox>
                   </div>
                 </div>
                 {/* The board's own battery input is marked risky for other items; here it is the point. */}

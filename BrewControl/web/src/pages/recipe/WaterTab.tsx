@@ -68,17 +68,17 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
         </div>
 
         <div class="mt-3 flex flex-wrap items-end gap-4">
-          <Field label="Hauptguss-Verhältnis (l/kg)">
+          <Field label="Hauptguss-Verhältnis">
             {w.sparge ? (
-              <NumInput value={settings.mashRatioLPerKg ?? DEFAULT_MASH_RATIO} onChange={(n) => set({ mashRatioLPerKg: n })} />
+              <NumInput unit="l/kg" value={settings.mashRatioLPerKg ?? DEFAULT_MASH_RATIO} onChange={(n) => set({ mashRatioLPerKg: n })} />
             ) : (
               <input class={`${inp} w-24 text-muted`} readOnly value={w.mashRatioLPerKg === undefined ? '—' : num(w.mashRatioLPerKg)} />
             )}
           </Field>
           {w.sparge && (
             <>
-              <Field label="Nachguss-Temperatur (°C)">
-                <NumInput value={settings.spargeTempC ?? DEFAULT_SPARGE_TEMP} onChange={(n) => set({ spargeTempC: n })} />
+              <Field label="Nachguss-Temperatur">
+                <NumInput unit="°C" value={settings.spargeTempC ?? DEFAULT_SPARGE_TEMP} onChange={(n) => set({ spargeTempC: n })} />
               </Field>
               <Field label="Läutern">
                 <Segmented value={settings.spargeMethod ?? 'batch'}
@@ -93,9 +93,9 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
               )}
             </>
           )}
-          <Override label="Verdampfung (l/h)" value={settings.evaporationLPerH} brewhouse={boilEvaporation ?? 0}
+          <Override label="Verdampfung" unit="l/h" value={settings.evaporationLPerH} brewhouse={boilEvaporation ?? 0}
             onChange={(evaporationLPerH) => set({ evaporationLPerH })} />
-          <Override label="Treberverlust (l/kg)" value={settings.grainAbsorptionLPerKg} brewhouse={grainAbsorptionOf(bh)}
+          <Override label="Treberverlust" unit="l/kg" value={settings.grainAbsorptionLPerKg} brewhouse={grainAbsorptionOf(bh)}
             onChange={(grainAbsorptionLPerKg) => set({ grainAbsorptionLPerKg })} />
         </div>
 
@@ -136,15 +136,15 @@ function DilutionSection({ w, value, onChange }: {
           <Segmented value={at} onChange={(v) => set({ at: v, lead: 'volume', volumeL: round1(d.volumeL), plato: undefined })}
             options={[{ value: 'kettle', label: 'Pfanne bei Kochende' }, { value: 'fermenter', label: 'Gärbehälter' }]} />
         </Field>
-        <Field label="Menge (l)">
-          <NumInput value={value?.lead !== 'gravity' ? (value?.volumeL ?? 0) : round1(d.volumeL)}
+        <Field label="Menge">
+          <NumInput unit="l" value={value?.lead !== 'gravity' ? (value?.volumeL ?? 0) : round1(d.volumeL)}
             onChange={(n) => set({ lead: 'volume', volumeL: n })} />
         </Field>
-        <Field label={at === 'kettle' ? 'Pfannen-Stammwürze (°P)' : 'Anstell-Stammwürze (°P)'}>
+        <Field label={at === 'kettle' ? 'Pfannen-Stammwürze' : 'Anstell-Stammwürze'}>
           {gravity === undefined ? (
-            <input class={`${inp} w-24 text-muted`} readOnly value="—" title="Braucht die Stammwürze (Vergärbares verknüpfen)" />
+            <input class={`${inp} w-28 text-muted`} readOnly value="—" title="Braucht die Stammwürze (Vergärbares verknüpfen)" />
           ) : (
-            <NumInput value={value?.lead === 'gravity' && value.plato !== undefined ? value.plato : round1(gravity)}
+            <NumInput unit="°P" value={value?.lead === 'gravity' && value.plato !== undefined ? value.plato : round1(gravity)}
               onChange={(n) => set({ lead: 'gravity', plato: n })} />
           )}
         </Field>

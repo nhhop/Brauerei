@@ -89,8 +89,8 @@ function CarbonationCard({ recipe, onChange, result: r, haveBeer }: {
           </select>
         </Field>
         {c && (
-          <Field label="Ziel (vol CO₂)">
-            <NumInput value={c.targetVol} onChange={(n) => set({ targetVol: n })} class="w-20" />
+          <Field label="Ziel">
+            <NumInput unit="vol CO₂" value={c.targetVol} onChange={(n) => set({ targetVol: n })} class="w-20" />
           </Field>
         )}
         {c?.method === 'sugar' && (
@@ -142,8 +142,8 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
         </button>
       }>
       <div class="flex flex-wrap items-end gap-4">
-        <Field label="Trub (l)">
-          <OptNum value={recipe.trubLossL} placeholder="0" onChange={(trubLossL) => onChange({ trubLossL })} />
+        <Field label="Trub">
+          <OptNum unit="l" value={recipe.trubLossL} placeholder="0" onChange={(trubLossL) => onChange({ trubLossL })} />
         </Field>
       </div>
       {rows.length > 0 && (
