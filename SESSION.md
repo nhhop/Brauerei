@@ -2840,8 +2840,14 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
   der Aktoren, jede Gruppe in ihrer Reihenfolge. `ProgramRunner::applyStepTargets_` (Schritt betreten) und `applyState_`
   (Fortsetzen nach Neustart, „Zurück“) nutzen es; die Rampe (`ramped_`) bleibt je Befehl. Einzelne Befehle über `applyTarget`
   sind davon nicht berührt.
-- **Verifikation:** `pio test -e native` 206 grün (zwei neue Tests für `controllersFirst`), `pio run -e esp32dev` erfolgreich. **Nicht am
-  Gerät geprüft:** `ProgramRunner.cpp` ist nicht Teil der nativen Tests, die Anwendung der Reihenfolge ist nur kompiliert.
+- **Verifikation:** `pio test -e native` 206 grün (zwei neue Tests für `controllersFirst`), `pio run -e esp32dev` erfolgreich.
+- **Am LilyGo** (Firmware `017c474` per OTA): Testregler `ordertest` (Zweipunkt `HLT` → `agitator`, Sollwert 50) und Programm mit
+  Schritt 1 „Regler an“ und Schritt 2 mit `agitator` **vor** `ordertest` (`enabled:false`). Zur Gegenprobe der Mechanismus per
+  REST in der falschen Reihenfolge (Aktor an, danach Regler aus): `agitator enabled=false`. Das Programm dagegen: nach „Weiter“
+  `agitator enabled=true`, Regler aus; nach „Zurück“ und erneut „Weiter“ dasselbe; nach einem Neustart im Schritt 2 (Fortsetzen über
+  `applyState_`) läuft das Programm weiter, `agitator` an, Regler aus. Aufgeräumt: Programm gestoppt und gelöscht, Regler gelöscht,
+  `agitator` wieder auf an, Sollwert 0,07, Intervall 4/5 s; Aktoren und Regler stimmen mit dem Stand vor dem Test überein
+  (Sicherung im Scratchpad).
 
 ## 2026-10-17 — Einheiten im Eingabefeld (wie im Canvas-Mockup)
 
