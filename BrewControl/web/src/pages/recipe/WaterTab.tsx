@@ -1,18 +1,21 @@
-import type { ComponentChildren } from 'preact';
 import { grainAbsorptionOf } from '../../brewhouse';
 import { lauterText } from '../../efficiency';
 import { useCatalog } from '../../ingredientSource';
 import { atKnockOut, wortExtract } from '../../recipeStats';
 import { DEFAULT_MASH_RATIO, DEFAULT_SPARGE_TEMP, type Dilution, type RecipeWater } from '../../recipes';
-import { calcWater, fmtL, type Loss, type Source, type Water } from '../../recipeWater';
+import { calcWater, fmtL, type Loss, type Water } from '../../recipeWater';
 import { Segmented } from '../../components/Segmented';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
 import { btnSecondary, inp } from '../../ui';
-import { Card, Field, NumInput, Override } from './fields';
+import { CalcTable, Row, Section } from './CalcTable';
+import { Card, Field, NumInput, OptNum } from './fields';
 import { Stat, type TabProps } from './tabs';
 import { TreatmentCard } from './TreatmentCard';
 
 const num = (n: number) => n.toFixed(1).replace('.', ',');
+
+// Up to two decimals, no trailing zeros (0,96 l/kg must not read 1,0).
+const num2 = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -48,42 +51,28 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
 
   return (
     <>
-      <Card title="Wassermenge">
+      <Section title="Wassermenge">
+        <div class="p-4">
         <p class="mb-3 text-xs text-muted">Sudhaus „{bh.name}“, vom Ausschlag ({fmtL(w.knockOutL)}) zurückgerechnet</p>
         <dl class="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Stat label="Hauptguss" value={w.strikeL} unit="l" digits={1} sub={fillSub(w.strikeFillL, w.strikeL)} />
-          <Stat label="Nachguss" value={w.sparge ? w.spargeL : undefined} unit="l" digits={1}
+          <Stat large label="Hauptguss" value={w.strikeL} unit="l" digits={1} sub={fillSub(w.strikeFillL, w.strikeL)} />
+          <Stat large label="Nachguss" value={w.sparge ? w.spargeL : undefined} unit="l" digits={1}
             sub={w.sparge ? fillSub(w.spargeFillL, w.spargeL) : 'Vollguss'} />
-          <Stat label="Gesamtwasser" value={w.totalL} unit="l" digits={1} />
-          <Stat label="Pfannevoll" value={w.preBoilL} unit="l" digits={1} />
-          <Stat label="Läutereffizienz" value={lauter?.pct} unit="%" digits={0} sub={lauter && lauterText(lauter)} />
+          <Stat large label="Gesamtwasser" value={w.totalL} unit="l" digits={1} />
+          <Stat large label="Pfannevoll" value={w.preBoilL} unit="l" digits={1} />
+          <Stat large label="Läutereffizienz" value={lauter?.pct} unit="%" digits={0} sub={lauter && lauterText(lauter)} />
         </dl>
 
-        <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          <ToggleSwitch checked={w.sparge} disabled={!w.canSparge}
-            title={w.canSparge ? undefined : 'Das Sudhaus hat keinen Nachguss'}
-            onChange={(on) => set({ sparge: on ? undefined : false })} />
-          <span>Mit Nachguss</span>
-          {!w.canSparge && <span class="text-xs text-muted">Das Sudhaus hat keinen Nachguss</span>}
-        </div>
-
-        <div class="mt-3 flex flex-wrap items-end gap-4">
-          <Field label="Hauptguss-Verhältnis">
-            {w.sparge ? (
-              <NumInput unit="l/kg" value={settings.mashRatioLPerKg ?? DEFAULT_MASH_RATIO} onChange={(n) => set({ mashRatioLPerKg: n })} />
-            ) : (
-              <input class={`${inp} w-24 text-muted`} readOnly value={w.mashRatioLPerKg === undefined ? '—' : num(w.mashRatioLPerKg)} />
-            )}
+        <div class="mt-4 flex flex-wrap items-end gap-4">
+          <Field label="Nachguss">
+            <Segmented value={!w.sparge ? 'none' : (settings.spargeMethod ?? 'batch')} disabled={!w.canSparge}
+              onChange={(v) => set(v === 'none' ? { sparge: false } : { sparge: undefined, spargeMethod: v === 'batch' ? undefined : v })}
+              options={[{ value: 'none', label: 'No Sparge' }, { value: 'batch', label: 'Batch Sparge' }, { value: 'fly', label: 'Fly Sparge' }]} />
           </Field>
           {w.sparge && (
             <>
               <Field label="Nachguss-Temperatur">
                 <NumInput unit="°C" value={settings.spargeTempC ?? DEFAULT_SPARGE_TEMP} onChange={(n) => set({ spargeTempC: n })} />
-              </Field>
-              <Field label="Läutern">
-                <Segmented value={settings.spargeMethod ?? 'batch'}
-                  onChange={(v) => set({ spargeMethod: v === 'batch' ? undefined : v })}
-                  options={[{ value: 'batch', label: 'Batch Sparge' }, { value: 'fly', label: 'Fly Sparge' }]} />
               </Field>
               {settings.spargeMethod !== 'fly' && (
                 <Field label="Gaben">
@@ -93,15 +82,11 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
               )}
             </>
           )}
-          <Override label="Verdampfung" unit="l/h" value={settings.evaporationLPerH} brewhouse={boilEvaporation ?? 0}
-            onChange={(evaporationLPerH) => set({ evaporationLPerH })} />
-          <Override label="Treberverlust" unit="l/kg" value={settings.grainAbsorptionLPerKg} brewhouse={grainAbsorptionOf(bh)}
-            onChange={(grainAbsorptionLPerKg) => set({ grainAbsorptionLPerKg })} />
+          {!w.canSparge && <span class="text-xs text-muted">Das Sudhaus hat keinen Nachguss</span>}
         </div>
 
         <DilutionSection w={w} value={settings.dilution} onChange={(dilution) => set({ dilution })} />
         <WaterBar w={w} />
-        <Calculation w={w} boilMin={recipe.boil.durationMin} cold={recipe.volumeBasis === 'cold'} />
         <Notes notes={notes} />
         {fit !== undefined && (
           <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -112,7 +97,10 @@ export function WaterTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
             </button>
           </p>
         )}
-      </Card>
+        </div>
+        <Calculation w={w} boilMin={recipe.boil.durationMin} cold={recipe.volumeBasis === 'cold'} settings={settings} set={set}
+          bhEvaporation={boilEvaporation ?? 0} bhAbsorption={grainAbsorptionOf(bh)} />
+      </Section>
       <TreatmentCard recipe={recipe} onChange={onChange} w={w} brewery={brewery} catalog={catalog?.entries ?? null} />
     </>
   );
@@ -187,7 +175,7 @@ function WaterBar({ w }: { w: Water }) {
   const pct = (l: number) => (l / total) * 100;
   return (
     <div class="mt-4">
-      <div class="flex h-4 gap-[2px] overflow-hidden rounded">
+      <div class="flex h-2.5 overflow-hidden rounded-full">
         {parts.filter((p) => p.l > 0).map((p) => (
           <div key={p.label} class="h-full" style={{ width: `${pct(p.l)}%`, background: p.color }}
             title={`${p.label}: ${fmtL(p.l)} (${Math.round(pct(p.l))} %)`} />
@@ -196,7 +184,7 @@ function WaterBar({ w }: { w: Water }) {
       <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         {parts.map((p) => (
           <li key={p.label} class="flex items-center gap-1.5">
-            <span class="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: p.color }} />
+            <span class="inline-block h-2 w-2 rounded-full" style={{ background: p.color }} />
             {p.label} <span class="text-fg">{fmtL(p.l)}</span>
           </li>
         ))}
@@ -205,55 +193,55 @@ function WaterBar({ w }: { w: Water }) {
   );
 }
 
-export function Row({ op = '', label, l, from, strong }: {
-  op?: string; label: ComponentChildren; l: number; from?: Source; strong?: boolean;
-}) {
-  return (
-    <>
-      <span class={strong ? 'font-semibold' : ''}>{op && <span class="inline-block w-4 text-muted">{op}</span>}{label}</span>
-      <span class={`text-right tabular-nums ${strong ? 'font-semibold' : ''}`}>{fmtL(l)}</span>
-      <span class="text-xs text-muted">{from ?? ''}</span>
-    </>
-  );
-}
-
-const lossRows = (losses: Loss[]) => losses.map((x) => <Row key={x.label} op="+" label={x.label} l={x.l} from="Sudhaus" />);
+const lossRows = (losses: Loss[]) => losses.map((x) => <Row key={x.label} op="+" label={x.label} l={x.l} basis="Sudhaus" />);
 
 // `cold`: the knock-out follows from the recipe's Anstellwürze (Gärung tab).
-function Calculation({ w, boilMin, cold }: { w: Water; boilMin: number; cold: boolean }) {
+function Calculation({ w, boilMin, cold, settings, set, bhEvaporation, bhAbsorption }: {
+  w: Water; boilMin: number; cold: boolean; settings: RecipeWater; set: (p: Partial<RecipeWater>) => void;
+  bhEvaporation: number; bhAbsorption: number;
+}) {
+  // An input over the brewhouse value; the basis cell offers to drop the override.
+  const over = (key: 'evaporationLPerH' | 'grainAbsorptionLPerKg', unit: string, bh: number, from: string) => ({
+    input: <OptNum unit={unit} class="w-full" value={settings[key]} placeholder={String(bh).replace('.', ',')}
+      onChange={(n) => set({ [key]: n })} />,
+    basis: <>{from}{settings[key] !== undefined && (
+      <button type="button" class="ml-2 text-accent hover:underline" onClick={() => set({ [key]: undefined })}>Sudhaus-Wert</button>
+    )}</>,
+  });
+  const evap = over('evaporationLPerH', 'l/h', bhEvaporation, `${w.evaporationFrom} · × ${boilMin} min Kochdauer`);
+  const absorb = over('grainAbsorptionLPerKg', 'l/kg', bhAbsorption, `${w.absorptionFrom} · × ${num2(w.grainKg)} kg Schüttung`);
   return (
-    <details class="mt-4">
-      <summary class="cursor-pointer text-sm">Berechnung</summary>
-      <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-0.5 text-sm">
-        <Row label={cold ? 'Ausschlag (aus der Anstellwürze)' : 'Ausschlag'} l={w.knockOutL} from={cold ? undefined : 'Rezept'} />
-        <Row op="+" label={`Verdampfung (${num(w.evaporationLPerH)} l/h × ${boilMin} min)`} l={w.evaporationL} from={w.evaporationFrom} />
-        <Row op="=" label="Pfannevoll" l={w.preBoilL} strong />
-        {w.wortLosses.length > 0 ? lossRows(w.wortLosses) : <Row op="+" label="Würzeverluste (kein Transfer)" l={0} from="Sudhaus" />}
-        <Row op="+" label={`Treber (${num(w.grainKg)} kg × ${num(w.absorptionLPerKg)} l/kg)`} l={w.absorptionL} from={w.absorptionFrom} />
-        {w.mashEvaporationL > 0 && (
-          <Row op="+" label="Verdampfung beim Maischen (Dekoktion, Kochrast)" l={w.mashEvaporationL} from="Sudhaus" />
-        )}
-        <Row op="=" label="Gesamtwasser" l={w.totalL} strong />
-        {w.sparge ? (
-          <Row label={`Hauptguss (${num(w.mashRatioLPerKg!)} l/kg × ${num(w.grainKg)} kg)`} l={w.strikeL} from="Rezept" />
-        ) : (
-          <Row label={`Hauptguss = Gesamtwasser (Vollguss${w.mashRatioLPerKg === undefined ? '' : `, ${num(w.mashRatioLPerKg)} l/kg`})`} l={w.strikeL} />
-        )}
-        {w.strikeFill.length > 0 && (
-          <>
-            {lossRows(w.strikeFill)}
-            <Row op="=" label="Hauptguss einfüllen" l={w.strikeFillL} strong />
-          </>
-        )}
-        {w.sparge && <Row label="Nachguss (Gesamtwasser − Hauptguss)" l={w.spargeL} />}
-        {w.spargeFill.length > 0 && (
-          <>
-            {lossRows(w.spargeFill)}
-            <Row op="=" label="Nachguss einfüllen" l={w.spargeFillL} strong />
-          </>
-        )}
-      </div>
-    </details>
+    <CalcTable head="Vom Ausschlag zurückgerechnet"
+      note="Werte aus dem Sudhaus lassen sich hier für dieses Rezept überschreiben. Ohne Nachguss wird das gesamte Wasser als Hauptguss eingemaischt; das Verhältnis ist dann ein Ergebnis.">
+      <Row strong label={cold ? 'Ausschlag (aus der Anstellwürze)' : 'Ausschlag'} l={w.knockOutL} basis={cold ? undefined : 'Rezept'} />
+      <Row op="+" label="Verdampfung" input={evap.input} l={w.evaporationL} basis={evap.basis} />
+      <Row strong label="Pfannevoll" l={w.preBoilL} />
+      {w.wortLosses.length > 0 ? lossRows(w.wortLosses) : <Row op="+" label="Würzeverluste (kein Transfer)" l={0} basis="Sudhaus" />}
+      <Row op="+" label="Treberverlust" input={absorb.input} l={w.absorptionL} basis={absorb.basis} />
+      {w.mashEvaporationL > 0 && (
+        <Row op="+" label="Verdampfung beim Maischen (Dekoktion, Kochrast)" l={w.mashEvaporationL} basis="Sudhaus" />
+      )}
+      <Row strong label="Gesamtwasser" l={w.totalL} />
+      {w.sparge ? (
+        <Row label="davon Hauptguss" input={<NumInput unit="l/kg" class="w-full" value={settings.mashRatioLPerKg ?? DEFAULT_MASH_RATIO} onChange={(n) => set({ mashRatioLPerKg: n })} />} l={w.strikeL} basis={`Rezept · Verhältnis × ${num2(w.grainKg)} kg Schüttung`} />
+      ) : (
+        <Row label="davon Hauptguss" input={w.mashRatioLPerKg === undefined ? undefined : `${num2(w.mashRatioLPerKg)} l/kg`} l={w.strikeL}
+          basis="Vollguss · Verhältnis ergibt sich" />
+      )}
+      {w.strikeFill.length > 0 && (
+        <>
+          {lossRows(w.strikeFill)}
+          <Row strong label="Hauptguss einfüllen" l={w.strikeFillL} />
+        </>
+      )}
+      {w.sparge && <Row label="davon Nachguss" l={w.spargeL} basis="Rest des Gesamtwassers" />}
+      {w.spargeFill.length > 0 && (
+        <>
+          {lossRows(w.spargeFill)}
+          <Row strong label="Nachguss einfüllen" l={w.spargeFillL} />
+        </>
+      )}
+    </CalcTable>
   );
 }
 

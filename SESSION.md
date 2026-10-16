@@ -2862,3 +2862,7 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
 - **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 744 grün; im Browser mit dem Node-Mock geprüft: Rezept Übersicht und Wasser,
   Sudhaus bearbeiten, Rechner Maischeeffizienz (dunkel). **Nicht angesehen:** hell, schmale Breite, Tabellenzellen (Aufbereitung), die
   Geräte-Dialoge und die übrigen Felder der Sud-Seiten.
+
+## 2026-10-17 — Wassermenge und Abfüllmenge wie im Mockup
+
+Darstellung der Karten „Wassermenge“ (Rezept › Wasser) und „Abfüllmenge“ (Rezept › Gärung) ans Canvas-Mockup angeglichen: Überschrift außerhalb der Karte (`Section`), größere Kennzahlen (`Stat large`), runder Balken mit Punkt-Legende, „Berechnung“ als Akkordeon-Leiste mit Tabelle (Vorgabe · Volumen · Grundlage, Zwischensummen hervorgehoben). Neue Datei `web/src/pages/recipe/CalcTable.tsx` (`Section`, `Row`, `CalcTable`); Eingaben und Rechnung unverändert (Nutzerentscheidung: nur Darstellung). `pnpm typecheck` sauber, `pnpm test` 744 grün. **Nicht im Browser angesehen** (hell/dunkel, 390 px).

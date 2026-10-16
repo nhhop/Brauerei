@@ -31,13 +31,13 @@ export interface TabProps {
   dirty?: boolean;                 // the recipe has unsaved edits (overview only)
 }
 
-export function Stat({ label, value, unit, digits, sub }: {
-  label: string; value?: number; unit: string; digits: number; sub?: string;
+export function Stat({ label, value, unit, digits, sub, large }: {
+  label: string; value?: number; unit: string; digits: number; sub?: string; large?: boolean;
 }) {
   return (
     <div>
       <dt class="text-xs text-muted">{label}</dt>
-      <dd class="text-lg font-semibold">
+      <dd class={large ? 'text-2xl font-semibold leading-tight tabular-nums' : 'text-lg font-semibold'}>
         {value === undefined ? '—' : <>{value.toFixed(digits).replace('.', ',')} <span class="text-xs font-normal text-muted">{unit}</span></>}
       </dd>
       {sub && <dd class="text-xs text-muted">{sub}</dd>}

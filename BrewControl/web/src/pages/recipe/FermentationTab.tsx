@@ -12,7 +12,7 @@ import { inp } from '../../ui';
 import { Card, Field, NumInput, OptNum, Select } from './fields';
 import { PhaseList } from './PhaseList';
 import { ProcessIngredients, Stat, type TabProps } from './tabs';
-import { Row } from './WaterTab';
+import { CalcTable, Row, Section } from './CalcTable';
 
 const SUGARS: { value: SugarType; label: string }[] = [
   { value: 'saccharose', label: 'Saccharose' }, { value: 'traubenzucker', label: 'Traubenzucker' }, { value: 'dme', label: 'DME' },
@@ -133,7 +133,7 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
   }
   const opts = (containers ?? []).map((c) => ({ value: c.id, text: containerLabel(c) }));
   return (
-    <Card title="Abfüllmenge"
+    <Section title="Abfüllmenge"
       action={
         <button type="button" disabled={!containers?.length} onClick={add}
           title={containers?.length ? undefined : 'Keine Gebinde im Gärkeller'}
@@ -141,6 +141,7 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
           <Plus size={12} /> Gebinde
         </button>
       }>
+      <div class="p-4">
       <div class="flex flex-wrap items-end gap-4">
         <Field label="Trub">
           <OptNum unit="l" value={recipe.trubLossL} placeholder="0" onChange={(trubLossL) => onChange({ trubLossL })} />
@@ -179,18 +180,19 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
       ) : (
         <>
           <dl class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Anstellwürze" value={b.pitchL} unit="l" digits={1} />
-            <Stat label="Jungbier" value={b.youngL} unit="l" digits={1} />
-            <Stat label="Abgefüllt" value={b.bottledL} unit="l" digits={1} sub={b.leftL > 0.05 ? `Rest ${fmtL(b.leftL)}` : undefined} />
-            <Stat label="Flaschen" value={rows.length ? b.bottles : undefined} unit="Stück" digits={0}
+            <Stat large label="Anstellwürze" value={b.pitchL} unit="l" digits={1} sub="in den Gärbehälter" />
+            <Stat large label="Jungbier" value={b.youngL} unit="l" digits={1} sub="vor dem Abfüllen" />
+            <Stat large label="Abgefüllt" value={b.bottledL} unit="l" digits={1} sub={b.leftL > 0.05 ? `Rest ${fmtL(b.leftL)}` : undefined} />
+            <Stat large label="Flaschen" value={rows.length ? b.bottles : undefined} unit="Stück" digits={0}
               sub={b.kegs ? `dazu ${b.kegs} Keg${b.kegs === 1 ? '' : 's'}` : undefined} />
           </dl>
           <BottlingBar b={b} />
-          <BottlingCalculation b={b} cold={recipe.volumeBasis === 'cold'} />
           <Notes notes={b.notes} />
         </>
       )}
-    </Card>
+      </div>
+      {!missing && b && <BottlingCalculation b={b} cold={recipe.volumeBasis === 'cold'} />}
+    </Section>
   );
 }
 
@@ -212,7 +214,7 @@ function BottlingBar({ b }: { b: Bottling }) {
   const pct = (l: number) => (l / total) * 100;
   return (
     <div class="mt-4">
-      <div class="flex h-4 gap-[2px] overflow-hidden rounded">
+      <div class="flex h-2.5 overflow-hidden rounded-full">
         {parts.filter((p) => p.l > 0).map((p) => (
           <div key={p.label} class="h-full" style={{ width: `${pct(p.l)}%`, background: p.color }}
             title={`${p.label}: ${fmtL(p.l)} (${Math.round(pct(p.l))} %)`} />
@@ -221,7 +223,7 @@ function BottlingBar({ b }: { b: Bottling }) {
       <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         {parts.map((p) => (
           <li key={p.label} class="flex items-center gap-1.5">
-            <span class="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: p.color }} />
+            <span class="inline-block h-2 w-2 rounded-full" style={{ background: p.color }} />
             {p.label} <span class="text-fg">{fmtL(p.l)}</span>
           </li>
         ))}
@@ -235,28 +237,23 @@ function BottlingCalculation({ b, cold }: { b: Bottling; cold: boolean }) {
   const knockOutL = b.intake.cooledL + b.intake.shrinkL;
   const shrinkPct = knockOutL > 0 ? (b.intake.shrinkL / knockOutL) * 100 : 0;
   return (
-    <details class="mt-4">
-      <summary class="cursor-pointer text-sm">Berechnung</summary>
-      <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-0.5 text-sm">
-        <Row label="Ausschlag" l={knockOutL} from={cold ? undefined : 'Rezept'} />
-        <Row op="−" label={`Kühlschwund (${num(shrinkPct)} %)`} l={b.intake.shrinkL} from="Sudhaus" />
-        {b.intake.losses.map((x) => <Row key={x.label} op="−" label={x.label} l={x.l} from="Sudhaus" />)}
-        {b.intake.kettleHopL > 0 && <Row op="−" label="Hopfen im Kessel" l={b.intake.kettleHopL} />}
-        {b.speiseL > 0 && <Row op="−" label="Speise" l={b.speiseL} />}
-        {b.dilutionL > 0 && <Row op="+" label="Verschnitt im Gärbehälter" l={b.dilutionL} from="Rezept" />}
-        <Row op="=" label="Anstellwürze" l={b.pitchL} from={cold ? 'Rezept' : undefined} strong />
-        <Row op="−" label="Trub" l={b.trubL} from="Rezept" />
-        {b.dryHopL > 0 && <Row op="−" label="Hopfen im Gärbehälter" l={b.dryHopL} />}
-        <Row op="=" label="Jungbier" l={b.youngL} strong />
-        {b.speiseL > 0 && <Row op="+" label="Speise" l={b.speiseL} />}
-        {b.fillLossL > 0 && <Row op="−" label="Abfüllverluste" l={b.fillLossL} />}
-        {b.leftL > 0 && <Row op="−" label="Rest, passt in kein ganzes Gebinde" l={b.leftL} />}
-        <Row op="=" label="Abgefüllt" l={b.bottledL} strong />
-      </div>
-      <p class="mt-2 text-xs text-muted">
-        Hopfen hält je Gramm Würze zurück, abhängig von der Form (Schätzwerte). Ohne Form am Hopfen gilt die des Lagerpostens, sonst T90.
-      </p>
-    </details>
+    <CalcTable head="Vom Ausschlag bis zur Abfüllung"
+      note="Hopfen hält je Gramm Würze zurück, abhängig von der Form (Schätzwerte). Ohne Form am Hopfen gilt die des Lagerpostens, sonst T90.">
+      <Row strong label="Ausschlag" l={knockOutL} basis={cold ? undefined : 'Rezept'} />
+      <Row op="−" label="Kühlschwund" input={`${num(shrinkPct)} %`} l={b.intake.shrinkL} basis="Sudhaus" />
+      {b.intake.losses.map((x) => <Row key={x.label} op="−" label={x.label} l={x.l} basis="Sudhaus" />)}
+      {b.intake.kettleHopL > 0 && <Row op="−" label="Hopfen im Kessel" l={b.intake.kettleHopL} />}
+      {b.speiseL > 0 && <Row op="−" label="Speise" l={b.speiseL} basis="Karbonisierung" />}
+      {b.dilutionL > 0 && <Row op="+" label="Verschnitt im Gärbehälter" l={b.dilutionL} basis="Rezept" />}
+      <Row strong label="Anstellwürze" l={b.pitchL} basis={cold ? 'Rezept' : 'in den Gärbehälter'} />
+      <Row op="−" label="Trub im Gärbehälter" l={b.trubL} basis="Rezept" />
+      {b.dryHopL > 0 && <Row op="−" label="Hopfen im Gärbehälter" l={b.dryHopL} />}
+      <Row strong label="Jungbier" l={b.youngL} />
+      {b.speiseL > 0 && <Row op="+" label="Speise" l={b.speiseL} basis="zum Karbonisieren" />}
+      {b.fillLossL > 0 && <Row op="−" label="Abfüllverluste" l={b.fillLossL} basis="Gärkeller › Gebinde" />}
+      {b.leftL > 0 && <Row op="−" label="Rest, passt in kein ganzes Gebinde" l={b.leftL} />}
+      <Row strong label="Abgefüllt" l={b.bottledL} />
+    </CalcTable>
   );
 }
 

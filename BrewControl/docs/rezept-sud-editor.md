@@ -513,7 +513,7 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   „Mit Nachguss“, Eingaben (Hauptguss-Verhältnis, Nachguss-Temperatur, mit Nachguss das Läutern als Batch
   oder Fly Sparge und bei Batch die Zahl der Gaben, Verdampfung, Treberverlust) und farbigem Balken (Gesamtwasser aufgeteilt in
   Ausschlag, Verdampfung, Treber, Totraum/Transfer). Die Rechnung steht mit Herkunft jeder Zahl (Rezept
-  bzw. Sudhaus) in einem Aufklappbereich „Berechnung“, standardmäßig zu.
+  bzw. Sudhaus) in einer Akkordeon-Leiste „Berechnung“ (Tabelle mit Vorgabe, Volumen, Grundlage; Zwischensummen hervorgehoben), standardmäßig zu. Überschrift der Karte steht seit 2026-10-17 außerhalb, wie im Mockup (ebenso bei der Abfüllmenge).
 - Toträume, Transferverluste, Verdampfung und Treberverlust kommen als Vorgabe aus dem Sudhaus.
   **Verdampfung und Treberverlust** lassen sich pro Rezept überschreiben; der Platzhalter zeigt den
   Sudhaus-Wert, „Sudhaus-Wert“ nimmt die Überschreibung zurück.
