@@ -70,6 +70,37 @@ export const pickOne = (current: string | undefined, id: string): string | undef
 export const pickRating = (current: number | undefined, n: number): number | undefined =>
   current === n ? undefined : n;
 
+// ── Own aroma words ───────────────────────────────────────────────────────────────
+// A word typed in is kept in the aroma lists as "~word", next to the ids of
+// tastingVocab.ts, so it needs no storage of its own.
+const CUSTOM_PREFIX = '~';
+export const MAX_CUSTOM_LENGTH = 40;
+
+export const isCustom = (id: string): boolean => id.startsWith(CUSTOM_PREFIX);
+export const customLabel = (id: string): string => id.slice(CUSTOM_PREFIX.length);
+
+// Adds a typed word and picks it; empty text, or a word already in the list
+// (any case), leaves the list as it is.
+export function addCustom(ids: string[], text: string): string[] {
+  const word = text.trim().slice(0, MAX_CUSTOM_LENGTH);
+  if (word === '') return ids;
+  const lower = word.toLowerCase();
+  if (ids.some((x) => isCustom(x) && customLabel(x).toLowerCase() === lower)) return ids;
+  return [...ids, CUSTOM_PREFIX + word];
+}
+
+// The own words used in a brew's tastings (smell and aftertaste), each once, in
+// the order they were first used: offered again in the next tasting.
+export function customTerms(tastings: Tasting[]): string[] {
+  const seen = new Map<string, string>();
+  for (const t of tastings) {
+    for (const id of [...t.aroma.descriptors, ...t.finish.aftertaste]) {
+      if (isCustom(id) && !seen.has(customLabel(id).toLowerCase())) seen.set(customLabel(id).toLowerCase(), id);
+    }
+  }
+  return [...seen.values()];
+}
+
 // An off-flavour newly marked is "slight"; a marked one is taken out again.
 export const toggleFault = (faults: FaultMark[], id: string): FaultMark[] =>
   faults.some((f) => f.id === id) ? faults.filter((f) => f.id !== id) : [...faults, { id, level: 'slight' }];

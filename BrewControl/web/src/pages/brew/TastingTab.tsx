@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ChevronDown, ChevronRight } from 'lucide-preact';
 import {
-  addTasting, daysSinceBottling, emptyTasting, getTasting, removeTasting, saveTasting, updateTasting,
+  addTasting, customTerms, daysSinceBottling, emptyTasting, getTasting, removeTasting, saveTasting, updateTasting,
   type BrewTasting, type Tasting,
 } from '../../brewTasting';
 import type { Brew } from '../../brews';
@@ -107,7 +107,7 @@ export function TastingTab({ brew, editable }: { brew: Brew; editable: boolean }
       </Card>
 
       {doc && [...doc.tastings].reverse().map((t) => (
-        <TastingCard key={t.id} tasting={t} bottledAt={bottledAt} editable={editable} open={open === t.id}
+        <TastingCard key={t.id} tasting={t} knownTerms={customTerms(doc.tastings)} bottledAt={bottledAt} editable={editable} open={open === t.id}
           onToggle={() => setOpen(open === t.id ? null : t.id)}
           onChange={(next) => change(updateTasting(doc, next))}
           onDelete={() => setDeleting(t.id)} />
@@ -122,8 +122,8 @@ export function TastingTab({ brew, editable }: { brew: Brew; editable: boolean }
   );
 }
 
-function TastingCard({ tasting: t, bottledAt, editable, open, onToggle, onChange, onDelete }: {
-  tasting: Tasting; bottledAt: number | undefined; editable: boolean; open: boolean;
+function TastingCard({ tasting: t, knownTerms, bottledAt, editable, open, onToggle, onChange, onDelete }: {
+  tasting: Tasting; knownTerms: string[]; bottledAt: number | undefined; editable: boolean; open: boolean;
   onToggle: () => void; onChange: (t: Tasting) => void; onDelete: () => void;
 }) {
   const age = daysSinceBottling(t.at, bottledAt);
@@ -149,7 +149,7 @@ function TastingCard({ tasting: t, bottledAt, editable, open, onToggle, onChange
                 onInput={(e) => onChange({ ...t, taster: e.currentTarget.value || undefined })} />
             </Field>
           </div>
-          <TastingForm tasting={t} onChange={onChange} />
+          <TastingForm tasting={t} knownTerms={knownTerms} onChange={onChange} />
           <div class="mt-3 border-t border-border pt-3 text-right">
             <button type="button" class={linkDanger} onClick={onDelete}>Verkostung löschen</button>
           </div>

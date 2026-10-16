@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addTasting, daysSinceBottling, emptyTasting, fitsLimit, getTasting, pickOne, pickRating, removeTasting, saveTasting, setFaultLevel, textOrUndefined,
+  addCustom, addTasting, customLabel, customTerms, daysSinceBottling, emptyTasting, fitsLimit, getTasting, isCustom, MAX_CUSTOM_LENGTH, pickOne, pickRating, removeTasting, saveTasting, setFaultLevel, textOrUndefined,
   toggleFault, toggleId, updateTasting, type BrewTasting,
 } from './brewTasting';
 
@@ -44,6 +44,33 @@ describe('tasting list', () => {
 
   it('makes a different id for each new tasting', () => {
     expect(emptyTasting(1).id).not.toBe(emptyTasting(1).id);
+  });
+});
+
+describe('own aroma words', () => {
+  it('adds a typed word, trimmed, marked as an own word', () => {
+    const ids = addCustom(['citrus'], '  Pfirsich ');
+    expect(ids).toEqual(['citrus', '~Pfirsich']);
+    expect(isCustom(ids[1])).toBe(true);
+    expect(isCustom('citrus')).toBe(false);
+    expect(customLabel(ids[1])).toBe('Pfirsich');
+  });
+
+  it('ignores empty text and a word already there in any case', () => {
+    const ids = ['~Pfirsich'];
+    expect(addCustom(ids, '   ')).toBe(ids);
+    expect(addCustom(ids, 'pfirsich')).toBe(ids);
+  });
+
+  it('cuts a word to the length limit', () => {
+    expect(customLabel(addCustom([], 'x'.repeat(100))[0])).toHaveLength(MAX_CUSTOM_LENGTH);
+  });
+
+  it('lists the own words of all tastings once, smell and aftertaste alike', () => {
+    const a = { ...emptyTasting(1, 'a'), aroma: { descriptors: ['citrus', '~Pfirsich'] } };
+    const b = { ...emptyTasting(2, 'b'), aroma: { descriptors: ['~pfirsich'] }, finish: { aftertaste: ['~Honig'] } };
+    expect(customTerms([a, b])).toEqual(['~Pfirsich', '~Honig']);
+    expect(customTerms([])).toEqual([]);
   });
 });
 

@@ -2783,3 +2783,17 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
 - **Nicht geprüft:** Die Sud-Sicherung (Export/Import) läuft im Browser aus diesen Routen (es gibt kein `/api/brews/backup`) und
   wurde nicht durchgeklickt; Gärverlauf mit echtem Log und Spindel; die Spalten im Tab „Sude“ und „Abgefüllt“ im Belegungsplan
   in der Oberfläche.
+
+## 2026-10-16 — Verkostung: eigene Aroma-Begriffe
+
+- **Entscheidung (Nutzer):** Die mitgelieferten Begriffe, Ursachen und Hinweistexte passen so; eigene Begriffe sollen möglich sein,
+  zunächst nur für die Aromen (Geruch und Nachhall), abgelegt in der Verkostung selbst (keine Firmware-Änderung, keine
+  gerätweite Liste). Fehlaromen und Textur bleiben fest.
+- **Umsetzung:** Ein getipptes Wort steht als `~Wort` in `aroma.descriptors` bzw. `finish.aftertaste` (`brewTasting.ts`:
+  `addCustom`, `customTerms`, `isCustom`, `customLabel`, höchstens 40 Zeichen, doppelte Wörter ohne Beachtung der Groß-/Kleinschreibung
+  ignoriert). `TastingForm.tsx` zeigt unter den Aroma-Gruppen „Eigene Begriffe“ mit Eingabefeld (Enter oder „Hinzufügen“);
+  Wörter aus den anderen Verkostungen desselben Suds erscheinen als Vorschlag zum Anklicken, in beiden Aroma-Listen. Abwählen
+  nimmt ein Wort, das sonst nirgends vorkommt, wieder weg. Über Sude hinweg muss man ein Wort neu tippen.
+- **Verifikation:** `pnpm typecheck`, `pnpm test` 738 grün (vier neue Tests). Im Browser gegen das LilyGo (`pnpm dev`, Sud #5):
+  „Pfirsich“ eingeben, gewählt in Geruch, als nicht gewählter Vorschlag im Nachhall, `GET /api/brews/<id>/tasting` zeigt
+  `["~Pfirsich"]`; die Test-Verkostung danach gelöscht. **Nicht aufgespielt:** Das UI-Tar liegt nicht auf dem Gerät.
