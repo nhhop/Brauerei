@@ -163,4 +163,15 @@ std::vector<TargetCmd> effectiveTargets(const std::vector<Step>& steps, int k,
   return out;
 }
 
+// `cmds` with the controllers' commands first, each group in its own order. A
+// controller switches its actuators together with itself, so a step that turns
+// a controller off and its actuator on has to apply the controller first, or
+// the actuator is switched off again.
+template <class IsController>
+std::vector<TargetCmd> controllersFirst(std::vector<TargetCmd> cmds, IsController isController) {
+  std::stable_partition(cmds.begin(), cmds.end(),
+                        [&](const TargetCmd& c) { return isController(c.id); });
+  return cmds;
+}
+
 }  // namespace BrewControl

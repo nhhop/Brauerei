@@ -2830,3 +2830,15 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
   Verschnitt mit und ohne gemessene Anstellwürze). **Nicht im Browser geprüft:** kein Sud mit Speise und Verschnitt zur Hand, die
   Änderung an der Oberfläche ist nur die Zeilenunterschrift. Das Rezept (`calcStats`/Rezeptseite) zeigt weiter den Alkohol des
   Jungbiers ohne Speise.
+
+## 2026-10-17 — Programmschritt: erst Regler, dann Aktoren
+
+- **Problem:** Seit Regler ihre Aktoren mit aus- und einschalten, wendete `ProgramRunner` die Ziele eines Schritts in ihrer Reihenfolge
+  an. Stand der Aktor eines Reglers mit `enabled:true` vor dem Regler mit `enabled:false`, schaltete der Regler ihn gleich wieder
+  aus. Die generierten Maischprogramme (`brewPrograms.ts`) stellen den Regler voran und waren nicht betroffen.
+- **Umsetzung:** `controllersFirst` (`ProgramTargets.h`, stabile Aufteilung, rein und nativ testbar) bringt die Regler-Befehle vor die
+  der Aktoren, jede Gruppe in ihrer Reihenfolge. `ProgramRunner::applyStepTargets_` (Schritt betreten) und `applyState_`
+  (Fortsetzen nach Neustart, „Zurück“) nutzen es; die Rampe (`ramped_`) bleibt je Befehl. Einzelne Befehle über `applyTarget`
+  sind davon nicht berührt.
+- **Verifikation:** `pio test -e native` 206 grün (zwei neue Tests für `controllersFirst`), `pio run -e esp32dev` erfolgreich. **Nicht am
+  Gerät geprüft:** `ProgramRunner.cpp` ist nicht Teil der nativen Tests, die Anwendung der Reihenfolge ist nur kompiliert.
