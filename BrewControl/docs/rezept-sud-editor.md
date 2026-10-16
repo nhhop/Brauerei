@@ -1444,7 +1444,11 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   Gesamt) als Soll | Ist | Abweichung; dazu Stammwürze, Restextrakt, Alkohol und Endvergärungsgrad. Das Jungbier hat nur mit gemessener
   Anstellwürze ein Ist.
 - **Alkohol und Endvergärungsgrad** (`actualBeer`, nach Balling aus `ballingBeerAnalysis`): Die Stammwürze ist die der Anstellwürze
-  (`pitchGravity`), ohne Verschnitt im Kessel auch die nach dem Kochen; sonst bleibt der Alkohol leer. Die Gärung einer Speise zählt nicht mit.
+  (`pitchGravity`), ohne Verschnitt im Kessel auch die nach dem Kochen; bei einem Verschnitt im Kessel steht bis zur Messung der
+  Anstellwürze die geplante (`estimated`, Hinweis in der Zeile). Mit Speise (Karbonisierung `speise`) ist der Alkohol der des
+  fertigen Biers: der Anteil des Jungbiers, verdünnt um die Speise, plus der Alkohol aus ihrer Gärung (`speiseAlcoholPct`: das
+  CO₂ aus Zielmenge minus Rest, je 44,01 g CO₂ kommen 46,07 g Ethanol, 0,789 g/ml). Das gilt für Soll und Ist; der Endvergärungsgrad
+  bleibt der der Hauptgärung.
 - **Index-Zeile:** `withResults` füllt `fgPlato`, `abvPct`, `attenuationPct` und `bottledL` (alles Ist) und entfernt sie, wenn die Messung
   fehlt. `brewSummaryLine` (Firmware) nimmt die drei neuen Felder auf, `openapi.yaml` (`BrewSummary`, `Brew.containerCounts`) ist
   nachgezogen. Der Rezept-Tab „Sude“ zeigt Alkohol, Endvergärung und Restextrakt; die Spaltenköpfe erscheinen erst ab 1280 px (davor

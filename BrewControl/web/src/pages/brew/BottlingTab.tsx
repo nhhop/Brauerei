@@ -206,9 +206,11 @@ export function BottlingTab({ brew, recipe, inputs, targets, editable, patch, og
         <h3 class={H3}>Bier</h3>
         {result('Stammwürze', values.pitchGravity, m.pitchGravity, '°P', 1, 'pitchGravity', 'der Anstellwürze')}
         {result('Restextrakt', values.finalGravity, m.finalGravity, '°P', 1, 'finalGravity', 'scheinbar')}
-        {result('Alkohol', plannedBeerValues?.abvPct, actualBeerValues?.abvPct, '% vol')}
+        {result('Alkohol', plannedBeerValues?.abvPct, actualBeerValues?.abvPct, '% vol', undefined, undefined,
+          [actualBeerValues?.estimated && 'Stammwürze aus dem Plan', (actualBeerValues ?? plannedBeerValues)?.withSpeise && 'mit Speise']
+            .filter(Boolean).join(', ') || undefined)}
         {result('Endvergärungsgrad', plannedBeerValues?.attenuationPct, actualBeerValues?.attenuationPct, '%', 1, undefined, 'scheinbar')}
-        <p class="mt-2 text-xs text-muted">Alkohol und Endvergärungsgrad nach Balling aus Stammwürze und Restextrakt; die Gärung einer Speise zählt nicht mit.</p>
+        <p class="mt-2 text-xs text-muted">Alkohol und Endvergärungsgrad nach Balling aus Stammwürze und Restextrakt. Mit Speise kommt der Alkohol aus ihrer Gärung dazu (aus der Kohlensäure-Zielmenge gerechnet) und die Speise verdünnt das Jungbier; der Endvergärungsgrad bleibt der der Hauptgärung. Ohne gemessene Stammwürze der Anstellwürze steht bei einem Verschnitt im Kessel die geplante.</p>
       </Card>
 
       <Card title="Notizen zur Abfüllung">

@@ -2,7 +2,8 @@
 // of the tabs (recipeStats → recipeWater → mashPlan → recipeTreatment) on the
 // brew's frozen copies, the efficiencies counted back from what was measured,
 // and how far a value is off. Pure, like recipeStats.ts.
-import { ballingBeerAnalysis, platoFromExtract, pressureAtAltitudeHpa } from './brewMath';
+import { ballingBeerAnalysis, platoFromExtract, pressureAtAltitudeHpa, speiseAlcoholPct } from './brewMath';
+import { beerNow } from './bottlingDay';
 import { MEASUREMENTS, breweryBoilC, type Brewery, type Brewhouse, type MeasureKey } from './brewhouse';
 import type { Brew, MeasureId } from './brews';
 import type { Container, Fermenter } from './cellar';
@@ -61,6 +62,7 @@ export interface BrewTargets {
   ctx?: EfficiencyContext;
   dilutionInKettle: boolean;  // the knock-out target is before it
   bottling?: Bottling;        // the volume chain from the knock-out to the containers (5c-5)
+  speiseTargetVol?: number;   // CO₂ volumes the Speise carbonates to; unset without carbonation by Speise
   notes: string[];
 }
 
@@ -127,6 +129,7 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries, fermenter, c
   const att = entries ? yeastAttenuation(r, entries) : undefined;
   if (d.finalPlato !== undefined && att !== undefined) values.finalGravity = d.finalPlato * (1 - att / 100);
   values.maxTempAfter = residualTempC(r);
+  if (r.carbonation?.method === 'speise') out.speiseTargetVol = r.carbonation.targetVol;
 
   if (!wort) return out;
   out.bottling = calcBottling(r, bh, d, wort.draw, containers ?? null);
@@ -234,25 +237,50 @@ export function measuredFermenterPct(m: Partial<Record<MeasureId, number>>, t: B
 export const measuredValues = (brew: Pick<Brew, 'measurements'>): Partial<Record<MeasureId, number>> =>
   Object.fromEntries(Object.entries(brew.measurements ?? {}).map(([k, x]) => [k, x!.v]));
 
-// Alcohol and apparent attenuation (Balling) from the measured original and
-// final gravity. The original gravity is the pitched wort's; the knock-out's
-// serves without a dilution in the kettle, with one it is not the beer's. The
-// fermentation of a Speise is not counted. Unset without both gravities.
-export function actualBeer(m: Partial<Record<MeasureId, number>>, t: Pick<BrewTargets, 'dilutionInKettle'>):
-  { abvPct: number; attenuationPct: number } | undefined {
-  const og = m.pitchGravity ?? (t.dilutionInKettle ? undefined : m.postBoilGravity);
-  const fg = m.finalGravity;
+type BeerTargets = Pick<BrewTargets, 'dilutionInKettle' | 'values'> & Partial<Pick<BrewTargets, 'bottling' | 'speiseTargetVol'>>;
+
+export interface Beer {
+  abvPct: number;
+  attenuationPct: number;
+  withSpeise: boolean;   // the alcohol includes the fermentation of the Speise
+  estimated: boolean;    // the original gravity is the plan's, not measured
+}
+
+// Alcohol and apparent attenuation (Balling) of the young beer from the
+// original and final gravity. With a Speise the alcohol is the finished beer's:
+// the young beer's share diluted by the Speise plus what the Speise ferments to
+// (speiseAlcoholPct, from the CO₂ target and the temperature). The attenuation
+// stays the main fermentation's. Unset without both gravities.
+function beerFrom(og: number | undefined, fg: number | undefined, t: BeerTargets, m: Partial<Record<MeasureId, number>>):
+  Pick<Beer, 'abvPct' | 'attenuationPct' | 'withSpeise'> | undefined {
   if (og === undefined || fg === undefined || !(og > 0)) return undefined;
   const a = ballingBeerAnalysis(og, fg);
-  return { abvPct: a.abvPercent, attenuationPct: a.apparentAttenuationPercent };
+  let abvPct = a.abvPercent;
+  let withSpeise = false;
+  const beer = beerNow(t, m);
+  const tempC = m.maxTempAfter ?? t.values.maxTempAfter;
+  if (beer && beer.speiseL > 0 && beer.beerL > 0 && t.speiseTargetVol !== undefined && tempC !== undefined) {
+    abvPct = (a.abvPercent * beer.youngL + speiseAlcoholPct(t.speiseTargetVol, tempC) * beer.beerL) / beer.beerL;
+    withSpeise = true;
+  }
+  return { abvPct, attenuationPct: a.apparentAttenuationPercent, withSpeise };
+}
+
+// From the measured original and final gravity. The original gravity is the
+// pitched wort's; the knock-out's serves without a dilution in the kettle. With
+// one the knock-out is not the beer's, and the plan's gravity stands in
+// (`estimated`) until the pitched wort is measured.
+export function actualBeer(m: Partial<Record<MeasureId, number>>, t: BeerTargets): Beer | undefined {
+  const estimated = m.pitchGravity === undefined && t.dilutionInKettle;
+  const og = m.pitchGravity ?? (t.dilutionInKettle ? t.values.pitchGravity : m.postBoilGravity);
+  const beer = beerFrom(og, m.finalGravity, t, m);
+  return beer && { ...beer, estimated };
 }
 
 // The same for the recipe's targets: the pitched wort down to the final gravity.
-export function plannedBeer(t: Pick<BrewTargets, 'values'>): { abvPct: number; attenuationPct: number } | undefined {
-  const { pitchGravity: og, finalGravity: fg } = t.values;
-  if (og === undefined || fg === undefined || !(og > 0)) return undefined;
-  const a = ballingBeerAnalysis(og, fg);
-  return { abvPct: a.abvPercent, attenuationPct: a.apparentAttenuationPercent };
+export function plannedBeer(t: BeerTargets): Beer | undefined {
+  const beer = beerFrom(t.values.pitchGravity, t.values.finalGravity, t, {});
+  return beer && { ...beer, estimated: false };
 }
 
 // The brew with its results for the list (brews.ts): the original gravity as

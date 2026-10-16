@@ -157,6 +157,14 @@ export function speiseVolumeL(volumeL: number, targetVolumes: number, tempC: num
   return fermentableExtractNeededG / extractPerLiterG;
 }
 
+// Alcohol (% v/v of the finished beer) that the fermentation of a Speise adds:
+// the CO₂ it has to make (target less residual), and 2 C₂H₅OH come with 2 CO₂,
+// 46.07 g per 44.01 g; ethanol at 0.789 g/ml as in ballingBeerAnalysis.
+export function speiseAlcoholPct(targetVolumes: number, tempC: number): number {
+  const co2GPerL = Math.max(0, targetVolumes - residualCo2Volumes(tempC)) * CO2_G_PER_L_PER_VOLUME;
+  return (co2GPerL * (46.07 / 44.01)) / 0.789 / 10;
+}
+
 // Apparent extract (°P) at which green beer is racked into a closed vessel so
 // that the extract still to ferment brings `targetVolumes` (Grünschlauchen,
 // spunding). Balling: 2.0665 g of real extract give 0.9565 g CO₂; real and

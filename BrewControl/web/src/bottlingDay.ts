@@ -26,7 +26,7 @@ export interface BeerNow {
   measured: boolean;           // the pitched wort was measured
 }
 
-export function beerNow(t: BrewTargets, m: Measured): BeerNow | undefined {
+export function beerNow(t: Pick<BrewTargets, 'bottling'>, m: Measured): BeerNow | undefined {
   const b = t.bottling;
   if (!b) return undefined;
   const youngL = b.youngL + ((m.batchVolume ?? b.pitchL) - b.pitchL);

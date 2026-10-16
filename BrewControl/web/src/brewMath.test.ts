@@ -4,7 +4,7 @@ import {
   strikeWaterTempC, extractEfficiencyPercent, primingSugarGrams, hydrometerCorrectedSg,
   overrangeConcentration, apparentExtractFromRefractometer, originalExtractFromDualMeasurement,
   ballingBeerAnalysis, platoFromExtract, moreyEbc, tinsethUtilization, relativeUtilization, hopIbu,
-  pressureAtAltitudeHpa, boilingPointC,
+  pressureAtAltitudeHpa, boilingPointC, speiseAlcoholPct,
 } from './brewMath';
 import { platoToSg } from './gravityUnits';
 
@@ -82,6 +82,16 @@ describe('primingSugarGrams', () => {
     const s = primingSugarGrams(20, 2.5, 18, 'saccharose');
     const t = primingSugarGrams(20, 2.5, 18, 'traubenzucker');
     expect(t).toBeGreaterThan(s);
+  });
+});
+
+describe('speiseAlcoholPct', () => {
+  it('adds about 0.4 % vol for 2.5 volumes of CO2 at 19 °C', () => {
+    expect(speiseAlcoholPct(2.5, 19)).toBeCloseTo(0.42, 2);
+  });
+  it('is zero when the residual CO2 already meets the target, and grows with it', () => {
+    expect(speiseAlcoholPct(0.5, 20)).toBe(0);
+    expect(speiseAlcoholPct(3, 19)).toBeGreaterThan(speiseAlcoholPct(2.5, 19));
   });
 });
 

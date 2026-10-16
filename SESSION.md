@@ -2814,3 +2814,19 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
   Resolver und `sensorChannelRef` in `test_sensor_channels`), `pnpm typecheck`, `brewPrograms.test.ts`, Redocly-Lint.
   **Nicht am Gerät geprüft:** Regler auf `bme.hum`/`gyro.roll`, Migration eines vorhandenen Reglers auf `gyro`.
   Downgrade: Ältere Firmware kennt `<id>.<key>` bei Reglern nicht (`sensor not found`); vorher die Registry-Sicherung zurückspielen.
+
+## 2026-10-16 — Alkohol im Sud: Speise und Verschnitt im Kessel
+
+- **Problem:** `actualBeer` rechnete Balling aus Stammwürze der Anstellwürze und Restextrakt. Die Gärung einer Speise in der Flasche
+  (etwa 0,4 % vol) blieb außen vor, und bei einem Verschnitt im Kessel ohne gemessene Anstell-Stammwürze war der Alkohol leer.
+- **Umsetzung:** (1) Mit Speise ist der Alkohol der des fertigen Biers: Jungbier-Anteil, verdünnt um die Speise (Mengen aus
+  `beerNow`, gemessen sonst geplant), plus `speiseAlcoholPct(Zielmenge, Temperatur)` in `brewMath.ts` aus dem CO₂, das die Speise
+  machen muss (2 Ethanol : 2 CO₂, 46,07 : 44,01). Das gilt für Soll (`plannedBeer`) und Ist, damit beide vergleichbar bleiben;
+  der Endvergärungsgrad bleibt der der Hauptgärung. Neues Feld `BrewTargets.speiseTargetVol` (nur bei Karbonisierung `speise`).
+  (2) Bei Verschnitt im Kessel nimmt `actualBeer` ohne gemessene Anstellwürze die geplante Stammwürze (`estimated`).
+  Die Zeile „Alkohol“ in der Bilanz (`BottlingTab`) nennt „mit Speise“ und „Stammwürze aus dem Plan“, der Fußtext ist angepasst;
+  die Index-Zeile (`abvPct`) trägt den neuen Wert.
+- **Verifikation:** `pnpm typecheck`, `pnpm test` 744 grün (neu: `speiseAlcoholPct`, Speise im Ist und Soll mit gemessenen Mengen,
+  Verschnitt mit und ohne gemessene Anstellwürze). **Nicht im Browser geprüft:** kein Sud mit Speise und Verschnitt zur Hand, die
+  Änderung an der Oberfläche ist nur die Zeilenunterschrift. Das Rezept (`calcStats`/Rezeptseite) zeigt weiter den Alkohol des
+  Jungbiers ohne Speise.
