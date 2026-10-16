@@ -2769,3 +2769,17 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
     Tests oben gelten weiter).
   - **Kein Gerät:** `GET/PUT /api/brews/<id>/tasting` am echten Gerät nicht geprüft (PLAN.md › Hardware-Verifikation).
 - **Offen gelassen (PLAN.md):** Auswertung in Sudliste und Rezept; Begriffe und Ursachen mit Erfahrung durchsehen.
+
+## 2026-10-16 — Geräteprüfung LilyGo: Messungen, Verkostung (API-Ebene)
+
+- **Aufgespielt:** Firmware von `dev` (`lilygo_t_display_s3_amoled`, Flash 32,4 %) per `POST /api/update/firmware`. Vorher antworteten
+  `/readings` und `/tasting` mit 404, weil die Datei fehlt – das ist auch der Sollzustand ohne Daten.
+- **Geprüft** (Wegwerf-Sud `hwtest1`, danach gelöscht): `PUT` mit fremder Body-ID → 400 `id mismatch`, mit `a.b` → 400 `invalid id`;
+  `PUT` beider Routen 204; die Dateien liegen als `/brewreadings/hwtest1.json` und `/brewtasting/hwtest1.json`; Neustart
+  (`POST /api/network`), danach beide wieder lesbar und der Sud in `/api/brews`; `DELETE /api/brews/hwtest1` 204 räumt beide
+  Dateien weg (Verzeichnisse leer).
+- **Abfüllung (Index):** `PUT /api/brews/hwtest2` mit `fgPlato`, `abvPct`, `attenuationPct`, `bottledL` → 204; `GET /api/brews` und
+  `/brews/index.jsonl` tragen die drei neuen Felder, nach dem Neustart unverändert; `DELETE` räumt Datei und Indexzeile weg.
+- **Nicht geprüft:** Die Sud-Sicherung (Export/Import) läuft im Browser aus diesen Routen (es gibt kein `/api/brews/backup`) und
+  wurde nicht durchgeklickt; Gärverlauf mit echtem Log und Spindel; die Spalten im Tab „Sude“ und „Abgefüllt“ im Belegungsplan
+  in der Oberfläche.
