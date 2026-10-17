@@ -306,9 +306,8 @@ function SourcePicker({ brewery, value, source, onChange }: {
       </select>
       <div class="flex flex-wrap items-center gap-1 text-xs text-muted">
         +
-        <NumInput value={value?.blendPct ?? 0} class="w-14"
+        <NumInput unit="%" value={value?.blendPct ?? 0}
           onChange={(n) => set({ blendPct: n > 0 ? Math.min(n, 100) : undefined })} />
-        %
         <select class={`${inp} w-full min-w-0 py-1 text-xs`} value={value?.blendId ?? VE_WATER.id}
           onChange={(e) => set({ blendId: e.currentTarget.value === VE_WATER.id ? undefined : e.currentTarget.value })}>
           {waters.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
@@ -339,8 +338,7 @@ function DoseEditor({ i, catalog, onPatch, onRemove }: {
           {allowedTimings('auxiliary', 'water').map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
         </select>
         <div class="flex items-center gap-1 text-xs text-muted">
-          <NumInput value={i.amount} onChange={(n) => onPatch({ amount: n })} class="w-16" />
-          {agent?.unit ?? 'g'}
+          <NumInput unit={agent?.unit ?? 'g'} value={i.amount} onChange={(n) => onPatch({ amount: n })} />
         </div>
         <Strength i={i} agent={agent} onChange={(strengthPct) => onPatch({ strengthPct })} />
       </div>

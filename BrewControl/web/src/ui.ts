@@ -48,6 +48,8 @@ export const unitBox =
 export const unitInput =
   'min-w-0 flex-1 border-0 bg-transparent py-1.5 text-right tabular-nums text-fg focus:outline-none ' +
   '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+// A value the plan computed (the other of a pair), set apart from the one typed.
+export const unitInputMuted = unitInput.replace('text-fg', 'text-muted');
 export const unitText = 'whitespace-nowrap text-[13px] text-muted';
 
 // Status badges — WinUI InfoBadge style: tinted fill (semantic hue mixed over the

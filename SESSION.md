@@ -2866,3 +2866,15 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
 ## 2026-10-17 — Wassermenge und Abfüllmenge wie im Mockup
 
 Darstellung der Karten „Wassermenge“ (Rezept › Wasser) und „Abfüllmenge“ (Rezept › Gärung) ans Canvas-Mockup angeglichen: Überschrift außerhalb der Karte (`Section`), größere Kennzahlen (`Stat large`), runder Balken mit Punkt-Legende, „Berechnung“ als Akkordeon-Leiste mit Tabelle (Vorgabe · Volumen · Grundlage, Zwischensummen hervorgehoben). Neue Datei `web/src/pages/recipe/CalcTable.tsx` (`Section`, `Row`, `CalcTable`); Eingaben und Rechnung unverändert (Nutzerentscheidung: nur Darstellung). `pnpm typecheck` sauber, `pnpm test` 744 grün. **Nicht im Browser angesehen** (hell/dunkel, 390 px).
+
+### Nachtrag: Rest der Rezept-/Sud-Tabs und Pfeile links
+
+- **Rest umgestellt:** Alle Felder mit Einheit hinter dem Feld (`°C`, `min`, `%`, `l`, `bar`, Tage, Stück, Zutatenmengen,
+  Ist-Mengen und Messwerte im Sud, Ausgangswasser-Anteil) stehen jetzt im Rahmen. Die Spalten des Maischplans sind dafür breiter
+  (`MashTab.tsx` `GRID`). Berechnete Gegenstücke (die „andere“ Seite eines Paars) bleiben gedämpft (`muted`).
+- **Pfeile links:** `UnitBox` zeigt bei Hover/Fokus (auf Touchgeräten immer) zwei Pfeile links im Feld, auch ↑/↓ auf der Tastatur.
+  Schritt in `numStep.ts`: ab 10 ganze Zahlen, darunter 0,1, gerundet auf die feinere Stelle; nicht unter 0 (außer °C); ein leeres
+  Feld zählt vom Platzhalter. `step` überschreibt (Tage, Stück: 1). Felder ohne Einheit behalten den nativen Spinner. Die Felder in
+  `AddItemModal`/`EnergyPage` haben noch keine Pfeile (Textzustand als String).
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 749 grün (fünf neue für `numStep`); im Browser: Maischen- und Würzekochen-Tab,
+  Pfeil-Klick 6 → 6,1 kg. **Nicht angesehen:** Sud-Seiten, Gärung/Zutaten-Tab, Rechner mit Pfeilen.

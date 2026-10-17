@@ -4,7 +4,9 @@ import { deviation, unitOfMeasure } from '../../brewDay';
 import type { MeasureId, Measurement } from '../../brews';
 import { convertGravity, type GravityUnit } from '../../gravityUnits';
 import type { Sensor } from '../../types';
-import { badgeCaution, badgeSuccess, btnSecondary, inp } from '../../ui';
+import { UnitBox } from '../../components/UnitBox';
+import { stepText } from '../../numStep';
+import { badgeCaution, badgeSuccess, btnSecondary, inp, unitInput } from '../../ui';
 
 export const fmtNum = (n: number, digits: number) => n.toFixed(digits).replace('.', ',');
 
@@ -104,6 +106,20 @@ export function MeasureRow({ id, label, sub, soll, value, sensor, suggest, disab
     void save({ v, at: Date.now() });
   }
 
+  const bump = (dir: 1 | -1) => {
+    const t = stepText(text, dir, '', undefined, unit === '°C' ? -Infinity : 0);
+    setText(t);
+    commit(t);
+  };
+  const fieldEvents = {
+    onInput: (e: Event) => setText((e.currentTarget as HTMLInputElement).value),
+    onChange: (e: Event) => commit((e.currentTarget as HTMLInputElement).value),
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+      else if (!gravity && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); bump(e.key === 'ArrowUp' ? 1 : -1); }
+    },
+  };
+
   return (
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border py-2 last:border-b-0">
       <div class="min-w-[9rem] flex-1">
@@ -114,17 +130,21 @@ export function MeasureRow({ id, label, sub, soll, value, sensor, suggest, disab
         {soll === undefined ? '—' : `${fmtNum(shown(soll), digits)} ${gravity ? g.label : unit}`}
       </div>
       <div class="flex items-center gap-1">
-        <input type="text" inputMode="decimal" aria-label={`${label} Ist`} placeholder="Ist"
-          class={`${inp} w-20`} disabled={disabled || busy} value={text}
-          onInput={(e) => setText(e.currentTarget.value)}
-          onChange={(e) => commit(e.currentTarget.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
         {gravity ? (
-          <select class={`${inp} px-1`} aria-label="Einheit" value={gu}
-            onChange={(e) => setGu(e.currentTarget.value as GravityUnit)}>
-            {GRAVITY_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
-          </select>
-        ) : <span class="w-6 text-xs text-muted">{unit}</span>}
+          <>
+            <input type="text" inputMode="decimal" aria-label={`${label} Ist`} placeholder="Ist"
+              class={`${inp} w-20`} disabled={disabled || busy} value={text} {...fieldEvents} />
+            <select class={`${inp} px-1`} aria-label="Einheit" value={gu}
+              onChange={(e) => setGu(e.currentTarget.value as GravityUnit)}>
+              {GRAVITY_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+            </select>
+          </>
+        ) : (
+          <UnitBox unit={unit} class="w-32" onStep={disabled || busy ? undefined : bump}>
+            <input type="text" inputMode="decimal" aria-label={`${label} Ist`} placeholder="Ist"
+              class={unitInput} disabled={disabled || busy} value={text} {...fieldEvents} />
+          </UnitBox>
+        )}
       </div>
       <div class="w-28">
         {dev && <span class={dev.level === 'ok' ? badgeSuccess : badgeCaution}>{dev.text}</span>}

@@ -1,3 +1,4 @@
+import { stepValue } from '../numStep';
 import { inp, unitInput } from '../ui';
 import { UnitBox } from './UnitBox';
 
@@ -20,7 +21,7 @@ export function NumberField({ label, value, onChange, unit, step }: {
   return (
     <label class="flex items-center justify-between gap-2 text-sm">
       <span class="text-muted">{label}</span>
-      {unit ? <UnitBox unit={unit} class="w-32">{input}</UnitBox> : input}
+      {unit ? <UnitBox unit={unit} class="w-36" onStep={(dir) => onChange(stepValue(value, dir, step))}>{input}</UnitBox> : input}
     </label>
   );
 }

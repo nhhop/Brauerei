@@ -83,20 +83,19 @@ export function IngredientCard({ title, all, onChange, kind, scope, match, boilM
       </select>
       {i.timing === 'boil' && (
         <div class="flex items-center gap-1 text-xs text-muted">
-          <NumInput value={i.timeMin ?? boilMin} onChange={(n) => patch(i.id, { timeMin: n })} class="w-16" />
-          min vor Kochende
+          <NumInput unit="min" value={i.timeMin ?? boilMin} onChange={(n) => patch(i.id, { timeMin: n })} />
+          vor Kochende
         </div>
       )}
       {isDryHop(i) && (
         <div class="flex items-center gap-1 text-xs text-muted" title="Tag nach dem Anstellen, an dem gestopft wird, und wie lange">
-          Tag <OptNum value={i.dryHopDay} placeholder="–" onChange={(n) => patch(i.id, { dryHopDay: n })} class="w-14" />
-          für <OptNum value={i.dryHopDays} placeholder="–" onChange={(n) => patch(i.id, { dryHopDays: n })} class="w-14" /> Tage
+          Tag <OptNum value={i.dryHopDay} placeholder="–" onChange={(n) => patch(i.id, { dryHopDay: n })} class="w-16" step={1} />
+          für <OptNum unit="Tage" value={i.dryHopDays} placeholder="–" onChange={(n) => patch(i.id, { dryHopDays: n })} step={1} />
         </div>
       )}
       {i.kind === 'hop' && <HopFormSelect i={i} lotForm={lotFormOf(i, catalog)} onChange={(form) => patch(i.id, { form })} />}
       <div class="flex items-center gap-1 text-xs text-muted">
-        <NumInput value={i.amount} onChange={(n) => patch(i.id, { amount: n })} class="w-20" />
-        {unitFor(i)}
+        <NumInput unit={unitFor(i)} value={i.amount} onChange={(n) => patch(i.id, { amount: n })} />
       </div>
       <Strength i={i} agent={agentOf(i, catalog)} onChange={(strengthPct) => patch(i.id, { strengthPct })} />
       <button type="button" title="Entfernen"
@@ -158,9 +157,8 @@ export function Strength({ i, agent, onChange }: {
   if (agent?.agent.form !== 'liquid') return null;
   return (
     <div class="flex items-center gap-1 text-xs text-muted" title={`Konzentration, Vorgabe ${agent.entry.acidStrengthPct ?? 100} %`}>
-      <NumInput value={i.strengthPct ?? agent.strengthPct}
-        onChange={(n) => onChange(n === agent.entry.acidStrengthPct ? undefined : n)} class="w-16" />
-      %
+      <NumInput unit="%" value={i.strengthPct ?? agent.strengthPct}
+        onChange={(n) => onChange(n === agent.entry.acidStrengthPct ? undefined : n)} />
     </div>
   );
 }
