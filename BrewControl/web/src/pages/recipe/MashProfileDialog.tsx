@@ -209,8 +209,8 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
                   placeholder={KIND_LABEL[s.kind]} onInput={(e) => patchStep(i, { name: e.currentTarget.value })} />
                 {s.kind === 'doughIn' ? (
                   <span class="flex items-center gap-1 text-xs text-muted">
-                    <NumInput value={s.sharePct ?? 0} onChange={(n) => patchStep(i, { sharePct: n })} class="w-16" /> %
-                    <NumInput value={s.durationMin} onChange={(n) => patchStep(i, { durationMin: n })} class="ml-2 w-14" /> min
+                    <NumInput unit="%" value={s.sharePct ?? 0} onChange={(n) => patchStep(i, { sharePct: n })} />
+                    <NumInput unit="min" value={s.durationMin} onChange={(n) => patchStep(i, { durationMin: n })} />
                   </span>
                 ) : (
                   <StepNumbers tempC={s.tempC ?? lastC} durationMin={s.durationMin} onChange={(d) => patchStep(i, d)} />
@@ -229,8 +229,8 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
                 </span>
                 {s.kind === 'infusion' && (
                   <span class="flex basis-full items-center gap-1 text-xs text-muted">
-                    Wasser <OptNum value={s.waterTempC} placeholder="kochend" class="w-20"
-                      onChange={(waterTempC) => patchStep(i, { waterTempC })} /> °C
+                    Wasser <OptNum unit="°C" value={s.waterTempC} placeholder="kochend"
+                      onChange={(waterTempC) => patchStep(i, { waterTempC })} />
                   </span>
                 )}
                 {s.kind === 'doughIn' && (
@@ -285,8 +285,8 @@ function DecoctionEditor({ d, onChange }: {
       </select>
       {d.rests.map((r, i) => (
         <span key={i} class="flex items-center gap-1">
-          Rast <NumInput value={r.tempC} onChange={(n) => setRest(i, { tempC: n })} class="w-14" /> °C
-          <NumInput value={r.durationMin} onChange={(n) => setRest(i, { durationMin: n })} class="w-14" /> min
+          Rast <NumInput unit="°C" value={r.tempC} onChange={(n) => setRest(i, { tempC: n })} />
+          <NumInput unit="min" value={r.durationMin} onChange={(n) => setRest(i, { durationMin: n })} />
           <button type="button" title="Rast der Teilmaische entfernen" aria-label="Rast der Teilmaische entfernen"
             onClick={() => onChange({ ...d, rests: d.rests.filter((_, k) => k !== i) })} class="rounded px-0.5 text-faint hover:text-critical">
             <X size={12} />
@@ -298,7 +298,7 @@ function DecoctionEditor({ d, onChange }: {
         <Plus size={12} /> Rast
       </button>
       <span class="flex items-center gap-1">
-        kochen <NumInput value={d.boilMin} onChange={(n) => onChange({ ...d, boilMin: n })} class="w-14" /> min
+        kochen <NumInput unit="min" value={d.boilMin} onChange={(n) => onChange({ ...d, boilMin: n })} />
       </span>
     </span>
   );
@@ -309,8 +309,8 @@ function StepNumbers({ tempC, durationMin, onChange }: {
 }) {
   return (
     <span class="flex items-center gap-1 text-xs text-muted">
-      <NumInput value={tempC} onChange={(n) => onChange({ tempC: n })} class="w-16" /> °C
-      <NumInput value={durationMin} onChange={(n) => onChange({ durationMin: n })} class="ml-2 w-14" /> min
+      <NumInput unit="°C" value={tempC} onChange={(n) => onChange({ tempC: n })} />
+      <NumInput unit="min" value={durationMin} onChange={(n) => onChange({ durationMin: n })} />
     </span>
   );
 }

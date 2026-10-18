@@ -156,7 +156,8 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
   }, 'Sud konnte nicht angelegt werden.');
 
   return (
-    <PageShell>
+    // As wide as the canvas mockup: the ingredient tables need it.
+    <PageShell cap="max-w-[71.25rem]">
       <header class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           <Breadcrumb trail={[{ label: 'Rezepte', href: '/rezepte' }, { label: draft.name || 'Ohne Namen' }]} />
