@@ -151,6 +151,15 @@ tags:
       an SD slot — the LittleFS boards answer 404 for every route here. Not the
       controller programs and step templates under `/api/profiles`. The
       shipped profiles are built into the web UI; only own ones are stored.
+  - name: Water profiles
+    description: |
+      Water analyses (source waters) and own target profiles of the profile
+      page, one file each on the SD card (`/waterprofiles/<id>.json`), global
+      for all recipes. Only on boards with an SD slot — the LittleFS boards
+      answer 404 for every route here. VE water and the shipped target profiles
+      are built into the web UI; only own ones are stored. Until 2026-10 the
+      profiles lived in `/brewery.json` (`waters`); the web UI moves them here
+      on its first load. The firmware checks a profile's `id` and nothing else.
   - name: Cellar
     description: |
       The fermentation cellar of the recipe package: fermenters (Gärplätze,
@@ -2991,6 +3000,66 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/water-profiles:
+    get:
+      tags: [Water profiles]
+      operationId: listWaterProfiles
+      summary: List the water profiles
+      description: |
+        Every `/waterprofiles/<id>.json`, complete, in no particular order. There
+        is no index: a site has only a few profiles, and the list needs the full
+        objects anyway. Temp files of an interrupted save and other names are
+        skipped. A missing card or directory gives `[]`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All stored water profiles, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WaterProfile" }
+
+  /api/water-profiles/{id}:
+    parameters: [{ $ref: "#/components/parameters/WaterProfileId" }]
+    put:
+      tags: [Water profiles]
+      operationId: putWaterProfile
+      summary: Create or replace a water profile
+      description: |
+        The client picks the id. Written to `/waterprofiles/<id>.json` via a
+        temporary file, so a power cut during the save leaves the previous
+        version. The body is re-serialized, not byte-for-byte; the 16 KB body
+        limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaterProfile" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Water profiles]
+      operationId: deleteWaterProfile
+      summary: Delete a water profile
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/brewery:
     get:
       tags: [Brewhouse]
@@ -3898,6 +3967,13 @@ components:
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       description: Container id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+    WaterProfileId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Water profile id, chosen by the client; it becomes the file name.
       example: mgx4k2a1b2c3d4
     IngredientId:
       name: id
@@ -5698,11 +5774,11 @@ components:
         tapWaterTempC: { type: number, description: "Tap water temperature, °C." }
         waters:
           type: array
+          deprecated: true
           description: |
-            Water analyses (`web/src/waterChem.ts`, type `WaterProfile`), the
-            source water of recipes, and own target profiles (`target: true`).
-            VE water (`id: ve`) and the built-in target profiles live in the
-            web UI and are never stored.
+            Legacy place of the water profiles, now `/api/water-profiles`. The
+            web UI moves any profiles found here into that collection on load
+            and saves the brewery without this field.
           items: { $ref: "#/components/schemas/WaterProfile" }
         defaultWaterId:
           type: string
@@ -5747,6 +5823,7 @@ components:
         hco3: { type: number }
         ph: { type: number }
         note: { type: string, description: "Source, date of the analysis." }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds of the last save. }
         target:
           type: boolean
           enum: [true]

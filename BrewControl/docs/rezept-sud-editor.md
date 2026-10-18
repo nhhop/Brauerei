@@ -432,7 +432,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   | Dublin | 110 | 4 | 12 | 19 | 53 | 280 | BF |
   | Edinburgh | 100 | 18 | 20 | 45 | 105 | 235 | BF |
 
-  Eigene Zielprofile legt man in Anlage › Wasserprofile mit dem Haken „Zielprofil“ an.
+  Eigene Zielprofile legt man unter Profile › Zielwasser an (bis 2026-10-18 in Anlage › Wasserprofile mit dem
+  Haken „Zielprofil“).
 - **Automatisch** (Dialog, seit 2b-3): Zielprofil (oder eigene Werte), erlaubte Salze, eine Säure, Anteil des
   Zweitwassers (meist VE) frei oder fest, Ziel-pH der Maische. Der Löser sucht den Anteil von 0 bis 100 % in
   1-%-Schritten. Je Anteil passt er die Salze per NNLS (Lawson-Hanson) auf Ca, Mg, Na, Cl und SO₄ des
@@ -885,6 +886,40 @@ Konzept (vor 5c-1):
   Stammwürze Soll/Ist, Maische- und Gesamteffizienz und abgefüllte Menge dazu, dazu ein Diagramm der
   Effizienz über die Sude.
 
+## Profile (Menü „Profile“, seit 2026-10-18)
+
+Eine Seite für alle bierbezogenen Profile (`pages/BrewProfilesPage.tsx`, Route `/profile/<tab>`, Paket
+`recipes`). Je Art ein Tab mit zwei Tabellen im Stil der Rezeptliste, **Eigene** (Zeile öffnet den Editor;
+bearbeiten, duplizieren, löschen) und **Mitgeliefert** (schreibgeschützt; „Duplizieren“ legt ein eigenes
+Profil an); die Titel stehen über den Tabellen, ohne Anzahl, und in der Zeile von „Eigene“ steht rechts der
+Knopf für ein neues Profil (auch am Handy, kein FAB). Keine Suche (Nutzer, 2026-10-18)
+(`pages/profiles/ProfileList.tsx`, Spalten je Tab). Die Spalten erscheinen ab `lg`, darunter zeigt jede Zeile
+Name und eine Kurzzeile. Die Reglerseite, die bis dahin „Profile“ hieß, heißt jetzt
+**Programmvorlagen** (`/vorlagen`); ihre API `/api/profiles` ist unverändert.
+
+Entscheidungen des Nutzers (2026-10-18): Wasserprofile bekommen eine eigene Ablage wie die Maischprofile; im
+Rezept-Editor bleibt für Maisch- und Gärprofile nur Laden und Speichern, gepflegt wird auf der Seite; ein
+Gärprofil sind die Phasen und der Haken Druckgärung; eigene Bierstile, bis die BJCP zustimmt, mit einem
+Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: A Wasser (erledigt), B Maische,
+C Gärung, D Bierstile.
+
+- **Wasser:** Analysen mit Ca, Mg, Na, K, Cl, SO₄, HCO₃ in mg/l, optional pH und Notiz, im Dialog. Eingabehilfen
+  rechnen KS4,3 (× 61,02) oder Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14
+  bzw. × 4,34) in Ca und Mg; weicht die Ionenbilanz um mehr als 10 % ab, erscheint ein Hinweis. VE-Wasser ist
+  mitgeliefert und wird nicht gespeichert. Tabellenspalten: Name (Notiz darunter), Ca, Mg, Na, K, Cl, SO₄,
+  HCO₃ in mg/l, Restalkalität in °dH, pH. Das Standardwasser wird nicht hier eingestellt, sondern in der Anlage
+  (Nutzer, 2026-10-18); löscht man es hier, fällt die Wahl zurück auf „erstes Profil“.
+- **Zielwasser:** eigene Zielprofile (`target: true`) und die mitgelieferten (siehe Wasser › Aufbereitung,
+  „Ziel“). Ein Zielprofil ist kein Ausgangswasser; der Tab bestimmt, was ein neues Profil ist, den Haken
+  „Zielprofil“ gibt es nicht mehr.
+- **Ablage:** `/api/water-profiles`, eine Datei je Profil (`/waterprofiles/<id>.json`). `getBrewery()` holt die
+  Profile von dort und hängt sie im Speicher als `Brewery.waters` an, `saveBrewery()` lässt das Feld weg. So
+  rechnen Rezepte und die eingefrorene Brauerei eines gestarteten Suds unverändert. **Umzug:** Stehen noch
+  Profile in `/brewery.json`, schreibt der erste Ladevorgang die fehlenden mit derselben id in die Sammlung
+  (Rezeptverweise bleiben gültig) und speichert die Brauerei danach ohne sie; war kein Standardwasser gewählt,
+  wird das erste Ausgangswasser der alten Liste zum Standardwasser, damit Rezepte ohne Wahl gleich rechnen.
+  Scheitert ein Schritt, bleibt `/brewery.json` unverändert und der Umzug läuft beim nächsten Laden erneut.
+
 ## Anlage (Einstellungen › Brauanlage)
 
 Die Anlage ist in **Sudhaus** und **Gärkeller** geteilt. Die meisten Brauer haben ein Sudhaus, aber oft
@@ -894,13 +929,11 @@ mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
 nicht an der Anlage, und werden deshalb einmal für alle Sudhäuser gepflegt. Sie sind Vorgabe für die
 Rezept-Rechnungen und Vorbelegung im Sud; die Werte vom Brautag trägt der Sud als Messung ein.
 
-Ebenfalls auf Brauerei-Ebene stehen die **Wasserprofile** (seit 2b-1): Analysen mit Ca, Mg, Na, K, Cl, SO₄,
-HCO₃ in mg/l, optional pH und Notiz, als Liste mit Dialog. Eingabehilfen rechnen KS4,3 (× 61,02) oder
-Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14 bzw. × 4,34) in Ca und Mg;
-weicht die Ionenbilanz um mehr als 10 % ab, erscheint ein Hinweis. VE-Wasser ist fest eingebaut und wird
-nicht gespeichert. Das **Standardwasser** ist das Ausgangswasser von Rezepten, die keines wählen; ohne Wahl
-gilt das erste Profil, ohne Profil VE-Wasser. Rezepte lesen es beim Rechnen, ändert es sich, rechnen auch
-bestehende Rezepte ohne eigene Wahl damit.
+Die **Wasserprofile** standen bis 2026-10-18 ebenfalls hier; sie sind auf die Seite Profile umgezogen (siehe
+dort), die Karte Brauerei verweist mit einem Link darauf. Hier bleibt das **Standardwasser** (Nutzer,
+2026-10-18), das Ausgangswasser von Rezepten, die keines wählen; ohne Wahl gilt das erste Profil (nach
+Namen), ohne Profil VE-Wasser. Rezepte lesen es beim Rechnen, ändert es sich, rechnen auch bestehende Rezepte
+ohne eigene Wahl damit.
 
 Ebenfalls dort steht die **Höhe** (seit 3a, m ü. NN). Daraus folgt der Siedepunkt nach der
 Normatmosphäre: p = 1013,25 · (1 − 2,25577·10⁻⁵ · h)^5,25588 hPa, Siedepunkt nach Clausius-Clapeyron mit
@@ -914,10 +947,6 @@ Vorgabe) oder Kolbach (Restalkalität nach Bierfarbe, ohne pH). Siehe Wasser ›
 
 Ebenfalls dort steht die **Grundlage der Effizienz** (seit 3b), eine für alle Rezepte: Konversion,
 Maischeeffizienz (Vorgabe), Sudhausausbeute oder Brewhouse-Efficiency. Siehe Rezept › Effizienz.
-
-Ein Wasserprofil mit dem Haken **Zielprofil** (seit 2b-3, `target: true`) ist kein Ausgangswasser: Es fehlt in
-der Auswahl der Ausgangswässer und des Standardwassers und dient nur dem Vergleich und der Automatik im
-Wasser-Tab (siehe Wasser › Aufbereitung, „Ziel“). Die mitgelieferten Zielprofile sind fest eingebaut.
 
 ### Sudhaus
 Umgesetzt seit 2026-10-04 (Etappe 1, `web/src/brewhouse.ts`, `/api/brewhouses`, `/api/brewery`), nur auf

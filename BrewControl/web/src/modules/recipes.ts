@@ -6,6 +6,7 @@ export { RecipeEditPage } from '../pages/RecipeEditPage';
 export { BrewsPage } from '../pages/BrewsPage';
 export { BrewPage } from '../pages/BrewPage';
 export { IngredientsPage } from '../pages/IngredientsPage';
+export { BrewProfilesPage } from '../pages/BrewProfilesPage';
 export { RechnerIndex } from '../pages/RechnerIndex';
 export { RechnerDetail } from '../pages/RechnerDetail';
 export { BrewhousePage } from '../pages/BrewhousePage';

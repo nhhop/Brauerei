@@ -66,7 +66,7 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
 
   const profileSelect = library && library.profiles.length > 0 && (
     <label class="flex items-center gap-1.5 text-xs text-muted">
-      Aus Profil befüllen
+      Aus Vorlage befüllen
       <select class={`${inp} w-48`} value=""
         onChange={(e) => {
           const sel = e.target as HTMLSelectElement;
@@ -120,7 +120,7 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
               <button type="button" disabled={steps.length === 0}
                 onClick={() => onSaveAsProfile({ name: name.trim(), steps })}
                 class="text-sm text-muted transition-colors hover:text-fg disabled:opacity-40">
-                Als Profil speichern
+                Als Vorlage speichern
               </button>
             )}
           </div>
@@ -141,7 +141,7 @@ export function ProgramEditorModal({ open, snap, initial, library, onSaveAsProfi
         confirmLabel="Ersetzen"
         onConfirm={() => { if (pendingProfile) applyProfile(pendingProfile); setPendingProfile(null); }}
         onCancel={() => setPendingProfile(null)}>
-        Die vorhandenen Schritte werden durch die des Profils ersetzt.
+        Die vorhandenen Schritte werden durch die der Vorlage ersetzt.
       </ConfirmModal>
     </div>
   );

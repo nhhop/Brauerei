@@ -1,6 +1,6 @@
-import { failed } from './api';
 import { UNIT_FITS } from './brewhouse';
-import { VALID_ID, uid } from './recipes';
+import { deleteDoc, listDocs, saveDoc } from './docStore';
+import { uid } from './recipes';
 import { unitOf } from './refs';
 import type { Snapshot } from './types';
 
@@ -171,31 +171,6 @@ export function checkContainer(c: Container, _snap: Snapshot | null): Check {
 }
 
 // ── API ────────────────────────────────────────────────────────────────────────
-async function listDocs<T extends { id: string; name?: string }>(
-  base: string, normalize: (raw: T) => T, sortKey: (t: T) => string,
-): Promise<T[]> {
-  const r = await fetch(base);
-  if (!r.ok) await failed(r);
-  return ((await r.json()) as T[]).map(normalize).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
-}
-
-async function saveDoc<T extends { id: string; updatedAt: number }>(base: string, doc: T): Promise<T> {
-  if (!VALID_ID.test(doc.id)) throw new Error('ungültige ID');
-  const saved = { ...doc, updatedAt: Date.now() };
-  const r = await fetch(`${base}/${encodeURIComponent(doc.id)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(saved),
-  });
-  if (!r.ok) await failed(r);
-  return saved;
-}
-
-async function deleteDoc(base: string, id: string): Promise<void> {
-  const r = await fetch(`${base}/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) await failed(r);
-}
-
 const FERMENTERS = '/api/fermenters';
 const CONTAINERS = '/api/containers';
 

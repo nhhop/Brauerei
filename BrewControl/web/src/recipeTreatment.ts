@@ -117,7 +117,7 @@ export function calcTreatment(recipe: Recipe, w: Water, brewery: Brewery | null,
   if (unlinked > 0) notes.push(`${unlinked} von ${rows.length} Gaben ohne Wassermittel aus dem Katalog, nicht eingerechnet.`);
 
   const defaultId = brewery?.defaultWaterId;
-  if (sourceWaters(brewery).length === 0) notes.push('Noch kein Wasserprofil angelegt (Einstellungen › Brauanlage), gerechnet wird mit VE-Wasser.');
+  if (sourceWaters(brewery).length === 0) notes.push('Noch kein Wasserprofil angelegt (Profile › Wasser), gerechnet wird mit VE-Wasser.');
   const sourceOf = (key: WaterKey): Source => {
     const s = recipe.water?.sources?.[key];
     const id = s?.waterId ?? defaultId;

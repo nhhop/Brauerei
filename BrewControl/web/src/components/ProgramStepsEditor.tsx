@@ -180,7 +180,7 @@ interface Props {
   // Takes an updater so quick successive edits never work on a stale draft —
   // pass the useState setter straight through.
   onChange: (update: (d: StepsDraft) => StepsDraft) => void;
-  stepsHeaderExtra?: ComponentChildren;   // e.g. the "Aus Profil befüllen" select
+  stepsHeaderExtra?: ComponentChildren;   // e.g. the "Aus Vorlage befüllen" select
 }
 
 export function ProgramStepsEditor({ snap, draft, onChange, stepsHeaderExtra }: Props) {

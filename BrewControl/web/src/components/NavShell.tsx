@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { useRouter } from 'preact-router';
 import { useModule } from '../optionalModules';
-import { LayoutDashboard, ListChecks, ChartLine, BookOpen, FlaskConical, Wheat, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
+import { LayoutDashboard, ListChecks, ChartLine, BookOpen, FlaskConical, Wheat, Layers, Calculator, Settings, Menu, Bell, Maximize, Minimize, LogOut, OctagonX, type LucideIcon } from 'lucide-preact';
 
 const STORAGE_KEY = 'brewctl-nav-expanded';
 
@@ -31,11 +31,12 @@ interface NavItem {
 // Weitere Einträge (z.B. einzelne Dashboards) folgen in einer späteren Session.
 const mainItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p) => p === '/' },
-  { href: '/profiles', label: 'Profile', icon: ListChecks, match: (p) => p.startsWith('/profiles') },
+  { href: '/vorlagen', label: 'Programmvorlagen', icon: ListChecks, match: (p) => p.startsWith('/vorlagen') },
   { href: '/logs', label: 'Logs & Charts', icon: ChartLine, match: (p) => p.startsWith('/logs') },
   { href: '/rezepte', label: 'Rezepte', icon: BookOpen, match: (p) => p.startsWith('/rezepte'), module: 'recipes' },
   { href: '/sude', label: 'Sude', icon: FlaskConical, match: (p) => p.startsWith('/sude'), module: 'recipes' },
   { href: '/zutaten', label: 'Zutaten', icon: Wheat, match: (p) => p.startsWith('/zutaten'), module: 'recipes' },
+  { href: '/profile', label: 'Profile', icon: Layers, match: (p) => p === '/profile' || p.startsWith('/profile/'), module: 'recipes' },
   { href: '/rechner', label: 'Rechner', icon: Calculator, match: (p) => p.startsWith('/rechner'), module: 'recipes' },
 ];
 const footerItems: NavItem[] = [
