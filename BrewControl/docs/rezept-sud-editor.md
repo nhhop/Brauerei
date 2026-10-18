@@ -926,8 +926,8 @@ Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: 
   Scheitert ein Schritt, bleibt `/brewery.json` unverändert und der Umzug läuft beim nächsten Laden erneut.
 - **Maische** (seit 2026-10-18, `pages/profiles/MashProfiles.tsx`, Editor `MashProfileEditor.tsx`): eigene
   Maischprofile von der SD (`/api/mash-profiles`, Ablage siehe Maischen › Stand 3c) und die mitgelieferten
-  `BUILTIN_MASH_PROFILES`. Spalten: Name (Beschreibung darunter), Verfahren, Ablauf
-  (`mashProfileSummary`, höchstens zwei Zeilen). Der Editor (Name, Verfahren, Beschreibung, Einmaischen und
+  `BUILTIN_MASH_PROFILES`. Als Liste ohne Spalten (Nutzer, 2026-10-18; `ProfileList` ohne `columns`): je
+  Zeile Name, Beschreibung (eine Zeile) und Verfahren · Ablauf (`mashProfileSummary`). Der Editor (Name, Verfahren, Beschreibung, Einmaischen und
   Schritte mit Rast, Zubrühen, Dekoktion und weiterer Schüttung) ist der aus dem früheren Rezept-Dialog.
   „Duplizieren“ öffnet die Kopie im Editor, gespeichert wird erst mit „Speichern“ (vorher sofort). Im Rezept
   bleiben Laden und „Plan als Profil speichern“ (siehe Maischen).

@@ -6,13 +6,7 @@ import {
 } from '../../mashProfiles';
 import { btnPrimary } from '../../ui';
 import { MashProfileEditor } from './MashProfileEditor';
-import { ProfileList, type ProfileColumn } from './ProfileList';
-
-const MASH_COLUMNS: ProfileColumn<MashProfile>[] = [
-  { label: 'Verfahren', cell: (p) => <span class="block truncate" title={p.method}>{p.method || '–'}</span> },
-  { label: 'Ablauf', cell: (p) => <span class="line-clamp-2" title={mashProfileSummary(p)}>{mashProfileSummary(p)}</span> },
-];
-const MASH_COLS = 'lg:grid-cols-[minmax(10rem,1.2fr)_minmax(8rem,1fr)_minmax(14rem,2fr)_92px]';
+import { ProfileList } from './ProfileList';
 
 // Tab "Maische" of the profile page: own mash profiles from the SD card, the
 // shipped BUILTIN_MASH_PROFILES. The recipe's mash plan loads them and saves
@@ -53,7 +47,7 @@ export function MashProfilesTab() {
     <>
       <p class="text-sm text-muted">Rastfolgen, die der Maischeplan eines Rezepts lädt.</p>
       {error && <p class="mt-3 text-sm text-critical">{error}</p>}
-      <ProfileList own={own} builtin={BUILTIN_MASH_PROFILES} cols={MASH_COLS} columns={MASH_COLUMNS}
+      <ProfileList own={own} builtin={BUILTIN_MASH_PROFILES}
         sub={(p) => p.description || undefined}
         mobile={(p) => (p.method ? `${p.method} · ${mashProfileSummary(p)}` : mashProfileSummary(p))}
         action={<button type="button" class={btnPrimary} onClick={() => setEditing(newMashProfile())}>+ Neues Maischprofil</button>}
