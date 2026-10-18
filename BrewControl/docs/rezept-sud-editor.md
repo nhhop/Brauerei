@@ -547,7 +547,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
 ### Maischen und Würzekochen
 - **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
   - Konversion (Vorgabe aus dem Sudhaus, siehe Effizienz)
-  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge lässt sich per Ziehgriff ändern.
+  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge ändern die Pfeile je Zeile (den Ziehgriff
+    gibt es seit 2026-10-18 nicht mehr, Nutzer).
     Die erste Spalte legt die **Art des Schritts** fest:
     - **Wasser vorlegen:** Hauptguss auf Temperatur bringen. Menge und Temperatur sind nur lesbar: Die
       Menge ist der Hauptguss minus alle Zubrühmengen, die Temperatur ergibt sich aus der Vorgabe des
@@ -928,7 +929,12 @@ Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: 
   Maischprofile von der SD (`/api/mash-profiles`, Ablage siehe Maischen › Stand 3c) und die mitgelieferten
   `BUILTIN_MASH_PROFILES`. Als Liste ohne Spalten (Nutzer, 2026-10-18; `ProfileList` ohne `columns`): je
   Zeile Name, Beschreibung (eine Zeile) und Verfahren · Ablauf (`mashProfileSummary`). Der Editor (Name, Verfahren, Beschreibung, Einmaischen und
-  Schritte mit Rast, Zubrühen, Dekoktion und weiterer Schüttung) ist der aus dem früheren Rezept-Dialog.
+  Schritte mit Rast, Zubrühen, Dekoktion und weiterer Schüttung) sieht aus wie der Maischeplan im Rezept
+  (Spalten Schritt, Bezeichnung, Zugabe, Temperatur, Dauer; Teilmaische unter der Dekoktion; Pfeile und
+  Löschen), aber ohne gemeinsamen Code, weil Rezeptschritte und Plan anders gebaut sind (Nutzer, 2026-10-18).
+  Zugabe: Wassertemperatur beim Zubrühen, Anteil in % bei einer weiteren Schüttung, dick/dünn bei der
+  Dekoktion. Angefügt wird über den Split-Button „+ Rast ▾“ wie im Rezept (nächste Rast, Zubrühen,
+  Einmaischen, Dekoktion, Rast-Vorlagen `REST_PRESETS`); die schreibgeschützte Ansicht nimmt dieselben Spalten.
   „Duplizieren“ öffnet die Kopie im Editor, gespeichert wird erst mit „Speichern“ (vorher sofort). Ein Klick
   auf ein mitgeliefertes Profil zeigt seine Schritte schreibgeschützt (`MashProfileView`, mit „Duplizieren“;
   Nutzer, 2026-10-18). Im Rezept

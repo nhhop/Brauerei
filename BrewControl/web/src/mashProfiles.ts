@@ -42,6 +42,17 @@ const decoction = (name: string, tempC: number, durationMin: number, boilMin: nu
   decoction: { ...(thin ? { thin } : {}), rests: rests.map(([c, m]) => ({ tempC: c, durationMin: m })), boilMin },
 });
 
+// Rests the "+ Rast" menus of the mash plan and the profile editor offer; the
+// button itself adds the next one above the last temperature.
+export const REST_PRESETS: { name: string; tempC: number; durationMin: number }[] = [
+  { name: 'Gummirast', tempC: 40, durationMin: 20 },
+  { name: 'Ferulasäurerast', tempC: 45, durationMin: 15 },
+  { name: 'Eiweißrast', tempC: 52, durationMin: 10 },
+  { name: 'Maltoserast', tempC: 63, durationMin: 40 },
+  { name: 'Verzuckerungsrast', tempC: 72, durationMin: 20 },
+  { name: 'Abmaischen', tempC: 78, durationMin: 5 },
+];
+
 const NOTE = 'Richtwerte, an Malz und Sudhaus anpassen.';
 
 // Shipped read-only; changing one means duplicating it. The values are common
