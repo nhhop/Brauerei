@@ -559,7 +559,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
 ### Maischen und Würzekochen
 - **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
   - Konversion (Vorgabe aus dem Sudhaus, siehe Effizienz)
-  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge lässt sich per Ziehgriff ändern.
+  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge ändern die Pfeile je Zeile (den Ziehgriff
+    gibt es seit 2026-10-18 nicht mehr, Nutzer).
     Die erste Spalte legt die **Art des Schritts** fest:
     - **Wasser vorlegen:** Hauptguss auf Temperatur bringen. Menge und Temperatur sind nur lesbar: Die
       Menge ist der Hauptguss minus alle Zubrühmengen, die Temperatur ergibt sich aus der Vorgabe des
@@ -601,9 +602,12 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     oder Sudhaus.
   - Split-Buttons: „+ Rast hinzufügen“ fügt eine freie Rast an, der Pfeil daneben bietet die übrigen
     Schritt-Arten (Zubrühen, Einmaischen, Dekoktion) und vordefinierte Rasten.
-    „Profile“ öffnet den Dialog Maischprofile, der Pfeil daneben lädt ein Profil direkt.
-  - **Dialog Maischprofile:** Liste (eigene und mitgelieferte) und Editor mit Name, Verfahren, Beschreibung
-    und Rasten (Temperatur, Dauer). Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
+    „Profile“ öffnet die Seite Profile › Maische, der Pfeil daneben lädt ein Profil direkt und bietet „Plan
+    als Profil speichern …“ (fragt nur den Namen) und „Profile verwalten …“. Die Profilseite öffnet sich wie
+    beim Gärung-Tab in einem neuen Browser-Tab, damit der ungespeicherte Entwurf bleibt; das Menü lädt die
+    eigenen Profile bei jedem Öffnen neu (seit 2026-10-18, Nutzer).
+  - **Gepflegt** werden die Maischprofile auf der Seite Profile › Maische (siehe Profile); bis 2026-10-18
+    in einem Dialog im Rezept. Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
     Heizrate des Sudhauses.
   - **Mitgelieferte Profile** sind schreibgeschützte Vorlagen; geändert wird eine Kopie (Duplizieren).
     Umgesetzt (3c): Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit Eiweißrast und
@@ -665,6 +669,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   Whirlpool). Danach die Zutaten (Vorderwürze, Kochen, Whirlpool) und der Hinweis, wenn das Sudhaus keinen
   Hop Back hat.
 - **Stand 3c (2026-10-09, `web/src/mashProfiles.ts`, `pages/recipe/MashProfileDialog.tsx`):** Maischprofile.
+  Seit 2026-10-18 (Profilseite, Etappe B) steht der Editor in `pages/profiles/MashProfileEditor.tsx`, der
+  Dialog ist entfallen.
   - **Ablage:** `/mashprofiles/<id>.json` auf der SD (`JsonDocDir`, Routen `GET /api/mash-profiles`,
     `PUT`/`DELETE /api/mash-profiles/:id`, nur SD-Boards, kein Index). Die Firmware prüft nur die `id`. Im
     Code heißt das `mashProfile`; die Reglerprogramme unter `/api/profiles` sind etwas anderes. Die fünf
@@ -678,7 +684,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     des Einmaischens aus `doughIn` und ersetzt alle weiteren Schritte durch `steps`. Zubrühen kommt als
     Wasser am Siedepunkt, die Menge rechnet der Plan. Weitere Schüttungen behandelt 3d (unten).
   - **Speichern** („Plan als Profil speichern“): übernimmt Einmaischen und alle Rasten und Zubrühschritte;
-    Mengen des Zubrühens und Heizzeiten bleiben draußen.
+    Mengen des Zubrühens und Heizzeiten bleiben draußen. Seit 2026-10-18 fragt es nur den Namen und
+    speichert sofort; Verfahren und Beschreibung ergänzt man auf der Profilseite.
   - **Backup:** `/mashprofiles` liegt wie `/brewhouses` außerhalb von `/config` und ist nicht im Backup.
 - **Stand 3d (2026-10-09, `web/src/mashPlan.ts`, `web/src/mashProfiles.ts`, `pages/recipe/MashTab.tsx`):**
   Dekoktion, Kochen im Maischbehälter und Profile mit Dekoktion und weiteren Schüttungen. Entscheidungen des
@@ -912,8 +919,8 @@ Name und eine Kurzzeile. Die Reglerseite, die bis dahin „Profile“ hieß, hei
 Entscheidungen des Nutzers (2026-10-18): Wasserprofile bekommen eine eigene Ablage wie die Maischprofile; im
 Rezept-Editor bleibt für Maisch- und Gärprofile nur Laden und Speichern, gepflegt wird auf der Seite; ein
 Gärprofil sind die Phasen und der Haken Druckgärung; eigene Bierstile, bis die BJCP zustimmt, mit einem
-Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: A Wasser (erledigt), B Maische,
-C Gärung (erledigt), D Bierstile (erledigt).
+Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: A Wasser (erledigt), B Maische
+(erledigt), C Gärung (erledigt), D Bierstile (erledigt).
 
 - **Wasser:** Analysen mit Ca, Mg, Na, K, Cl, SO₄, HCO₃ in mg/l, optional pH und Notiz, im Dialog. Eingabehilfen
   rechnen KS4,3 (× 61,02) oder Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14
@@ -931,6 +938,20 @@ C Gärung (erledigt), D Bierstile (erledigt).
   (Rezeptverweise bleiben gültig) und speichert die Brauerei danach ohne sie; war kein Standardwasser gewählt,
   wird das erste Ausgangswasser der alten Liste zum Standardwasser, damit Rezepte ohne Wahl gleich rechnen.
   Scheitert ein Schritt, bleibt `/brewery.json` unverändert und der Umzug läuft beim nächsten Laden erneut.
+- **Maische** (seit 2026-10-18, `pages/profiles/MashProfiles.tsx`, Editor `MashProfileEditor.tsx`): eigene
+  Maischprofile von der SD (`/api/mash-profiles`, Ablage siehe Maischen › Stand 3c) und die mitgelieferten
+  `BUILTIN_MASH_PROFILES`. Als Liste ohne Spalten (Nutzer, 2026-10-18; `ProfileList` ohne `columns`): je
+  Zeile Name, Beschreibung (eine Zeile) und Verfahren · Ablauf (`mashProfileSummary`). Der Editor (Name, Verfahren, Beschreibung, Einmaischen und
+  Schritte mit Rast, Zubrühen, Dekoktion und weiterer Schüttung) sieht aus wie der Maischeplan im Rezept
+  (Spalten Schritt, Bezeichnung, Zugabe, Temperatur, Dauer; Teilmaische unter der Dekoktion; Pfeile und
+  Löschen), aber ohne gemeinsamen Code, weil Rezeptschritte und Plan anders gebaut sind (Nutzer, 2026-10-18).
+  Zugabe: Wassertemperatur beim Zubrühen, Anteil in % bei einer weiteren Schüttung, dick/dünn bei der
+  Dekoktion. Angefügt wird über den Split-Button „+ Rast ▾“ wie im Rezept (nächste Rast, Zubrühen,
+  Einmaischen, Dekoktion, Rast-Vorlagen `REST_PRESETS`); die schreibgeschützte Ansicht nimmt dieselben Spalten.
+  „Duplizieren“ öffnet die Kopie im Editor, gespeichert wird erst mit „Speichern“ (vorher sofort). Ein Klick
+  auf ein mitgeliefertes Profil zeigt seine Schritte schreibgeschützt (`MashProfileView`, mit „Duplizieren“;
+  Nutzer, 2026-10-18). Im Rezept
+  bleiben Laden und „Plan als Profil speichern“ (siehe Maischen).
 - **Gärung** (Etappe C, `web/src/fermentationProfiles.ts`, `pages/profiles/FermentationProfiles.tsx`): ein
   Gärprofil sind Name, Beschreibung, die Phasen (Name, Temperatur, Dauer in Tagen, Rampe, Druck; ohne id) und
   der Haken Druckgärung. Stopfgaben und Karbonisierung bleiben im Rezept. Tabellenspalten: Name (Beschreibung
