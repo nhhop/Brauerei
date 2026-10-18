@@ -2,6 +2,7 @@ import { useEffect } from 'preact/hooks';
 import { route } from 'preact-router';
 import { PageShell } from '../components/PageShell';
 import { TabBtn } from '../components/TabBtn';
+import { FermentationProfilesTab } from './profiles/FermentationProfiles';
 import { MashProfilesTab } from './profiles/MashProfiles';
 import { WaterProfilesTab } from './WaterProfiles';
 
@@ -12,6 +13,7 @@ const TABS: { slug: string; label: string; render: () => preact.JSX.Element }[] 
   { slug: 'wasser', label: 'Wasser', render: () => <WaterProfilesTab key="wasser" target={false} /> },
   { slug: 'zielwasser', label: 'Zielwasser', render: () => <WaterProfilesTab key="zielwasser" target /> },
   { slug: 'maische', label: 'Maische', render: () => <MashProfilesTab /> },
+  { slug: 'gaerung', label: 'Gärung', render: () => <FermentationProfilesTab /> },
 ];
 
 export function BrewProfilesPage({ tab }: { path?: string; tab?: string }) {
