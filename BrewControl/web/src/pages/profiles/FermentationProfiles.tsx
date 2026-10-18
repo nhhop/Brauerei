@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { ToggleSwitch } from '../../components/ToggleSwitch';
 import {
-  BUILTIN_FERMENTATION_PROFILES, deleteFermentationProfile, duplicateFermentationProfile, fermentationProfileSummary,
+  BUILTIN_FERMENTATION_PROFILES, PHASE_PRESETS, deleteFermentationProfile, duplicateFermentationProfile, fermentationProfileSummary,
   listFermentationProfiles, maxPressureBar, newFermentationProfile, saveFermentationProfile, totalDays,
   type FermentationProfile,
 } from '../../fermentationProfiles';
@@ -173,13 +172,7 @@ function FermentationProfileDialog({ profile, onSave, onClose }: {
           <div class="mt-4">
             <PhaseList title="Phasen" addLabel="Phase" namePlaceholder="z.B. Hauptgärung" durationUnit="Tage"
               empty="Noch keine Phasen." pressure={!!p.pressureFermentation} items={phases} onChange={setPhases}
-              top={
-                <div class="mb-3 flex items-center gap-3 text-sm">
-                  <ToggleSwitch checked={!!p.pressureFermentation}
-                    onChange={(on) => set({ pressureFermentation: on ? true : undefined })} />
-                  <span>Unter Druck vergären</span>
-                </div>
-              } />
+              onPressure={(on) => set({ pressureFermentation: on ? true : undefined })} presets={PHASE_PRESETS} />
           </div>
           {failed && <p class="mt-3 text-sm text-critical">Speichern fehlgeschlagen.</p>}
         </div>
