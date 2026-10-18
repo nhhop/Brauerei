@@ -61,7 +61,7 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
             {pressureHint && <p class="mt-1 text-xs text-caution">{pressureHint}</p>}
           </div>
         } />
-      <ProcessIngredients recipe={recipe} onChange={onChange} scope="fermentation" />
+      <ProcessIngredients recipe={recipe} onChange={onChange} brewhouses={brewhouses} brewery={brewery} scope="fermentation" />
       <CarbonationCard recipe={recipe} onChange={onChange} result={carbonation} haveBeer={!!bottling} />
       <BottlingCard recipe={recipe} onChange={onChange} b={bottling} containers={containers}
         missing={!catalog ? 'Katalog nicht geladen, Abfüllmenge nicht verfügbar.' : !bh ? 'Sudhaus in der Übersicht wählen.' : undefined} />
@@ -90,7 +90,7 @@ function CarbonationCard({ recipe, onChange, result: r, haveBeer }: {
         </Field>
         {c && (
           <Field label="Ziel">
-            <NumInput unit="vol CO₂" value={c.targetVol} onChange={(n) => set({ targetVol: n })} class="w-20" />
+            <NumInput unit="vol CO₂" value={c.targetVol} onChange={(n) => set({ targetVol: n })} class="w-36" />
           </Field>
         )}
         {c?.method === 'sugar' && (
@@ -158,9 +158,8 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
                   <Select value={r.containerId} groups={[{ opts }]} empty={null} onChange={(containerId) => patch(i, { containerId })} />
                 </div>
                 <div class="flex items-center gap-1 text-xs text-muted">
-                  <OptNum value={r.count} placeholder={last ? 'Rest' : '0'} class="w-16"
+                  <OptNum unit="Stück" step={1} value={r.count} placeholder={last ? 'Rest' : '0'}
                     onChange={(n) => patch(i, { count: n === undefined ? (last ? undefined : 0) : Math.max(0, Math.round(n)) })} />
-                  Stück
                   {line?.rest && <span class="text-fg">= {line.count}</span>}
                 </div>
                 <button type="button" title="Entfernen" onClick={() => setRows(rows.filter((_, j) => j !== i))}

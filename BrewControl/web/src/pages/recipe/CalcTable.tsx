@@ -5,13 +5,17 @@ import { fmtL } from '../../recipeWater';
 
 // Outside heading over a flush card, like the canvas mockup: the card holds a
 // padded summary and, below it, the table.
-export function Section({ title, action, children }: {
-  title: string; action?: ComponentChildren; children: ComponentChildren;
+// `sub` stands next to the heading.
+export function Section({ title, sub, action, children }: {
+  title: string; sub?: ComponentChildren; action?: ComponentChildren; children: ComponentChildren;
 }) {
   return (
     <section class="mb-4">
       <div class="mb-1.5 flex items-center justify-between gap-3 px-1">
-        <h2 class="text-xs font-semibold uppercase tracking-wider text-muted">{title}</h2>
+        <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-muted">{title}</h2>
+          {sub && <span class="text-xs text-muted">{sub}</span>}
+        </div>
         {action}
       </div>
       <div class="overflow-hidden rounded-md border border-card-border bg-card shadow-elev-2">{children}</div>

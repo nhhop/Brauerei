@@ -2866,3 +2866,36 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
 ## 2026-10-17 — Wassermenge und Abfüllmenge wie im Mockup
 
 Darstellung der Karten „Wassermenge“ (Rezept › Wasser) und „Abfüllmenge“ (Rezept › Gärung) ans Canvas-Mockup angeglichen: Überschrift außerhalb der Karte (`Section`), größere Kennzahlen (`Stat large`), runder Balken mit Punkt-Legende, „Berechnung“ als Akkordeon-Leiste mit Tabelle (Vorgabe · Volumen · Grundlage, Zwischensummen hervorgehoben). Neue Datei `web/src/pages/recipe/CalcTable.tsx` (`Section`, `Row`, `CalcTable`); Eingaben und Rechnung unverändert (Nutzerentscheidung: nur Darstellung). `pnpm typecheck` sauber, `pnpm test` 744 grün. **Nicht im Browser angesehen** (hell/dunkel, 390 px).
+
+### Nachtrag: Rest der Rezept-/Sud-Tabs und Pfeile links
+
+- **Rest umgestellt:** Alle Felder mit Einheit hinter dem Feld (`°C`, `min`, `%`, `l`, `bar`, Tage, Stück, Zutatenmengen,
+  Ist-Mengen und Messwerte im Sud, Ausgangswasser-Anteil) stehen jetzt im Rahmen. Die Spalten des Maischplans sind dafür breiter
+  (`MashTab.tsx` `GRID`). Berechnete Gegenstücke (die „andere“ Seite eines Paars) bleiben gedämpft (`muted`).
+- **Pfeile links:** `UnitBox` zeigt bei Hover/Fokus (auf Touchgeräten immer) zwei Pfeile links im Feld, auch ↑/↓ auf der Tastatur.
+  Schritt in `numStep.ts`: ab 10 ganze Zahlen, darunter 0,1, gerundet auf die feinere Stelle; nicht unter 0 (außer °C); ein leeres
+  Feld zählt vom Platzhalter. `step` überschreibt (Tage, Stück: 1). Felder ohne Einheit behalten den nativen Spinner. Die Felder in
+  `AddItemModal`/`EnergyPage` haben noch keine Pfeile (Textzustand als String).
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 749 grün (fünf neue für `numStep`); im Browser: Maischen- und Würzekochen-Tab,
+  Pfeil-Klick 6 → 6,1 kg. **Nicht angesehen:** Sud-Seiten, Gärung/Zutaten-Tab, Rechner mit Pfeilen.
+
+## 2026-10-18 — Zutaten als Tabelle nach Canvas-Vorlage
+
+Vorlage: Artboard „Rezept · Zutaten copy“ (Bearbeitung des Nutzers) und die Prozess-Tabs im Canvas. Branch `feat/zutaten-tabelle`.
+
+- **Zutaten-Tab:** je Art eine Überschrift über der Karte, darunter eine Tabelle mit Spaltenköpfen. Vergärbares: Typ, Farbe mit
+  Farbfeld, Extrakt, Zeitpunkt, Menge, Anteil, °P, EBC; Hopfen: Form, α-Säure, Ölgehalt, Zeitpunkt (Stopf-Tag daneben), Menge,
+  Dauer, Öl ml, IBU; Hefe: Form, Eigenschaften (EVG, Temperatur, Flockung); Aroma/Hilfsstoffe: Kategorie, Details (Kochzeit,
+  Konzentration). Summenzeilen unter Vergärbarem (kg, Stammwürze, EBC, Anteils-Balken) und Hopfen (g, kalt g/l, Öl, IBU).
+  Hopfen in Prozessreihenfolge; Vergärbares bleibt in Eingabereihenfolge, damit Zeilen beim Tippen nicht springen.
+- **Prozess-Tabs** (Maischen, Würzekochen, Gärung): eine Karte je Tab, gegliedert nach Prozessschritt mit Kopfzeile (Name, Notiz,
+  Spaltenköpfe der ersten Zutat, „+ Zutat“), die Art als Spalte. Maischen ohne Art-Spalte, Schüttungen als Zwischenzeilen mit
+  ihren Summen in den Spalten und „+ Malz“, dazu der Schritt „Nach pH-Messung“.
+- **Nutzerentscheidungen:** Anteil und Stammwürze vorerst nur Anzeige (kg bleibt die Eingabe); α und Öl nur aus Sorte/Lagerposten;
+  Lager (Bestand, Fehlmengen, Kosten) weggelassen.
+- **Code:** `web/src/ingredientRows.ts` (Werte je Zeile, Rundungsrest auf der größten Zeile), `hopIbus` aus `calcStats`
+  herausgelöst, `pages/recipe/IngredientCard.tsx` neu (`KindTable`, `ProcessTable`, Raster als Container-Query ab 67rem,
+  darunter umbrechende Zeilen). Die Rezeptseite ist jetzt so breit wie der Canvas (1140 px statt 56rem), sonst passt das Raster nicht.
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 754 grün (fünf neue in `ingredientRows.test.ts`), `pnpm build`. Im Node-Mock
+  (Rezept mit zwei Schüttungen, Kochen/Whirlpool/Stopfen, Lagerposten T45) alle vier Tabs bei 1440 px angesehen, Zutaten-Tab bei
+  375 px (kein seitliches Scrollen); kg 3,8 → 5 ändert Anteil, Summe und Stammwürze sofort. **Nicht geprüft:** am Gerät.

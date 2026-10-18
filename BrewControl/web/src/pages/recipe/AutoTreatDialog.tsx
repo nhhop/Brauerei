@@ -74,7 +74,7 @@ export function AutoTreatDialog({ recipe, w, brewery, catalog, onChange, onClose
                 </label>
                 {fixed !== undefined && (
                   <span class="flex items-center gap-1 text-xs text-muted">
-                    <NumInput value={fixed} class="w-16" onChange={(n) => setFixed(Math.min(Math.max(n, 0), 100))} /> %
+                    <NumInput unit="%" value={fixed} onChange={(n) => setFixed(Math.min(Math.max(n, 0), 100))} />
                   </span>
                 )}
               </div>
@@ -83,8 +83,8 @@ export function AutoTreatDialog({ recipe, w, brewery, catalog, onChange, onClose
           {target.ions && (
             <div class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
               {(['ca', 'mg', 'na', 'cl', 'so4', 'hco3'] as const).map((ion) => (
-                <Field key={ion} label={`${ION_LABEL[ion]} (mg/l)`}>
-                  <NumInput value={target.ions![ion]} class="w-full" onChange={(n) => setTarget({ ions: { ...target.ions!, [ion]: n } })} />
+                <Field key={ion} label={ION_LABEL[ion]}>
+                  <NumInput unit="mg/l" value={target.ions![ion]} onChange={(n) => setTarget({ ions: { ...target.ions!, [ion]: n } })} />
                 </Field>
               ))}
             </div>
@@ -113,7 +113,7 @@ export function AutoTreatDialog({ recipe, w, brewery, catalog, onChange, onClose
             </Field>
             {now.model === 'troester' ? (
               <Field label="Ziel-pH der Maische">
-                <OptNum value={mashPh} placeholder={fmtNum(DEFAULT_MASH_PH, 1)} class="w-20" onChange={setMashPh} />
+                <OptNum value={mashPh} placeholder={fmtNum(DEFAULT_MASH_PH, 1)} class="w-20" step={0.1} onChange={setMashPh} />
               </Field>
             ) : (
               <Field label={`Ziel-RA der Maische (${PH_MODEL_LABEL.kolbach})`}>

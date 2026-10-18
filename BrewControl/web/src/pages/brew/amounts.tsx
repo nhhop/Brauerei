@@ -3,7 +3,9 @@ import { setRowAmount, type Brew } from '../../brews';
 import { lotTarget, rebook, withBooking } from '../../brewStart';
 import { reloadCatalog, saveStockLot } from '../../ingredientSource';
 import type { Recipe } from '../../recipes';
-import { unitBox, unitInput, unitText } from '../../ui';
+import { UnitBox } from '../../components/UnitBox';
+import { stepText } from '../../numStep';
+import { unitInput } from '../../ui';
 
 export const num = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', ',');
 
@@ -33,8 +35,14 @@ export function AmountInput({ value, placeholder, unit, label, disabled, onSave 
   const toText = (v: number | undefined) => (v === undefined ? '' : num(v));
   const [text, setText] = useState(toText(value));
   useEffect(() => setText(toText(value)), [value]);
+  const bump = (dir: 1 | -1) => {
+    const t = stepText(text, dir, placeholder);
+    setText(t);
+    const n = parseFloat(t.replace(',', '.'));
+    if (n !== value) void onSave(n);
+  };
   return (
-    <span class={`${unitBox} w-28`}>
+    <UnitBox unit={unit} class="w-32" onStep={disabled ? undefined : bump}>
       <input type="text" inputMode="decimal" aria-label={label} class={unitInput} placeholder={placeholder}
         disabled={disabled} value={text}
         onInput={(e) => setText(e.currentTarget.value)}
@@ -45,8 +53,10 @@ export function AmountInput({ value, placeholder, unit, label, disabled, onSave 
           else if (!Number.isNaN(n) && n >= 0 && n !== value) void onSave(n);
           else setText(toText(value));
         }}
-        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
-      <span class={unitText}>{unit}</span>
-    </span>
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); bump(e.key === 'ArrowUp' ? 1 : -1); }
+        }} />
+    </UnitBox>
   );
 }

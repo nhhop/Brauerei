@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { UnitBox } from '../../components/UnitBox';
-import { btnSecondary, inp, unitInput } from '../../ui';
+import { stepValue } from '../../numStep';
+import { btnSecondary, inp, unitInput, unitInputMuted } from '../../ui';
 
 export function Card({ title, action, children }: {
   title: string; action?: ComponentChildren; children: ComponentChildren;
@@ -27,27 +28,39 @@ export function Field({ label, children }: { label: string; children: ComponentC
 }
 
 // A number <input>; with `unit` the unit sits inside the frame (see `unitBox`)
-// and `cls` sizes the frame.
-function NumBox({ unit, cls, text, placeholder, onText }: {
-  unit?: string; cls?: string; text: string; placeholder?: string; onText: (t: string) => void;
+// with arrows at the left, and `cls` sizes the frame. The arrows step by `step`
+// (default: 1 from 10 up, else 0.1; see numStep.ts), never below 0 unless the
+// unit is °C or `min` says so. An empty field steps from its placeholder.
+function NumBox({ unit, cls, text, placeholder, step, min, muted, onText }: {
+  unit?: string; cls?: string; text: string; placeholder?: string; step?: number; min?: number; muted?: boolean;
+  onText: (t: string) => void;
 }) {
+  const bump = (dir: 1 | -1) => {
+    const n = parseFloat(text.trim() === '' ? placeholder ?? '' : text);
+    onText(String(stepValue(n, dir, step, min ?? (unit === '°C' ? -Infinity : 0))));
+  };
   const input = (c: string) => (
-    <input type="number" inputMode="decimal" class={c} value={text} placeholder={placeholder}
-      onInput={(e) => onText(e.currentTarget.value)} />
+    <input type="number" step="any" inputMode="decimal" class={c} value={text} placeholder={placeholder}
+      onInput={(e) => onText(e.currentTarget.value)}
+      onKeyDown={unit ? (e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        bump(e.key === 'ArrowUp' ? 1 : -1);
+      } : undefined} />
   );
   if (!unit) return input(`${inp} ${cls ?? 'w-24'}`);
-  return <UnitBox unit={unit} class={cls ?? 'w-28'}>{input(unitInput)}</UnitBox>;
+  return <UnitBox unit={unit} class={cls ?? 'w-28'} onStep={bump}>{input(muted ? unitInputMuted : unitInput)}</UnitBox>;
 }
 
 // Keeps the typed text locally so clearing the field doesn't snap back to 0;
 // the parsed number is committed whenever the text is a valid number.
-export function NumInput({ value, onChange, unit, class: cls }: {
-  value: number; onChange: (n: number) => void; unit?: string; class?: string;
+export function NumInput({ value, onChange, unit, step, min, muted, class: cls }: {
+  value: number; onChange: (n: number) => void; unit?: string; step?: number; min?: number; muted?: boolean; class?: string;
 }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { if (parseFloat(text) !== value) setText(String(value)); }, [value]);
   return (
-    <NumBox unit={unit} cls={cls} text={text}
+    <NumBox unit={unit} cls={cls} step={step} min={min} muted={muted} text={text}
       onText={(t) => {
         setText(t);
         const n = parseFloat(t);
@@ -57,15 +70,16 @@ export function NumInput({ value, onChange, unit, class: cls }: {
 }
 
 // Like NumInput, but an empty field means "not set".
-export function OptNum({ value, onChange, placeholder, unit, class: cls }: {
-  value: number | undefined; onChange: (n: number | undefined) => void; placeholder?: string; unit?: string; class?: string;
+export function OptNum({ value, onChange, placeholder, unit, step, min, muted, class: cls }: {
+  value: number | undefined; onChange: (n: number | undefined) => void; placeholder?: string; unit?: string;
+  step?: number; min?: number; muted?: boolean; class?: string;
 }) {
   const [text, setText] = useState(value == null ? '' : String(value));
   useEffect(() => {
     if ((text === '' ? undefined : parseFloat(text)) !== value) setText(value == null ? '' : String(value));
   }, [value]);
   return (
-    <NumBox unit={unit} cls={cls} text={text} placeholder={placeholder}
+    <NumBox unit={unit} cls={cls} step={step} min={min} muted={muted} text={text} placeholder={placeholder}
       onText={(t) => {
         setText(t);
         const n = parseFloat(t);

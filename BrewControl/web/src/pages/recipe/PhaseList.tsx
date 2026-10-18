@@ -51,19 +51,19 @@ export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empt
                 <input class={`${inp} min-w-0 flex-1 basis-40`} placeholder={namePlaceholder} value={p.name}
                   onInput={(e) => patch(p.id, { name: e.currentTarget.value })} />
                 <div class="flex items-center gap-1 text-xs text-muted">
-                  <NumInput value={p.tempC} onChange={(n) => patch(p.id, { tempC: n })} class="w-20" /> °C
+                  <NumInput unit="°C" value={p.tempC} onChange={(n) => patch(p.id, { tempC: n })} />
                 </div>
                 <div class="flex items-center gap-1 text-xs text-muted">
-                  <NumInput value={p.duration} onChange={(n) => patch(p.id, { duration: n })} class="w-20" /> {durationUnit}
+                  <NumInput unit={durationUnit} value={p.duration} onChange={(n) => patch(p.id, { duration: n })} />
                 </div>
                 {i > 0 && (
                   <div class="flex items-center gap-1 text-xs text-muted" title="Zeit, in der die Temperatur von der vorigen Phase hierher läuft; zählt zur Dauer">
-                    Rampe <OptNum value={p.rampDays} placeholder="0" onChange={(n) => patch(p.id, { rampDays: n || undefined })} class="w-16" /> {durationUnit}
+                    Rampe <OptNum unit={durationUnit} value={p.rampDays} placeholder="0" onChange={(n) => patch(p.id, { rampDays: n || undefined })} />
                   </div>
                 )}
                 {pressure && (
                   <div class="flex items-center gap-1 text-xs text-muted">
-                    Druck <OptNum value={p.pressureBar} placeholder="0" onChange={(n) => patch(p.id, { pressureBar: n || undefined })} class="w-16" /> bar
+                    Druck <OptNum unit="bar" value={p.pressureBar} placeholder="0" onChange={(n) => patch(p.id, { pressureBar: n || undefined })} />
                   </div>
                 )}
                 <button type="button" title="Nach oben" disabled={i === 0} onClick={() => move(i, -1)} class={iconBtn}>
