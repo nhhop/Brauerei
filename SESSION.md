@@ -2923,3 +2923,8 @@ Die Karte mit den Sud-Daten (Name, Rezept, Brautag, Sudhaus, Gärplatz, Belegung
 - **Root Cause:** Gescrollt wird `<main class="overflow-y-auto">` in `NavShell.tsx`, nicht der Viewport. Hat eine Seite einen Balken, die andere nicht, springt der Inhalt um die Balkenbreite. `scrollbar-gutter` auf `html` hilft nicht (toter Streifen rechts).
 - **Umsetzung:** `[scrollbar-gutter:stable]` an `<main>`.
 - **Verifikation:** `tsc --noEmit` sauber. **Nicht** im Browser geprüft.
+
+## 2026-10-18 — Rezept- und Sud-Liste als Tabelle
+
+- **Umsetzung:** Rezepte-Seite nach dem Canvas-Mockup (Suche, Sortierung, Spalten Volumen, Stammwürze, Alkohol, IBU, EBC-Pille, Sude, Zuletzt gebraut, Aktionen inkl. Duplizieren). Stammwürze/Alkohol/IBU/EBC legt der Editor beim Speichern (`listFigures` in `recipeList.ts`) als `ogPlato`/`abvPct`/`ibu`/`ebc` im Rezept ab; die Firmware nimmt sie in die Index-Zeile auf (`RecipeFiles.h`, `openapi.yaml`). Alte Rezepte zeigen „–“, bis sie einmal gespeichert werden. Sude-Seite: Aktiv als Karten, Planung und Abgeschlossen als Tabellen (5 Zeilen, „Alle n anzeigen“). Ohne Phasenbalken, weil `BrewSummary` keinen Phasenstand hat.
+- **Verifikation:** `tsc --noEmit`, neue Tests (`recipeList`, `brewList`), `pio test -e native -f test_recipe_files` und Redocly-Lint grün. Im Browser mit Node-Mock geprüft (Rezepte und Sude, breit dunkel/hell, 375 px, Suche); Sortierung nur per Unit-Test, Löschen/Duplizieren nicht geklickt. Die Firmware ist nicht aufs Gerät gespielt (Kennzahlen erscheinen erst nach Firmware-Update).

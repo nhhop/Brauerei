@@ -178,6 +178,11 @@ export interface Recipe {
   rootId?: string;        // id of version 1; unset = this is version 1
   version?: number;       // unset = 1
   updatedAt: number;
+  // Figures for the list, set by the editor on saving (ListFigures); unset on recipes saved before.
+  ogPlato?: number;
+  abvPct?: number;
+  ibu?: number;
+  ebc?: number;
   ingredients: Ingredient[];
   mash: MashStep[];
   mashRampInRest?: boolean;  // a rest's duration counts from the start of heating or cooling to it; unset = from reaching it
@@ -346,7 +351,8 @@ export function replaceDecoctions(mash: MashStep[], resultC?: (s: MashStep) => n
 }
 
 // What the list shows; GET /api/recipes returns only these fields.
-export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'rootId' | 'version' | 'updatedAt'>;
+export type ListFigures = Pick<Recipe, 'ogPlato' | 'abvPct' | 'ibu' | 'ebc'>;
+export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'rootId' | 'version' | 'updatedAt'> & ListFigures;
 
 // ── Versions ─────────────────────────────────────────────────────────────────────
 // Every version is a recipe file of its own, linked by `rootId` (the id of
