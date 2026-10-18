@@ -101,6 +101,11 @@ function textLine(a: string | undefined, b: string | undefined, label?: string):
   return { label, a: a || undefined, b: b || undefined, changed: (a || '') !== (b || '') };
 }
 
+// The style with its source, so switching between a BJCP and an own style of
+// the same name shows up.
+const styleText = (r: Recipe) =>
+  (r.styleId ? `${r.style} (${r.styleGuide === 'own' ? 'eigener Stil' : `BJCP 2021 ${r.styleId}`})` : r.style);
+
 const field = (title: string, line: DiffLine): DiffRow =>
   ({ title, state: line.changed ? 'changed' : 'same', lines: [line] });
 const computed = (title: string, line: DiffLine): DiffRow => ({ ...field(title, line), computed: true });
@@ -150,7 +155,7 @@ function recipeGroups(a: Recipe, b: Recipe, da: Derived, db: Derived, { brewhous
   return [
     { rows: [
       field('Name', textLine(a.name, b.name)),
-      field('Stil', textLine(a.style, b.style)),
+      field('Stil', textLine(styleText(a), styleText(b))),
       field(volumeTitle(a) === volumeTitle(b) ? volumeTitle(b) : 'Menge', numLine(a.volumeL, b.volumeL, 'l', 1)),
       field('Mengenbezug', textLine(volumeBasis(a), volumeBasis(b))),
       field(`${BASIS_LABEL[basis]} (Eingabe)`,

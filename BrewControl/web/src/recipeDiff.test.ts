@@ -106,6 +106,16 @@ describe('diffRecipes', () => {
     expect(rowOf(s, 'water', 'Pfannevoll').state).toBe('changed');
   });
 
+  it('shows the style with its source', () => {
+    const bjcp = { ...base, style: 'Altbier', styleId: '7B' };
+    const own = { ...bjcp, styleId: 'x1', styleGuide: 'own' as const };
+    expect(rowOf(diff(bjcp, own), 'recipe', 'Stil').lines[0])
+      .toMatchObject({ a: 'Altbier (BJCP 2021 7B)', b: 'Altbier (eigener Stil)', changed: true });
+    expect(rowOf(diff(bjcp, { ...bjcp, styleId: undefined }), 'recipe', 'Stil').lines[0])
+      .toMatchObject({ b: 'Altbier', changed: true });
+    expect(rowOf(diff(own, own), 'recipe', 'Stil').state).toBe('same');
+  });
+
   it('shows the volume basis; switching it with the converted volume keeps the beer', () => {
     const cold: Recipe = { ...base, volumeL: pitchedL(base, bh, catalog, null), volumeBasis: 'cold' };
     const s = diff(base, cold);

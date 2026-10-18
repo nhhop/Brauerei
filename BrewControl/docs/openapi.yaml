@@ -160,6 +160,13 @@ tags:
       are built into the web UI; only own ones are stored. Until 2026-10 the
       profiles lived in `/brewery.json` (`waters`); the web UI moves them here
       on its first load. The firmware checks a profile's `id` and nothing else.
+  - name: Beer styles
+    description: |
+      Own beer styles of the profile page, one file each on the SD card
+      (`/styles/<id>.json`), global for all recipes. Only on boards with an SD
+      slot — the LittleFS boards answer 404 for every route here. The BJCP 2021
+      styles are a static file of the web UI and never stored here. The
+      firmware checks a style's `id` and nothing else.
   - name: Cellar
     description: |
       The fermentation cellar of the recipe package: fermenters (Gärplätze,
@@ -3060,6 +3067,65 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/styles:
+    get:
+      tags: [Beer styles]
+      operationId: listStyles
+      summary: List the own beer styles
+      description: |
+        Every `/styles/<id>.json`, complete, in no particular order. There is
+        no index: a site has only a few own styles, and the style dialog needs
+        the full objects anyway. Temp files of an interrupted save and other
+        names are skipped. A missing card or directory gives `[]`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All stored beer styles, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BeerStyle" }
+
+  /api/styles/{id}:
+    parameters: [{ $ref: "#/components/parameters/StyleId" }]
+    put:
+      tags: [Beer styles]
+      operationId: putStyle
+      summary: Create or replace an own beer style
+      description: |
+        The client picks the id. Written to `/styles/<id>.json` via a temporary
+        file, so a power cut during the save leaves the previous version. The
+        body is re-serialized, not byte-for-byte; the 16 KB body limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BeerStyle" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Beer styles]
+      operationId: deleteStyle
+      summary: Delete an own beer style
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/brewery:
     get:
       tags: [Brewhouse]
@@ -3974,6 +4040,13 @@ components:
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       description: Water profile id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+    StyleId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Beer style id, chosen by the client; it becomes the file name.
       example: mgx4k2a1b2c3d4
     IngredientId:
       name: id
@@ -5831,6 +5904,35 @@ components:
             A target profile: compared with and treated towards in the recipe's
             water tab, never a source water. Unset = an analysis.
       additionalProperties: true
+
+    BeerStyle:
+      type: object
+      required: [id, guide, name, category]
+      description: |
+        Owned by the web UI (`web/src/styleSource.ts`, type `BeerStyle`). The
+        firmware checks only `id`. Each range is `[min, max]`: `og` and `fg` in
+        °P, `abv` in % vol, `ibu` in IBU, `ebc` in EBC. A missing range is left
+        out of the recipe's style comparison.
+      properties:
+        id: { type: string }
+        guide: { type: string, enum: [own], description: "Always `own` when stored; BJCP styles are never stored." }
+        name: { type: string }
+        category: { type: string, description: "Style family, used by the style dialog's filter." }
+        description: { type: string }
+        og: { $ref: "#/components/schemas/StyleSpan" }
+        fg: { $ref: "#/components/schemas/StyleSpan" }
+        abv: { $ref: "#/components/schemas/StyleSpan" }
+        ibu: { $ref: "#/components/schemas/StyleSpan" }
+        ebc: { $ref: "#/components/schemas/StyleSpan" }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds of the last save. }
+      additionalProperties: true
+
+    StyleSpan:
+      type: array
+      items: { type: number }
+      minItems: 2
+      maxItems: 2
+      description: "[min, max]"
 
     Fermenter:
       type: object
