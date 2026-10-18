@@ -1,14 +1,16 @@
-import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2, X } from 'lucide-preact';
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-preact';
 import { Fragment, type ComponentChildren } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
+import { NameModal } from '../../components/NameModal';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
 import type { Efficiency } from '../../efficiency';
 import { ingredientFigures, type IngredientFigures } from '../../ingredientRows';
 import { useCatalog } from '../../ingredientSource';
 import { calcMash, fmtClock, outlineMash, type MashPlan, type MashRow } from '../../mashPlan';
 import {
-  BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, profileLoadEffects, type MashProfile,
+  BUILTIN_MASH_PROFILES, REST_PRESETS, applyMashProfile, listMashProfiles, newMashProfile, profileLoadEffects,
+  profileOfPlan, saveMashProfile, type MashProfile,
 } from '../../mashProfiles';
 import { atKnockOut, wortExtract } from '../../recipeStats';
 import { calcWater, fmtL } from '../../recipeWater';
@@ -21,23 +23,11 @@ import { Section } from './CalcTable';
 import { Card, Field, MenuItem, NumInput, SplitButton } from './fields';
 import { ProcessTable, rowClass, wrapOnly, type IngredientGroup } from './IngredientCard';
 import { MashCurve } from './MashCurve';
-import { MashProfileDialog } from './MashProfileDialog';
 import { Stat, type TabProps } from './tabs';
 
 const num = (n: number) => n.toFixed(1).replace('.', ',');
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const kg = (n: number) => `${n.toFixed(2).replace('.', ',')} kg`;
-
-// Rests the "+ Rast" menu offers; the button itself adds the next one above
-// the plan's last temperature.
-const REST_PRESETS: { name: string; tempC: number; durationMin: number }[] = [
-  { name: 'Gummirast', tempC: 40, durationMin: 20 },
-  { name: 'Ferulasäurerast', tempC: 45, durationMin: 15 },
-  { name: 'Eiweißrast', tempC: 52, durationMin: 10 },
-  { name: 'Maltoserast', tempC: 63, durationMin: 40 },
-  { name: 'Verzuckerungsrast', tempC: 72, durationMin: 20 },
-  { name: 'Abmaischen', tempC: 78, durationMin: 5 },
-];
 
 // A new decoction: thick, a saccharification rest, then the boil.
 const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, durationMin: 10 }], boilMin: 15 });
@@ -275,22 +265,21 @@ function SplitDialog({ recipe, onChange, onClose }: {
 
 // ── Mash plan ──────────────────────────────────────────────────────────────────
 
-// The grid needs 53.75rem (its column minimums plus gaps) of the plan card's own
+// The grid needs 56.75rem (its column minimums plus gaps) of the plan card's own
 // width, so rows switch on that container, not on the window: the sidebar and
 // the page cap change how much of the window the card gets.
-const GRID = '@[53.75rem]:grid @[53.75rem]:grid-cols-[1rem_6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_6.75rem_7rem_6.5rem_2.75rem_2rem] @[53.75rem]:items-center @[53.75rem]:gap-2';
+const GRID = '@[56.75rem]:grid @[56.75rem]:grid-cols-[6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_6.75rem_7rem_6.5rem_2.75rem_6.5rem] @[56.75rem]:items-center @[56.75rem]:gap-2';
 
 function PlanCard({ recipe, onChange, plan, boilC }: {
   recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number;
 }) {
   const steps = recipe.mash;
   const charges = chargesOf(recipe);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   // Own profiles come from the SD card, the shipped ones are built in.
   const [stored, setStored] = useState<MashProfile[] | null>(null);
   const [storeError, setStoreError] = useState(false);
-  const [dialog, setDialog] = useState<'list' | 'save' | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [saveState, setSaveState] = useState<{ ok: boolean; name: string } | null>(null);
   const [pending, setPending] = useState<MashProfile | null>(null);
   const reload = () => listMashProfiles().then((l) => { setStored(l); setStoreError(false); }).catch(() => setStoreError(true));
   useEffect(() => { void reload(); }, []);
@@ -316,16 +305,6 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
   // temperature the plan reached.
   const stranded = !!plan && !plan.decoction && steps.some((s) => s.kind === 'decoction');
   const resultC = (s: MashStep) => plan?.rows.find((r) => r.step.id === s.id)?.tempC;
-
-  // Insertion index under the pointer, never above the fixed steps.
-  function dropIndex(clientY: number): number {
-    const els = [...listRef.current!.querySelectorAll<HTMLElement>('[data-step]')];
-    const i = els.findIndex((el) => {
-      const r = el.getBoundingClientRect();
-      return clientY < r.top + r.height / 2;
-    });
-    return Math.max(2, i < 0 ? els.length : i);
-  }
 
   const menu = (close: () => void) => {
     const pick = (s: Omit<MashStep, 'id'>) => { add(s); close(); };
@@ -364,12 +343,27 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
         {stored?.map(item)}
         {storeError && <div class="px-2.5 py-1 text-xs text-muted">Eigene Profile nicht geladen (SD-Karte?).</div>}
         <div class="mt-1 border-t border-border pt-1" />
-        <MenuItem label="Plan als Profil speichern …" disabled={storeError} onClick={() => { setDialog('save'); close(); }} />
-        <MenuItem label="Profile verwalten …" onClick={() => { setDialog('list'); close(); }} />
+        <MenuItem label="Plan als Profil speichern …" disabled={storeError} onClick={() => { setNaming(true); close(); }} />
+        <MenuItem label="Profile verwalten …" onClick={() => { manage(); close(); }} />
       </>
     );
   };
   const effects = pending ? profileLoadEffects(recipe, pending) : undefined;
+  // The profiles are kept on the profile page. It opens in a new tab, because
+  // leaving the editor would drop the unsaved draft (as in FermentationTab); the
+  // own profiles are fetched again whenever the menu opens.
+  const manage = () => window.open('/profile/maische', '_blank');
+
+  async function saveAsProfile(name: string) {
+    setNaming(false);
+    try {
+      await saveMashProfile({ ...newMashProfile(profileOfPlan(recipe, resultC)), name });
+      setSaveState({ ok: true, name });
+      await reload();
+    } catch {
+      setSaveState({ ok: false, name });
+    }
+  }
 
   const holdMin = plan?.rows.reduce((s, r) => s + r.holdMin, 0) ?? 0;
   const strikeRow = plan?.rows[0];
@@ -378,14 +372,15 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
     <Section title="Maischeplan"
       action={
         <div class="flex items-center gap-2">
-          <SplitButton plain label="Profile" onMain={() => setDialog('list')} arrowTitle="Profil laden" menu={profileMenu} />
+          <span onClickCapture={() => { void reload(); }}>
+            <SplitButton plain label="Profile" onMain={manage} arrowTitle="Profil laden" menu={profileMenu} />
+          </span>
           <SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />
         </div>
       }>
       <div class="p-4">
-      <div ref={listRef} class="@container text-sm">
+      <div class="@container text-sm">
         <div class={`hidden border-b border-border pb-1 text-xs text-muted ${GRID}`}>
-          <span />
           <span>Schritt</span>
           <span>Bezeichnung</span>
           <span>Zugabe</span>
@@ -398,22 +393,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
         {steps.map((s, k) => (
           <StepRow key={s.id} step={s} index={k} count={steps.length} row={plan?.rows[k]} recipe={recipe}
             boilC={boilC} canDecoct={!!decoctionVessel} patch={(p) => patch(s.id, p)} onMove={(by) => move(k, k + by)}
-            onDelete={() => set(steps.filter((x) => x.id !== s.id))}
-            dragging={drag?.from === k}
-            dropBefore={!!drag && drag.to === k && drag.to !== drag.from && drag.to !== drag.from + 1}
-            dropAfter={!!drag && k === steps.length - 1 && drag.to === steps.length && drag.from !== k}
-            grip={{
-              onPointerDown: (e: PointerEvent) => {
-                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                setDrag({ from: k, to: k });
-              },
-              onPointerMove: (e: PointerEvent) => { if (drag) setDrag({ ...drag, to: dropIndex(e.clientY) }); },
-              onPointerUp: () => {
-                if (drag) move(drag.from, drag.to > drag.from ? drag.to - 1 : drag.to);
-                setDrag(null);
-              },
-              onPointerCancel: () => setDrag(null),
-            }} />
+            onDelete={() => set(steps.filter((x) => x.id !== s.id))} />
         ))}
         <label class="flex w-fit items-center gap-1.5 pt-2 text-xs text-muted"
           title="Die Dauer einer Rast läuft ab Beginn des Aufheizens oder Abkühlens, nicht erst ab Erreichen der Temperatur.">
@@ -445,13 +425,16 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           Dekoktionen durch Rasten ersetzen
         </button>
       )}
-      </div>
-      {dialog && (
-        <MashProfileDialog stored={stored} storeError={storeError} recipe={recipe} resultC={resultC} saveFirst={dialog === 'save'}
-          reload={reload} onLoad={setPending} onClose={() => setDialog(null)} />
+      {saveState && (
+        <p class={`mt-2 text-xs ${saveState.ok ? 'text-muted' : 'text-critical'}`}>
+          {saveState.ok ? `Als Maischprofil „${saveState.name}“ gespeichert.` : 'Profil konnte nicht gespeichert werden (SD-Karte?).'}
+        </p>
       )}
+      </div>
+      <NameModal open={naming} title="Plan als Maischprofil speichern" submitLabel="Speichern" placeholder="z. B. Pils, dreistufig"
+        onSave={(name) => void saveAsProfile(name)} onClose={() => setNaming(false)} />
       <ConfirmModal open={pending !== null} title="Profil laden?" confirmLabel="Laden"
-        onConfirm={() => { if (pending) onChange(applyMashProfile(recipe, pending)); setPending(null); setDialog(null); }}
+        onConfirm={() => { if (pending) onChange(applyMashProfile(recipe, pending)); setPending(null); }}
         onCancel={() => setPending(null)}>
         „{pending?.name}“ ersetzt alle Schritte außer Wasser vorlegen und Einmaischen; dessen Temperatur und Dauer setzt das Profil.
         {effects?.created.map((c) => ` ${c.name} entsteht mit ${c.pct} % der Schüttung (aus der ersten aufgeteilt).`)}
@@ -463,17 +446,14 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
 
 const CHANGEABLE: MashStepKind[] = ['rest', 'infusion', 'decoction'];
 
-function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patch, onMove, onDelete, dragging, dropBefore, dropAfter, grip }: {
+function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patch, onMove, onDelete }: {
   step: MashStep; index: number; count: number; row?: MashRow; recipe: Recipe; boilC: number; canDecoct: boolean;
   patch: (p: Partial<MashStep>) => void; onMove: (by: -1 | 1) => void; onDelete: () => void;
-  dragging: boolean; dropBefore: boolean; dropAfter: boolean;
-  grip: Record<string, (e: PointerEvent) => void>;
 }) {
   const fixed = k < 2;
   const charges = chargesOf(recipe);
   const iconBtn = 'rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10 disabled:opacity-30';
   const ro = (text: string) => <span class="tabular-nums text-muted">{text}</span>;
-  const indicator = dropBefore ? 'shadow-[inset_0_2px_0_var(--accent)]' : dropAfter ? 'shadow-[inset_0_-2px_0_var(--accent)]' : '';
 
   let addition: ComponentChildren;
   if (s.kind === 'strike') {
@@ -503,16 +483,8 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
   // makes the temperature lead.
   const tempResult = s.kind === 'decoction' && s.decoction?.lead === 'share';
   return (
-    <div data-step class={`flex flex-wrap items-center gap-2 border-b border-border py-2 ${GRID} ${dragging ? 'opacity-50' : ''} ${indicator}`}>
-      <span class="@max-[53.75rem]:hidden">
-        {!fixed && (
-          <button type="button" title="Ziehen zum Verschieben" aria-label="Ziehen zum Verschieben" {...grip}
-            class="flex cursor-grab touch-none items-center text-faint hover:text-fg">
-            <GripVertical size={14} />
-          </button>
-        )}
-      </span>
-      <span class="w-28 @[53.75rem]:w-auto">
+    <div class={`flex flex-wrap items-center gap-2 border-b border-border py-2 ${GRID}`}>
+      <span class="w-28 @[56.75rem]:w-auto">
         {fixed || s.kind === 'doughIn' || !CHANGEABLE.includes(s.kind) ? (
           <span class="text-xs text-muted">{MASH_KIND_LABEL[s.kind]}</span>
         ) : (
@@ -533,17 +505,17 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
           </select>
         )}
       </span>
-      <input class={`${inp} min-w-0 flex-1 basis-40 @[53.75rem]:basis-auto`} value={s.name} placeholder={MASH_KIND_LABEL[s.kind]}
+      <input class={`${inp} min-w-0 flex-1 basis-40 @[56.75rem]:basis-auto`} value={s.name} placeholder={MASH_KIND_LABEL[s.kind]}
         aria-label="Bezeichnung" onInput={(e) => patch({ name: e.currentTarget.value })} />
-      <span class={`basis-full text-xs @[53.75rem]:basis-auto ${s.kind === 'rest' && !row?.waterL && !row?.evaporatedL ? '@max-[53.75rem]:hidden' : ''}`}>
+      <span class={`basis-full text-xs @[56.75rem]:basis-auto ${s.kind === 'rest' && !row?.waterL && !row?.evaporatedL ? '@max-[56.75rem]:hidden' : ''}`}>
         {addition}
       </span>
       <span class="flex items-center gap-1 text-xs text-muted">
         {tempResult ? (
-          <NumInput unit="°C" muted value={round1(row?.tempC ?? s.tempC ?? 0)} class="w-28 @[53.75rem]:w-full"
+          <NumInput unit="°C" muted value={round1(row?.tempC ?? s.tempC ?? 0)} class="w-28 @[56.75rem]:w-full"
             onChange={(n) => patch({ tempC: n, decoction: { ...s.decoction!, lead: 'temp' } })} />
         ) : tempEditable ? (
-          <NumInput unit="°C" value={s.tempC ?? round1(row?.tempC ?? 0)} onChange={(n) => patch({ tempC: n })} class="w-28 @[53.75rem]:w-full" />
+          <NumInput unit="°C" value={s.tempC ?? round1(row?.tempC ?? 0)} onChange={(n) => patch({ tempC: n })} class="w-28 @[56.75rem]:w-full" />
         ) : (
           <span class="tabular-nums">{row ? `${num(row.tempC)} °C` : '—'}</span>
         )}
@@ -551,21 +523,21 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
       <span class="flex items-center gap-1 text-xs text-muted">
         {s.kind === 'strike' ? '—' : (
           <>
-            <NumInput unit="min" value={s.durationMin ?? 0} onChange={(n) => patch({ durationMin: n })} class="w-28 @[53.75rem]:w-full" />
+            <NumInput unit="min" value={s.durationMin ?? 0} onChange={(n) => patch({ durationMin: n })} class="w-28 @[56.75rem]:w-full" />
           </>
         )}
       </span>
       <span class="text-xs text-muted" title={row?.transition.kind === 'cool' ? 'geschätzt' : undefined}>
         {row?.transition.text ?? '—'}
       </span>
-      <span class="text-right text-xs tabular-nums @[53.75rem]:text-sm">{row ? fmtClock(row.startMin) : '—'}</span>
-      <span class="ml-auto flex items-center gap-1 @[53.75rem]:ml-0">
+      <span class="text-right text-xs tabular-nums @[56.75rem]:text-sm">{row ? fmtClock(row.startMin) : '—'}</span>
+      <span class="ml-auto flex items-center gap-1 @[56.75rem]:ml-0 @[56.75rem]:justify-end">
         {!fixed && (
           <>
-            <button type="button" title="Nach oben" disabled={k === 2} onClick={() => onMove(-1)} class={`${iconBtn} @[53.75rem]:hidden`}>
+            <button type="button" title="Nach oben" disabled={k === 2} onClick={() => onMove(-1)} class={iconBtn}>
               <ArrowUp size={14} />
             </button>
-            <button type="button" title="Nach unten" disabled={k === count - 1} onClick={() => onMove(1)} class={`${iconBtn} @[53.75rem]:hidden`}>
+            <button type="button" title="Nach unten" disabled={k === count - 1} onClick={() => onMove(1)} class={iconBtn}>
               <ArrowDown size={14} />
             </button>
             <button type="button" title="Entfernen" aria-label={`${s.name || 'Schritt'} entfernen`} onClick={onDelete}
@@ -613,7 +585,7 @@ function DecoctionCourse({ step, row, patch }: {
     set({ rests: d.rests.map((r, k) => (k === i ? { ...r, ...p } : r)) });
   const dr = row?.decoction;
   return (
-    <div class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted @[53.75rem]:col-span-6 @[53.75rem]:col-start-3">
+    <div class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted @[56.75rem]:col-span-6 @[56.75rem]:col-start-2">
       <span>Teilmaische{dr ? ` in ${dr.vessel}` : ''}:</span>
       {d.rests.map((r, i) => (
         <span key={i} class="flex items-center gap-1">
