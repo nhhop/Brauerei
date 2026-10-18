@@ -959,6 +959,16 @@ Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: 
   „Profile verwalten …“ und der Knopf selbst öffnen Profile › Gärung. Weil der Rezept-Editor beim Verlassen den
   ungespeicherten Entwurf ohne Rückfrage verwirft, öffnet sich die Seite in einem neuen Browser-Tab; das Menü
   lädt die eigenen Profile bei jedem Öffnen neu.
+  **Phasenliste** (`PhaseList`, Rezept und Editor gleich, Nutzer 2026-10-18): Titel, „Unter Druck vergären“
+  (Text links vom Schalter), „Profile ▾“ (nur im Rezept) und „+ Phase ▾“ stehen über der Karte. Die Hinweise
+  „Rampe länger als die Phase“ und „Kein Gärplatz ist bis … bar druckfest“ (nur im Rezept, gegen den
+  druckfestesten Gärplatz) stehen unter der betroffenen Phase. Der Pfeil an
+  „+ Phase“ bietet vordefinierte Phasen wie „+ Rast“ beim Maischen: Anstellen und Hauptgärung je unter- und
+  obergärig, Diacetylrast, Cold Crash, Lagerung (`PHASE_PRESETS`, Werte wie die mitgelieferten Profile). Phasen
+  lassen sich nicht mehr verschieben, keine Nummern. Ist die Karte breit genug, stehen die Phasen in Spalten mit
+  Kopfzeile (Phase, Temperatur, Dauer, Rampe, Druck), sonst Name und Löschen oben, die Zahlen darunter.
+  Eine Phase „Anstellen“ verträgt sich mit dem Gärprogramm des Suds: Dessen eigener erster Schritt „Anstellen“
+  hält die Temperatur der ersten Phase, bis die Hefe drin ist.
 
 ## Anlage (Einstellungen › Brauanlage)
 

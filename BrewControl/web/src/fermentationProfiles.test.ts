@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BUILTIN_FERMENTATION_PROFILES, applyFermentationProfile, deleteFermentationProfile, duplicateFermentationProfile,
   fermentationProfileSummary, isBuiltinFermentationProfile, listFermentationProfiles, maxPressureBar,
-  newFermentationProfile, normalizeFermentationProfile, profileOfFermentation, saveFermentationProfile, totalDays,
+  newFermentationProfile, normalizeFermentationProfile, PHASE_PRESETS, profileOfFermentation, saveFermentationProfile, totalDays,
 } from './fermentationProfiles';
 import { VALID_ID, type Phase } from './recipes';
 
@@ -27,6 +27,12 @@ describe('shipped profiles', () => {
       // a ramp is part of its phase
       for (const x of p.phases) expect(x.rampDays ?? 0).toBeLessThan(x.duration);
     }
+  });
+
+  it('phase presets are valid phases with unique labels', () => {
+    expect(new Set(PHASE_PRESETS.map((x) => x.label)).size).toBe(PHASE_PRESETS.length);
+    const phases = PHASE_PRESETS.map((x) => x.phase);
+    expect(normalizeFermentationProfile({ id: 'x', phases }).phases).toEqual(phases);
   });
 
   it('only the pressure profile has pressures', () => {
