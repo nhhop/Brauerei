@@ -2899,3 +2899,7 @@ Vorlage: Artboard „Rezept · Zutaten copy“ (Bearbeitung des Nutzers) und die
 - **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 754 grün (fünf neue in `ingredientRows.test.ts`), `pnpm build`. Im Node-Mock
   (Rezept mit zwei Schüttungen, Kochen/Whirlpool/Stopfen, Lagerposten T45) alle vier Tabs bei 1440 px angesehen, Zutaten-Tab bei
   375 px (kein seitliches Scrollen); kg 3,8 → 5 ändert Anteil, Summe und Stammwürze sofort. **Nicht geprüft:** am Gerät.
+
+## 2026-10-18 — Sudseite: Tab „Übersicht“
+
+Die Karte mit den Sud-Daten (Name, Rezept, Brautag, Sudhaus, Gärplatz, Belegung, Notizen) stand immer über den Tabs und störte. Sie liegt jetzt im neuen ersten Tab „Übersicht“ (`BrewPage.tsx`), der beim Öffnen aktiv ist; die Phasen-Tabs behalten ihre Nummern 1–7. Der Entwurf bleibt beim Tab-Wechsel erhalten, „Speichern“ oben unverändert. **Verifikation:** `pnpm typecheck` sauber. **Nicht geprüft:** im Browser, am Gerät.
