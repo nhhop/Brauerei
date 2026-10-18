@@ -1,155 +1,18 @@
-import { ArrowDown, ArrowUp, Copy, Download, Pencil, Plus, Trash2, X } from 'lucide-preact';
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-preact';
 import { useState } from 'preact/hooks';
-import { ConfirmModal } from '../../components/ConfirmModal';
-import {
-  BUILTIN_MASH_PROFILES, deleteMashProfile, duplicateMashProfile, isBuiltinProfile, mashProfileSummary, newMashProfile,
-  profileOfPlan, saveMashProfile, type MashProfile, type MashProfileStep,
-} from '../../mashProfiles';
-import type { MashStep, Recipe } from '../../recipes';
-import { badgeAccent, btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
-import { Field, NumInput, OptNum } from './fields';
+import type { MashProfile, MashProfileStep } from '../../mashProfiles';
+import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
+import { Field, NumInput, OptNum } from '../recipe/fields';
 
 const iconBtn = 'rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10 disabled:opacity-30';
 
-// Dialog "Maischprofile": the shipped and own profiles, an editor for own ones,
-// duplicate and delete. "Laden" hands the profile to the plan (which asks first).
-// `stored` is null until the SD card answered; `storeError` shows the shipped
-// ones only. `resultC` is the temperature the plan reaches at a step.
-export function MashProfileDialog({ stored, storeError, recipe, resultC, saveFirst, reload, onLoad, onClose }: {
-  stored: MashProfile[] | null; storeError: boolean; recipe: Recipe; resultC: (s: MashStep) => number | undefined;
-  saveFirst: boolean; reload: () => Promise<void>; onLoad: (p: MashProfile) => void; onClose: () => void;
-}) {
-  const fromPlan = () => newMashProfile(profileOfPlan(recipe, resultC));
-  const [editing, setEditing] = useState<MashProfile | null>(saveFirst ? fromPlan() : null);
-  const [error, setError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<MashProfile | null>(null);
-
-  async function persist(p: MashProfile) {
-    setError(null);
-    try {
-      await saveMashProfile(p);
-      await reload();
-      return true;
-    } catch {
-      setError('Profil konnte nicht gespeichert werden (SD-Karte?).');
-      return false;
-    }
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    const target = deleteTarget;
-    setDeleteTarget(null);
-    setError(null);
-    try {
-      await deleteMashProfile(target.id);
-      await reload();
-    } catch { setError('Profil konnte nicht gelöscht werden.'); }
-  }
-
-  async function duplicate(p: MashProfile) {
-    const copy = duplicateMashProfile(p);
-    if (await persist(copy)) setEditing(copy);
-  }
-
-  if (editing) {
-    return (
-      <Editor profile={editing} error={error} onClose={onClose}
-        onBack={() => { setEditing(null); setError(null); }}
-        onSave={async (p) => { if (await persist(p)) setEditing(null); }} />
-    );
-  }
-
-  const row = (p: MashProfile) => {
-    const builtin = isBuiltinProfile(p);
-    return (
-      <div key={p.id} class="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2">
-        <div class="min-w-0 flex-1 basis-56">
-          <div class="truncate text-sm">
-            {p.name || 'Ohne Namen'}
-            {builtin && <span class={`ml-2 ${badgeAccent}`}>Mitgeliefert</span>}
-            {p.method && <span class="ml-2 text-xs text-muted">{p.method}</span>}
-          </div>
-          <div class="text-xs text-muted">{mashProfileSummary(p)}</div>
-          {p.description && <div class="mt-0.5 text-xs text-muted">{p.description}</div>}
-        </div>
-        <div class="ml-auto flex items-center gap-2">
-          <button type="button" title="Profil laden" aria-label="Profil laden" onClick={() => onLoad(p)} class={iconBtn}>
-            <Download size={14} />
-          </button>
-          {!builtin && (
-            <button type="button" title="Profil bearbeiten" aria-label="Profil bearbeiten" onClick={() => setEditing(p)} class={iconBtn}>
-              <Pencil size={14} />
-            </button>
-          )}
-          <button type="button" title="Profil duplizieren" aria-label="Profil duplizieren" disabled={storeError}
-            onClick={() => void duplicate(p)} class={iconBtn}>
-            <Copy size={14} />
-          </button>
-          {!builtin && (
-            <button type="button" title="Profil löschen" aria-label="Profil löschen" onClick={() => setDeleteTarget(p)}
-              class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
-              <Trash2 size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <>
-      <div class={dialogScrim} onClick={onClose}>
-        <div class={`max-h-[90vh] w-full max-w-2xl ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
-          <div class="min-h-0 flex-1 overflow-y-auto p-5">
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <h2 class="text-base font-medium text-fg">Maischprofile</h2>
-              <div class="flex gap-2">
-                <button type="button" disabled={storeError} onClick={() => setEditing(fromPlan())}
-                  class="rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10 disabled:opacity-40">
-                  Plan als Profil speichern
-                </button>
-                <button type="button" disabled={storeError} onClick={() => setEditing(newMashProfile())}
-                  class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10 disabled:opacity-40">
-                  <Plus size={12} /> Neu
-                </button>
-              </div>
-            </div>
-            {error && <p class="mb-3 text-sm text-critical">{error}</p>}
-            {storeError && (
-              <p class="mb-3 text-sm text-caution">
-                Eigene Profile liegen auf der SD-Karte und ließen sich nicht laden. Die mitgelieferten gehen weiter.
-              </p>
-            )}
-            <div class="space-y-1">
-              {BUILTIN_MASH_PROFILES.map(row)}
-              {stored?.map(row)}
-              {stored === null && !storeError && <p class="px-1 py-2 text-xs text-muted">Eigene Profile laden …</p>}
-            </div>
-            <p class="mt-3 text-xs text-muted">
-              Ein Profil enthält Temperaturen und Haltezeiten, keine Aufheizzeiten; die rechnet das Rezept mit dem Sudhaus.
-              Mitgelieferte Profile sind schreibgeschützt, geändert wird eine Kopie.
-            </p>
-          </div>
-          <div class={dialogFooter}>
-            <button type="button" class={btnSecondary} onClick={onClose}>Schließen</button>
-          </div>
-        </div>
-      </div>
-      <ConfirmModal open={deleteTarget !== null} title="Profil löschen?" confirmLabel="Löschen" destructive
-        onConfirm={() => void confirmDelete()} onCancel={() => setDeleteTarget(null)}>
-        „{deleteTarget?.name}“ wird dauerhaft entfernt. Rezepte, die es geladen haben, behalten ihre Schritte.
-      </ConfirmModal>
-    </>
-  );
-}
-
-// Editor of one own profile; "Zurück" returns to the list without saving.
-function Editor({ profile, error, onSave, onBack, onClose }: {
-  profile: MashProfile; error: string | null; onSave: (p: MashProfile) => Promise<void>; onBack: () => void; onClose: () => void;
+// Editor of one own mash profile; "Abbrechen" closes it without saving.
+export function MashProfileEditor({ profile, onSave, onClose }: {
+  profile: MashProfile; onSave: (p: MashProfile) => Promise<void>; onClose: () => void;
 }) {
   const [p, setP] = useState(profile);
   const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
   const set = (patch: Partial<MashProfile>) => setP({ ...p, ...patch });
   const setSteps = (steps: MashProfileStep[]) => set({ steps });
   const patchStep = (i: number, s: Partial<MashProfileStep>) => setSteps(p.steps.map((x, k) => (k === i ? { ...x, ...s } : x)));
@@ -252,12 +115,16 @@ function Editor({ profile, error, onSave, onBack, onClose }: {
             „Wasser vorlegen“ gehört nicht ins Profil. Beim Laden setzt das Profil Temperatur und Dauer des Einmaischens und
             ersetzt die Schritte danach. Den Anteil einer Dekoktion rechnet das Rezept aus der Zieltemperatur.
           </p>
-          {error && <p class="mt-3 text-sm text-critical">{error}</p>}
+          {failed && <p class="mt-3 text-sm text-critical">Profil konnte nicht gespeichert werden (SD-Karte?).</p>}
         </div>
         <div class={dialogFooter}>
-          <button type="button" class={btnSecondary} onClick={onBack}>Zurück</button>
+          <button type="button" class={btnSecondary} onClick={onClose}>Abbrechen</button>
           <button type="button" class={btnPrimary} disabled={saving || p.name.trim() === ''}
-            onClick={async () => { setSaving(true); await onSave({ ...p, name: p.name.trim() }); setSaving(false); }}>
+            onClick={() => {
+              setSaving(true);
+              setFailed(false);
+              onSave({ ...p, name: p.name.trim() }).catch(() => { setFailed(true); setSaving(false); });
+            }}>
             Speichern
           </button>
         </div>

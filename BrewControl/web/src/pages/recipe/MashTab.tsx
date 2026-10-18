@@ -1,14 +1,17 @@
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Plus, Trash2, X } from 'lucide-preact';
 import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { route } from 'preact-router';
 import { ConfirmModal } from '../../components/ConfirmModal';
+import { NameModal } from '../../components/NameModal';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
 import type { Efficiency } from '../../efficiency';
 import { ingredientFigures, type IngredientFigures } from '../../ingredientRows';
 import { useCatalog } from '../../ingredientSource';
 import { calcMash, fmtClock, outlineMash, type MashPlan, type MashRow } from '../../mashPlan';
 import {
-  BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, profileLoadEffects, type MashProfile,
+  BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, newMashProfile, profileLoadEffects, profileOfPlan,
+  saveMashProfile, type MashProfile,
 } from '../../mashProfiles';
 import { atKnockOut, wortExtract } from '../../recipeStats';
 import { calcWater, fmtL } from '../../recipeWater';
@@ -21,7 +24,6 @@ import { Section } from './CalcTable';
 import { Card, Field, MenuItem, NumInput } from './fields';
 import { ProcessTable, rowClass, wrapOnly, type IngredientGroup } from './IngredientCard';
 import { MashCurve } from './MashCurve';
-import { MashProfileDialog } from './MashProfileDialog';
 import { Stat, type TabProps } from './tabs';
 
 const num = (n: number) => n.toFixed(1).replace('.', ',');
@@ -46,7 +48,7 @@ const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, dura
 // its temperature curve. The numbers come from mashPlan.ts; without a
 // brewhouse the plan is editable but not computed, and the curve is only the
 // outline of targets and holds.
-export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
+export function MashTab({ recipe, onChange, brewhouses, brewery, dirty }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const hot = atKnockOut(recipe, bh, catalog?.entries ?? null, brewery);
@@ -58,7 +60,7 @@ export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
     <>
       <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />
       <GrainCard recipe={recipe} onChange={onChange} plan={plan} figures={figures} />
-      <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} />
+      <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} dirty={!!dirty} />
       <Section title="Temperaturverlauf">
         <div class="p-4">
           {!plan && (
@@ -309,8 +311,8 @@ function SplitDialog({ recipe, onChange, onClose }: {
 // the page cap change how much of the window the card gets.
 const GRID = '@[53.75rem]:grid @[53.75rem]:grid-cols-[1rem_6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_6.75rem_7rem_6.5rem_2.75rem_2rem] @[53.75rem]:items-center @[53.75rem]:gap-2';
 
-function PlanCard({ recipe, onChange, plan, boilC }: {
-  recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number;
+function PlanCard({ recipe, onChange, plan, boilC, dirty }: {
+  recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number; dirty: boolean;
 }) {
   const steps = recipe.mash;
   const charges = chargesOf(recipe);
@@ -319,7 +321,9 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
   // Own profiles come from the SD card, the shipped ones are built in.
   const [stored, setStored] = useState<MashProfile[] | null>(null);
   const [storeError, setStoreError] = useState(false);
-  const [dialog, setDialog] = useState<'list' | 'save' | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [saveState, setSaveState] = useState<{ ok: boolean; name: string } | null>(null);
+  const [leaving, setLeaving] = useState(false);
   const [pending, setPending] = useState<MashProfile | null>(null);
   const reload = () => listMashProfiles().then((l) => { setStored(l); setStoreError(false); }).catch(() => setStoreError(true));
   useEffect(() => { void reload(); }, []);
@@ -393,12 +397,25 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
         {stored?.map(item)}
         {storeError && <div class="px-2.5 py-1 text-xs text-muted">Eigene Profile nicht geladen (SD-Karte?).</div>}
         <div class="mt-1 border-t border-border pt-1" />
-        <MenuItem label="Plan als Profil speichern …" disabled={storeError} onClick={() => { setDialog('save'); close(); }} />
-        <MenuItem label="Profile verwalten …" onClick={() => { setDialog('list'); close(); }} />
+        <MenuItem label="Plan als Profil speichern …" disabled={storeError} onClick={() => { setNaming(true); close(); }} />
+        <MenuItem label="Profile verwalten …" onClick={() => { manage(); close(); }} />
       </>
     );
   };
   const effects = pending ? profileLoadEffects(recipe, pending) : undefined;
+  // The profiles are kept on the profile page; leaving drops unsaved edits.
+  const manage = () => (dirty ? setLeaving(true) : route('/profile/maische'));
+
+  async function saveAsProfile(name: string) {
+    setNaming(false);
+    try {
+      await saveMashProfile({ ...newMashProfile(profileOfPlan(recipe, resultC)), name });
+      setSaveState({ ok: true, name });
+      await reload();
+    } catch {
+      setSaveState({ ok: false, name });
+    }
+  }
 
   const holdMin = plan?.rows.reduce((s, r) => s + r.holdMin, 0) ?? 0;
   const strikeRow = plan?.rows[0];
@@ -407,7 +424,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
     <Section title="Maischeplan"
       action={
         <div class="flex items-center gap-2">
-          <SplitButton plain label="Profile" onMain={() => setDialog('list')} arrowTitle="Profil laden" menu={profileMenu} />
+          <SplitButton plain label="Profile" onMain={manage} arrowTitle="Profil laden" menu={profileMenu} />
           <SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />
         </div>
       }>
@@ -474,13 +491,20 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           Dekoktionen durch Rasten ersetzen
         </button>
       )}
-      </div>
-      {dialog && (
-        <MashProfileDialog stored={stored} storeError={storeError} recipe={recipe} resultC={resultC} saveFirst={dialog === 'save'}
-          reload={reload} onLoad={setPending} onClose={() => setDialog(null)} />
+      {saveState && (
+        <p class={`mt-2 text-xs ${saveState.ok ? 'text-muted' : 'text-critical'}`}>
+          {saveState.ok ? `Als Maischprofil „${saveState.name}“ gespeichert.` : 'Profil konnte nicht gespeichert werden (SD-Karte?).'}
+        </p>
       )}
+      </div>
+      <NameModal open={naming} title="Plan als Maischprofil speichern" submitLabel="Speichern" placeholder="z. B. Pils, dreistufig"
+        onSave={(name) => void saveAsProfile(name)} onClose={() => setNaming(false)} />
+      <ConfirmModal open={leaving} title="Änderungen verwerfen?" confirmLabel="Verwerfen" destructive
+        onConfirm={() => { setLeaving(false); route('/profile/maische'); }} onCancel={() => setLeaving(false)}>
+        Die Profile werden auf der Seite Profile gepflegt. Die ungespeicherten Änderungen am Rezept gehen dabei verloren.
+      </ConfirmModal>
       <ConfirmModal open={pending !== null} title="Profil laden?" confirmLabel="Laden"
-        onConfirm={() => { if (pending) onChange(applyMashProfile(recipe, pending)); setPending(null); setDialog(null); }}
+        onConfirm={() => { if (pending) onChange(applyMashProfile(recipe, pending)); setPending(null); }}
         onCancel={() => setPending(null)}>
         „{pending?.name}“ ersetzt alle Schritte außer Wasser vorlegen und Einmaischen; dessen Temperatur und Dauer setzt das Profil.
         {effects?.created.map((c) => ` ${c.name} entsteht mit ${c.pct} % der Schüttung (aus der ersten aufgeteilt).`)}
