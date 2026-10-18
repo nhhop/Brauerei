@@ -2917,3 +2917,9 @@ Die Karte mit den Sud-Daten (Name, Rezept, Brautag, Sudhaus, Gärplatz, Belegung
   `recipeTreatment`), `pnpm typecheck` sauber, `pnpm build` ok; im Node-Mock (dunkel, Desktop) geprüft: Wasser-Tab (18,5 l
   bei 13,1 °P + 4 l → 22,5 l bei 10,8 °P), Aufbereitung mit Spalte Verschnitt, Gärung-Tab (Tabelle, Zucker 136 g, Speise-Hinweis),
   Sud › Abfüllung (Soll 4,0 l, Bilanz, Alkohol 4,6 % wie im Rezept). **Nicht angesehen:** hell, 390 px, Ist-Werte im gestarteten Sud.
+
+## 2026-10-18 — Layout-Sprung durch Scrollbalken
+
+- **Root Cause:** Gescrollt wird `<main class="overflow-y-auto">` in `NavShell.tsx`, nicht der Viewport. Hat eine Seite einen Balken, die andere nicht, springt der Inhalt um die Balkenbreite. `scrollbar-gutter` auf `html` hilft nicht (toter Streifen rechts).
+- **Umsetzung:** `[scrollbar-gutter:stable]` an `<main>`.
+- **Verifikation:** `tsc --noEmit` sauber. **Nicht** im Browser geprüft.
