@@ -1,7 +1,6 @@
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-preact';
 import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { route } from 'preact-router';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { NameModal } from '../../components/NameModal';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
@@ -37,7 +36,7 @@ const newDecoction = (): Decoction => ({ lead: 'temp', rests: [{ tempC: 72, dura
 // its temperature curve. The numbers come from mashPlan.ts; without a
 // brewhouse the plan is editable but not computed, and the curve is only the
 // outline of targets and holds.
-export function MashTab({ recipe, onChange, brewhouses, brewery, dirty }: TabProps) {
+export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const catalog = useCatalog();
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const hot = atKnockOut(recipe, bh, catalog?.entries ?? null, brewery);
@@ -49,7 +48,7 @@ export function MashTab({ recipe, onChange, brewhouses, brewery, dirty }: TabPro
     <>
       <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />
       <GrainCard recipe={recipe} onChange={onChange} plan={plan} figures={figures} />
-      <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} dirty={!!dirty} />
+      <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} />
       <Section title="Temperaturverlauf">
         <div class="p-4">
           {!plan && (
@@ -271,8 +270,8 @@ function SplitDialog({ recipe, onChange, onClose }: {
 // the page cap change how much of the window the card gets.
 const GRID = '@[56.75rem]:grid @[56.75rem]:grid-cols-[6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_6.75rem_7rem_6.5rem_2.75rem_6.5rem] @[56.75rem]:items-center @[56.75rem]:gap-2';
 
-function PlanCard({ recipe, onChange, plan, boilC, dirty }: {
-  recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number; dirty: boolean;
+function PlanCard({ recipe, onChange, plan, boilC }: {
+  recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number;
 }) {
   const steps = recipe.mash;
   const charges = chargesOf(recipe);
@@ -281,7 +280,6 @@ function PlanCard({ recipe, onChange, plan, boilC, dirty }: {
   const [storeError, setStoreError] = useState(false);
   const [naming, setNaming] = useState(false);
   const [saveState, setSaveState] = useState<{ ok: boolean; name: string } | null>(null);
-  const [leaving, setLeaving] = useState(false);
   const [pending, setPending] = useState<MashProfile | null>(null);
   const reload = () => listMashProfiles().then((l) => { setStored(l); setStoreError(false); }).catch(() => setStoreError(true));
   useEffect(() => { void reload(); }, []);
@@ -351,8 +349,10 @@ function PlanCard({ recipe, onChange, plan, boilC, dirty }: {
     );
   };
   const effects = pending ? profileLoadEffects(recipe, pending) : undefined;
-  // The profiles are kept on the profile page; leaving drops unsaved edits.
-  const manage = () => (dirty ? setLeaving(true) : route('/profile/maische'));
+  // The profiles are kept on the profile page. It opens in a new tab, because
+  // leaving the editor would drop the unsaved draft (as in FermentationTab); the
+  // own profiles are fetched again whenever the menu opens.
+  const manage = () => window.open('/profile/maische', '_blank');
 
   async function saveAsProfile(name: string) {
     setNaming(false);
@@ -372,7 +372,9 @@ function PlanCard({ recipe, onChange, plan, boilC, dirty }: {
     <Section title="Maischeplan"
       action={
         <div class="flex items-center gap-2">
-          <SplitButton plain label="Profile" onMain={manage} arrowTitle="Profil laden" menu={profileMenu} />
+          <span onClickCapture={() => { void reload(); }}>
+            <SplitButton plain label="Profile" onMain={manage} arrowTitle="Profil laden" menu={profileMenu} />
+          </span>
           <SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />
         </div>
       }>
@@ -431,10 +433,6 @@ function PlanCard({ recipe, onChange, plan, boilC, dirty }: {
       </div>
       <NameModal open={naming} title="Plan als Maischprofil speichern" submitLabel="Speichern" placeholder="z. B. Pils, dreistufig"
         onSave={(name) => void saveAsProfile(name)} onClose={() => setNaming(false)} />
-      <ConfirmModal open={leaving} title="Änderungen verwerfen?" confirmLabel="Verwerfen" destructive
-        onConfirm={() => { setLeaving(false); route('/profile/maische'); }} onCancel={() => setLeaving(false)}>
-        Die Profile werden auf der Seite Profile gepflegt. Die ungespeicherten Änderungen am Rezept gehen dabei verloren.
-      </ConfirmModal>
       <ConfirmModal open={pending !== null} title="Profil laden?" confirmLabel="Laden"
         onConfirm={() => { if (pending) onChange(applyMashProfile(recipe, pending)); setPending(null); }}
         onCancel={() => setPending(null)}>

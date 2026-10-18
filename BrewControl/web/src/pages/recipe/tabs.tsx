@@ -29,7 +29,7 @@ export interface TabProps {
   brewery: Brewery | null;         // null = not loaded (yet)
   versions?: RecipeSummary[];      // this recipe's versions, oldest first (overview only)
   onOpenVersion?: (id: string) => void;
-  dirty?: boolean;                 // the recipe has unsaved edits (overview, mash)
+  dirty?: boolean;                 // the recipe has unsaved edits (overview only)
 }
 
 export function Stat({ label, value, unit, digits, sub, large }: {

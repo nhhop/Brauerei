@@ -590,9 +590,10 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     oder Sudhaus.
   - Split-Buttons: „+ Rast hinzufügen“ fügt eine freie Rast an, der Pfeil daneben bietet die übrigen
     Schritt-Arten (Zubrühen, Einmaischen, Dekoktion) und vordefinierte Rasten.
-    „Profile“ führt zur Seite Profile › Maische, der Pfeil daneben lädt ein Profil direkt und bietet „Plan
-    als Profil speichern …“ (fragt nur den Namen) und „Profile verwalten …“. Hat das Rezept ungespeicherte
-    Änderungen, fragt das Wechseln auf die Profilseite erst, ob sie verworfen werden (seit 2026-10-18).
+    „Profile“ öffnet die Seite Profile › Maische, der Pfeil daneben lädt ein Profil direkt und bietet „Plan
+    als Profil speichern …“ (fragt nur den Namen) und „Profile verwalten …“. Die Profilseite öffnet sich wie
+    beim Gärung-Tab in einem neuen Browser-Tab, damit der ungespeicherte Entwurf bleibt; das Menü lädt die
+    eigenen Profile bei jedem Öffnen neu (seit 2026-10-18, Nutzer).
   - **Gepflegt** werden die Maischprofile auf der Seite Profile › Maische (siehe Profile); bis 2026-10-18
     in einem Dialog im Rezept. Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
     Heizrate des Sudhauses.
