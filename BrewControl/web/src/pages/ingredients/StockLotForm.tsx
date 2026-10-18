@@ -47,8 +47,8 @@ export function StockLotForm({ initial, entry, onSave, onDelete, onClose }: {
         </div>
       </div>}>
       <div class="grid gap-3 sm:grid-cols-2">
-        <Field label={`Menge (${unitOfEntry(recipeKindOf(entry.kind), entry)})`}>
-          <NumInput value={lot.amount} onChange={(n) => patch('amount', n)} />
+        <Field label="Menge">
+          <NumInput unit={unitOfEntry(recipeKindOf(entry.kind), entry)} value={lot.amount} onChange={(n) => patch('amount', n)} />
         </Field>
         <Field label="Jahrgang">
           <OptNum value={lot.cropYear} onChange={(n) => patch('cropYear', n)} placeholder={String(new Date().getFullYear())} />
@@ -63,8 +63,8 @@ export function StockLotForm({ initial, entry, onSave, onDelete, onClose }: {
         )}
         {entry.kind === 'hop' && (
           <>
-            <Field label="Lagertemperatur (°C)">
-              <OptNum value={lot.storageTempC} onChange={(n) => patch('storageTempC', n)} />
+            <Field label="Lagertemperatur">
+              <OptNum unit="°C" value={lot.storageTempC} onChange={(n) => patch('storageTempC', n)} />
             </Field>
             <Field label="Verpackung">
               <select class={`${inp} w-full`} value={lot.packaging ?? ''}

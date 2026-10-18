@@ -23,6 +23,7 @@ untereinander stimmig. Ausnahme ist die Aktor-Bezeichnung „Riptide Pumpe“, d
   Aktive Phasen: Vorbereitung, Maischen, Würzekochen, Gärung, Reifung, Abfüllung.
 - **Sudhaus:** der Heißbereich der Anlage, bis einschließlich Ausschlagen. Rezepte wählen ein Sudhaus-Profil.
 - **Gärkeller:** der Kaltbereich, also mehrere Gärplätze und Gebinde. Der Gärplatz wird erst im Sud gewählt.
+- **Zahlenfelder:** Die Einheit steht im Feld (grau, rechts, die Zahl rechtsbündig davor), nicht im Label und nicht daneben.
 
 ## Rezept
 
@@ -162,7 +163,15 @@ ihre Gruppen stehen jetzt vollständig und editierbar in den Prozess-Tabs (siehe
 Kopfbereich mit Kennwerten: Stammwürze, IBU und EBC zeigen die
 Stil-Badges neben den Tabs, Summen stehen in den Kartenköpfen.
 
-**Mengen und Anteile beim Vergärbaren**, ohne Modus-Schalter:
+**Stand (2026-10-18, `web/src/pages/recipe/IngredientCard.tsx`, `web/src/ingredientRows.ts`):** Die Tabellen sind nach der
+Vorlage „Rezept · Zutaten copy“ gebaut: Überschrift über jeder Karte, Spaltenköpfe, °P vor EBC, Stopf-Tag neben dem
+Zeitpunkt, Summenzeilen unter Vergärbarem und Hopfen statt im Kartenkopf. Abweichend vom Folgenden (Nutzerentscheidung):
+**kg bleibt die Eingabe**, Anteil und Stammwürze werden nur angezeigt; α-Säure und Ölgehalt kommen aus Sorte bzw.
+Lagerposten und sind nicht je Gabe änderbar; der Lagerteil fehlt noch. Die Farbe verteilt sich nach den Lovibond-Anteilen
+(Moreys MCU sind linear in der Schüttung, nur der Exponent danach nicht), Rundungsreste aller Ergebnisspalten trägt die
+größte Zeile. Vergärbares bleibt in Eingabereihenfolge (sortiert spränge die Zeile beim Tippen). Offenes: PLAN.md.
+
+**Mengen und Anteile beim Vergärbaren**, ohne Modus-Schalter (Konzept, noch nicht umgesetzt):
 - Gespeichert werden **Anteile und Stammwürze**, die kg werden daraus berechnet.
 - Alle drei Felder sind direkt editierbar:
   - **kg einer Zeile** ändern: Anteile und Stammwürze werden neu berechnet, die übrigen kg bleiben.
@@ -448,7 +457,7 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   knackig (Grenzen 0,8 und 1,5, wie gängige Rechner; noch ohne Primärquelle).
 
 **Verschnitt (High Gravity)** gehört ins Rezept, als Abschnitt der Karte „Wassermenge“:
-- **Ort** je Rezept: Pfanne bei Kochende oder Gärbehälter. **Menge und Stammwürze** hängen voneinander ab;
+- **Ort** je Rezept: Pfanne bei Kochende, Gärbehälter oder Keg beim Abfüllen (seit 2026-10-18). **Menge und Stammwürze** hängen voneinander ab;
   was zuletzt geändert wurde, führt, das andere wird berechnet. Ein Ortswechsel behält die Menge.
 - **Pfanne:** Ausschlagmenge und Stammwürze des Rezepts gelten nach dem Verschnitt. Die Pfanne kocht
   Ausschlag − Verschnitt bei entsprechend höherer Stammwürze; die Rückrechnung der Wassermengen beginnt
@@ -457,8 +466,25 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
 - **Gärbehälter:** Der Ausschlag bleibt unverdünnt. Im Gärbehälter kommt Ausschlag − Kühlschwund − Totraum
   der Pfanne − Transferverluste ab Whirlpool an (ohne Sudhaus der ganze Ausschlag, mit Hinweis), dazu der
   Verschnitt. Die Stammwürze folgt aus der Massenbilanz. Hopfenaufnahme und Trub kommen mit dem Gärung-Tab.
+- **Keg beim Abfüllen** (2026-10-18, Nutzer): Bis zum Gärbehälter rechnet alles wie ohne Verschnitt, vergoren
+  wird die starke Würze; beim Abfüllen kommt entgastes, keimfreies Wasser zum ganzen Bier (nicht nur zu den
+  Kegs). Bier vor dem Verschnitt = Anstellwürze − Trub − Stopfhopfen; Stammwürze nach Verschnitt aus der
+  Massenbilanz wie beim Gärbehälter, Faktor = Bier / (Bier + Verschnitt). `pitchPlato` liefert die
+  Anstell-Stammwürze (beim Keg die vor dem Verschnitt). Speise wird nicht abgezweigt.
+  - **Kennwerte** zeigen das Bier nach dem Verschnitt (auch für den Stilvergleich): Stammwürze und Restextrakt
+    rechnerisch, Farbe und Bittere × Faktor, **Alkohol** = Balling der vergorenen Würze × Faktor (Verdünnung nach
+    Volumen, so rechnet auch der Sud).
+  - **Karbonisierung:** Zucker und Zwangskarbonisierung rechnen fürs verdünnte Bier; Speise und Grünschlauchen
+    passen nicht (Hinweis, keine Zahl).
+  - **Aufbereitung:** Die Spalte Verschnitt wirkt wie beim Gärbehälter nur in „Gesamt“ (Bier nach Verschnitt).
+  - **Effizienzen** bleiben unverändert: Wasser bringt keinen Extrakt, Soll und Ist der Gesamteffizienz rechnen
+    mit Anstellwürze und Anstell-Stammwürze vor dem Verschnitt.
+  - **Abfüllmenge:** + Verschnitt im Keg nach Jungbier und Speise.
+  - **Sud › Abfüllung:** Messwert `dilutionVolume` (Verschnitt, Soll aus dem Rezept), Bilanz-Zeile „Verschnitt im
+    Keg“; Bier zum Abfüllen und Zucker mit der gemessenen Menge; Alkohol × Bier / (Bier + Verschnitt). Stammwürze
+    und Restextrakt bleiben die gemessenen des vergorenen Biers.
 - **Kennwerte:** Stammwürze ist die nach dem Verschnitt. Die Bittere rechnet Tinseth mit Menge und
-  Stammwürze der Pfanne und verdünnt das Ergebnis; beim Gärbehälter verdünnt sich auch die Farbe.
+  Stammwürze der Pfanne und verdünnt das Ergebnis; beim Gärbehälter und Keg verdünnt sich auch die Farbe.
 - Der Balken der Wassermenge bekommt das Segment Verschnitt.
 
 **Wassermenge:**
@@ -512,7 +538,7 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   „Mit Nachguss“, Eingaben (Hauptguss-Verhältnis, Nachguss-Temperatur, mit Nachguss das Läutern als Batch
   oder Fly Sparge und bei Batch die Zahl der Gaben, Verdampfung, Treberverlust) und farbigem Balken (Gesamtwasser aufgeteilt in
   Ausschlag, Verdampfung, Treber, Totraum/Transfer). Die Rechnung steht mit Herkunft jeder Zahl (Rezept
-  bzw. Sudhaus) in einem Aufklappbereich „Berechnung“, standardmäßig zu.
+  bzw. Sudhaus) in einer Akkordeon-Leiste „Berechnung“ (Tabelle mit Vorgabe, Volumen, Grundlage; Zwischensummen hervorgehoben), standardmäßig zu. Überschrift der Karte steht seit 2026-10-17 außerhalb, wie im Mockup (ebenso bei der Abfüllmenge).
 - Toträume, Transferverluste, Verdampfung und Treberverlust kommen als Vorgabe aus dem Sudhaus.
   **Verdampfung und Treberverlust** lassen sich pro Rezept überschreiben; der Platzhalter zeigt den
   Sudhaus-Wert, „Sudhaus-Wert“ nimmt die Überschreibung zurück.
@@ -805,6 +831,7 @@ Anstellwürze sein; die Berechnung nennt dann sie als Rezeptwert, nicht den Auss
 - **Abfüllmenge** (`calcBottling`):
   - **Anstellwürze** = Ausschlag − Kühlschwund − Totraum und Transfers ab Whirlpool − Hopfen im Kessel − Speise
     + Verschnitt im Gärbehälter.
+  - Bei einem Verschnitt im Keg: + Verschnitt nach Jungbier und Speise (seit 2026-10-18).
   - **Jungbier** = Anstellwürze − Trub (`trubLossL`, ohne Angabe 0 l, Nutzer) − Hopfen im Gärbehälter (Dip,
     Hauptgärung, Reifung).
   - **Abgefüllt** = Jungbier + Speise − Abfüllverluste.
@@ -1444,7 +1471,11 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   Gesamt) als Soll | Ist | Abweichung; dazu Stammwürze, Restextrakt, Alkohol und Endvergärungsgrad. Das Jungbier hat nur mit gemessener
   Anstellwürze ein Ist.
 - **Alkohol und Endvergärungsgrad** (`actualBeer`, nach Balling aus `ballingBeerAnalysis`): Die Stammwürze ist die der Anstellwürze
-  (`pitchGravity`), ohne Verschnitt im Kessel auch die nach dem Kochen; sonst bleibt der Alkohol leer. Die Gärung einer Speise zählt nicht mit.
+  (`pitchGravity`), ohne Verschnitt im Kessel auch die nach dem Kochen; bei einem Verschnitt im Kessel steht bis zur Messung der
+  Anstellwürze die geplante (`estimated`, Hinweis in der Zeile). Mit Speise (Karbonisierung `speise`) ist der Alkohol der des
+  fertigen Biers: der Anteil des Jungbiers, verdünnt um die Speise, plus der Alkohol aus ihrer Gärung (`speiseAlcoholPct`: das
+  CO₂ aus Zielmenge minus Rest, je 44,01 g CO₂ kommen 46,07 g Ethanol, 0,789 g/ml). Das gilt für Soll und Ist; der Endvergärungsgrad
+  bleibt der der Hauptgärung.
 - **Index-Zeile:** `withResults` füllt `fgPlato`, `abvPct`, `attenuationPct` und `bottledL` (alles Ist) und entfernt sie, wenn die Messung
   fehlt. `brewSummaryLine` (Firmware) nimmt die drei neuen Felder auf, `openapi.yaml` (`BrewSummary`, `Brew.containerCounts`) ist
   nachgezogen. Der Rezept-Tab „Sude“ zeigt Alkohol, Endvergärung und Restextrakt; die Spaltenköpfe erscheinen erst ab 1280 px (davor
@@ -1946,6 +1977,40 @@ Nur Web.
   Alkohol und Endvergärungsgrad.
 - **Index:** `brewSummaryLine` bekommt `abvPct`, `attenuationPct` und `fgPlato` (Firmware-Test, `openapi.yaml`,
   `SUMMARY_FIELDS`). `withResults` füllt sie und `bottledL`. Der Rezept-Tab „Sude“ bekommt die Spalten.
+
+##### Verkostung (Stand 2026-10-16)
+- **Entscheidungen des Nutzers:** mehrere Verkostungen je Sud, jede mit Zeitpunkt (Jungbier, Flasche nach zwei und
+  nach sechs Wochen); eigener Tab „Verkostung“ nach der Abfüllung; Auswahl von Begriffen statt Punkten, nur der
+  Genuss-Faktor ist eine Zahl (1 bis 5 Sterne); keine Anzeige in der Sudliste (kein Eingriff in den Firmware-Index).
+  Eine Note für die „technische Ausführung“ gibt es bewusst nicht.
+- **Ablage:** eigenes Dokument je Sud, `/brewtasting/<id>.json` über `GET/PUT /api/brews/<id>/tasting`, nach dem
+  Muster der Messungen von Hand: Der Sud bleibt unter 16 KB, das Dokument geht mit dem Sud weg und in dieselbe
+  Sicherung (Schlüssel `tasting`; ältere Sicherungen ohne ihn lassen sich einspielen). Etwa 12 Verkostungen, die bis
+  zu den Notizen ausgefüllt sind (je 1,2 KB), passen in 15 000 Byte.
+- **Aufbau** (`web/src/brewTasting.ts`), nach den fünf Phasen einer Verkostung, jede mit Notizfeld:
+  1. *Aussehen:* Farbe, Trübung, Schaummenge, Schaumstruktur, Schaumhaltbarkeit. Bei „Kein Schaum“ sind Struktur und
+     Haltbarkeit gesperrt (ein gespeicherter Wert bleibt).
+  2. *Geruch:* Aroma-Begriffe (Mehrfachauswahl).
+  3. *Antrunk:* Rezenz (Kohlensäure-Empfinden), erster Geschmackseindruck.
+  4. *Haupttrunk:* Körper, Geschmacksbalance (malzbetont, ausgewogen, hopfenbetont, säuerlich), Textur (Mehrfachauswahl).
+  5. *Nachtrunk / Abgang:* Intensität und Qualität der Bittere, retronasaler Nachhall (dieselbe Aroma-Liste wie beim
+     Geruch), Nachhall-Dauer, Alkoholwahrnehmung, Trinkbarkeit.
+
+  Danach *Fehlaromen* mit Stufe (leicht, deutlich, stark) und *Gesamteindruck* (Komplexität, Stilgerechtigkeit,
+  Genuss-Faktor in Sternen). Aromen werden nur einmal beim Geruch und einmal als Nachhall abgefragt; Antrunk und
+  Haupttrunk fragen Empfindungen ab, keine Aromen. Die zweite Balance-Achse süß/trocken entfiel (sie steckt in
+  „Malzbetont (süß)“, „Schlank“ und „Knackig“).
+- **Trübung:** eine Skala von glanzfein bis opak. „Opak“ ist das obere Ende der Trübung; für dunkle Biere, bei denen
+  sich Trübung nicht von der Farbe unterscheiden lässt, gibt es „nicht beurteilbar (zu dunkel)“. Die Trübungsart (Hefe,
+  Kälte, Hopfen, Eiweiß) wird nicht gesondert erfasst.
+- **Begriffe** (`web/src/tastingVocab.ts`): eigene deutsche Begriffe in der Art des Bier-Aromarads, gruppiert
+  (Getreide & Malz, Karamell & Süße, Röstig & Rauch, Fruchtig, Hopfig & blumig, Würzig, Sonstiges). Fehlaromen in fünf
+  Gruppen mit Beschreibung und häufigen Ursachen. Viele Auswahlfelder tragen einen Hinweis (typische Stile, was gemeint
+  ist), der unter der gewählten Option steht. Kein Text der BJCP (Urheberrecht, das Repo ist öffentlich). Gespeichert
+  werden stabile Kennungen, nicht die Bezeichnungen.
+- **Oberfläche:** `TastingTab` mit einer Karte je Verkostung (neueste oben, „x Tage nach der Abfüllung“), `TastingForm`
+  mit einklappbaren Abschnitten, `ChipGroup` für die Auswahl, `StarRating` für den Genuss-Faktor. Gespeichert wird von
+  selbst, eine Sekunde nach der letzten Änderung und beim Verlassen des Tabs.
 
 #### Doku und Verifikation je Teil-Etappe
 - **Prüfung:** Tests für neue Rechnungen und Generatoren, `pnpm typecheck`, `pnpm test`, `pnpm build`;

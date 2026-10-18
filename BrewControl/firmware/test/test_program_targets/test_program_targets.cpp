@@ -209,6 +209,28 @@ void test_ids_once_each_in_order_of_first_appearance() {
   TEST_ASSERT_EQUAL_size_t(0, BrewControl::targetIds(std::vector<Step>{}).size());
 }
 
+void test_controllers_come_first_each_group_in_its_order() {
+  const auto cmds = read(R"({"targets":{"pump":{"enabled":true},"ctl1":{"enabled":false},"valve":{"v":1},"ctl2":{"v":60}}})");
+  const auto isCtl = [](const std::string& id) { return id.rfind("ctl", 0) == 0; };
+  const auto out = BrewControl::controllersFirst(cmds, isCtl);
+  TEST_ASSERT_EQUAL_size_t(4, out.size());
+  TEST_ASSERT_EQUAL_STRING("ctl1", out[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("ctl2", out[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("pump", out[2].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("valve", out[3].id.c_str());
+  // The commands themselves are untouched.
+  TEST_ASSERT_FALSE(out[0].enabled);
+  TEST_ASSERT_TRUE(out[2].enabled);
+}
+
+void test_controllers_first_without_any_controller_keeps_the_order() {
+  const auto cmds = read(R"({"targets":{"b":{"v":1},"a":{"v":2}}})");
+  const auto out = BrewControl::controllersFirst(cmds, [](const std::string&) { return false; });
+  TEST_ASSERT_EQUAL_STRING("b", out[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("a", out[1].id.c_str());
+  TEST_ASSERT_EQUAL_size_t(0, BrewControl::controllersFirst({}, [](const std::string&) { return true; }).size());
+}
+
 // ── Runner ───────────────────────────────────────────────────────────────────
 
 void setUp(void) {}
@@ -231,5 +253,7 @@ int main(int, char**) {
   RUN_TEST(test_state_excludes_impulse_v_but_keeps_its_enabled);
   RUN_TEST(test_state_out_of_range_k);
   RUN_TEST(test_ids_once_each_in_order_of_first_appearance);
+  RUN_TEST(test_controllers_come_first_each_group_in_its_order);
+  RUN_TEST(test_controllers_first_without_any_controller_keeps_the_order);
   return UNITY_END();
 }

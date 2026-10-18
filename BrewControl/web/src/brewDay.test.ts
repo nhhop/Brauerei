@@ -4,9 +4,10 @@ import {
   withResults, type BrewInputs,
 } from './brewDay';
 import { TEMPLATES, type Brewery, type Brewhouse } from './brewhouse';
-import { ballingBeerAnalysis } from './brewMath';
+import { ballingBeerAnalysis, speiseAlcoholPct } from './brewMath';
 import type { Brew, MeasureId, Measurement } from './brews';
 import type { Container, Fermenter } from './cellar';
+import type { Bottling } from './fermentation';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { calcMash } from './mashPlan';
 import { calcStats, pitchedL, wortExtract } from './recipeStats';
@@ -341,11 +342,82 @@ describe('after the fermentation (5c-5)', () => {
   });
 
   it('takes the knock-out gravity for alcohol only without a dilution in the kettle', () => {
-    expect(actualBeer({ postBoilGravity: 12.5, finalGravity: 2.5 }, { dilutionInKettle: false })?.abvPct).toBeGreaterThan(5);
-    expect(actualBeer({ postBoilGravity: 12.5, finalGravity: 2.5 }, { dilutionInKettle: true })).toBeUndefined();
-    expect(actualBeer({ pitchGravity: 12.5, postBoilGravity: 15, finalGravity: 2.5 }, { dilutionInKettle: true })?.abvPct)
+    const plain = { dilutionInKettle: false, values: {} };
+    const diluted = { dilutionInKettle: true, values: {} };
+    expect(actualBeer({ postBoilGravity: 12.5, finalGravity: 2.5 }, plain)?.abvPct).toBeGreaterThan(5);
+    expect(actualBeer({ postBoilGravity: 12.5, finalGravity: 2.5 }, diluted)).toBeUndefined();
+    expect(actualBeer({ pitchGravity: 12.5, postBoilGravity: 15, finalGravity: 2.5 }, diluted)?.abvPct)
       .toBeCloseTo(ballingBeerAnalysis(12.5, 2.5).abvPercent, 9);
-    expect(actualBeer({ pitchGravity: 12.5 }, { dilutionInKettle: false })).toBeUndefined();
+    expect(actualBeer({ pitchGravity: 12.5 }, plain)).toBeUndefined();
+  });
+
+  it('takes the planned gravity for a dilution in the kettle until the pitched wort is measured', () => {
+    const diluted = { dilutionInKettle: true, values: { pitchGravity: 12.5 } };
+    const est = actualBeer({ postBoilGravity: 15, finalGravity: 2.5 }, diluted)!;
+    expect(est.abvPct).toBeCloseTo(ballingBeerAnalysis(12.5, 2.5).abvPercent, 9);
+    expect(est.estimated).toBe(true);
+    const measured = actualBeer({ pitchGravity: 13, finalGravity: 2.5 }, diluted)!;
+    expect(measured.abvPct).toBeCloseTo(ballingBeerAnalysis(13, 2.5).abvPercent, 9);
+    expect(measured.estimated).toBe(false);
+    expect(actualBeer({ finalGravity: 2.5 }, { dilutionInKettle: false, values: { pitchGravity: 12.5 } })).toBeUndefined();
+  });
+
+  describe('with a Speise', () => {
+    // 19 l of young beer and 1 l of Speise from 20 l pitched, carbonated to 2.5 volumes at 19 °C.
+    const bottling = { youngL: 19, speiseL: 1, pitchL: 20, beerL: 20 } as Bottling;
+    const t = { dilutionInKettle: false, values: { pitchGravity: 12.5, finalGravity: 2.5, maxTempAfter: 19 }, bottling, speiseTargetVol: 2.5 };
+    const young = ballingBeerAnalysis(12.5, 2.5);
+    const added = speiseAlcoholPct(2.5, 19);
+
+    it('dilutes the young beer and adds the alcohol of the Speise', () => {
+      const b = actualBeer({ pitchGravity: 12.5, finalGravity: 2.5 }, t)!;
+      expect(b.abvPct).toBeCloseTo((young.abvPercent * 19 + added * 20) / 20, 9);
+      expect(b.withSpeise).toBe(true);
+      expect(b.attenuationPct).toBeCloseTo(young.apparentAttenuationPercent, 9);
+    });
+
+    it('takes the Speise, volume and temperature as measured', () => {
+      const m: Partial<Record<MeasureId, number>> = { pitchGravity: 12.5, finalGravity: 2.5, speiseVolume: 2, batchVolume: 20, maxTempAfter: 10 };
+      expect(actualBeer(m, t)!.abvPct).toBeCloseTo((young.abvPercent * 19 + speiseAlcoholPct(2.5, 10) * 21) / 21, 9);
+    });
+
+    it('plans the same way, and leaves the alcohol alone without a Speise or a carbonation by Speise', () => {
+      expect(plannedBeer(t)!.abvPct).toBeCloseTo((young.abvPercent * 19 + added * 20) / 20, 9);
+      const plain = { ...t, speiseTargetVol: undefined };
+      expect(actualBeer({ pitchGravity: 12.5, finalGravity: 2.5 }, plain)).toMatchObject({ abvPct: young.abvPercent, withSpeise: false });
+      const none = { ...t, bottling: { ...bottling, speiseL: 0, beerL: 19 } as Bottling };
+      expect(plannedBeer(none)).toMatchObject({ abvPct: young.abvPercent, withSpeise: false });
+    });
+  });
+
+  describe('with a dilution in the keg', () => {
+    const kegged = { ...r, water: { ...newRecipe().water, dilution: { at: 'keg' as const, lead: 'volume' as const, volumeL: 4 } } };
+    const tk = brewTargets(kegged, inputs());
+
+    it('targets the strong wort up to the fermentation, then the water', () => {
+      expect(tk.values.pitchGravity).toBe(t.values.pitchGravity);
+      expect(tk.values.finalGravity).toBe(t.values.finalGravity);
+      expect(tk.values.batchVolume).toBe(t.values.batchVolume);
+      expect(tk.values.dilutionVolume).toBe(4);
+      expect(t.values.dilutionVolume).toBeUndefined();
+      expect(tk.bottling!.beerL).toBeCloseTo(t.bottling!.beerL + 4, 9);
+      expect(unitOfMeasure('dilutionVolume')).toBe('l');
+    });
+
+    it('plans the alcohol as the recipe does, and thins the measured one by the water measured', () => {
+      const stats = calcStats(own(kegged), catalog, herms, brewery);
+      expect(plannedBeer(tk)!.abvPct).toBeCloseTo(stats.abv!, 9);
+      const strong = ballingBeerAnalysis(12.5, 2.5).abvPercent;
+      const beerL = tk.bottling!.youngL;
+      expect(actualBeer({ pitchGravity: 12.5, finalGravity: 2.5 }, tk)!.abvPct).toBeCloseTo(strong * beerL / (beerL + 4), 9);
+      expect(actualBeer({ pitchGravity: 12.5, finalGravity: 2.5, dilutionVolume: 5 }, tk)!.abvPct).toBeCloseTo(strong * beerL / (beerL + 5), 9);
+    });
+
+    it('keeps the overall efficiency of the undiluted wort', () => {
+      const { batchVolume, pitchGravity } = tk.values;
+      expect(tk.efficiency!.fermenterPct).toBeCloseTo(t.efficiency!.fermenterPct!, 9);
+      expect(measuredFermenterPct({ batchVolume, pitchGravity }, tk)).toBeCloseTo(tk.efficiency!.fermenterPct!, 6);
+    });
   });
 
   it('drops the results the measurements no longer give', () => {

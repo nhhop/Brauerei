@@ -2,6 +2,7 @@
 
 #include "core/Controller.h"
 #include "core/Sensor.h"
+#include "core/SensorRef.h"
 #include "core/Actuator.h"
 
 namespace SensActCtrl {
@@ -31,6 +32,10 @@ class TwoPointController : public Controller {
   float hysteresisLow() const { return hystLow_; }
   float hysteresisHigh() const { return hystHigh_; }
 
+  // Sensor channel used as input (default 0).
+  void setChannel(size_t idx) { channel_ = clampChannel(*sensor_, idx); }
+  size_t channel() const { return channel_; }
+
   void setInverted(bool inverted) { inverted_ = inverted; }
   bool inverted() const { return inverted_; }
 
@@ -43,6 +48,7 @@ class TwoPointController : public Controller {
  private:
   const char* id_;
   Sensor* sensor_;
+  size_t channel_ = 0;
   Actuator* actuator_;
   float setpoint_ = 0.0f;
   float hystLow_ = -0.5f;

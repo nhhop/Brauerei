@@ -146,9 +146,9 @@ export function yeastAttenuation(recipe: Recipe, catalog: CatalogIngredient[]): 
 }
 
 // Beer colour after a planned dilution: in the kettle the knock-out already
-// includes it, in the fermenter it thins the wort that arrives.
+// includes it, in the fermenter it thins the wort that arrives, in the keg the beer.
 export function beerEbc(colors: { kg: number; ebc: number }[], volumeL: number, dilution: DilutionResult): number {
-  return moreyEbc(colors, volumeL) * (dilution.at === 'fermenter' ? dilution.factor : 1);
+  return moreyEbc(colors, volumeL) * (dilution.at !== 'kettle' ? dilution.factor : 1);
 }
 
 // `bh` is the recipe's brewhouse; it only matters for a dilution in the fermenter.
@@ -176,7 +176,10 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
   if (stats.ogPlato !== undefined) {
     if (attenuation !== undefined) {
       stats.fgPlato = stats.ogPlato * (1 - attenuation / 100);
-      stats.abv = ballingBeerAnalysis(stats.ogPlato, stats.fgPlato).abvPercent;
+      // In the keg the finished beer is diluted: its alcohol by volume.
+      const og = dilution.at === 'keg' ? dilution.kettlePlato! : stats.ogPlato;
+      const factor = dilution.at === 'keg' ? dilution.factor : 1;
+      stats.abv = ballingBeerAnalysis(og, og * (1 - attenuation / 100)).abvPercent * factor;
     } else {
       notes.push('Alkohol braucht eine Hefe mit Katalogverknüpfung');
     }
@@ -201,17 +204,30 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
     if (stats.ogPlato === undefined) {
       notes.push(colors.length > 0 ? 'Bittere braucht die Stammwürze' : 'Bittere braucht die Stammwürze (Vergärbares verknüpfen)');
     } else {
-      const { durationMin, whirlpoolTempC, whirlpoolMin } = recipe.boil;
-      const sg = platoToSg(dilution.kettlePlato!);
-      const boilTempC = breweryBoilC(brewery);
-      stats.ibu = dilution.factor * bitter.reduce((sum, { i, c }) => {
-        const boilMin = i.timing === 'whirlpool' ? 0 : i.timing === 'firstWort' ? durationMin : (i.timeMin ?? durationMin);
-        return sum + hopIbu({
-          alphaPct: rangeValue(c.alphaPct), grams: i.amount, volumeL: dilution.kettleL, sg,
-          boilMin, whirlpoolTempC, whirlpoolMin, boilTempC,
-        });
-      }, 0);
+      stats.ibu = [...hopIbus(recipe, catalog, dilution, brewery).values()].reduce((s, x) => s + x, 0);
     }
   }
   return stats;
+}
+
+// Bitterness of each linked first wort, boil and whirlpool addition (by row
+// id), after the dilution; needs the kettle gravity. The boil gravity and
+// volume are approximated by those at the end of the boil.
+export function hopIbus(recipe: Recipe, catalog: CatalogIngredient[], dilution: DilutionResult, brewery?: Brewery | null): Map<string, number> {
+  const out = new Map<string, number>();
+  if (dilution.kettlePlato === undefined) return out;
+  const { durationMin, whirlpoolTempC, whirlpoolMin } = recipe.boil;
+  const sg = platoToSg(dilution.kettlePlato);
+  const boilTempC = breweryBoilC(brewery);
+  for (const i of recipe.ingredients) {
+    if (i.kind !== 'hop' || !(i.timing === 'firstWort' || i.timing === 'boil' || i.timing === 'whirlpool')) continue;
+    const c = entryOf(i, catalog);
+    if (c?.kind !== 'hop') continue;
+    const boilMin = i.timing === 'whirlpool' ? 0 : i.timing === 'firstWort' ? durationMin : (i.timeMin ?? durationMin);
+    out.set(i.id, dilution.factor * hopIbu({
+      alphaPct: rangeValue(c.alphaPct), grams: i.amount, volumeL: dilution.kettleL, sg,
+      boilMin, whirlpoolTempC, whirlpoolMin, boilTempC,
+    }));
+  }
+  return out;
 }

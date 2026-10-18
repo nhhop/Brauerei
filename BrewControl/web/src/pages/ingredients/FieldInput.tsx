@@ -5,8 +5,8 @@ import { Field, OptNum } from '../recipe/fields';
 
 // "von–bis" of a range. Only "von" is one value ([x, x]); only "bis" is an
 // upper limit ([null, x]), as data sheets write "max. 5".
-function RangeInput({ value, onChange, placeholder }: {
-  value: Range | undefined; onChange: (r: Range | undefined) => void; placeholder?: Range;
+function RangeInput({ value, onChange, placeholder, unit }: {
+  value: Range | undefined; onChange: (r: Range | undefined) => void; placeholder?: Range; unit?: string;
 }) {
   const lo = value?.[0] ?? undefined;
   const hi = value && value[1] !== value[0] ? value[1] ?? undefined : undefined;
@@ -18,10 +18,10 @@ function RangeInput({ value, onChange, placeholder }: {
   const ph = (n: number | null | undefined) => (n == null ? undefined : String(n));
   return (
     <div class="flex items-center gap-1">
-      <OptNum value={lo} onChange={(a) => set(a, hi)} placeholder={ph(under?.[0]) ?? 'von'} class="w-20" />
+      <OptNum value={lo} onChange={(a) => set(a, hi)} placeholder={ph(under?.[0]) ?? 'von'} unit={unit} class={unit ? 'w-32' : 'w-20'} />
       <span class="text-muted">–</span>
-      <OptNum value={hi} onChange={(b) => set(lo, b)}
-        placeholder={(under && under[1] !== under[0] ? ph(under[1]) : undefined) ?? 'bis'} class="w-20" />
+      <OptNum value={hi} onChange={(b) => set(lo, b)} unit={unit} class={unit ? 'w-32' : 'w-20'}
+        placeholder={(under && under[1] !== under[0] ? ph(under[1]) : undefined) ?? 'bis'} />
     </div>
   );
 }
@@ -31,7 +31,7 @@ function RangeInput({ value, onChange, placeholder }: {
 export function FieldInput({ def, value, onChange, placeholder }: {
   def: FieldDef; value: unknown; onChange: (v: unknown) => void; placeholder?: unknown;
 }) {
-  const label = `${def.label}${def.unit ? ` (${def.unit})` : ''}${def.required ? ' *' : ''}`;
+  const label = `${def.label}${def.required ? ' *' : ''}`;
   return (
     <Field label={label}>
       {def.type === 'enum' ? (
@@ -41,10 +41,10 @@ export function FieldInput({ def, value, onChange, placeholder }: {
           {def.options!.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
         </select>
       ) : def.type === 'range' ? (
-        <RangeInput value={value as Range | undefined} onChange={onChange}
+        <RangeInput value={value as Range | undefined} onChange={onChange} unit={def.unit}
           placeholder={Array.isArray(placeholder) ? (placeholder as Range) : undefined} />
       ) : (
-        <OptNum value={value as number | undefined} onChange={onChange} class="w-24"
+        <OptNum value={value as number | undefined} onChange={onChange} unit={def.unit} class={def.unit ? 'w-32' : 'w-24'}
           placeholder={typeof placeholder === 'number' ? String(placeholder) : undefined} />
       )}
     </Field>

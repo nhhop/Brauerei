@@ -3,22 +3,23 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
-import { lovibond } from '../../brewMath';
 import type { Efficiency } from '../../efficiency';
+import { ingredientFigures, type IngredientFigures } from '../../ingredientRows';
 import { useCatalog } from '../../ingredientSource';
 import { calcMash, fmtClock, outlineMash, type MashPlan, type MashRow } from '../../mashPlan';
 import {
   BUILTIN_MASH_PROFILES, applyMashProfile, listMashProfiles, profileLoadEffects, type MashProfile,
 } from '../../mashProfiles';
-import { atKnockOut, calcStats, wortExtract, type RecipeStats, type WortPart } from '../../recipeStats';
+import { atKnockOut, wortExtract } from '../../recipeStats';
 import { calcWater, fmtL } from '../../recipeWater';
 import {
-  MASH_KIND_LABEL, SCOPE_TIMINGS, addCharge, chargeIdOf, chargesOf, isMashGrain, removeCharge, replaceDecoctions, uid,
+  MASH_KIND_LABEL, TIMING_LABEL, addCharge, chargeIdOf, chargesOf, isMashGrain, removeCharge, replaceDecoctions, uid,
   type Decoction, type Infusion, type MashStep, type MashStepKind, type Recipe,
 } from '../../recipes';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
+import { Section } from './CalcTable';
 import { Card, Field, MenuItem, NumInput } from './fields';
-import { IngredientCard, type IngredientGroup } from './IngredientCard';
+import { ProcessTable, rowClass, wrapOnly, type IngredientGroup } from './IngredientCard';
 import { MashCurve } from './MashCurve';
 import { MashProfileDialog } from './MashProfileDialog';
 import { Stat, type TabProps } from './tabs';
@@ -52,18 +53,20 @@ export function MashTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const wort = catalog ? wortExtract(hot, catalog.entries, bh, brewery) : undefined;
   const water = bh ? calcWater(hot, bh, wort?.extractKg, brewery, wort?.draw).water : undefined;
   const plan = bh && water ? calcMash(recipe, bh, brewery, water) : undefined;
-  const stats = catalog ? calcStats(hot, catalog.entries, bh, brewery) : undefined;
+  const figures = ingredientFigures(hot, catalog?.entries ?? null, bh, brewery);
   return (
     <>
       <HeadCard bh={bh} brewery={brewery} plan={plan} loaded={brewhouses !== null} efficiency={wort?.efficiency} />
-      <GrainCard recipe={recipe} onChange={onChange} plan={plan} stats={stats} parts={wort?.colors ?? []} />
+      <GrainCard recipe={recipe} onChange={onChange} plan={plan} figures={figures} />
       <PlanCard recipe={recipe} onChange={onChange} plan={plan} boilC={plan?.boilC ?? breweryBoilC(brewery)} />
-      <Card title="Temperaturverlauf">
-        {!plan && (
-          <p class="mb-2 text-xs text-muted">Ohne Sudhaus nur Zieltemperaturen und Haltezeiten, Übergänge als Sprung.</p>
-        )}
-        <MashCurve rows={plan?.rows ?? outlineMash(recipe, brewery)} />
-      </Card>
+      <Section title="Temperaturverlauf">
+        <div class="p-4">
+          {!plan && (
+            <p class="mb-2 text-xs text-muted">Ohne Sudhaus nur Zieltemperaturen und Haltezeiten, Übergänge als Sprung.</p>
+          )}
+          <MashCurve rows={plan?.rows ?? outlineMash(recipe, brewery)} />
+        </div>
+      </Section>
     </>
   );
 }
@@ -139,68 +142,87 @@ function SplitButton({ label, onMain, onArrow, arrowTitle, menu, plain }: {
 
 // ── Ingredients by charge ──────────────────────────────────────────────────────
 
-function GrainCard({ recipe, onChange, plan, stats, parts }: {
-  recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; stats?: RecipeStats; parts: WortPart[];
+function GrainCard({ recipe, onChange, plan, figures }: {
+  recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; figures: IngredientFigures;
 }) {
   const [splitting, setSplitting] = useState(false);
   const charges = chargesOf(recipe);
-  const totalKg = recipe.ingredients.filter(isMashGrain).reduce((s, i) => s + i.amount, 0);
-  const extractAll = parts.reduce((s, p) => s + p.extractKg, 0);
-  const colorAll = parts.reduce((s, p) => s + lovibond(p.ebc) * p.kg, 0);
+  const grainKg = recipe.ingredients.filter(isMashGrain).reduce((s, i) => s + i.amount, 0);
+  const addGrain = (chargeId?: string) => onChange({
+    ingredients: [...recipe.ingredients, { id: uid(), kind: 'fermentable', name: '', amount: 0, timing: 'mash', chargeId }],
+  });
 
-  // A charge's part of the original gravity and the colour (Morey's MCU are
-  // linear in the grain, so its share of them).
-  function header(id: string, index: number) {
+  // A charge's head row: its sums under the columns of its malts.
+  function head(id: string, index: number) {
     const c = charges[index];
     const rows = recipe.ingredients.filter((i) => isMashGrain(i) && chargeIdOf(i, charges) === id);
-    const ids = new Set(rows.map((i) => i.id));
-    const mine = parts.filter((p) => ids.has(p.id));
-    const chargeKg = rows.reduce((s, i) => s + i.amount, 0);
-    const plato = stats?.ogPlato !== undefined && extractAll > 0
-      ? (stats.ogPlato * mine.reduce((s, p) => s + p.extractKg, 0)) / extractAll : undefined;
-    const ebc = stats?.ebc !== undefined && colorAll > 0
-      ? (stats.ebc * mine.reduce((s, p) => s + lovibond(p.ebc) * p.kg, 0)) / colorAll : undefined;
+    const total = (key: 'sharePct' | 'plato' | 'ebc') => {
+      const xs = rows.map((i) => figures.rows.get(i.id)?.[key]).filter((x) => x !== undefined);
+      return xs.length ? xs.reduce((s, x) => s + x, 0) : undefined;
+    };
+    const cell = (v: number | undefined, unit: string) => (
+      <span class="text-right">{v === undefined ? '' : <>{num(v)}<span class={wrapOnly}> {unit}</span></>}</span>
+    );
     const row = plan?.rows.find((r) => r.step.kind === 'doughIn' && chargeIdOf(r.step, charges) === id);
     const step = recipe.mash.find((s) => s.kind === 'doughIn' && chargeIdOf(s, charges) === id);
     const rename = (name: string) => onChange({ charges: charges.map((x) => (x.id === id ? { ...x, name } : x)) });
     return (
-      <>
-        <input class={`${inp} w-32 font-medium`} value={c.name} aria-label="Name der Schüttung"
-          onInput={(e) => rename(e.currentTarget.value)} />
-        <span class="text-xs text-muted">
-          {step ? `${step.name || 'Einmaischen'}${row ? ` · ${fmtClock(row.startMin)}` : ''}` : 'nicht im Plan'}
+      <div class={`${rowClass('mash', 'v')} bg-fg/[0.03] text-[13px] font-semibold tabular-nums`}>
+        <span class="flex flex-wrap items-center gap-x-2 gap-y-1 @[67rem]:col-span-4">
+          <input class={`${inp} w-36 font-semibold`} value={c.name} aria-label="Name der Schüttung"
+            onInput={(e) => rename(e.currentTarget.value)} />
+          <span class="text-xs font-normal text-muted">
+            {step ? `${step.name || 'Einmaischen'}${row ? ` · ${fmtClock(row.startMin)}` : ''}` : 'nicht im Plan'}
+          </span>
         </span>
-        <span class="text-xs tabular-nums">
-          {kg(chargeKg)} · {totalKg > 0 ? Math.round((chargeKg / totalKg) * 100) : 0} %
-          {ebc !== undefined && ` · ${Math.round(ebc)} EBC`}
-          {plato !== undefined && ` · ${num(plato)} °P`}
-        </span>
-        {index > 0 && (
-          <button type="button" title="Schüttung entfernen, Malz zurück in die erste"
+        <button type="button" onClick={() => addGrain(index === 0 ? undefined : id)}
+          class="justify-self-end whitespace-nowrap px-1 text-xs font-medium text-accent hover:underline">
+          + Malz
+        </button>
+        <span class="text-right">{kg(rows.reduce((s, i) => s + i.amount, 0))}</span>
+        {cell(total('sharePct'), '%')}
+        {cell(total('plato'), '°P')}
+        {cell(total('ebc'), 'EBC')}
+        {index > 0 ? (
+          <button type="button" title="Schüttung entfernen, Malz zurück in die erste" aria-label="Schüttung entfernen"
             onClick={() => onChange(removeCharge(recipe, id))}
-            class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
+            class="justify-self-end rounded-md px-2 py-1.5 text-muted hover:bg-fg/10 hover:text-critical">
             <Trash2 size={14} />
           </button>
-        )}
-      </>
+        ) : <span />}
+      </div>
     );
   }
 
-  const groups: IngredientGroup[] | undefined = charges.length > 1 ? charges.map((c, index) => ({
-    id: c.id,
-    header: header(c.id, index),
-    match: (i) => isMashGrain(i) && chargeIdOf(i, charges) === c.id,
-    init: { kind: 'fermentable', timing: 'mash', chargeId: index === 0 ? undefined : c.id },
-    addLabel: 'Malz',
-  })) : undefined;
+  const groups: IngredientGroup[] = [
+    {
+      id: 'mash', title: 'Maische', match: (i) => i.timing === 'mash', empty: 'Keine Zutaten',
+      sections: charges.length > 1 ? charges.map((c, index) => ({
+        id: c.id, head: head(c.id, index), match: (i) => isMashGrain(i) && chargeIdOf(i, charges) === c.id,
+      })) : undefined,
+    },
+    {
+      // Short: in this table the step's name has only the name column.
+      id: 'mashPh', title: 'Nach pH-Messung', match: (i) => i.timing === 'mashPh',
+      add: { kind: 'auxiliary', timing: 'mashPh' }, empty: 'Keine Zutaten',
+    },
+  ];
 
   return (
     <>
-      <IngredientCard title="Zutaten (Maische)" scope="mash" all={recipe.ingredients}
-        onChange={(ingredients) => onChange({ ingredients })}
-        match={(i) => SCOPE_TIMINGS.mash.includes(i.timing)} boilMin={recipe.boil.durationMin} groups={groups}
-        action={<SplitButton label="Schüttung" onMain={() => onChange(addCharge(recipe))}
-          onArrow={() => setSplitting(true)} arrowTitle="Schüttung aufteilen" />} />
+      <ProcessTable title="Zutaten" mode="mash" scope="mash" all={recipe.ingredients}
+        info={`${kg(grainKg)} Schüttung · Haupt- und Nachguss mit Aufbereitung im Tab Wasser`}
+        onChange={(ingredients) => onChange({ ingredients })} figures={figures} boilMin={recipe.boil.durationMin} groups={groups}
+        action={
+          <div class="flex items-center gap-2">
+            <button type="button" onClick={() => addGrain()}
+              class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
+              <Plus size={12} /> Zutat
+            </button>
+            <SplitButton label="Schüttung" onMain={() => onChange(addCharge(recipe))}
+              onArrow={() => setSplitting(true)} arrowTitle="Schüttung aufteilen" />
+          </div>
+        } />
       {splitting && <SplitDialog recipe={recipe} onChange={onChange} onClose={() => setSplitting(false)} />}
     </>
   );
@@ -236,8 +258,8 @@ function SplitDialog({ recipe, onChange, onClose }: {
                 </select>
               </Field>
             )}
-            <Field label="Abspalten (%)">
-              <NumInput value={pct} onChange={setPct} class="w-20" />
+            <Field label="Abspalten">
+              <NumInput unit="%" value={pct} onChange={setPct} />
             </Field>
           </div>
           {grains.length === 0 ? (
@@ -285,7 +307,7 @@ function SplitDialog({ recipe, onChange, onClose }: {
 // The grid needs 53.75rem (its column minimums plus gaps) of the plan card's own
 // width, so rows switch on that container, not on the window: the sidebar and
 // the page cap change how much of the window the card gets.
-const GRID = '@[53.75rem]:grid @[53.75rem]:grid-cols-[1rem_6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_5rem_5.5rem_6.5rem_2.75rem_2rem] @[53.75rem]:items-center @[53.75rem]:gap-2';
+const GRID = '@[53.75rem]:grid @[53.75rem]:grid-cols-[1rem_6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_6.75rem_7rem_6.5rem_2.75rem_2rem] @[53.75rem]:items-center @[53.75rem]:gap-2';
 
 function PlanCard({ recipe, onChange, plan, boilC }: {
   recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number;
@@ -382,13 +404,14 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
   const strikeRow = plan?.rows[0];
 
   return (
-    <Card title="Maischeplan"
+    <Section title="Maischeplan"
       action={
         <div class="flex items-center gap-2">
           <SplitButton plain label="Profile" onMain={() => setDialog('list')} arrowTitle="Profil laden" menu={profileMenu} />
           <SplitButton label="Rast" onMain={() => add({ kind: 'rest', ...nextRest })} arrowTitle="Weitere Schritte" menu={menu} />
         </div>
       }>
+      <div class="p-4">
       <div ref={listRef} class="@container text-sm">
         <div class={`hidden border-b border-border pb-1 text-xs text-muted ${GRID}`}>
           <span />
@@ -451,6 +474,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           Dekoktionen durch Rasten ersetzen
         </button>
       )}
+      </div>
       {dialog && (
         <MashProfileDialog stored={stored} storeError={storeError} recipe={recipe} resultC={resultC} saveFirst={dialog === 'save'}
           reload={reload} onLoad={setPending} onClose={() => setDialog(null)} />
@@ -462,7 +486,7 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
         {effects?.created.map((c) => ` ${c.name} entsteht mit ${c.pct} % der Schüttung (aus der ersten aufgeteilt).`)}
         {effects && effects.unplaced.length > 0 && ` ${effects.unplaced.join(', ')} ${effects.unplaced.length === 1 ? 'hat' : 'haben'} danach keinen Schritt Einmaischen, die Schüttung bleibt.`}
       </ConfirmModal>
-    </Card>
+    </Section>
   );
 }
 
@@ -545,19 +569,18 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
       </span>
       <span class="flex items-center gap-1 text-xs text-muted">
         {tempResult ? (
-          <NumInput value={round1(row?.tempC ?? s.tempC ?? 0)} class="w-16 text-muted"
+          <NumInput unit="°C" muted value={round1(row?.tempC ?? s.tempC ?? 0)} class="w-28 @[53.75rem]:w-full"
             onChange={(n) => patch({ tempC: n, decoction: { ...s.decoction!, lead: 'temp' } })} />
         ) : tempEditable ? (
-          <NumInput value={s.tempC ?? round1(row?.tempC ?? 0)} onChange={(n) => patch({ tempC: n })} class="w-16" />
+          <NumInput unit="°C" value={s.tempC ?? round1(row?.tempC ?? 0)} onChange={(n) => patch({ tempC: n })} class="w-28 @[53.75rem]:w-full" />
         ) : (
-          <span class="tabular-nums">{row ? num(row.tempC) : '—'}</span>
+          <span class="tabular-nums">{row ? `${num(row.tempC)} °C` : '—'}</span>
         )}
-        °C
       </span>
       <span class="flex items-center gap-1 text-xs text-muted">
         {s.kind === 'strike' ? '—' : (
           <>
-            <NumInput value={s.durationMin ?? 0} onChange={(n) => patch({ durationMin: n })} class="w-14" /> min
+            <NumInput unit="min" value={s.durationMin ?? 0} onChange={(n) => patch({ durationMin: n })} class="w-28 @[53.75rem]:w-full" />
           </>
         )}
       </span>
@@ -574,8 +597,8 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
             <button type="button" title="Nach unten" disabled={k === count - 1} onClick={() => onMove(1)} class={`${iconBtn} @[53.75rem]:hidden`}>
               <ArrowDown size={14} />
             </button>
-            <button type="button" title="Entfernen" onClick={onDelete}
-              class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
+            <button type="button" title="Entfernen" aria-label={`${s.name || 'Schritt'} entfernen`} onClick={onDelete}
+              class="rounded-md px-2 py-1.5 text-muted hover:bg-fg/10 hover:text-critical">
               <Trash2 size={14} />
             </button>
           </>
@@ -596,9 +619,8 @@ function DecoctionFields({ step, row, patch }: {
   const byShare = d.lead === 'share';
   return (
     <span class="flex flex-wrap items-center gap-1 text-muted">
-      <NumInput value={byShare ? (d.sharePct ?? 0) : round1(row?.decoction?.sharePct ?? 0)}
-        onChange={(n) => set({ lead: 'share', sharePct: n })} class={`w-16 ${byShare ? '' : 'text-muted'}`} />
-      %
+      <NumInput unit="%" muted={!byShare} value={byShare ? (d.sharePct ?? 0) : round1(row?.decoction?.sharePct ?? 0)}
+        onChange={(n) => set({ lead: 'share', sharePct: n })} />
       <select class={inp} value={d.thin ? 'thin' : 'thick'} aria-label="Dicke der Teilmaische"
         onChange={(e) => set({ thin: e.currentTarget.value === 'thin' || undefined })}>
         <option value="thick">dick</option>
@@ -624,8 +646,8 @@ function DecoctionCourse({ step, row, patch }: {
       <span>Teilmaische{dr ? ` in ${dr.vessel}` : ''}:</span>
       {d.rests.map((r, i) => (
         <span key={i} class="flex items-center gap-1">
-          Rast <NumInput value={r.tempC} onChange={(n) => setRest(i, { tempC: n })} class="w-14" /> °C
-          <NumInput value={r.durationMin} onChange={(n) => setRest(i, { durationMin: n })} class="w-14" /> min
+          Rast <NumInput unit="°C" value={r.tempC} onChange={(n) => setRest(i, { tempC: n })} />
+          <NumInput unit="min" value={r.durationMin} onChange={(n) => setRest(i, { durationMin: n })} />
           <button type="button" title="Rast der Teilmaische entfernen" aria-label="Rast der Teilmaische entfernen"
             onClick={() => set({ rests: d.rests.filter((_, k) => k !== i) })} class="rounded px-0.5 text-faint hover:text-critical">
             <X size={12} />
@@ -637,7 +659,7 @@ function DecoctionCourse({ step, row, patch }: {
         <Plus size={12} /> Rast
       </button>
       <span class="flex items-center gap-1">
-        kochen <NumInput value={d.boilMin} onChange={(n) => set({ boilMin: n })} class="w-14" /> min
+        kochen <NumInput unit="min" value={d.boilMin} onChange={(n) => set({ boilMin: n })} />
       </span>
       <label class="flex items-center gap-1"
         title="Die Restmaische wird während der Dekoktion auf ihrer Temperatur gehalten. Ohne Haken rechnet der Plan mit dem Wärmeverlust des Maischbehälters.">
@@ -663,14 +685,12 @@ function InfusionFields({ step, row, boilC, patch }: {
   const byVolume = inf.lead === 'volume' && !inf.ice;
   return (
     <span class="flex flex-wrap items-center gap-1 text-muted">
-      <NumInput value={byVolume ? (inf.volumeL ?? 0) : round1(row?.waterL ?? 0)}
-        onChange={(n) => set({ lead: 'volume', volumeL: n, ice: undefined })} class={`w-16 ${byVolume ? '' : 'text-muted'}`} />
-      l
+      <NumInput unit="l" muted={!byVolume} value={byVolume ? (inf.volumeL ?? 0) : round1(row?.waterL ?? 0)}
+        onChange={(n) => set({ lead: 'volume', volumeL: n, ice: undefined })} />
       {inf.ice ? <span class="px-1">Eis</span> : (
         <>
-          <NumInput value={!byVolume ? (inf.waterTempC ?? round1(boilC)) : round1(row?.waterTempC ?? 0)}
-            onChange={(n) => set({ lead: 'temp', waterTempC: n })} class={`w-16 ${byVolume ? 'text-muted' : ''}`} />
-          °C
+          <NumInput unit="°C" muted={byVolume} value={!byVolume ? (inf.waterTempC ?? round1(boilC)) : round1(row?.waterTempC ?? 0)}
+            onChange={(n) => set({ lead: 'temp', waterTempC: n })} />
         </>
       )}
       <label class="ml-1 flex items-center gap-1">

@@ -154,7 +154,7 @@ export function NavShell({ children, alertCount = 0, onBell, showLogout = false,
           )}
         </div>
       </nav>
-      <main class="min-w-0 flex-1 overflow-y-auto pb-[var(--safe-b)] pr-[var(--safe-r)] max-md:pl-[var(--safe-l)]">
+      <main class="min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] pb-[var(--safe-b)] pr-[var(--safe-r)] max-md:pl-[var(--safe-l)]">
         <div class="sticky top-0 z-20 flex h-[calc(3rem+var(--safe-t))] items-center border-b border-border bg-surface-acrylic px-3 pt-[var(--safe-t)] backdrop-blur-md md:hidden">
           <button type="button" onClick={() => setMobileOpen(true)} title="Menü öffnen"
             class="flex h-9 w-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-subtle-hover hover:text-fg active:bg-subtle-pressed">

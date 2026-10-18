@@ -177,12 +177,12 @@ function FermenterDialog({ fermenter, snap, onSave, onClose }: {
           {FERMENTER_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
         </select>
       </Field>
-      <Field label="Volumen (l)"><NumInput value={f.volumeL} class="w-full" onChange={(volumeL) => set({ volumeL })} /></Field>
-      <Field label="Trubverlust (l)">
-        <OptNum value={f.trubLossL} placeholder="wie im Rezept" class="w-full" onChange={(trubLossL) => set({ trubLossL })} />
+      <Field label="Volumen"><NumInput unit="l" value={f.volumeL} class="w-full" onChange={(volumeL) => set({ volumeL })} /></Field>
+      <Field label="Trubverlust">
+        <OptNum unit="l" value={f.trubLossL} placeholder="wie im Rezept" class="w-full" onChange={(trubLossL) => set({ trubLossL })} />
       </Field>
-      <Field label="Druckfest bis (bar)">
-        <OptNum value={f.maxPressureBar} placeholder="nicht druckfest" class="w-full"
+      <Field label="Druckfest bis">
+        <OptNum unit="bar" value={f.maxPressureBar} placeholder="nicht druckfest" class="w-full"
           onChange={(maxPressureBar) => set({ maxPressureBar })} />
       </Field>
       <Field label="Temperierung">
@@ -191,8 +191,8 @@ function FermenterDialog({ fermenter, snap, onSave, onClose }: {
           {TEMPERINGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
       </Field>
-      <Field label="Umgebungstemperatur (°C)">
-        <OptNum value={f.ambientTempC} placeholder="unbekannt" class="w-full"
+      <Field label="Umgebungstemperatur">
+        <OptNum unit="°C" value={f.ambientTempC} placeholder="unbekannt" class="w-full"
           onChange={(ambientTempC) => set({ ambientTempC })} />
       </Field>
       {f.tempering !== 'none' && (
@@ -250,13 +250,13 @@ function ContainerDialog({ container, snap, onSave, onClose }: {
         <TextInput value={c.name ?? ''} placeholder={containerLabel({ ...c, name: undefined })}
           onChange={(name) => set({ name: name || undefined })} />
       </Field>
-      <Field label="Größe (l)"><NumInput value={c.sizeL} class="w-full" onChange={(sizeL) => set({ sizeL })} /></Field>
+      <Field label="Größe"><NumInput unit="l" value={c.sizeL} class="w-full" onChange={(sizeL) => set({ sizeL })} /></Field>
       <Field label="Anzahl"><NumInput value={c.count} class="w-full" onChange={(count) => set({ count })} /></Field>
-      <Field label="Abfüllverlust (l)">
-        <OptNum value={c.fillLossL} placeholder="0" class="w-full" onChange={(fillLossL) => set({ fillLossL })} />
+      <Field label="Abfüllverlust">
+        <OptNum unit="l" value={c.fillLossL} placeholder="0" class="w-full" onChange={(fillLossL) => set({ fillLossL })} />
       </Field>
-      <Field label="Druckfest bis (bar)">
-        <OptNum value={c.maxPressureBar} placeholder="nicht angegeben" class="w-full"
+      <Field label="Druckfest bis">
+        <OptNum unit="bar" value={c.maxPressureBar} placeholder="nicht angegeben" class="w-full"
           onChange={(maxPressureBar) => set({ maxPressureBar })} />
       </Field>
     </EditDialog>

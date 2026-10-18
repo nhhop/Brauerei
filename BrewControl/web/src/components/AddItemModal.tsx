@@ -11,7 +11,8 @@ import { availableCaps, dacOutputs, isChannelRef, riskyPins } from '../pins';
 import { BUS_TYPE_LABEL, busTitle } from '../buses';
 import { PinHint } from './PinHint';
 import { DigitalPinField } from './DigitalPinField';
-import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase } from '../ui';
+import { btnPrimary, btnSecondary, dialogFrame, dialogScrim, dialogSheet, dialogFooter, dialogBtnRow, inp as inpBase, unitInput } from '../ui';
+import { UnitBox } from './UnitBox';
 import { pickIntervalUnit, intervalUnitMultiplier, type IntervalUnit } from '../intervalUnit';
 import {
   ITEM_TYPES, ROLE_LABEL, ROLE_META, CATEGORY_ICON,
@@ -1234,10 +1235,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 </div>
               </div>
               <div>
-                <label for="rref-input" class={lbl}>Rref (Ω)</label>
-                <input id="rref-input" type="number" step="any" value={rref}
+                <label for="rref-input" class={lbl}>Rref</label>
+                <UnitBox unit="Ω"><input id="rref-input" type="number" step="any" value={rref}
                   onInput={(e) => { setRref((e.target as HTMLInputElement).value); setRrefTouched(true); }}
-                  class={inp} required />
+                  class={unitInput} required /></UnitBox>
               </div>
             </>
           )}
@@ -1319,10 +1320,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                 </p>
               )}
               <div>
-                <label class={lbl}>Entprellung (ms)</label>
-                <input type="number" value={diDebounce} min="0"
+                <label class={lbl}>Entprellung</label>
+                <UnitBox unit="ms"><input type="number" value={diDebounce} min="0"
                   onInput={(e) => setDiDebounce((e.target as HTMLInputElement).value)}
-                  placeholder="0 = aus" class={inp} />
+                  placeholder="0 = aus" class={unitInput} /></UnitBox>
               </div>
             </div>
           )}
@@ -1377,14 +1378,14 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                   onPick={(g) => setVPin(String(g))} />
               </div>
               <div class="grid grid-cols-2 gap-2">
-                <div><label class={lbl}>R1 (kΩ)</label>
-                  <input type="number" step="any" min="0" value={vR1}
+                <div><label class={lbl}>R1</label>
+                  <UnitBox unit="kΩ"><input type="number" step="any" min="0" value={vR1}
                     onInput={(e) => setVR1((e.target as HTMLInputElement).value)}
-                    class={inp} /></div>
-                <div><label class={lbl}>R2 (kΩ)</label>
-                  <input type="number" step="any" min="0" value={vR2}
+                    class={unitInput} /></UnitBox></div>
+                <div><label class={lbl}>R2</label>
+                  <UnitBox unit="kΩ"><input type="number" step="any" min="0" value={vR2}
                     onInput={(e) => setVR2((e.target as HTMLInputElement).value)}
-                    class={inp} /></div>
+                    class={unitInput} /></UnitBox></div>
               </div>
               <p class="text-xs text-faint">
                 Messpunkt – R1 – ADC-Pin – R2 – GND. Ohne Teiler R1 = 0. Am Pin höchstens
@@ -1747,16 +1748,16 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label class={lbl}>Pulsbreite (ms)</label>
-                  <input type="number" min="1" value={pulseWidthMs}
+                  <label class={lbl}>Pulsbreite</label>
+                  <UnitBox unit="ms"><input type="number" min="1" value={pulseWidthMs}
                     onInput={(e) => setPulseWidthMs((e.target as HTMLInputElement).value)}
-                    class={inp} required />
+                    class={unitInput} required /></UnitBox>
                 </div>
                 <div>
-                  <label class={lbl}>Pause (ms)</label>
-                  <input type="number" min="1" value={pulseGapMs}
+                  <label class={lbl}>Pause</label>
+                  <UnitBox unit="ms"><input type="number" min="1" value={pulseGapMs}
                     onInput={(e) => setPulseGapMs((e.target as HTMLInputElement).value)}
-                    class={inp} required />
+                    class={unitInput} required /></UnitBox>
                 </div>
               </div>
               <label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
@@ -2084,23 +2085,23 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label class={lbl}>Kühl-Mindestlaufzeit (s)</label>
-                  <input type="number" step="any" min="0" value={coolMinOnS}
+                  <label class={lbl}>Kühl-Mindestlaufzeit</label>
+                  <UnitBox unit="s"><input type="number" step="any" min="0" value={coolMinOnS}
                     onInput={(e) => setCoolMinOnS((e.target as HTMLInputElement).value)}
-                    placeholder="0" class={inp} />
+                    placeholder="0" class={unitInput} /></UnitBox>
                 </div>
                 <div>
-                  <label class={lbl}>Kühl-Mindestpause (s)</label>
-                  <input type="number" step="any" min="0" value={coolMinOffS}
+                  <label class={lbl}>Kühl-Mindestpause</label>
+                  <UnitBox unit="s"><input type="number" step="any" min="0" value={coolMinOffS}
                     onInput={(e) => setCoolMinOffS((e.target as HTMLInputElement).value)}
-                    placeholder="0" class={inp} />
+                    placeholder="0" class={unitInput} /></UnitBox>
                 </div>
               </div>
               <div>
-                <label class={lbl}>Umschalt-Totzeit (s, optional)</label>
-                <input type="number" step="any" min="0" value={changeoverS}
+                <label class={lbl}>Umschalt-Totzeit (optional)</label>
+                <UnitBox unit="s"><input type="number" step="any" min="0" value={changeoverS}
                   onInput={(e) => setChangeoverS((e.target as HTMLInputElement).value)}
-                  placeholder="0" class={inp} />
+                  placeholder="0" class={unitInput} /></UnitBox>
               </div>
               <p class="text-xs text-faint">
                 Heizen AN unter Sollwert − Heiz-Differenzial, Kühlen AN über
@@ -2133,10 +2134,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     placeholder="0.05" class={inp} />
                 </div>
                 <div>
-                  <label class={lbl}>Umschalt-Totzeit (s, optional)</label>
-                  <input type="number" step="any" min="0" value={changeoverS}
+                  <label class={lbl}>Umschalt-Totzeit (optional)</label>
+                  <UnitBox unit="s"><input type="number" step="any" min="0" value={changeoverS}
                     onInput={(e) => setChangeoverS((e.target as HTMLInputElement).value)}
-                    placeholder="0" class={inp} />
+                    placeholder="0" class={unitInput} /></UnitBox>
                 </div>
               </div>
               <p class="text-xs text-faint">

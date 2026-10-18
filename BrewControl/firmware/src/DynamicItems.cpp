@@ -1104,7 +1104,8 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     const char* aId = cfg["actuator"] | "";
     if (!sId[0]) return {false, "missing sensor"};
     if (!aId[0]) return {false, "missing actuator"};
-    auto* s = reg.findSensor(sId);
+    size_t ch = 0;
+    auto* s = resolveSensorChannel(reg, sId, ch);
     auto* a = reg.findActuator(aId);
     if (!s) return {false, "sensor not found"};
     if (!a) return {false, "actuator not found"};
@@ -1112,9 +1113,10 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     float minOut = cfg["min"] | 0.0f;
     float maxOut = cfg["max"] | 1.0f;
     auto* ctrl = new PIDController(e->id.c_str(), *s, *a, minOut, maxOut);
+    ctrl->setChannel(ch);
     ctrl->setTunings(cfg["Kp"] | 2.0f, cfg["Ki"] | 0.1f, cfg["Kd"] | 0.0f);
 
-    e->sensorId   = sId;
+    e->sensorId   = sensorChannelRef(*s, ch);
     e->actuatorId = aId;
     built = ctrl;
   } else if (strcmp(type, "TwoPoint") == 0) {
@@ -1122,7 +1124,8 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     const char* aId = cfg["actuator"] | "";
     if (!sId[0]) return {false, "missing sensor"};
     if (!aId[0]) return {false, "missing actuator"};
-    auto* s = reg.findSensor(sId);
+    size_t ch = 0;
+    auto* s = resolveSensorChannel(reg, sId, ch);
     auto* a = reg.findActuator(aId);
     if (!s) return {false, "sensor not found"};
     if (!a) return {false, "actuator not found"};
@@ -1130,9 +1133,10 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     float hystHigh = cfg["hyst_high"] | 0.5f;
     bool  inverted = cfg["inverted"]  | false;
     auto* ctrl = new TwoPointController(e->id.c_str(), *s, *a);
+    ctrl->setChannel(ch);
     ctrl->setHysteresis(hystLow, hystHigh);
     ctrl->setInverted(inverted);
-    e->sensorId   = sId;
+    e->sensorId   = sensorChannelRef(*s, ch);
     e->actuatorId = aId;
     built = ctrl;
   } else if (strcmp(type, "DualStage") == 0) {
@@ -1141,7 +1145,8 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     const char* cId = cfg["cool_actuator"] | "";
     if (!sId[0]) return {false, "missing sensor"};
     if (!hId[0] && !cId[0]) return {false, "missing actuator"};
-    auto* s = reg.findSensor(sId);
+    size_t ch = 0;
+    auto* s = resolveSensorChannel(reg, sId, ch);
     if (!s) return {false, "sensor not found"};
     Actuator* h = nullptr;
     Actuator* cl = nullptr;
@@ -1149,12 +1154,13 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     if (cId[0]) { cl = reg.findActuator(cId); if (!cl) return {false, "cool actuator not found"}; }
 
     auto* ctrl = new DualStageController(e->id.c_str(), *s, h, cl);
+    ctrl->setChannel(ch);
     ctrl->setDifferentials(cfg["heat_diff"] | 0.5f, cfg["cool_diff"] | 0.5f);
     ctrl->setCoolCycleLimits(cfg["cool_min_on_ms"]  | 0u,
                              cfg["cool_min_off_ms"] | 0u);
     ctrl->setChangeoverMs(cfg["changeover_ms"] | 0u);
 
-    e->sensorId       = sId;
+    e->sensorId       = sensorChannelRef(*s, ch);
     e->actuatorId     = hId;
     e->coolActuatorId = cId;
     built = ctrl;
@@ -1164,7 +1170,8 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     const char* cId = cfg["cool_actuator"] | "";
     if (!sId[0]) return {false, "missing sensor"};
     if (!hId[0] && !cId[0]) return {false, "missing actuator"};
-    auto* s = reg.findSensor(sId);
+    size_t ch = 0;
+    auto* s = resolveSensorChannel(reg, sId, ch);
     if (!s) return {false, "sensor not found"};
     Actuator* h = nullptr;
     Actuator* cl = nullptr;
@@ -1172,16 +1179,24 @@ DynamicItems::Result DynamicItems::addControllerNoBegin(const JsonObject& cfg,
     if (cId[0]) { cl = reg.findActuator(cId); if (!cl) return {false, "cool actuator not found"}; }
 
     auto* ctrl = new SplitRangePIDController(e->id.c_str(), *s, h, cl);
+    ctrl->setChannel(ch);
     ctrl->setTunings(cfg["Kp"] | 2.0f, cfg["Ki"] | 0.1f, cfg["Kd"] | 0.0f);
     ctrl->setDeadband(cfg["deadband"] | 0.05f);
     ctrl->setChangeoverMs(cfg["changeover_ms"] | 0u);
 
-    e->sensorId       = sId;
+    e->sensorId       = sensorChannelRef(*s, ch);
     e->actuatorId     = hId;
     e->coolActuatorId = cId;
     built = ctrl;
   } else {
     return {false, "unknown controller type"};
+  }
+
+  // Store the canonical input ("<id>.<key>" on multi-channel sensors).
+  if (e->sensorId != (cfg["sensor"] | "")) {
+    cfg["sensor"] = e->sensorId;
+    e->cfgJson.clear();
+    serializeJson(cfg, e->cfgJson);
   }
 
   std::unique_ptr<Controller> concrete(built);
@@ -1652,8 +1667,14 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
   }
   for (JsonObject cfg : doc["actuators"].as<JsonArray>())
     addActuatorNoBegin(cfg, reg);
-  for (JsonObject cfg : doc["controllers"].as<JsonArray>())
+  // A controller on a bare multi-channel sensor id (from before controllers
+  // could pick a channel) gets its channel id "<id>.<key>" in the stored config.
+  bool controllerRefsMigrated = false;
+  for (JsonObject cfg : doc["controllers"].as<JsonArray>()) {
+    const std::string was = cfg["sensor"] | "";
     addControllerNoBegin(cfg, reg);
+    if (was != (cfg["sensor"] | "")) controllerRefsMigrated = true;
+  }
 
   // Stored conflicts still load (dropping e.g. a heater silently would be
   // worse); they are reported here and in GET /api/pins.
@@ -1672,7 +1693,8 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
       Serial.printf("[items] GY521 %s: angle is now %s.pitch\n", id.c_str(), id.c_str());
     migrateGy521Refs(sd, gy521Migrated);
   }
-  if (migrated || !gy521Migrated.empty()) saveToSD(sd);
+  if (controllerRefsMigrated) Serial.println("[items] controllers now name their sensor channel");
+  if (migrated || !gy521Migrated.empty() || controllerRefsMigrated) saveToSD(sd);
 }
 
 std::string DynamicItems::storedDevicesJson() const {

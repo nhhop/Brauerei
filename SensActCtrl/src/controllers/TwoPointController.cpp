@@ -12,7 +12,7 @@ TwoPointController::TwoPointController(const char* id, Sensor& sensor,
 
 void TwoPointController::tick() {
   if (!enabled()) return;
-  const Reading r = sensor_->channel(0).reading;
+  const Reading r = sensor_->channel(channel_).reading;
   if (!r.valid) return;  // no reading yet — leave actuator alone
 
   const float lowThresh = setpoint_ + hystLow_;
@@ -82,6 +82,8 @@ static bool extractBool(const char* json, const char* key, bool* out) {
 
 size_t TwoPointController::paramsJson(char* buf, size_t bufSize) const {
   if (!buf || bufSize == 0) return 0;
+  char ref[96];
+  sensorRef(*sensor_, channel_, ref, sizeof ref);
   const int n = snprintf(buf, bufSize,
                          "{\"setpoint\":%.4f,\"hystLow\":%.4f,"
                          "\"hystHigh\":%.4f,\"inverted\":%s,"
@@ -91,7 +93,7 @@ size_t TwoPointController::paramsJson(char* buf, size_t bufSize) const {
                          setpoint_, hystLow_, hystHigh_,
                          inverted_ ? "true" : "false",
                          rangeMin(), rangeMax(),
-                         sensor_->id(), actuator_->id(),
+                         ref, actuator_->id(),
                          enabled() ? "true" : "false");
   if (n < 0 || static_cast<size_t>(n) >= bufSize) return 0;
   return static_cast<size_t>(n);

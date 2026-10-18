@@ -2738,3 +2738,188 @@ Damit ist Plan 5c abgeschlossen.
   - **Kein Gerät:** das `PUT` mit den neuen Index-Feldern und die Spalten am echten Gerät sind nicht geprüft (PLAN.md ›
     Hardware-Verifikation).
 - **Offen gelassen (PLAN.md):** Gebinde-Bestand wird nicht abgebucht; der Alkohol zählt die Gärung der Speise nicht mit.
+
+## 2026-10-16 — Sud: Verkostung
+
+Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/rezept-sud-editor.md` › „Verkostung (Stand 2026-10-16)“.
+
+- **Entscheidungen des Nutzers:** mehrere Verkostungen je Sud mit Zeitpunkt; eigener Tab; Auswahl von Begriffen, nur der Genuss-Faktor
+  ist eine Zahl (1 bis 5 Sterne); keine Anzeige in der Sudliste. Aufbau nach den fünf Phasen (Aussehen, Geruch, Antrunk, Haupttrunk,
+  Nachtrunk) plus Fehlaromen und Gesamteindruck; Aromen nur beim Geruch und als Nachhall, nicht in jedem Trunk. Trübung als eine
+  Skala (glanzfein bis opak) plus „nicht beurteilbar (zu dunkel)“; bei „Kein Schaum“ sind Schaumstruktur und -haltbarkeit gesperrt;
+  keine Note für die technische Ausführung. Der erste Entwurf (Aromen in jedem Trunk, zwei Balance-Achsen) wurde noch am selben Tag
+  umgebaut, bevor etwas committet war.
+- **Firmware:** `GET/PUT /api/brews/<id>/tasting` (`/brewtasting/<id>.json`), Löschen mit dem Sud. `brewReadingsId` und
+  `brewTastingId` teilen sich `brewSubId` (`RecipeFiles.h`). `openapi.yaml` (Pfad, Schema `BrewTasting`, `deleteBrew`) und die
+  README (Tabelle, Sicherung) nachgezogen. Kein neues Index-Feld.
+- **Web:** `brewTasting.ts` (Typen, Listen- und Auswahl-Funktionen, `fitsLimit`, Store), `tastingVocab.ts` (Aroma- und
+  Fehlaroma-Begriffe, Auswahllisten mit Hinweisen), `ChipGroup`, `StarRating`, `TastingForm`, `TastingTab` (entprellter Autosave,
+  Speichern beim Verlassen), `PHASES` um `tasting` erweitert, Export und Import der Sud-Sicherung um `tasting`. Etwa 12 voll
+  ausgefüllte Verkostungen (1,2 KB) passen in das Dokument.
+- **Begriffe:** eigene deutsche Fassung in der Art des Bier-Aromarads, kein BJCP-Text (Urheberrecht, öffentliches Repo).
+  Die „häufigen Ursachen“ der Fehlaromen sind eine erste Fassung (PLAN.md).
+- **Verifikation:**
+  - Web `pnpm typecheck`, `pnpm test` 734 grün (neu: `brewTasting`, `tastingVocab`, Sicherung mit `tasting`), `pnpm build`.
+  - Firmware `pio test -e native` 200 grün (neu: drei Tests für `brewTastingId` in `test_recipe_files`); `pio run` für `esp32dev`
+    und `lilygo_t_display_s3_amoled` erfolgreich.
+  - Redocly-Lint ohne neue Warnung (nur die bekannte `info-license`).
+  - Browser gegen einen Wegwerf-Mock bei 375 px: Verkostung anlegen, Auswahl, Hinweis unter der gewählten Option, „Kein Schaum“
+    sperrt Struktur und Haltbarkeit, Sterne setzen und löschen, Fehlaroma mit Stufe, Autosave, Reload (Gruppen mit Auswahl starten
+    offen), Speichern beim Wechsel des Tabs, Löschen; kein Querscrollen. Firmware seit dem Umbau unverändert (die Compiles und
+    Tests oben gelten weiter).
+  - **Kein Gerät:** `GET/PUT /api/brews/<id>/tasting` am echten Gerät nicht geprüft (PLAN.md › Hardware-Verifikation).
+- **Offen gelassen (PLAN.md):** Auswertung in Sudliste und Rezept; Begriffe und Ursachen mit Erfahrung durchsehen.
+
+## 2026-10-16 — Geräteprüfung LilyGo: Messungen, Verkostung (API-Ebene)
+
+- **Aufgespielt:** Firmware von `dev` (`lilygo_t_display_s3_amoled`, Flash 32,4 %) per `POST /api/update/firmware`. Vorher antworteten
+  `/readings` und `/tasting` mit 404, weil die Datei fehlt – das ist auch der Sollzustand ohne Daten.
+- **Geprüft** (Wegwerf-Sud `hwtest1`, danach gelöscht): `PUT` mit fremder Body-ID → 400 `id mismatch`, mit `a.b` → 400 `invalid id`;
+  `PUT` beider Routen 204; die Dateien liegen als `/brewreadings/hwtest1.json` und `/brewtasting/hwtest1.json`; Neustart
+  (`POST /api/network`), danach beide wieder lesbar und der Sud in `/api/brews`; `DELETE /api/brews/hwtest1` 204 räumt beide
+  Dateien weg (Verzeichnisse leer).
+- **Abfüllung (Index):** `PUT /api/brews/hwtest2` mit `fgPlato`, `abvPct`, `attenuationPct`, `bottledL` → 204; `GET /api/brews` und
+  `/brews/index.jsonl` tragen die drei neuen Felder, nach dem Neustart unverändert; `DELETE` räumt Datei und Indexzeile weg.
+- **Nicht geprüft:** Die Sud-Sicherung (Export/Import) läuft im Browser aus diesen Routen (es gibt kein `/api/brews/backup`) und
+  wurde nicht durchgeklickt; Gärverlauf mit echtem Log und Spindel; die Spalten im Tab „Sude“ und „Abgefüllt“ im Belegungsplan
+  in der Oberfläche.
+
+## 2026-10-16 — Verkostung: eigene Aroma-Begriffe
+
+- **Entscheidung (Nutzer):** Die mitgelieferten Begriffe, Ursachen und Hinweistexte passen so; eigene Begriffe sollen möglich sein,
+  zunächst nur für die Aromen (Geruch und Nachhall), abgelegt in der Verkostung selbst (keine Firmware-Änderung, keine
+  gerätweite Liste). Fehlaromen und Textur bleiben fest.
+- **Umsetzung:** Ein getipptes Wort steht als `~Wort` in `aroma.descriptors` bzw. `finish.aftertaste` (`brewTasting.ts`:
+  `addCustom`, `customTerms`, `isCustom`, `customLabel`, höchstens 40 Zeichen, doppelte Wörter ohne Beachtung der Groß-/Kleinschreibung
+  ignoriert). `TastingForm.tsx` zeigt unter den Aroma-Gruppen „Eigene Begriffe“ mit Eingabefeld (Enter oder „Hinzufügen“);
+  Wörter aus den anderen Verkostungen desselben Suds erscheinen als Vorschlag zum Anklicken, in beiden Aroma-Listen. Abwählen
+  nimmt ein Wort, das sonst nirgends vorkommt, wieder weg. Über Sude hinweg muss man ein Wort neu tippen.
+- **Verifikation:** `pnpm typecheck`, `pnpm test` 738 grün (vier neue Tests). Im Browser gegen das LilyGo (`pnpm dev`, Sud #5):
+  „Pfirsich“ eingeben, gewählt in Geruch, als nicht gewählter Vorschlag im Nachhall, `GET /api/brews/<id>/tasting` zeigt
+  `["~Pfirsich"]`; die Test-Verkostung danach gelöscht. **Nicht aufgespielt:** Das UI-Tar liegt nicht auf dem Gerät.
+
+## 2026-10-16 — Regler mit Kanal-ID als Eingang
+
+- **Problem:** Regler fanden ihren Sensor nur über die nackte ID und lasen immer `channel(0)`. Ein BME280 regelte so immer auf `temp`;
+  `bme.hum` oder `gyro.roll` waren kein möglicher Eingang, und das Formular (das nur `<id>.<key>` anbietet) fand die gespeicherte
+  nackte ID nicht in der Auswahl.
+- **Umsetzung:** Die vier Regler (`TwoPoint`, `PID`, `DualStage`, `SplitRangePID`) haben `setChannel(idx)` und lesen diesen Kanal;
+  `paramsJson` meldet `sensor` als Snapshot-ID (`core/SensorRef.h`: `<id>.<key>`, bei leerem Key die nackte ID). Die Firmware löst
+  `cfg.sensor` mit `resolveSensorChannel` (`SensorChannels.h`) auf: exakte ID zuerst, sonst Split am letzten Punkt und Key-Suche.
+  `addControllerNoBegin` speichert die kanonische ID in `cfgJson`; eine nackte ID eines Mehrkanal-Sensors (z. B. `gyro`) wird damit
+  beim Laden zu `gyro.pitch` und `loadFromSD` schreibt die Registry zurück. `referencedByController` und die 409-Sperre griffen
+  für `<id>.<key>` schon. `openapi.yaml` und der Kommentar in `brewPrograms.ts` nachgezogen; das Web-Formular brauchte keine Änderung,
+  weil die gespeicherte Konfiguration jetzt immer die ID aus `snap.sensors` trägt.
+- **Verifikation:** `pio test -e native` SensActCtrl 372 (neu: `test_controller_channel`, `MockMultiSensor`), Firmware 204 (neu:
+  Resolver und `sensorChannelRef` in `test_sensor_channels`), `pnpm typecheck`, `brewPrograms.test.ts`, Redocly-Lint.
+  **Nicht am Gerät geprüft:** Regler auf `bme.hum`/`gyro.roll`, Migration eines vorhandenen Reglers auf `gyro`.
+  Downgrade: Ältere Firmware kennt `<id>.<key>` bei Reglern nicht (`sensor not found`); vorher die Registry-Sicherung zurückspielen.
+
+## 2026-10-16 — Alkohol im Sud: Speise und Verschnitt im Kessel
+
+- **Problem:** `actualBeer` rechnete Balling aus Stammwürze der Anstellwürze und Restextrakt. Die Gärung einer Speise in der Flasche
+  (etwa 0,4 % vol) blieb außen vor, und bei einem Verschnitt im Kessel ohne gemessene Anstell-Stammwürze war der Alkohol leer.
+- **Umsetzung:** (1) Mit Speise ist der Alkohol der des fertigen Biers: Jungbier-Anteil, verdünnt um die Speise (Mengen aus
+  `beerNow`, gemessen sonst geplant), plus `speiseAlcoholPct(Zielmenge, Temperatur)` in `brewMath.ts` aus dem CO₂, das die Speise
+  machen muss (2 Ethanol : 2 CO₂, 46,07 : 44,01). Das gilt für Soll (`plannedBeer`) und Ist, damit beide vergleichbar bleiben;
+  der Endvergärungsgrad bleibt der der Hauptgärung. Neues Feld `BrewTargets.speiseTargetVol` (nur bei Karbonisierung `speise`).
+  (2) Bei Verschnitt im Kessel nimmt `actualBeer` ohne gemessene Anstellwürze die geplante Stammwürze (`estimated`).
+  Die Zeile „Alkohol“ in der Bilanz (`BottlingTab`) nennt „mit Speise“ und „Stammwürze aus dem Plan“, der Fußtext ist angepasst;
+  die Index-Zeile (`abvPct`) trägt den neuen Wert.
+- **Verifikation:** `pnpm typecheck`, `pnpm test` 744 grün (neu: `speiseAlcoholPct`, Speise im Ist und Soll mit gemessenen Mengen,
+  Verschnitt mit und ohne gemessene Anstellwürze). **Nicht im Browser geprüft:** kein Sud mit Speise und Verschnitt zur Hand, die
+  Änderung an der Oberfläche ist nur die Zeilenunterschrift. Das Rezept (`calcStats`/Rezeptseite) zeigt weiter den Alkohol des
+  Jungbiers ohne Speise.
+
+## 2026-10-17 — Programmschritt: erst Regler, dann Aktoren
+
+- **Problem:** Seit Regler ihre Aktoren mit aus- und einschalten, wendete `ProgramRunner` die Ziele eines Schritts in ihrer Reihenfolge
+  an. Stand der Aktor eines Reglers mit `enabled:true` vor dem Regler mit `enabled:false`, schaltete der Regler ihn gleich wieder
+  aus. Die generierten Maischprogramme (`brewPrograms.ts`) stellen den Regler voran und waren nicht betroffen.
+- **Umsetzung:** `controllersFirst` (`ProgramTargets.h`, stabile Aufteilung, rein und nativ testbar) bringt die Regler-Befehle vor die
+  der Aktoren, jede Gruppe in ihrer Reihenfolge. `ProgramRunner::applyStepTargets_` (Schritt betreten) und `applyState_`
+  (Fortsetzen nach Neustart, „Zurück“) nutzen es; die Rampe (`ramped_`) bleibt je Befehl. Einzelne Befehle über `applyTarget`
+  sind davon nicht berührt.
+- **Verifikation:** `pio test -e native` 206 grün (zwei neue Tests für `controllersFirst`), `pio run -e esp32dev` erfolgreich.
+- **Am LilyGo** (Firmware `017c474` per OTA): Testregler `ordertest` (Zweipunkt `HLT` → `agitator`, Sollwert 50) und Programm mit
+  Schritt 1 „Regler an“ und Schritt 2 mit `agitator` **vor** `ordertest` (`enabled:false`). Zur Gegenprobe der Mechanismus per
+  REST in der falschen Reihenfolge (Aktor an, danach Regler aus): `agitator enabled=false`. Das Programm dagegen: nach „Weiter“
+  `agitator enabled=true`, Regler aus; nach „Zurück“ und erneut „Weiter“ dasselbe; nach einem Neustart im Schritt 2 (Fortsetzen über
+  `applyState_`) läuft das Programm weiter, `agitator` an, Regler aus. Aufgeräumt: Programm gestoppt und gelöscht, Regler gelöscht,
+  `agitator` wieder auf an, Sollwert 0,07, Intervall 4/5 s; Aktoren und Regler stimmen mit dem Stand vor dem Test überein
+  (Sicherung im Scratchpad).
+
+## 2026-10-17 — Einheiten im Eingabefeld (wie im Canvas-Mockup)
+
+- **Problem:** Einheiten standen als „(l)“ im Label über dem Feld (Rezept, Sud, Sudhaus, Lager, Zutaten, Geräte-Dialoge) oder als Text
+  neben dem Feld (Rechner, Ist-Mengen im Sud). Das Canvas-Mockup (`.ninp`) setzt sie ins Feld.
+- **Umsetzung:** `unitBox`/`unitInput`/`unitText` in `ui.ts` (Rahmen mit Fokus-Unterstrich per `focus-within`, rahmenloses rechtsbündiges
+  Input mit `tabular-nums`, Einheit grau rechts, Spinner aus), dazu `components/UnitBox.tsx`. `NumInput`/`OptNum`/`Override`
+  (`recipe/fields.tsx`) haben `unit?`, ohne Einheit bleibt alles wie vorher. Umgestellt: `NumberField` (Rechner), `AmountInput`, alle
+  Rezept-/Sudhaus-/Gärkeller-/Lager-Felder (rund 45 Labels, auch `%`, `°C`, `°P`, `l/kg`), `FieldInput` (Einheit aus `ingredientFields.ts`,
+  bei „von–bis“ an beiden Feldern) sowie die zehn Felder mit fester Einheit in `AddItemModal` und `EnergyPage` (ms, s, Ω, kΩ).
+  Felder mit wählbarer Einheit (`GravityInput`, Zykluslänge, Haltezeit) und Felder ohne Einheit blieben unverändert.
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 744 grün; im Browser mit dem Node-Mock geprüft: Rezept Übersicht und Wasser,
+  Sudhaus bearbeiten, Rechner Maischeeffizienz (dunkel). **Nicht angesehen:** hell, schmale Breite, Tabellenzellen (Aufbereitung), die
+  Geräte-Dialoge und die übrigen Felder der Sud-Seiten.
+
+## 2026-10-17 — Wassermenge und Abfüllmenge wie im Mockup
+
+Darstellung der Karten „Wassermenge“ (Rezept › Wasser) und „Abfüllmenge“ (Rezept › Gärung) ans Canvas-Mockup angeglichen: Überschrift außerhalb der Karte (`Section`), größere Kennzahlen (`Stat large`), runder Balken mit Punkt-Legende, „Berechnung“ als Akkordeon-Leiste mit Tabelle (Vorgabe · Volumen · Grundlage, Zwischensummen hervorgehoben). Neue Datei `web/src/pages/recipe/CalcTable.tsx` (`Section`, `Row`, `CalcTable`); Eingaben und Rechnung unverändert (Nutzerentscheidung: nur Darstellung). `pnpm typecheck` sauber, `pnpm test` 744 grün. **Nicht im Browser angesehen** (hell/dunkel, 390 px).
+
+### Nachtrag: Rest der Rezept-/Sud-Tabs und Pfeile links
+
+- **Rest umgestellt:** Alle Felder mit Einheit hinter dem Feld (`°C`, `min`, `%`, `l`, `bar`, Tage, Stück, Zutatenmengen,
+  Ist-Mengen und Messwerte im Sud, Ausgangswasser-Anteil) stehen jetzt im Rahmen. Die Spalten des Maischplans sind dafür breiter
+  (`MashTab.tsx` `GRID`). Berechnete Gegenstücke (die „andere“ Seite eines Paars) bleiben gedämpft (`muted`).
+- **Pfeile links:** `UnitBox` zeigt bei Hover/Fokus (auf Touchgeräten immer) zwei Pfeile links im Feld, auch ↑/↓ auf der Tastatur.
+  Schritt in `numStep.ts`: ab 10 ganze Zahlen, darunter 0,1, gerundet auf die feinere Stelle; nicht unter 0 (außer °C); ein leeres
+  Feld zählt vom Platzhalter. `step` überschreibt (Tage, Stück: 1). Felder ohne Einheit behalten den nativen Spinner. Die Felder in
+  `AddItemModal`/`EnergyPage` haben noch keine Pfeile (Textzustand als String).
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 749 grün (fünf neue für `numStep`); im Browser: Maischen- und Würzekochen-Tab,
+  Pfeil-Klick 6 → 6,1 kg. **Nicht angesehen:** Sud-Seiten, Gärung/Zutaten-Tab, Rechner mit Pfeilen.
+
+## 2026-10-18 — Zutaten als Tabelle nach Canvas-Vorlage
+
+Vorlage: Artboard „Rezept · Zutaten copy“ (Bearbeitung des Nutzers) und die Prozess-Tabs im Canvas. Branch `feat/zutaten-tabelle`.
+
+- **Zutaten-Tab:** je Art eine Überschrift über der Karte, darunter eine Tabelle mit Spaltenköpfen. Vergärbares: Typ, Farbe mit
+  Farbfeld, Extrakt, Zeitpunkt, Menge, Anteil, °P, EBC; Hopfen: Form, α-Säure, Ölgehalt, Zeitpunkt (Stopf-Tag daneben), Menge,
+  Dauer, Öl ml, IBU; Hefe: Form, Eigenschaften (EVG, Temperatur, Flockung); Aroma/Hilfsstoffe: Kategorie, Details (Kochzeit,
+  Konzentration). Summenzeilen unter Vergärbarem (kg, Stammwürze, EBC, Anteils-Balken) und Hopfen (g, kalt g/l, Öl, IBU).
+  Hopfen in Prozessreihenfolge; Vergärbares bleibt in Eingabereihenfolge, damit Zeilen beim Tippen nicht springen.
+- **Prozess-Tabs** (Maischen, Würzekochen, Gärung): eine Karte je Tab, gegliedert nach Prozessschritt mit Kopfzeile (Name, Notiz,
+  Spaltenköpfe der ersten Zutat, „+ Zutat“), die Art als Spalte. Maischen ohne Art-Spalte, Schüttungen als Zwischenzeilen mit
+  ihren Summen in den Spalten und „+ Malz“, dazu der Schritt „Nach pH-Messung“.
+- **Nutzerentscheidungen:** Anteil und Stammwürze vorerst nur Anzeige (kg bleibt die Eingabe); α und Öl nur aus Sorte/Lagerposten;
+  Lager (Bestand, Fehlmengen, Kosten) weggelassen.
+- **Code:** `web/src/ingredientRows.ts` (Werte je Zeile, Rundungsrest auf der größten Zeile), `hopIbus` aus `calcStats`
+  herausgelöst, `pages/recipe/IngredientCard.tsx` neu (`KindTable`, `ProcessTable`, Raster als Container-Query ab 67rem,
+  darunter umbrechende Zeilen). Die Rezeptseite ist jetzt so breit wie der Canvas (1140 px statt 56rem), sonst passt das Raster nicht.
+- **Verifikation:** `pnpm typecheck` sauber, `pnpm test` 754 grün (fünf neue in `ingredientRows.test.ts`), `pnpm build`. Im Node-Mock
+  (Rezept mit zwei Schüttungen, Kochen/Whirlpool/Stopfen, Lagerposten T45) alle vier Tabs bei 1440 px angesehen, Zutaten-Tab bei
+  375 px (kein seitliches Scrollen); kg 3,8 → 5 ändert Anteil, Summe und Stammwürze sofort. **Nicht geprüft:** am Gerät.
+
+## 2026-10-18 — Sudseite: Tab „Übersicht“
+
+Die Karte mit den Sud-Daten (Name, Rezept, Brautag, Sudhaus, Gärplatz, Belegung, Notizen) stand immer über den Tabs und störte. Sie liegt jetzt im neuen ersten Tab „Übersicht“ (`BrewPage.tsx`), der beim Öffnen aktiv ist; die Phasen-Tabs behalten ihre Nummern 1–7. Der Entwurf bleibt beim Tab-Wechsel erhalten, „Speichern“ oben unverändert. **Verifikation:** `pnpm typecheck` sauber. **Nicht geprüft:** im Browser, am Gerät.
+## 2026-10-18 — Verschnitt im Keg (dritter Ort für High Gravity)
+
+- **Anlass:** Nutzer vermisste das Verdünnen des fertigen Biers beim Abfüllen ins Keg neben Pfanne und Gärbehälter.
+- **Entscheidungen (Nutzer):** Kennwerte und Stil-Badges zeigen das Bier nach Verschnitt; Karbonisierung nur Zucker und Zwang
+  (Speise/Grünschlauchen mit Hinweis, ohne Zahl); Aufbereitungsspalte wie beim Gärbehälter; im Sud Messwert „Verschnitt“ mit Soll,
+  Bilanz und Alkohol damit, Stammwürze/Restextrakt bleiben die des vergorenen Biers. Effizienzen unverändert (kein Extrakt im Wasser).
+- **Umsetzung:** `Dilution.at` um `'keg'`; `resolveDilution` neuer Zweig (Bier = Anstellwürze − Trub − Stopfhopfen, Massenbilanz,
+  keine Speise), `pitchPlato`; `calcStats` (Alkohol = Balling stark × Faktor), `beerEbc`; `calcBottling.kegL`, `calcCarbonation`
+  mit `keg`; `calcTreatment` Gesamt; Sud: `MeasureId` `dilutionVolume`, `brewTargets`, `beerNow`, `beerFrom`; UI Wasser-Tab
+  (Ort „Keg beim Abfüllen“, Stats), Gärung-Tab (Tabelle, Balken), Sud-Abfüllung (Messwert, Bilanz), Versionsvergleich.
+- **Verifikation:** `pnpm test` 754 grün (neue Fälle in `recipeWater`, `recipeStats`, `fermentation`, `brewDay`, `bottlingDay`,
+  `recipeTreatment`), `pnpm typecheck` sauber, `pnpm build` ok; im Node-Mock (dunkel, Desktop) geprüft: Wasser-Tab (18,5 l
+  bei 13,1 °P + 4 l → 22,5 l bei 10,8 °P), Aufbereitung mit Spalte Verschnitt, Gärung-Tab (Tabelle, Zucker 136 g, Speise-Hinweis),
+  Sud › Abfüllung (Soll 4,0 l, Bilanz, Alkohol 4,6 % wie im Rezept). **Nicht angesehen:** hell, 390 px, Ist-Werte im gestarteten Sud.
+
+## 2026-10-18 — Layout-Sprung durch Scrollbalken
+
+- **Root Cause:** Gescrollt wird `<main class="overflow-y-auto">` in `NavShell.tsx`, nicht der Viewport. Hat eine Seite einen Balken, die andere nicht, springt der Inhalt um die Balkenbreite. `scrollbar-gutter` auf `html` hilft nicht (toter Streifen rechts).
+- **Umsetzung:** `[scrollbar-gutter:stable]` an `<main>`.
+- **Verifikation:** `tsc --noEmit` sauber. **Nicht** im Browser geprüft.

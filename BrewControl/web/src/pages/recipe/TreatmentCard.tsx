@@ -25,18 +25,18 @@ import { AutoTreatDialog } from './AutoTreatDialog';
 
 const VOLUME_BASIS: Record<ColumnKey, string> = {
   strike: 'Hauptguss einfüllen', mash: 'Hauptguss in der Maische', sparge: 'Nachguss einfüllen',
-  preBoil: 'Pfannevoll', knockOut: 'Ausschlagmenge', dilution: 'Verschnitt', total: 'Endmenge im Gärbehälter',
+  preBoil: 'Pfannevoll', knockOut: 'Ausschlagmenge', dilution: 'Verschnitt', total: 'Endmenge im Gärbehälter, mit einem Verschnitt im Keg das Bier danach',
 };
 const START: Partial<Record<ColumnKey, string>> = {
   mash: 'der aufbereitete Hauptguss', preBoil: 'Maische und Nachguss, nach Volumen gemischt',
   knockOut: 'die Würze vor dem Kochen, durch die Verdampfung konzentriert, mit einem Verschnitt in der Pfanne',
-  total: 'die Ausschlagwürze, mit einem Verschnitt im Gärbehälter',
+  total: 'die Ausschlagwürze, mit einem Verschnitt im Gärbehälter oder Keg',
 };
 // Where the wort's pH starts, for "Berechnung".
 const PH_START: Partial<Record<ColumnKey, string>> = {
   preBoil: 'Maische nach allen Gaben, mit der Restalkalität des Nachgusses',
   knockOut: `vor dem Kochen nach den Gaben, ${fmtNum(BOIL_PH_DROP, 2)} weniger durchs Kochen, mit einem Verschnitt in der Pfanne`,
-  total: 'Ausschlag nach den Gaben, mit einem Verschnitt im Gärbehälter',
+  total: 'Ausschlag nach den Gaben, mit einem Verschnitt im Gärbehälter oder Keg',
 };
 
 const isWaterKey = (k: ColumnKey): k is WaterKey => k === 'strike' || k === 'sparge' || k === 'dilution';
@@ -306,9 +306,8 @@ function SourcePicker({ brewery, value, source, onChange }: {
       </select>
       <div class="flex flex-wrap items-center gap-1 text-xs text-muted">
         +
-        <NumInput value={value?.blendPct ?? 0} class="w-14"
+        <NumInput unit="%" value={value?.blendPct ?? 0}
           onChange={(n) => set({ blendPct: n > 0 ? Math.min(n, 100) : undefined })} />
-        %
         <select class={`${inp} w-full min-w-0 py-1 text-xs`} value={value?.blendId ?? VE_WATER.id}
           onChange={(e) => set({ blendId: e.currentTarget.value === VE_WATER.id ? undefined : e.currentTarget.value })}>
           {waters.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
@@ -339,8 +338,7 @@ function DoseEditor({ i, catalog, onPatch, onRemove }: {
           {allowedTimings('auxiliary', 'water').map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
         </select>
         <div class="flex items-center gap-1 text-xs text-muted">
-          <NumInput value={i.amount} onChange={(n) => onPatch({ amount: n })} class="w-16" />
-          {agent?.unit ?? 'g'}
+          <NumInput unit={agent?.unit ?? 'g'} value={i.amount} onChange={(n) => onPatch({ amount: n })} />
         </div>
         <Strength i={i} agent={agent} onChange={(strengthPct) => onPatch({ strengthPct })} />
       </div>

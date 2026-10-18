@@ -4,6 +4,7 @@
 
 #include "core/Controller.h"
 #include "core/Sensor.h"
+#include "core/SensorRef.h"
 #include "core/Actuator.h"
 #include "controllers/TuningMethod.h"
 
@@ -43,6 +44,10 @@ class PIDController : public Controller {
   float ki() const { return ki_; }
   float kd() const { return kd_; }
 
+  // Sensor channel used as input (default 0).
+  void setChannel(size_t idx) { channel_ = clampChannel(*sensor_, idx); }
+  size_t channel() const { return channel_; }
+
   // Output limits — fixed at construction; getter for inspection.
   float minOutput() const { return minOutput_; }
   float maxOutput() const { return maxOutput_; }
@@ -74,6 +79,7 @@ class PIDController : public Controller {
 
   const char* id_;
   Sensor* sensor_;
+  size_t channel_ = 0;
   Actuator* actuator_;
   detail::PidEngine* engine_;
 

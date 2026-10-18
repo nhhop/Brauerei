@@ -206,6 +206,10 @@ bool isImpulse(const SensActCtrl::Actuator& a) {
   return a.meta().kind == SensActCtrl::ValueKind::Discrete;
 }
 
+auto isController(SensActCtrl::Registry& reg) {
+  return [&reg](const std::string& id) { return reg.findController(id.c_str()) != nullptr; };
+}
+
 }  // namespace
 
 void ProgramRunner::applyCmd_(SensActCtrl::Registry& reg, const TargetCmd& c,
@@ -250,7 +254,7 @@ void ProgramRunner::applyStepTargets_(Program& p, SensActCtrl::Registry& reg,
                                       bool withImpulse, time_t now) {
   if (p.currentStep < 0 || p.currentStep >= (int)p.steps.size()) return;
   p.rampDone = false;
-  for (const TargetCmd& c : p.steps[p.currentStep].targets)
+  for (const TargetCmd& c : controllersFirst(p.steps[p.currentStep].targets, isController(reg)))
     applyCmd_(reg, ramped_(p, reg, c, now), withImpulse);
 }
 
@@ -260,7 +264,7 @@ void ProgramRunner::applyState_(Program& p, SensActCtrl::Registry& reg, time_t n
     return a && isImpulse(*a);
   };
   p.rampDone = false;
-  for (const TargetCmd& c : effectiveTargets(p.steps, p.currentStep, impulse))
+  for (const TargetCmd& c : controllersFirst(effectiveTargets(p.steps, p.currentStep, impulse), isController(reg)))
     applyCmd_(reg, ramped_(p, reg, c, now), /*withImpulse=*/false);
 }
 

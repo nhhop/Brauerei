@@ -5,6 +5,7 @@
 
 #include "core/Controller.h"
 #include "core/Sensor.h"
+#include "core/SensorRef.h"
 #include "core/Actuator.h"
 #include "controllers/TuningMethod.h"
 
@@ -46,6 +47,10 @@ class SplitRangePIDController : public Controller {
   void setSetpoint(float sp) override;
   float setpoint() const override { return setpoint_; }
 
+  // Sensor channel used as input (default 0).
+  void setChannel(size_t idx) { channel_ = clampChannel(*sensor_, idx); }
+  size_t channel() const { return channel_; }
+
   void setTunings(float kp, float ki, float kd);
   float kp() const { return kp_; }
   float ki() const { return ki_; }
@@ -85,6 +90,7 @@ class SplitRangePIDController : public Controller {
 
   const char* id_;
   Sensor* sensor_;
+  size_t channel_ = 0;
   Actuator* heat_;
   Actuator* cool_;
   detail::PidEngine* engine_;

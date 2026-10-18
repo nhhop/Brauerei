@@ -67,6 +67,7 @@ export function BottlingTab({ brew, recipe, inputs, targets, editable, patch, og
   const plannedBeerValues = plannedBeer(targets);
   const actualBeerValues = actualBeer(m, targets);
   const speiseShown = (bottling?.speiseL ?? 0) > 0 || m.speiseVolume !== undefined;
+  const kegShown = (bottling?.kegL ?? 0) > 0;
 
   const result = (label: string, soll: number | undefined, ist: number | undefined, unit: string, digits?: number, devKey?: MeasureId, sub?: string) =>
     <ResultRow label={label} soll={soll} ist={ist} unit={unit} digits={digits} devKey={devKey} sub={sub} />;
@@ -78,6 +79,7 @@ export function BottlingTab({ brew, recipe, inputs, targets, editable, patch, og
         <FinishRow id="finalGravity" brew={brew} targets={targets} editable={editable} patch={patch}
           suggest={finalGravitySuggestion(readings, og)} />
         <FinishRow id="maxTempAfter" brew={brew} targets={targets} editable={editable} patch={patch} />
+        {kegShown && <FinishRow id="dilutionVolume" brew={brew} targets={targets} editable={editable} patch={patch} />}
         <FinishRow id="bottledVolume" brew={brew} targets={targets} editable={editable} patch={patch}
           suggest={liters === undefined ? undefined : { v: Math.round(liters * 100) / 100, text: `Gebinde zusammen: ${fmtNum(liters, 1)} l` }} />
       </Card>
@@ -196,6 +198,7 @@ export function BottlingTab({ brew, recipe, inputs, targets, editable, patch, og
         {result('Anstellwürze', values.batchVolume, m.batchVolume, 'l', 1, 'batchVolume')}
         {speiseShown && result('Speise', values.speiseVolume, m.speiseVolume, 'l', 1, 'speiseVolume')}
         {result('Jungbier', bottling?.youngL, beer?.measured ? beer.youngL : undefined, 'l', 1, 'bottledVolume', 'Anstellwürze ohne Trub und Stopfhopfen')}
+        {kegShown && result('Verschnitt im Keg', values.dilutionVolume, m.dilutionVolume, 'l', 1, 'dilutionVolume')}
         {result('Abgefüllt', values.bottledVolume, m.bottledVolume, 'l', 1, 'bottledVolume')}
 
         <h3 class={H3}>Effizienz</h3>
@@ -206,9 +209,11 @@ export function BottlingTab({ brew, recipe, inputs, targets, editable, patch, og
         <h3 class={H3}>Bier</h3>
         {result('Stammwürze', values.pitchGravity, m.pitchGravity, '°P', 1, 'pitchGravity', 'der Anstellwürze')}
         {result('Restextrakt', values.finalGravity, m.finalGravity, '°P', 1, 'finalGravity', 'scheinbar')}
-        {result('Alkohol', plannedBeerValues?.abvPct, actualBeerValues?.abvPct, '% vol')}
+        {result('Alkohol', plannedBeerValues?.abvPct, actualBeerValues?.abvPct, '% vol', undefined, undefined,
+          [actualBeerValues?.estimated && 'Stammwürze aus dem Plan', (actualBeerValues ?? plannedBeerValues)?.withSpeise && 'mit Speise', kegShown && 'nach dem Verschnitt']
+            .filter(Boolean).join(', ') || undefined)}
         {result('Endvergärungsgrad', plannedBeerValues?.attenuationPct, actualBeerValues?.attenuationPct, '%', 1, undefined, 'scheinbar')}
-        <p class="mt-2 text-xs text-muted">Alkohol und Endvergärungsgrad nach Balling aus Stammwürze und Restextrakt; die Gärung einer Speise zählt nicht mit.</p>
+        <p class="mt-2 text-xs text-muted">Alkohol und Endvergärungsgrad nach Balling aus Stammwürze und Restextrakt. Mit Speise kommt der Alkohol aus ihrer Gärung dazu (aus der Kohlensäure-Zielmenge gerechnet) und die Speise verdünnt das Jungbier; der Endvergärungsgrad bleibt der der Hauptgärung. Ohne gemessene Stammwürze der Anstellwürze steht bei einem Verschnitt im Kessel die geplante. Ein Verschnitt im Keg verdünnt den Alkohol nach Volumen; Stammwürze und Restextrakt bleiben die des vergorenen Biers.</p>
       </Card>
 
       <Card title="Notizen zur Abfüllung">

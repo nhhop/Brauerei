@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <string>
+#include <vector>
 
 #include "SensorChannels.h"
 
@@ -26,6 +27,22 @@ bool mask(const char* json, uint16_t& m, const char*& err) {
   JsonDocument doc = parse(json);
   return parseChannelMask(doc.as<JsonObjectConst>(), kTwo, 2, 3, m, err);
 }
+
+struct FakeSensor {
+  const char* sid;
+  std::vector<const char*> keys;
+  const char* id() const { return sid; }
+  size_t channelCount() const { return keys.size(); }
+  struct Ch { const char* key; };
+  Ch channel(size_t i) const { return {keys[i]}; }
+};
+struct FakeReg {
+  std::vector<FakeSensor> sensors;
+  FakeSensor* findSensor(const char* id) {
+    for (auto& s : sensors) if (strcmp(s.sid, id) == 0) return &s;
+    return nullptr;
+  }
+};
 
 }  // namespace
 
@@ -132,6 +149,46 @@ void test_key_in_list_exact_match() {
   TEST_ASSERT_FALSE(keyInList("ax,ay", ""));
 }
 
+// ── resolveSensorChannel / sensorChannelRef ──────────────────────────────────
+
+void test_resolve_channel_by_key() {
+  FakeReg reg{{{"bme", {"temp", "hum", "press"}}, {"t1", {""}}}};
+  size_t ch = 9;
+  FakeSensor* s = resolveSensorChannel(reg, "bme.hum", ch);
+  TEST_ASSERT_NOT_NULL(s);
+  TEST_ASSERT_EQUAL(1u, ch);
+  TEST_ASSERT_NULL(resolveSensorChannel(reg, "bme.nope", ch));
+  TEST_ASSERT_NULL(resolveSensorChannel(reg, "x.temp", ch));
+}
+
+void test_resolve_bare_id_is_channel_zero() {
+  FakeReg reg{{{"bme", {"temp", "hum"}}, {"t1", {""}}}};
+  size_t ch = 9;
+  TEST_ASSERT_NOT_NULL(resolveSensorChannel(reg, "bme", ch));
+  TEST_ASSERT_EQUAL(0u, ch);
+  TEST_ASSERT_NOT_NULL(resolveSensorChannel(reg, "t1", ch));
+  TEST_ASSERT_EQUAL(0u, ch);
+}
+
+void test_resolve_exact_id_with_dot_wins() {
+  FakeReg reg{{{"a.b", {""}}, {"a", {"b", "c"}}}};
+  size_t ch = 9;
+  FakeSensor* s = resolveSensorChannel(reg, "a.b", ch);
+  TEST_ASSERT_EQUAL_STRING("a.b", s->sid);
+  TEST_ASSERT_EQUAL(0u, ch);
+  s = resolveSensorChannel(reg, "a.c", ch);
+  TEST_ASSERT_EQUAL_STRING("a", s->sid);
+  TEST_ASSERT_EQUAL(1u, ch);
+}
+
+void test_sensor_channel_ref_names_snapshot_id() {
+  FakeSensor multi{"gyro", {"pitch", "roll"}};
+  FakeSensor single{"t1", {""}};
+  TEST_ASSERT_EQUAL_STRING("gyro.pitch", sensorChannelRef(multi, 0).c_str());
+  TEST_ASSERT_EQUAL_STRING("gyro.roll", sensorChannelRef(multi, 1).c_str());
+  TEST_ASSERT_EQUAL_STRING("t1", sensorChannelRef(single, 0).c_str());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -147,5 +204,9 @@ int main(int, char**) {
   RUN_TEST(test_rename_refs_exact_match_at_any_depth);
   RUN_TEST(test_rename_log_refs_starts_new_session_only_where_changed);
   RUN_TEST(test_key_in_list_exact_match);
+  RUN_TEST(test_resolve_channel_by_key);
+  RUN_TEST(test_resolve_bare_id_is_channel_zero);
+  RUN_TEST(test_resolve_exact_id_with_dot_wins);
+  RUN_TEST(test_sensor_channel_ref_names_snapshot_id);
   return UNITY_END();
 }
