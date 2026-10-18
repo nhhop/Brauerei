@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Plus, Trash2, X } from 'lucide-preact';
+import { ArrowDown, ArrowUp, GripVertical, Plus, Trash2, X } from 'lucide-preact';
 import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
@@ -18,7 +18,7 @@ import {
 } from '../../recipes';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
 import { Section } from './CalcTable';
-import { Card, Field, MenuItem, NumInput } from './fields';
+import { Card, Field, MenuItem, NumInput, SplitButton } from './fields';
 import { ProcessTable, rowClass, wrapOnly, type IngredientGroup } from './IngredientCard';
 import { MashCurve } from './MashCurve';
 import { MashProfileDialog } from './MashProfileDialog';
@@ -108,35 +108,6 @@ function HeadCard({ bh, brewery, plan, loaded, efficiency: e }: {
           sub={plan && 'ab Aufheizen des Hauptgusses'} />
       </dl>
     </Card>
-  );
-}
-
-// "+ Label" plus an arrow that opens `menu`, or runs `onArrow`; `plain` drops the plus.
-function SplitButton({ label, onMain, onArrow, arrowTitle, menu, plain }: {
-  label: string; onMain: () => void; onArrow?: () => void; arrowTitle: string;
-  menu?: (close: () => void) => ComponentChildren; plain?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const btn = 'flex items-center gap-1 border border-border py-1 text-xs text-muted hover:bg-fg/10';
-  return (
-    <div class="relative inline-flex">
-      <button type="button" onClick={onMain} class={`${btn} rounded-l-md px-2`}>
-        {!plain && <Plus size={12} />} {label}
-      </button>
-      <button type="button" title={arrowTitle} aria-label={arrowTitle} aria-haspopup={menu ? 'menu' : undefined}
-        aria-expanded={menu ? open : undefined}
-        onClick={() => (onArrow ? onArrow() : setOpen(!open))} class={`${btn} -ml-px rounded-r-md px-1.5`}>
-        <ChevronDown size={12} />
-      </button>
-      {open && menu && (
-        <>
-          <div class="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div role="menu" class="absolute right-0 top-full z-40 mt-1 max-h-[70vh] w-72 overflow-y-auto rounded-md border border-card-border bg-surface p-1 shadow-elev-16">
-            {menu(() => setOpen(false))}
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 

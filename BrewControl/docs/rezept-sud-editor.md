@@ -902,8 +902,8 @@ Konzept (vor 5c-1):
 
 Eine Seite für alle bierbezogenen Profile (`pages/BrewProfilesPage.tsx`, Route `/profile/<tab>`, Paket
 `recipes`). Je Art ein Tab mit zwei Tabellen im Stil der Rezeptliste, **Eigene** (Zeile öffnet den Editor;
-bearbeiten, duplizieren, löschen) und **Mitgeliefert** (schreibgeschützt; „Duplizieren“ legt ein eigenes
-Profil an); die Titel stehen über den Tabellen, ohne Anzahl, und in der Zeile von „Eigene“ steht rechts der
+bearbeiten, duplizieren, löschen) und **Mitgeliefert** (schreibgeschützt; die Zeile öffnet eine Ansicht
+ohne Eingabefelder, seit Etappe C auf Wunsch des Nutzers; „Duplizieren“ legt ein eigenes Profil an); die Titel stehen über den Tabellen, ohne Anzahl, und in der Zeile von „Eigene“ steht rechts der
 Knopf für ein neues Profil (auch am Handy, kein FAB). Keine Suche (Nutzer, 2026-10-18)
 (`pages/profiles/ProfileList.tsx`, Spalten je Tab). Die Spalten erscheinen ab `lg`, darunter zeigt jede Zeile
 Name und eine Kurzzeile. Die Reglerseite, die bis dahin „Profile“ hieß, heißt jetzt
@@ -913,7 +913,7 @@ Entscheidungen des Nutzers (2026-10-18): Wasserprofile bekommen eine eigene Abla
 Rezept-Editor bleibt für Maisch- und Gärprofile nur Laden und Speichern, gepflegt wird auf der Seite; ein
 Gärprofil sind die Phasen und der Haken Druckgärung; eigene Bierstile, bis die BJCP zustimmt, mit einem
 Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: A Wasser (erledigt), B Maische,
-C Gärung, D Bierstile (erledigt).
+C Gärung (erledigt), D Bierstile (erledigt).
 
 - **Wasser:** Analysen mit Ca, Mg, Na, K, Cl, SO₄, HCO₃ in mg/l, optional pH und Notiz, im Dialog. Eingabehilfen
   rechnen KS4,3 (× 61,02) oder Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14
@@ -931,6 +931,35 @@ C Gärung, D Bierstile (erledigt).
   (Rezeptverweise bleiben gültig) und speichert die Brauerei danach ohne sie; war kein Standardwasser gewählt,
   wird das erste Ausgangswasser der alten Liste zum Standardwasser, damit Rezepte ohne Wahl gleich rechnen.
   Scheitert ein Schritt, bleibt `/brewery.json` unverändert und der Umzug läuft beim nächsten Laden erneut.
+- **Gärung** (Etappe C, `web/src/fermentationProfiles.ts`, `pages/profiles/FermentationProfiles.tsx`): ein
+  Gärprofil sind Name, Beschreibung, die Phasen (Name, Temperatur, Dauer in Tagen, Rampe, Druck; ohne id) und
+  der Haken Druckgärung. Stopfgaben und Karbonisierung bleiben im Rezept. Tabellenspalten: Name (Beschreibung
+  darunter), Zahl der Phasen, Tage gesamt (die Rampe zählt zu ihrer Phase), höchster Druck. Der Editor nimmt die
+  `PhaseList` des Rezepts; ohne Druckgärung speichert er keine Drücke. Ein Klick auf ein mitgeliefertes Profil
+  zeigt es schreibgeschützt (Beschreibung, Druck ja/nein, Phasentabelle) mit „Duplizieren“, das den Editor mit
+  der Kopie öffnet (Nutzer, 2026-10-18; `ProfileList` mit `onView`; ebenso VE-Wasser und die mitgelieferten
+  Zielprofile mit ihren Werten). Sechs mitgelieferte Profile: untergärig
+  klassisch (9 °C, 1 °C lagern), untergärig mit Diacetylrast (10 → 17 → 1 °C), obergärig (19 → 21 °C, Cold Crash
+  2 °C), Weizen (20 °C, nicht kalt stellen), Kveik (35 °C) und Druckgärung untergärig warm (18 °C, 1 → 1,5 bar,
+  kalt lagern). Die Werte sind Richtwerte aus Hefe-Herstellern, Fachartikeln und Foren, Quellen im Kommentar
+  von `BUILTIN_FERMENTATION_PROFILES` (`TODO(verify)` gegen ein Lehrbuch). Ablage `/api/fermentation-profiles`,
+  eine Datei je Profil (`/fermprofiles/<id>.json`).
+  **Im Rezept** (Gärung-Tab, Karte Gärführung) ein SplitButton „Profile ▾“ wie im Maische-Tab: der Pfeil lädt ein
+  Profil (mitgeliefert oder eigen; ersetzt alle Phasen mit neuen ids und setzt oder löscht die Druckgärung,
+  nach Bestätigung, wenn das Rezept schon Phasen hat), „Als Profil speichern …“ fragt nur den Namen,
+  „Profile verwalten …“ und der Knopf selbst öffnen Profile › Gärung. Weil der Rezept-Editor beim Verlassen den
+  ungespeicherten Entwurf ohne Rückfrage verwirft, öffnet sich die Seite in einem neuen Browser-Tab; das Menü
+  lädt die eigenen Profile bei jedem Öffnen neu.
+  **Phasenliste** (`PhaseList`, Rezept und Editor gleich, Nutzer 2026-10-18): Titel, „Unter Druck vergären“
+  (Text links vom Schalter), „Profile ▾“ (nur im Rezept) und „+ Phase ▾“ stehen über der Karte. Die Hinweise
+  „Rampe länger als die Phase“ und „Kein Gärplatz ist bis … bar druckfest“ (nur im Rezept, gegen den
+  druckfestesten Gärplatz) stehen unter der betroffenen Phase. Der Pfeil an
+  „+ Phase“ bietet vordefinierte Phasen wie „+ Rast“ beim Maischen: Anstellen und Hauptgärung je unter- und
+  obergärig, Diacetylrast, Cold Crash, Lagerung (`PHASE_PRESETS`, Werte wie die mitgelieferten Profile). Phasen
+  lassen sich nicht mehr verschieben, keine Nummern. Ist die Karte breit genug, stehen die Phasen in Spalten mit
+  Kopfzeile (Phase, Temperatur, Dauer, Rampe, Druck), sonst Name und Löschen oben, die Zahlen darunter.
+  Eine Phase „Anstellen“ verträgt sich mit dem Gärprogramm des Suds: Dessen eigener erster Schritt „Anstellen“
+  hält die Temperatur der ersten Phase, bis die Hefe drin ist.
 - **Bierstile** (Tab `stile`, `pages/profiles/BeerStylesTab.tsx`): eigene Stile mit Name, Familie, Beschreibung
   und fünf Bereichen Min–Max (Stammwürze und Restextrakt in °P, Alkohol in % vol, IBU, EBC). Ein Bereich hat
   beide Grenzen oder keine; ein leerer zählt im Vergleich als unbekannt. Tabellenspalten: Name (Familie

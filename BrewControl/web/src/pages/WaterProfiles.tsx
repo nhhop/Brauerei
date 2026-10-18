@@ -41,6 +41,7 @@ export function WaterProfilesTab({ target }: { target: boolean }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<WaterProfile | null>(null);
+  const [viewing, setViewing] = useState<WaterProfile | null>(null);
   const [deleting, setDeleting] = useState<WaterProfile | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -100,12 +101,16 @@ export function WaterProfilesTab({ target }: { target: boolean }) {
         ownEmpty={target
           ? 'Noch kein eigenes Zielprofil. Ein mitgeliefertes lässt sich als Vorlage duplizieren.'
           : 'Noch kein Wasserprofil angelegt. Ohne Profil rechnen Rezepte mit VE-Wasser.'}
-        onEdit={setEditing} onDuplicate={duplicate} onDelete={setDeleting}
+        onEdit={setEditing} onView={setViewing} onDuplicate={duplicate} onDelete={setDeleting}
         footnote={target
           ? 'Ionen in mg/l, Restalkalität in °dH.'
           : <>Ionen in mg/l, Restalkalität in °dH. Das Standardwasser neuer Rezepte steht unter{' '}
             <a href="/settings/anlage" class="underline">Einstellungen › Brauanlage</a>.</>} />
       {editing && <ProfileDialog profile={editing} onSave={save} onClose={() => setEditing(null)} />}
+      {viewing && (
+        <ProfileView profile={viewing} onClose={() => setViewing(null)}
+          onDuplicate={() => { duplicate(viewing); setViewing(null); }} />
+      )}
       <ConfirmModal open={deleting !== null} title={target ? 'Zielprofil löschen?' : 'Wasserprofil löschen?'}
         confirmLabel="Löschen" destructive pending={busy} onConfirm={confirmDelete} onCancel={() => setDeleting(null)}>
         „{deleting?.name || 'Ohne Namen'}“ wird dauerhaft entfernt.
@@ -122,12 +127,44 @@ const IONS: { key: 'ca' | 'mg' | 'na' | 'k' | 'cl' | 'so4' | 'hco3'; label: stri
 ];
 
 // Analyses often give hardness instead of ions; each helper fills one field.
-const HELPERS: { label: string; key: 'ca' | 'mg' | 'hco3'; factor: number }[] = [
-  { label: 'KS4,3 (mmol/l)', key: 'hco3', factor: HCO3_PER_KS43 },
-  { label: 'Karbonathärte (°dH)', key: 'hco3', factor: HCO3_PER_DH },
-  { label: 'Calciumhärte (°dH)', key: 'ca', factor: CA_PER_DH },
-  { label: 'Magnesiumhärte (°dH)', key: 'mg', factor: MG_PER_DH },
+const HELPERS: { label: string; unit: string; key: 'ca' | 'mg' | 'hco3'; factor: number }[] = [
+  { label: 'KS4,3', unit: 'mmol/l', key: 'hco3', factor: HCO3_PER_KS43 },
+  { label: 'Karbonathärte', unit: '°dH', key: 'hco3', factor: HCO3_PER_DH },
+  { label: 'Calciumhärte', unit: '°dH', key: 'ca', factor: CA_PER_DH },
+  { label: 'Magnesiumhärte', unit: '°dH', key: 'mg', factor: MG_PER_DH },
 ];
+
+// A shipped profile, read-only; "Duplizieren" opens the editor with a copy.
+function ProfileView({ profile: p, onClose, onDuplicate }: {
+  profile: WaterProfile; onClose: () => void; onDuplicate: () => void;
+}) {
+  const value = (label: string, v: string) => (
+    <div key={label}>
+      <dt class="text-xs text-muted">{label}</dt>
+      <dd class="text-sm tabular-nums">{v}</dd>
+    </div>
+  );
+  return (
+    <div class={dialogScrim} onClick={onClose}>
+      <div class={`max-h-[90vh] w-full max-w-lg ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+          <h2 class="text-base font-medium text-fg">{p.name}</h2>
+          <p class="mt-1 text-xs text-muted">Mitgeliefert, nicht änderbar. Zum Anpassen duplizieren.</p>
+          {p.note && <p class="mt-3 text-sm">{p.note}</p>}
+          <dl class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {IONS.map(({ key, label }) => value(label, p[key] === undefined ? '–' : `${fmtNum(p[key]!)} mg/l`))}
+            {value('Restalkalität', `${fmtNum(figuresOf(stateOf(p)).raDh, 1)} °dH`)}
+            {p.ph !== undefined && value('pH', fmtNum(p.ph, 2))}
+          </dl>
+        </div>
+        <div class={dialogFooter}>
+          <button type="button" class={btnSecondary} onClick={onClose}>Schließen</button>
+          <button type="button" class={btnPrimary} onClick={onDuplicate}>Duplizieren</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ProfileDialog({ profile, onSave, onClose }: {
   profile: WaterProfile; onSave: (p: WaterProfile) => Promise<void>; onClose: () => void;
@@ -154,10 +191,10 @@ function ProfileDialog({ profile, onSave, onClose }: {
           </div>
           <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {IONS.map(({ key, label }) => (
-              <Field key={key} label={`${label} (mg/l)`}>
+              <Field key={key} label={label}>
                 {key === 'k'
-                  ? <OptNum value={p.k} onChange={(k) => set({ k })} class="w-full" />
-                  : <NumInput value={p[key]} onChange={(n) => set({ [key]: n })} class="w-full" />}
+                  ? <OptNum unit="mg/l" value={p.k} onChange={(k) => set({ k })} class="w-full" />
+                  : <NumInput unit="mg/l" value={p[key]} onChange={(n) => set({ [key]: n })} class="w-full" />}
               </Field>
             ))}
             <Field label="pH">
@@ -174,7 +211,7 @@ function ProfileDialog({ profile, onSave, onClose }: {
             <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {HELPERS.map((h) => (
                 <Field key={h.label} label={h.label}>
-                  <OptNum value={undefined} class="w-full"
+                  <OptNum unit={h.unit} value={undefined} class="w-full"
                     onChange={(n) => { if (n !== undefined) set({ [h.key]: Math.round(n * h.factor * 10) / 10 }); }} />
                 </Field>
               ))}

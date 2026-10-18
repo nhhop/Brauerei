@@ -85,6 +85,8 @@ constexpr const char* kFermenterDir = "/fermenters";
 constexpr const char* kContainerDir = "/containers";
 // Water profiles of the profile page (source waters and own targets).
 constexpr const char* kWaterProfileDir = "/waterprofiles";
+// Fermentation profiles of the profile page (phase sequences of the recipe editor).
+constexpr const char* kFermProfileDir = "/fermprofiles";
 // Own beer styles of the profile page (the BJCP styles live in the web UI).
 constexpr const char* kStyleDir = "/styles";
 #endif
@@ -2120,6 +2122,7 @@ void WebUI::begin(bool serve) {
 
   // ── Profiles ────────────────────────────────────────────────────────────────
   serveJsonDocDir_("/api/water-profiles", kWaterProfileDir);
+  serveJsonDocDir_("/api/fermentation-profiles", kFermProfileDir);
   serveJsonDocDir_("/api/styles", kStyleDir);
 
   // ── Brewery ─────────────────────────────────────────────────────────────────

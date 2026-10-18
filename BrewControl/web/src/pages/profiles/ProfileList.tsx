@@ -3,7 +3,8 @@ import { Copy, Pencil, Trash2 } from 'lucide-preact';
 
 // The tables of a profile tab, "Eigene" and "Mitgeliefert", in the style of the
 // recipe list: own profiles can be edited and deleted, shipped ones only
-// duplicated (the copy is an own profile). The section titles stand above the
+// duplicated (the copy is an own profile); with `onView` a click on a shipped
+// row shows it read-only. The section titles stand above the
 // tables, `action` (the "new" button) beside "Eigene". Below lg each row shows
 // the name and `mobile` instead of the columns. `builtinGroup` puts a heading
 // over each run of shipped rows (the list must already be in group order).
@@ -15,7 +16,7 @@ const title = 'text-sm font-semibold text-muted';
 const alignCls = (a?: 'right' | 'center') => (a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : '');
 
 export function ProfileList<T extends { id: string; name: string }>({
-  own, builtin, builtinGroup, cols, columns, sub, mobile, ownEmpty, action, onEdit, onDuplicate, onDelete, footnote,
+  own, builtin, builtinGroup, cols, columns, sub, mobile, ownEmpty, action, onEdit, onView, onDuplicate, onDelete, footnote,
 }: {
   own: T[]; builtin: T[];
   builtinGroup?: (r: T) => string;
@@ -25,7 +26,7 @@ export function ProfileList<T extends { id: string; name: string }>({
   mobile: (r: T) => string;
   ownEmpty: string;
   action?: ComponentChildren;
-  onEdit: (r: T) => void; onDuplicate: (r: T) => void; onDelete: (r: T) => void;
+  onEdit: (r: T) => void; onView?: (r: T) => void; onDuplicate: (r: T) => void; onDelete: (r: T) => void;
   footnote?: ComponentChildren;
 }) {
   const table = (list: T[], isBuiltin: boolean) => (
@@ -40,8 +41,8 @@ export function ProfileList<T extends { id: string; name: string }>({
           {isBuiltin && builtinGroup && (i === 0 || builtinGroup(list[i - 1]) !== builtinGroup(r)) && (
             <div class="border-b border-card-border bg-fg/5 px-4 py-1.5 text-xs font-semibold text-muted">{builtinGroup(r)}</div>
           )}
-          <div onClick={isBuiltin ? undefined : () => onEdit(r)}
-            class={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-card-border px-4 py-2 last:border-b-0 ${isBuiltin ? '' : 'cursor-pointer hover:bg-fg/5'} ${cols}`}>
+          <div onClick={isBuiltin ? onView && (() => onView(r)) : () => onEdit(r)}
+            class={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-card-border px-4 py-2 last:border-b-0 ${isBuiltin && !onView ? '' : 'cursor-pointer hover:bg-fg/5'} ${cols}`}>
             <span class="flex min-w-0 flex-col">
               <span class="truncate font-semibold text-fg">{r.name || 'Ohne Namen'}</span>
               {sub?.(r) && <span class="truncate text-xs text-muted" title={sub(r)}>{sub(r)}</span>}

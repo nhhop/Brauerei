@@ -2,14 +2,18 @@ import { useEffect, useState } from 'preact/hooks';
 import { Plus, Trash2 } from 'lucide-preact';
 import type { SugarType } from '../../brewMath';
 import { containerLabel, listContainers, listFermenters, type Container, type Fermenter } from '../../cellar';
-import { calcBottling, calcCarbonation, maxPhasePressureBar, type Bottling, type CarbonationResult } from '../../fermentation';
+import { calcBottling, calcCarbonation, type Bottling, type CarbonationResult } from '../../fermentation';
 import { useCatalog } from '../../ingredientSource';
 import { atKnockOut, calcStats, wortExtract } from '../../recipeStats';
 import { fmtL, resolveDilution } from '../../recipeWater';
 import { CARBONATION_METHODS, type BottlingRow, type Carbonation, type CarbonationMethod, type Recipe } from '../../recipes';
-import { ToggleSwitch } from '../../components/ToggleSwitch';
-import { inp } from '../../ui';
-import { Card, Field, NumInput, OptNum, Select } from './fields';
+import { ConfirmModal } from '../../components/ConfirmModal';
+import {
+  BUILTIN_FERMENTATION_PROFILES, PHASE_PRESETS, applyFermentationProfile, listFermentationProfiles, newFermentationProfile,
+  profileOfFermentation, saveFermentationProfile, totalDays, type FermentationProfile,
+} from '../../fermentationProfiles';
+import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
+import { Card, Field, MenuItem, NumInput, OptNum, Select, SplitButton } from './fields';
 import { PhaseList } from './PhaseList';
 import { ProcessIngredients, Stat, type TabProps } from './tabs';
 import { CalcTable, Row, Section } from './CalcTable';
@@ -42,30 +46,117 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
   const bottling = bh && wort && dilution ? calcBottling(hot, bh, dilution, wort.draw, containers) : undefined;
   const carbonation = calcCarbonation(recipe, { beerL: bottling?.beerL ?? 0, fgPlato: stats?.fgPlato, speiseL: dilution?.speiseL ?? 0, keg: (bottling?.kegL ?? 0) > 0 });
 
-  const maxBar = maxPhasePressureBar(recipe);
-  const pressureHint = maxBar > 0 && fermenters && !fermenters.some((f) => (f.maxPressureBar ?? 0) >= maxBar)
-    ? `Kein Gärplatz ist bis ${num(maxBar)} bar druckfest.` : undefined;
+  // What the strongest fermenter takes; a phase above it is flagged.
+  const pressureLimitBar = fermenters ? Math.max(0, ...fermenters.map((f) => f.maxPressureBar ?? 0)) : undefined;
 
   return (
     <>
       <PhaseList title="Gärführung" addLabel="Phase" namePlaceholder="z.B. Hauptgärung"
         durationUnit="Tage" empty="Noch keine Phasen." pressure={!!recipe.pressureFermentation}
         items={recipe.fermentation} onChange={(fermentation) => onChange({ fermentation })}
-        top={
-          <div class="mb-3">
-            <div class="flex items-center gap-3 text-sm">
-              <ToggleSwitch checked={!!recipe.pressureFermentation}
-                onChange={(on) => onChange({ pressureFermentation: on ? true : undefined })} />
-              <span>Unter Druck vergären</span>
-            </div>
-            {pressureHint && <p class="mt-1 text-xs text-caution">{pressureHint}</p>}
-          </div>
-        } />
+        action={<ProfileMenu recipe={recipe} onChange={onChange} />} presets={PHASE_PRESETS}
+        onPressure={(on) => onChange({ pressureFermentation: on ? true : undefined })}
+        pressureLimitBar={pressureLimitBar} />
       <ProcessIngredients recipe={recipe} onChange={onChange} brewhouses={brewhouses} brewery={brewery} scope="fermentation" />
       <CarbonationCard recipe={recipe} onChange={onChange} result={carbonation} haveBeer={!!bottling} />
       <BottlingCard recipe={recipe} onChange={onChange} b={bottling} containers={containers}
         missing={!catalog ? 'Katalog nicht geladen, Abfüllmenge nicht verfügbar.' : !bh ? 'Sudhaus in der Übersicht wählen.' : undefined} />
     </>
+  );
+}
+
+const MANAGE_URL = '/profile/gaerung';
+
+// "Profile": load a fermentation profile (shipped or own), save the phases as
+// one, or manage them on the profile page. That page opens in a new tab,
+// because leaving the editor would drop the unsaved draft; the own profiles are
+// fetched again whenever the menu opens.
+function ProfileMenu({ recipe, onChange }: { recipe: Recipe; onChange: (p: Partial<Recipe>) => void }) {
+  const [stored, setStored] = useState<FermentationProfile[] | null>(null);
+  const [storeError, setStoreError] = useState(false);
+  const [pending, setPending] = useState<FermentationProfile | null>(null);
+  const [saving, setSaving] = useState(false);
+  const reload = () => listFermentationProfiles().then((l) => { setStored(l); setStoreError(false); }).catch(() => setStoreError(true));
+  useEffect(() => { void reload(); }, []);
+
+  const manage = () => window.open(MANAGE_URL, '_blank');
+  const load = (p: FermentationProfile) => onChange(applyFermentationProfile(recipe, p));
+  const count = recipe.fermentation.length;
+
+  const menu = (close: () => void) => {
+    const item = (p: FermentationProfile) => (
+      <MenuItem key={p.id} label={p.name || 'Ohne Namen'} sub={`${num(totalDays(p), 0)} Tage${p.pressureFermentation ? ' · Druck' : ''}`}
+        onClick={() => { close(); if (count > 0) setPending(p); else load(p); }} />
+    );
+    return (
+      <>
+        <div class="px-2.5 pb-1 pt-2 text-xs font-semibold text-muted">Profil laden</div>
+        {BUILTIN_FERMENTATION_PROFILES.map(item)}
+        {stored?.map(item)}
+        {storeError && <div class="px-2.5 py-1 text-xs text-muted">Eigene Profile nicht geladen (SD-Karte?).</div>}
+        <div class="mt-1 border-t border-border pt-1" />
+        <MenuItem label="Als Profil speichern …" disabled={storeError || count === 0}
+          sub={count === 0 ? 'keine Phasen' : undefined} onClick={() => { setSaving(true); close(); }} />
+        <MenuItem label="Profile verwalten …" onClick={() => { manage(); close(); }} />
+      </>
+    );
+  };
+
+  return (
+    <>
+      <span onClickCapture={() => { void reload(); }}>
+        <SplitButton plain label="Profile" onMain={manage} arrowTitle="Profil laden" menu={menu} />
+      </span>
+      <ConfirmModal open={pending !== null} title="Profil laden?" confirmLabel="Laden"
+        onConfirm={() => { if (pending) load(pending); setPending(null); }} onCancel={() => setPending(null)}>
+        „{pending?.name}“ ersetzt {count === 1 ? 'die Phase' : `die ${count} Phasen`} des Rezepts
+        {pending && !!pending.pressureFermentation !== !!recipe.pressureFermentation
+          ? ` und ${pending.pressureFermentation ? 'schaltet die Druckgärung ein' : 'schaltet die Druckgärung aus'}` : ''}.
+        Stopfgaben und Karbonisierung bleiben.
+      </ConfirmModal>
+      {saving && <SaveProfileDialog recipe={recipe} onSaved={() => { setSaving(false); void reload(); }} onClose={() => setSaving(false)} />}
+    </>
+  );
+}
+
+// "Als Profil speichern": only the name; description and the rest are edited on
+// the profile page.
+function SaveProfileDialog({ recipe, onSaved, onClose }: { recipe: Recipe; onSaved: () => void; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  async function save() {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await saveFermentationProfile({ ...newFermentationProfile(profileOfFermentation(recipe)), name: name.trim() });
+      onSaved();
+    } catch {
+      setFailed(true);
+      setBusy(false);
+    }
+  }
+  return (
+    <div class={dialogScrim} onClick={onClose}>
+      <div class={`w-full max-w-sm ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
+        <form class="p-5" onSubmit={(e) => { e.preventDefault(); if (name.trim()) void save(); }}>
+          <h2 class="mb-4 text-base font-medium text-fg">Als Gärprofil speichern</h2>
+          <Field label="Name">
+            <input class={`${inp} w-full`} value={name} placeholder="z. B. Pils kalt geführt" autoFocus
+              onInput={(e) => setName(e.currentTarget.value)} />
+          </Field>
+          <p class="mt-2 text-xs text-muted">
+            Speichert {recipe.fermentation.length === 1 ? 'die Phase' : `die ${recipe.fermentation.length} Phasen`}
+            {recipe.pressureFermentation ? ' mit Druckgärung' : ''}; Beschreibung und Änderungen unter Profile › Gärung.
+          </p>
+          {failed && <p class="mt-3 text-sm text-critical">Speichern fehlgeschlagen.</p>}
+        </form>
+        <div class={dialogFooter}>
+          <button type="button" class={btnSecondary} onClick={onClose}>Abbrechen</button>
+          <button type="button" class={btnPrimary} disabled={busy || name.trim() === ''} onClick={() => void save()}>Speichern</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

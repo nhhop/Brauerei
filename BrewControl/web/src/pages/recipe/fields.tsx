@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
+import { ChevronDown, Plus } from 'lucide-preact';
 import { UnitBox } from '../../components/UnitBox';
 import { stepValue } from '../../numStep';
 import { btnSecondary, inp, unitInput, unitInputMuted } from '../../ui';
@@ -119,6 +120,45 @@ export function MenuItem({ label, sub, disabled, onClick }: {
       <span>{label}</span>
       {sub && <span class="text-xs text-muted">{sub}</span>}
     </button>
+  );
+}
+
+// "+ Label" plus an arrow that opens `menu`, or runs `onArrow`; `plain` drops the plus.
+// The menu hangs from the button's right edge; on a narrow screen it moves right
+// as far as needed to stay in view.
+export function SplitButton({ label, onMain, onArrow, arrowTitle, menu, plain }: {
+  label: string; onMain: () => void; onArrow?: () => void; arrowTitle: string;
+  menu?: (close: () => void) => ComponentChildren; plain?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [shift, setShift] = useState(0);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open) return setShift(0);
+    const left = menuRef.current?.getBoundingClientRect().left ?? 0;
+    if (left < 8) setShift(8 - left);
+  }, [open]);
+  const btn = 'flex items-center gap-1 border border-border py-1 text-xs text-muted hover:bg-fg/10';
+  return (
+    <div class="relative inline-flex">
+      <button type="button" onClick={onMain} class={`${btn} rounded-l-md px-2`}>
+        {!plain && <Plus size={12} />} {label}
+      </button>
+      <button type="button" title={arrowTitle} aria-label={arrowTitle} aria-haspopup={menu ? 'menu' : undefined}
+        aria-expanded={menu ? open : undefined}
+        onClick={() => (onArrow ? onArrow() : setOpen(!open))} class={`${btn} -ml-px rounded-r-md px-1.5`}>
+        <ChevronDown size={12} />
+      </button>
+      {open && menu && (
+        <>
+          <div class="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div ref={menuRef} role="menu" style={shift ? { transform: `translateX(${shift}px)` } : undefined}
+            class="absolute right-0 top-full z-40 mt-1 max-h-[70vh] w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-card-border bg-surface p-1 shadow-elev-16">
+            {menu(() => setOpen(false))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

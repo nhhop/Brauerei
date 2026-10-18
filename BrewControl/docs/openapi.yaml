@@ -160,6 +160,14 @@ tags:
       are built into the web UI; only own ones are stored. Until 2026-10 the
       profiles lived in `/brewery.json` (`waters`); the web UI moves them here
       on its first load. The firmware checks a profile's `id` and nothing else.
+  - name: Fermentation profiles
+    description: |
+      Phase sequences of the recipe's fermentation tab, managed on the profile
+      page, one file each on the SD card (`/fermprofiles/<id>.json`), global
+      for all recipes. Only on boards with an SD slot — the LittleFS boards
+      answer 404 for every route here. The shipped profiles are built into the
+      web UI; only own ones are stored. The firmware checks a profile's `id`
+      and nothing else.
   - name: Beer styles
     description: |
       Own beer styles of the profile page, one file each on the SD card
@@ -3067,6 +3075,66 @@ paths:
         "204": { $ref: "#/components/responses/NoContent" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/fermentation-profiles:
+    get:
+      tags: [Fermentation profiles]
+      operationId: listFermentationProfiles
+      summary: List the fermentation profiles
+      description: |
+        Every `/fermprofiles/<id>.json`, complete, in no particular order. There
+        is no index: a site has only a few profiles, and the list needs the full
+        objects anyway. Temp files of an interrupted save and other names are
+        skipped. A missing card or directory gives `[]`.
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "200":
+          description: All stored fermentation profiles, as stored.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FermentationProfile" }
+
+  /api/fermentation-profiles/{id}:
+    parameters: [{ $ref: "#/components/parameters/FermentationProfileId" }]
+    put:
+      tags: [Fermentation profiles]
+      operationId: putFermentationProfile
+      summary: Create or replace a fermentation profile
+      description: |
+        The client picks the id. Written to `/fermprofiles/<id>.json` via a
+        temporary file, so a power cut during the save leaves the previous
+        version. The body is re-serialized, not byte-for-byte; the 16 KB body
+        limit applies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FermentationProfile" }
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400":
+          description: |
+            Body is `invalid id` (path id not 1–32 characters of `A-Z a-z 0-9 - _`),
+            `id mismatch` (the body's `id` differs from the path id),
+            `invalid JSON` (also when the body is not an object) or `missing body`.
+          content:
+            text/plain: { schema: { type: string } }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "500":
+          description: Body is `write failed` — no card, card full or write refused.
+          content:
+            text/plain: { schema: { type: string, const: write failed } }
+    delete:
+      tags: [Fermentation profiles]
+      operationId: deleteFermentationProfile
+      summary: Delete a fermentation profile
+      responses:
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "204": { $ref: "#/components/responses/NoContent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/styles:
     get:
       tags: [Beer styles]
@@ -4040,6 +4108,13 @@ components:
       required: true
       schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
       description: Water profile id, chosen by the client; it becomes the file name.
+      example: mgx4k2a1b2c3d4
+    FermentationProfileId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+      description: Fermentation profile id, chosen by the client; it becomes the file name.
       example: mgx4k2a1b2c3d4
     StyleId:
       name: id
@@ -5903,6 +5978,41 @@ components:
           description: |
             A target profile: compared with and treated towards in the recipe's
             water tab, never a source water. Unset = an analysis.
+      additionalProperties: true
+
+    FermentationProfile:
+      type: object
+      required: [id]
+      description: |
+        Owned by the web UI (`web/src/fermentationProfiles.ts`, type
+        `FermentationProfile`). The firmware checks only `id`; the other fields
+        are documented for clients and stay optional on read. Loading one into a
+        recipe replaces all its fermentation phases and sets or clears its
+        pressure fermentation; dry hops and carbonation stay in the recipe.
+      properties:
+        id: { type: string, pattern: "^[A-Za-z0-9_-]{1,32}$" }
+        name: { type: string }
+        description: { type: string }
+        updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds of the last save. }
+        pressureFermentation:
+          type: boolean
+          enum: [true]
+          description: The phases run under pressure (`pressureBar`). Unset = without pressure.
+        phases:
+          type: array
+          description: In order of the sequence.
+          items:
+            type: object
+            required: [name, tempC, duration]
+            properties:
+              name: { type: string }
+              tempC: { type: number }
+              duration: { type: number, description: "Days, the ramp included." }
+              rampDays:
+                type: number
+                description: From the previous phase's temperature to `tempC`, days. Unset = a jump.
+              pressureBar: { type: number, description: "Gauge pressure, bar; only with `pressureFermentation`." }
+            additionalProperties: true
       additionalProperties: true
 
     BeerStyle:

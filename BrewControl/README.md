@@ -804,6 +804,8 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/containers/<id>` | PUT, DELETE | Gebinde anlegen oder ersetzen / löschen |
 | `/api/water-profiles` | GET | alle eigenen Wasserprofile (Ausgangswasser und Zielprofile), vollständig (`/waterprofiles/<id>.json`, kein Index), nur SD-Boards; VE-Wasser und die mitgelieferten Zielprofile stehen im Web-UI |
 | `/api/water-profiles/<id>` | PUT, DELETE | Wasserprofil anlegen oder ersetzen / löschen |
+| `/api/fermentation-profiles` | GET | alle eigenen Gärprofile, vollständig (`/fermprofiles/<id>.json`, kein Index), nur SD-Boards; die mitgelieferten stehen im Web-UI |
+| `/api/fermentation-profiles/<id>` | PUT, DELETE | Gärprofil anlegen oder ersetzen / löschen |
 | `/api/styles` | GET | alle eigenen Bierstile, vollständig (`/styles/<id>.json`, kein Index), nur SD-Boards; die BJCP-Stile stehen im Web-UI |
 | `/api/styles/<id>` | PUT, DELETE | eigenen Bierstil anlegen oder ersetzen / löschen |
 | `/api/ingredients` | GET | alle eigenen Zutaten, vollständig (`/ingredients/<id>.json`, kein Index), nur SD-Boards; der Katalog steht im Web-UI |
