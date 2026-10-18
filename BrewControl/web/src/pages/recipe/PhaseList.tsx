@@ -7,7 +7,7 @@ import { Card, NumInput, OptNum } from './fields';
 // Ordered list of fermentation phases: name, temperature, duration, the ramp
 // from the previous phase (not for the first) and, with `pressure`, the
 // pressure. Order is the sequence, changed with the arrow buttons.
-export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empty, items, onChange, pressure, top }: {
+export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empty, items, onChange, pressure, top, action }: {
   title: string;
   addLabel: string;
   namePlaceholder: string;
@@ -17,6 +17,7 @@ export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empt
   onChange: (next: Phase[]) => void;
   pressure?: boolean;
   top?: ComponentChildren;  // above the list (the pressure switch)
+  action?: ComponentChildren;  // beside the add button (the profile menu)
 }) {
   function patch(id: string, p: Partial<Phase>) {
     onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -33,11 +34,14 @@ export function PhaseList({ title, addLabel, namePlaceholder, durationUnit, empt
   return (
     <Card title={title}
       action={
-        <button type="button"
-          onClick={() => onChange([...items, { id: uid(), name: '', tempC: 20, duration: 7 }])}
-          class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
-          <Plus size={12} /> {addLabel}
-        </button>
+        <div class="flex items-center gap-2">
+          {action}
+          <button type="button"
+            onClick={() => onChange([...items, { id: uid(), name: '', tempC: 20, duration: 7 }])}
+            class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
+            <Plus size={12} /> {addLabel}
+          </button>
+        </div>
       }>
       {top}
       {items.length === 0 ? (
