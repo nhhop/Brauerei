@@ -76,7 +76,20 @@ export const BUILTIN_FERMENTATION_PROFILES: FermentationProfile[] = [
   },
 ];
 
-export const isBuiltinFermentationProfile = (p: Pick<FermentationProfile, 'id'>) =>
+// Phases the "+ Phase" menu offers, with the values of the shipped profiles
+// (sources above; pitching cool and letting it rise a day is common practice,
+// TODO(verify)). The label tells top- from bottom-fermenting, the name not.
+export const PHASE_PRESETS: { label: string; phase: ProfilePhase }[] = [
+  { label: 'Anstellen (untergärig)', phase: phase('Anstellen', 8, 1) },
+  { label: 'Anstellen (obergärig)', phase: phase('Anstellen', 17, 1) },
+  { label: 'Hauptgärung (untergärig)', phase: phase('Hauptgärung', 10, 7) },
+  { label: 'Hauptgärung (obergärig)', phase: phase('Hauptgärung', 19, 5) },
+  { label: 'Diacetylrast', phase: phase('Diacetylrast', 17, 3, { rampDays: 1 }) },
+  { label: 'Cold Crash', phase: phase('Cold Crash', 2, 3, { rampDays: 1 }) },
+  { label: 'Lagerung', phase: phase('Lagerung', 1, 28, { rampDays: 3 }) },
+];
+
+export const isBuiltinFermentationProfile =(p: Pick<FermentationProfile, 'id'>) =>
   BUILTIN_FERMENTATION_PROFILES.some((b) => b.id === p.id);
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);

@@ -2,15 +2,14 @@ import { useEffect, useState } from 'preact/hooks';
 import { Plus, Trash2 } from 'lucide-preact';
 import type { SugarType } from '../../brewMath';
 import { containerLabel, listContainers, listFermenters, type Container, type Fermenter } from '../../cellar';
-import { calcBottling, calcCarbonation, maxPhasePressureBar, type Bottling, type CarbonationResult } from '../../fermentation';
+import { calcBottling, calcCarbonation, type Bottling, type CarbonationResult } from '../../fermentation';
 import { useCatalog } from '../../ingredientSource';
 import { atKnockOut, calcStats, wortExtract } from '../../recipeStats';
 import { fmtL, resolveDilution } from '../../recipeWater';
 import { CARBONATION_METHODS, type BottlingRow, type Carbonation, type CarbonationMethod, type Recipe } from '../../recipes';
 import { ConfirmModal } from '../../components/ConfirmModal';
-import { ToggleSwitch } from '../../components/ToggleSwitch';
 import {
-  BUILTIN_FERMENTATION_PROFILES, applyFermentationProfile, listFermentationProfiles, newFermentationProfile,
+  BUILTIN_FERMENTATION_PROFILES, PHASE_PRESETS, applyFermentationProfile, listFermentationProfiles, newFermentationProfile,
   profileOfFermentation, saveFermentationProfile, totalDays, type FermentationProfile,
 } from '../../fermentationProfiles';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
@@ -47,26 +46,17 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
   const bottling = bh && wort && dilution ? calcBottling(hot, bh, dilution, wort.draw, containers) : undefined;
   const carbonation = calcCarbonation(recipe, { beerL: bottling?.beerL ?? 0, fgPlato: stats?.fgPlato, speiseL: dilution?.speiseL ?? 0, keg: (bottling?.kegL ?? 0) > 0 });
 
-  const maxBar = maxPhasePressureBar(recipe);
-  const pressureHint = maxBar > 0 && fermenters && !fermenters.some((f) => (f.maxPressureBar ?? 0) >= maxBar)
-    ? `Kein Gärplatz ist bis ${num(maxBar)} bar druckfest.` : undefined;
+  // What the strongest fermenter takes; a phase above it is flagged.
+  const pressureLimitBar = fermenters ? Math.max(0, ...fermenters.map((f) => f.maxPressureBar ?? 0)) : undefined;
 
   return (
     <>
       <PhaseList title="Gärführung" addLabel="Phase" namePlaceholder="z.B. Hauptgärung"
         durationUnit="Tage" empty="Noch keine Phasen." pressure={!!recipe.pressureFermentation}
         items={recipe.fermentation} onChange={(fermentation) => onChange({ fermentation })}
-        action={<ProfileMenu recipe={recipe} onChange={onChange} />}
-        top={
-          <div class="mb-3">
-            <div class="flex items-center gap-3 text-sm">
-              <ToggleSwitch checked={!!recipe.pressureFermentation}
-                onChange={(on) => onChange({ pressureFermentation: on ? true : undefined })} />
-              <span>Unter Druck vergären</span>
-            </div>
-            {pressureHint && <p class="mt-1 text-xs text-caution">{pressureHint}</p>}
-          </div>
-        } />
+        action={<ProfileMenu recipe={recipe} onChange={onChange} />} presets={PHASE_PRESETS}
+        onPressure={(on) => onChange({ pressureFermentation: on ? true : undefined })}
+        pressureLimitBar={pressureLimitBar} />
       <ProcessIngredients recipe={recipe} onChange={onChange} brewhouses={brewhouses} brewery={brewery} scope="fermentation" />
       <CarbonationCard recipe={recipe} onChange={onChange} result={carbonation} haveBeer={!!bottling} />
       <BottlingCard recipe={recipe} onChange={onChange} b={bottling} containers={containers}
