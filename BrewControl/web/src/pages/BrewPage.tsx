@@ -45,7 +45,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
   const [fermenters, setFermenters] = useState<Fermenter[] | null>(null);
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [brewery, setBrewery] = useState<Brewery | null>(null);
-  const [tab, setTab] = useState<string>(PHASES[0].id);
+  const [tab, setTab] = useState<string>('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<'start' | 'delete' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -207,7 +207,13 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
       </header>
       {error && <p class="mt-2 text-sm text-critical">{error}</p>}
 
-      <div class="mt-4" />
+      <div class="my-4 flex overflow-x-auto border-b border-border">
+        <TabBtn active={tab === 'overview'} onClick={() => setTab('overview')}>Übersicht</TabBtn>
+        {PHASES.map((p, i) => (
+          <TabBtn key={p.id} active={p.id === tab} onClick={() => setTab(p.id)}>{i + 1}. {p.label}</TabBtn>
+        ))}
+      </div>
+      {tab === 'overview' ? (
       <Card title="Sud">
         <div class="grid gap-3 sm:grid-cols-2">
           <Field label="Name">
@@ -273,13 +279,7 @@ export function BrewPage({ id, snap }: { path?: string; id?: string; snap: Snaps
           </Field>
         </div>
       </Card>
-
-      <div class="my-4 flex overflow-x-auto border-b border-border">
-        {PHASES.map((p, i) => (
-          <TabBtn key={p.id} active={p.id === tab} onClick={() => setTab(p.id)}>{i + 1}. {p.label}</TabBtn>
-        ))}
-      </div>
-      {tab === 'prep' ? (
+      ) : tab === 'prep' ? (
         !recipe || !day ? <p class="text-sm text-muted">{recipe === null ? 'Die Rezeptversion fehlt.' : 'Lädt …'}</p> : (
           <PrepTab brew={saved} recipe={recipe} inputs={day.inputs} targets={day.targets}
             stock={catalog?.stock ?? null} snap={snap} editable={!planned} patch={patch}
