@@ -163,7 +163,15 @@ ihre Gruppen stehen jetzt vollständig und editierbar in den Prozess-Tabs (siehe
 Kopfbereich mit Kennwerten: Stammwürze, IBU und EBC zeigen die
 Stil-Badges neben den Tabs, Summen stehen in den Kartenköpfen.
 
-**Mengen und Anteile beim Vergärbaren**, ohne Modus-Schalter:
+**Stand (2026-10-18, `web/src/pages/recipe/IngredientCard.tsx`, `web/src/ingredientRows.ts`):** Die Tabellen sind nach der
+Vorlage „Rezept · Zutaten copy“ gebaut: Überschrift über jeder Karte, Spaltenköpfe, °P vor EBC, Stopf-Tag neben dem
+Zeitpunkt, Summenzeilen unter Vergärbarem und Hopfen statt im Kartenkopf. Abweichend vom Folgenden (Nutzerentscheidung):
+**kg bleibt die Eingabe**, Anteil und Stammwürze werden nur angezeigt; α-Säure und Ölgehalt kommen aus Sorte bzw.
+Lagerposten und sind nicht je Gabe änderbar; der Lagerteil fehlt noch. Die Farbe verteilt sich nach den Lovibond-Anteilen
+(Moreys MCU sind linear in der Schüttung, nur der Exponent danach nicht), Rundungsreste aller Ergebnisspalten trägt die
+größte Zeile. Vergärbares bleibt in Eingabereihenfolge (sortiert spränge die Zeile beim Tippen). Offenes: PLAN.md.
+
+**Mengen und Anteile beim Vergärbaren**, ohne Modus-Schalter (Konzept, noch nicht umgesetzt):
 - Gespeichert werden **Anteile und Stammwürze**, die kg werden daraus berechnet.
 - Alle drei Felder sind direkt editierbar:
   - **kg einer Zeile** ändern: Anteile und Stammwürze werden neu berechnet, die übrigen kg bleiben.

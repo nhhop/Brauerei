@@ -3,18 +3,19 @@ import { DEFAULT_CONVERSION, type Brewery, type Brewhouse } from '../../brewhous
 import { BASIS_LABEL, basisOf, efficiencyInput, lauterText, type Efficiency, type EfficiencyBasis } from '../../efficiency';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { useCatalog } from '../../ingredientSource';
+import { ingredientFigures } from '../../ingredientRows';
 import { atKnockOut, calcStats, pitchedL, wortExtract } from '../../recipeStats';
 import { calcTreatment } from '../../recipeTreatment';
 import { calcMash, fmtClock } from '../../mashPlan';
 import { calcWater, fmtL } from '../../recipeWater';
 import {
-  KINDS, SCOPE_TIMINGS, chargeIdOf, chargesOf, isMashGrain, replaceDecoctions, type Ingredient, type Recipe,
-  type RecipeSummary, type Scope,
+  KINDS, TIMING_LABEL, chargeIdOf, chargesOf, isMashGrain, replaceDecoctions, type Ingredient, type Recipe,
+  type RecipeSummary, type Timing,
 } from '../../recipes';
 import { Segmented } from '../../components/Segmented';
 import { badgeAccent, inp } from '../../ui';
 import { Card, Field, NumInput, Override } from './fields';
-import { IngredientCard } from './IngredientCard';
+import { KindTable, ProcessTable, type IngredientGroup } from './IngredientCard';
 import { StyleCard } from './StyleCard';
 import { StylePicker } from './StylePicker';
 import { VersionCompareDialog } from './VersionCompareDialog';
@@ -262,7 +263,15 @@ function So4ClScale({ ratio }: { ratio: number }) {
   );
 }
 
-export function IngredientsTab({ recipe, onChange }: TabProps) {
+// The table figures (ingredientRows.ts) of the recipe at its knock-out.
+export function useFigures(recipe: Recipe, brewhouses: Brewhouse[] | null, brewery: Brewery | null) {
+  const entries = useCatalog()?.entries ?? null;
+  const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
+  return ingredientFigures(atKnockOut(recipe, bh, entries, brewery), entries, bh, brewery);
+}
+
+export function IngredientsTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
+  const figures = useFigures(recipe, brewhouses, brewery);
   // With more than one charge, a mash grain shows the one it belongs to.
   const charges = chargesOf(recipe);
   const mark = charges.length > 1
@@ -271,23 +280,52 @@ export function IngredientsTab({ recipe, onChange }: TabProps) {
   return (
     <>
       {KINDS.map((k) => (
-        <IngredientCard key={k.id} title={k.label} kind={k.id}
-          all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}
-          match={(i) => i.kind === k.id} boilMin={recipe.boil.durationMin} mark={mark} />
+        <KindTable key={k.id} kind={k.id} all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}
+          figures={figures} boilMin={recipe.boil.durationMin} mark={mark} />
       ))}
     </>
   );
 }
 
-export function ProcessIngredients({ recipe, onChange, scope }: Pick<TabProps, 'recipe' | 'onChange'> & { scope: Scope }) {
+const num = (n: number) => n.toFixed(0);
+
+// The steps of a process tab: `always` are shown even without rows.
+function processSteps(recipe: Recipe, scope: 'boil' | 'fermentation', bh?: Brewhouse): IngredientGroup[] {
+  const step = (id: string, timings: Timing[], note?: string, always = true): IngredientGroup => ({
+    id, title: TIMING_LABEL[timings[0]], note, match: (i) => timings.includes(i.timing),
+    add: { timing: timings[0] }, empty: always ? 'Keine Zutaten' : undefined,
+  });
+  const b = recipe.boil;
+  if (scope === 'boil') {
+    return [
+      step('preBoil', ['preBoil'], undefined, false),
+      step('firstWort', ['firstWort'], 'beim Läutern in die Pfanne'),
+      step('boil', ['boil'], `${num(b.durationMin)} min · 0 min = Kochende`),
+      { ...step('whirlpool', ['whirlpool'], `${num(b.whirlpoolTempC)} °C · ${num(b.whirlpoolMin)} min`), title: 'Whirlpool / Hop Stand' },
+      step('hopBack', ['hopBack'], undefined, !!bh?.steps.hopback),
+      step('knockOut', ['knockOut'], undefined, false),
+      step('kettleSour', ['kettleSour'], undefined, false),
+    ];
+  }
+  return [
+    { ...step('pitch', ['pitch', 'dip'], 'vor und mit der Hefegabe, Dip Hopping') },
+    step('primary', ['primary']),
+    step('maturation', ['maturation'], 'Stopfen, Schönung, zweite Kultur'),
+    step('bottling', ['bottling']),
+  ];
+}
+
+export function ProcessIngredients({ recipe, onChange, scope, brewhouses, brewery }: Omit<TabProps, 'versions'> & { scope: 'boil' | 'fermentation' }) {
+  const figures = useFigures(recipe, brewhouses, brewery);
+  const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   return (
-    <IngredientCard title="Zutaten" scope={scope}
+    <ProcessTable title="Zutaten" info="alle Zutaten nach Art unter Zutaten" scope={scope} mode="process"
       all={recipe.ingredients} onChange={(ingredients) => onChange({ ingredients })}
-      match={(i) => SCOPE_TIMINGS[scope].includes(i.timing)} boilMin={recipe.boil.durationMin} />
+      figures={figures} boilMin={recipe.boil.durationMin} groups={processSteps(recipe, scope, bh)} />
   );
 }
 
-export function BoilTab({ recipe, onChange }: TabProps) {
+export function BoilTab({ recipe, onChange, brewhouses, brewery }: TabProps) {
   const b = recipe.boil;
   const set = (p: Partial<Recipe['boil']>) => onChange({ boil: { ...b, ...p } });
   return (
@@ -299,7 +337,7 @@ export function BoilTab({ recipe, onChange }: TabProps) {
           <Field label="Whirlpool-Dauer"><NumInput unit="min" value={b.whirlpoolMin} onChange={(n) => set({ whirlpoolMin: n })} /></Field>
         </div>
       </Card>
-      <ProcessIngredients recipe={recipe} onChange={onChange} scope="boil" />
+      <ProcessIngredients recipe={recipe} onChange={onChange} brewhouses={brewhouses} brewery={brewery} scope="boil" />
     </>
   );
 }

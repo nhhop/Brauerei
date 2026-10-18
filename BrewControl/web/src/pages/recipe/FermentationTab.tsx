@@ -61,7 +61,7 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
             {pressureHint && <p class="mt-1 text-xs text-caution">{pressureHint}</p>}
           </div>
         } />
-      <ProcessIngredients recipe={recipe} onChange={onChange} scope="fermentation" />
+      <ProcessIngredients recipe={recipe} onChange={onChange} brewhouses={brewhouses} brewery={brewery} scope="fermentation" />
       <CarbonationCard recipe={recipe} onChange={onChange} result={carbonation} haveBeer={!!bottling} />
       <BottlingCard recipe={recipe} onChange={onChange} b={bottling} containers={containers}
         missing={!catalog ? 'Katalog nicht geladen, Abfüllmenge nicht verfügbar.' : !bh ? 'Sudhaus in der Übersicht wählen.' : undefined} />
