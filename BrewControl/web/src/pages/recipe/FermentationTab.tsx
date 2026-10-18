@@ -17,6 +17,7 @@ import { Card, Field, MenuItem, NumInput, OptNum, Select, SplitButton } from './
 import { PhaseList } from './PhaseList';
 import { ProcessIngredients, Stat, type TabProps } from './tabs';
 import { CalcTable, Row, Section } from './CalcTable';
+import { FermentationCurveSection } from './FermentationCurve';
 
 const SUGARS: { value: SugarType; label: string }[] = [
   { value: 'saccharose', label: 'Saccharose' }, { value: 'traubenzucker', label: 'Traubenzucker' }, { value: 'dme', label: 'DME' },
@@ -57,6 +58,7 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
         action={<ProfileMenu recipe={recipe} onChange={onChange} />} presets={PHASE_PRESETS}
         onPressure={(on) => onChange({ pressureFermentation: on ? true : undefined })}
         pressureLimitBar={pressureLimitBar} />
+      <FermentationCurveSection phases={recipe.fermentation} pressure={!!recipe.pressureFermentation} />
       <ProcessIngredients recipe={recipe} onChange={onChange} brewhouses={brewhouses} brewery={brewery} scope="fermentation" />
       <CarbonationCard recipe={recipe} onChange={onChange} result={carbonation} haveBeer={!!bottling} />
       <BottlingCard recipe={recipe} onChange={onChange} b={bottling} containers={containers}

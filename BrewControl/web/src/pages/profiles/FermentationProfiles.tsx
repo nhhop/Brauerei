@@ -8,6 +8,7 @@ import {
 import { uid, type Phase } from '../../recipes';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../../ui';
 import { Field } from '../recipe/fields';
+import { FermentationCurveSection } from '../recipe/FermentationCurve';
 import { PhaseList } from '../recipe/PhaseList';
 import { ProfileList, type ProfileColumn } from './ProfileList';
 
@@ -121,6 +122,9 @@ function FermentationProfileView({ profile: p, onClose, onDuplicate }: {
           <p class="mt-2 text-xs text-muted">
             {dec(totalDays(p))} Tage gesamt; Rampe in Tagen, sie zählt zu ihrer Phase.
           </p>
+          <div class="mt-4">
+            <FermentationCurveSection phases={p.phases.map((x) => ({ id: '', ...x }))} pressure={!!p.pressureFermentation} />
+          </div>
         </div>
         <div class={dialogFooter}>
           <button type="button" class={btnSecondary} onClick={onClose}>Schließen</button>
@@ -173,6 +177,7 @@ function FermentationProfileDialog({ profile, onSave, onClose }: {
             <PhaseList title="Phasen" addLabel="Phase" namePlaceholder="z.B. Hauptgärung" durationUnit="Tage"
               empty="Noch keine Phasen." pressure={!!p.pressureFermentation} items={phases} onChange={setPhases}
               onPressure={(on) => set({ pressureFermentation: on ? true : undefined })} presets={PHASE_PRESETS} />
+            <FermentationCurveSection phases={phases} pressure={!!p.pressureFermentation} />
           </div>
           {failed && <p class="mt-3 text-sm text-critical">Speichern fehlgeschlagen.</p>}
         </div>

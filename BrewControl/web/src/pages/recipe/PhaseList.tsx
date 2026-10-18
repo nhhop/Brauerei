@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { Trash2 } from 'lucide-preact';
+import { ArrowDown, ArrowUp, Trash2 } from 'lucide-preact';
 import { ToggleSwitch } from '../../components/ToggleSwitch';
 import type { ProfilePhase } from '../../fermentationProfiles';
 import { uid, type Phase } from '../../recipes';
@@ -13,14 +13,14 @@ import { MenuItem, NumInput, OptNum, SplitButton } from './fields';
 // variant; the pressure column needs more room.
 const LAYOUT = {
   plain: {
-    grid: '@[34rem]:grid @[34rem]:grid-cols-[minmax(8rem,1fr)_6.5rem_7rem_7rem_2rem] @[34rem]:gap-x-2 @[34rem]:gap-y-1',
-    head: '@[34rem]:grid', contents: '@[34rem]:contents', narrow: '@[34rem]:hidden', field: '@[34rem]:w-full',
-    name: '@[34rem]:basis-auto', span: '@[34rem]:col-span-full',
+    grid: '@[38.5rem]:grid @[38.5rem]:grid-cols-[minmax(8rem,1fr)_6.5rem_7rem_7rem_6.5rem] @[38.5rem]:gap-x-2 @[38.5rem]:gap-y-1',
+    head: '@[38.5rem]:grid', contents: '@[38.5rem]:contents', narrow: '@[38.5rem]:hidden', field: '@[38.5rem]:w-full',
+    name: '@[38.5rem]:basis-auto', span: '@[38.5rem]:col-span-full',
   },
   pressure: {
-    grid: '@[41rem]:grid @[41rem]:grid-cols-[minmax(8rem,1fr)_6.5rem_7rem_7rem_6.75rem_2rem] @[41rem]:gap-x-2 @[41rem]:gap-y-1',
-    head: '@[41rem]:grid', contents: '@[41rem]:contents', narrow: '@[41rem]:hidden', field: '@[41rem]:w-full',
-    name: '@[41rem]:basis-auto', span: '@[41rem]:col-span-full',
+    grid: '@[45.5rem]:grid @[45.5rem]:grid-cols-[minmax(8rem,1fr)_6.5rem_7rem_7rem_6.75rem_6.5rem] @[45.5rem]:gap-x-2 @[45.5rem]:gap-y-1',
+    head: '@[45.5rem]:grid', contents: '@[45.5rem]:contents', narrow: '@[45.5rem]:hidden', field: '@[45.5rem]:w-full',
+    name: '@[45.5rem]:basis-auto', span: '@[45.5rem]:col-span-full',
   },
 };
 
@@ -55,6 +55,16 @@ export function PhaseList({
     if (items.length === 0) delete next.rampDays;
     onChange([...items, next]);
   };
+  // The first phase has no ramp, so one moved there loses it.
+  function move(from: number, to: number) {
+    if (to < 0 || to >= items.length) return;
+    const next = [...items];
+    const [x] = next.splice(from, 1);
+    next.splice(to, 0, x);
+    if (next[0].rampDays !== undefined) next[0] = { ...next[0], rampDays: undefined };
+    onChange(next);
+  }
+  const iconBtn = 'rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10 disabled:opacity-30';
   const days = (n: number) => `${dec(n)} ${n === 1 ? 'Tag' : 'Tage'}`;
 
   return (
@@ -84,10 +94,10 @@ export function PhaseList({
           <>
             <div class={`hidden border-b border-border px-4 py-1.5 text-xs text-muted ${L.grid} ${L.head}`}>
               <span>Phase</span>
-              <span>Temperatur</span>
-              <span>Dauer</span>
-              <span>Rampe</span>
-              {pressure && <span>Druck</span>}
+              <span class="text-right">Temperatur</span>
+              <span class="text-right">Dauer</span>
+              <span class="text-right">Rampe</span>
+              {pressure && <span class="text-right">Druck</span>}
               <span />
             </div>
             {items.map((p, i) => (
@@ -113,10 +123,18 @@ export function PhaseList({
                     </span>
                   )}
                 </div>
-                <button type="button" title="Entfernen" aria-label="Phase entfernen" onClick={() => onChange(items.filter((x) => x.id !== p.id))}
-                  class="justify-self-end rounded-md px-2 py-1.5 text-muted hover:bg-fg/10 hover:text-critical">
-                  <Trash2 size={14} />
-                </button>
+                <span class="flex items-center justify-end gap-1">
+                  <button type="button" title="Nach oben" aria-label="Phase nach oben" disabled={i === 0} onClick={() => move(i, i - 1)} class={iconBtn}>
+                    <ArrowUp size={14} />
+                  </button>
+                  <button type="button" title="Nach unten" aria-label="Phase nach unten" disabled={i === items.length - 1} onClick={() => move(i, i + 1)} class={iconBtn}>
+                    <ArrowDown size={14} />
+                  </button>
+                  <button type="button" title="Entfernen" aria-label="Phase entfernen" onClick={() => onChange(items.filter((x) => x.id !== p.id))}
+                    class="rounded-md px-2 py-1.5 text-muted hover:bg-fg/10 hover:text-critical">
+                    <Trash2 size={14} />
+                  </button>
+                </span>
                 {i > 0 && (p.rampDays ?? 0) > p.duration && (
                   <p class={`order-last basis-full text-xs text-caution ${L.span}`}>Die Rampe ist länger als die Phase.</p>
                 )}

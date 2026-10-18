@@ -3,6 +3,7 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { ConfirmModal } from '../../components/ConfirmModal';
 import { NameModal } from '../../components/NameModal';
+import { ToggleSwitch } from '../../components/ToggleSwitch';
 import { breweryBoilC, heatingText, type Brewery, type Brewhouse } from '../../brewhouse';
 import type { Efficiency } from '../../efficiency';
 import { ingredientFigures, type IngredientFigures } from '../../ingredientRows';
@@ -268,7 +269,7 @@ function SplitDialog({ recipe, onChange, onClose }: {
 // The grid needs 56.75rem (its column minimums plus gaps) of the plan card's own
 // width, so rows switch on that container, not on the window: the sidebar and
 // the page cap change how much of the window the card gets.
-const GRID = '@[56.75rem]:grid @[56.75rem]:grid-cols-[6.5rem_minmax(8rem,1.3fr)_minmax(12.5rem,1fr)_6.75rem_7rem_6.5rem_2.75rem_6.5rem] @[56.75rem]:items-center @[56.75rem]:gap-2';
+const GRID = '@[56.75rem]:grid @[56.75rem]:grid-cols-[6.5rem_minmax(8rem,1.3fr)_minmax(15rem,1fr)_5.5rem_5.5rem_6.5rem_2.75rem_6.5rem] @[56.75rem]:items-center @[56.75rem]:gap-2';
 
 function PlanCard({ recipe, onChange, plan, boilC }: {
   recipe: Recipe; onChange: TabProps['onChange']; plan?: MashPlan; boilC: number;
@@ -371,7 +372,13 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
   return (
     <Section title="Maischeplan"
       action={
-        <div class="flex items-center gap-2">
+        <div class="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          <label class="flex items-center gap-2 text-xs text-muted"
+            title="Die Dauer einer Rast läuft ab Beginn des Aufheizens oder Abkühlens, nicht erst ab Erreichen der Temperatur.">
+            Aufheizzeit zählt zur Rast
+            <ToggleSwitch checked={!!recipe.mashRampInRest}
+              onChange={(v) => onChange({ mashRampInRest: v || undefined })} />
+          </label>
           <span onClickCapture={() => { void reload(); }}>
             <SplitButton plain label="Profile" onMain={manage} arrowTitle="Profil laden" menu={profileMenu} />
           </span>
@@ -384,8 +391,8 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
           <span>Schritt</span>
           <span>Bezeichnung</span>
           <span>Zugabe</span>
-          <span>Temperatur</span>
-          <span>Dauer</span>
+          <span class="text-right">Temperatur</span>
+          <span class="text-right">Dauer</span>
           <span>Übergang</span>
           <span class="text-right">Beginn</span>
           <span />
@@ -395,12 +402,6 @@ function PlanCard({ recipe, onChange, plan, boilC }: {
             boilC={boilC} canDecoct={!!decoctionVessel} patch={(p) => patch(s.id, p)} onMove={(by) => move(k, k + by)}
             onDelete={() => set(steps.filter((x) => x.id !== s.id))} />
         ))}
-        <label class="flex w-fit items-center gap-1.5 pt-2 text-xs text-muted"
-          title="Die Dauer einer Rast läuft ab Beginn des Aufheizens oder Abkühlens, nicht erst ab Erreichen der Temperatur.">
-          <input type="checkbox" checked={!!recipe.mashRampInRest}
-            onChange={(e) => onChange({ mashRampInRest: e.currentTarget.checked || undefined })} />
-          Aufheizzeit zählt zur Rast
-        </label>
         {plan && strikeRow && (
           <div class="flex flex-wrap justify-between gap-x-4 gap-y-1 pt-2 text-xs text-muted">
             <span>
@@ -510,7 +511,7 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
       <span class={`basis-full text-xs @[56.75rem]:basis-auto ${s.kind === 'rest' && !row?.waterL && !row?.evaporatedL ? '@max-[56.75rem]:hidden' : ''}`}>
         {addition}
       </span>
-      <span class="flex items-center gap-1 text-xs text-muted">
+      <span class="flex items-center gap-1 text-xs text-muted @[56.75rem]:justify-end">
         {tempResult ? (
           <NumInput unit="°C" muted value={round1(row?.tempC ?? s.tempC ?? 0)} class="w-28 @[56.75rem]:w-full"
             onChange={(n) => patch({ tempC: n, decoction: { ...s.decoction!, lead: 'temp' } })} />
@@ -520,7 +521,7 @@ function StepRow({ step: s, index: k, count, row, recipe, boilC, canDecoct, patc
           <span class="tabular-nums">{row ? `${num(row.tempC)} °C` : '—'}</span>
         )}
       </span>
-      <span class="flex items-center gap-1 text-xs text-muted">
+      <span class="flex items-center gap-1 text-xs text-muted @[56.75rem]:justify-end">
         {s.kind === 'strike' ? '—' : (
           <>
             <NumInput unit="min" value={s.durationMin ?? 0} onChange={(n) => patch({ durationMin: n })} class="w-28 @[56.75rem]:w-full" />
@@ -562,7 +563,7 @@ function DecoctionFields({ step, row, patch }: {
   const byShare = d.lead === 'share';
   return (
     <span class="flex flex-wrap items-center gap-1 text-muted">
-      <NumInput unit="%" muted={!byShare} value={byShare ? (d.sharePct ?? 0) : round1(row?.decoction?.sharePct ?? 0)}
+      <NumInput unit="%" class="w-24" muted={!byShare} value={byShare ? (d.sharePct ?? 0) : round1(row?.decoction?.sharePct ?? 0)}
         onChange={(n) => set({ lead: 'share', sharePct: n })} />
       <select class={inp} value={d.thin ? 'thin' : 'thick'} aria-label="Dicke der Teilmaische"
         onChange={(e) => set({ thin: e.currentTarget.value === 'thin' || undefined })}>
@@ -628,11 +629,11 @@ function InfusionFields({ step, row, boilC, patch }: {
   const byVolume = inf.lead === 'volume' && !inf.ice;
   return (
     <span class="flex flex-wrap items-center gap-1 text-muted">
-      <NumInput unit="l" muted={!byVolume} value={byVolume ? (inf.volumeL ?? 0) : round1(row?.waterL ?? 0)}
+      <NumInput unit="l" class="w-24" muted={!byVolume} value={byVolume ? (inf.volumeL ?? 0) : round1(row?.waterL ?? 0)}
         onChange={(n) => set({ lead: 'volume', volumeL: n, ice: undefined })} />
       {inf.ice ? <span class="px-1">Eis</span> : (
         <>
-          <NumInput unit="°C" muted={byVolume} value={!byVolume ? (inf.waterTempC ?? round1(boilC)) : round1(row?.waterTempC ?? 0)}
+          <NumInput unit="°C" class="w-24" muted={byVolume} value={!byVolume ? (inf.waterTempC ?? round1(boilC)) : round1(row?.waterTempC ?? 0)}
             onChange={(n) => set({ lead: 'temp', waterTempC: n })} />
         </>
       )}

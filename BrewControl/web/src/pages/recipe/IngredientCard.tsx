@@ -94,9 +94,9 @@ const SUB: Partial<Record<IngredientKind, string>> = {
 function heads(kind: IngredientKind, mode: Mode): [string, boolean?][] {
   const moment: [string, boolean?][] = mode === 'kind' ? [['Zeitpunkt']] : [];
   if (kind === 'fermentable') return [['Typ'], ['Farbe', true], ['Extrakt', true], [''], ...moment, ['Menge', true], ['Anteil', true], ['°P', true], ['EBC', true]];
-  if (kind === 'hop') return [['Form'], ['α-Säure', true], ['Ölgehalt', true], [''], ...moment, ['Menge', true], ['Dauer'], ['Öl ml', true], ['IBU', true]];
+  if (kind === 'hop') return [['Form'], ['α-Säure', true], ['Ölgehalt', true], [''], ...moment, ['Menge', true], ['Dauer', true], ['Öl ml', true], ['IBU', true]];
   const mid: [string, boolean?][] = kind === 'yeast' ? [['Form'], ['Eigenschaften']] : [[kind === 'aroma' ? 'Kategorie' : 'Zweck'], ['']];
-  return [...mid, ...moment, ['Menge', true], ['Details'], [''], ['']];
+  return [...mid, ...moment, ['Menge', true], ['Details', mode !== 'kind'], [''], ['']];
 }
 
 const HeadCells = ({ kind, mode }: { kind: IngredientKind; mode: Mode }) => (
@@ -237,10 +237,12 @@ function IngredientRow({ i, mode, scope, fig, entries, boilMin, mark, patch, rem
       'flocculation' in c && c.flocculation ? `Flockung ${(Array.isArray(c.flocculation) ? c.flocculation : [c.flocculation])
         .filter((x, n, a) => a.indexOf(x) === n).map((x) => LEVEL[x]).join('–')}` : undefined,
     ].filter(Boolean).join(' · ') : '';
+    // In the process tables the duration sits in the narrow column, like a hop's.
+    const durationBox = mode === 'kind' ? 'w-28' : 'w-28 @[67rem]:w-full';
     const details = (
-      <div class={`flex flex-wrap items-center gap-1.5 ${mode === 'kind' ? '@[67rem]:col-span-3' : ''}`}>
-        {i.timing === 'boil' && <div class="w-28" title="vor Kochende">{boilTime}</div>}
-        {isDryHop(i) && (mode === 'kind' ? <div class="w-28">{dryDays}</div> : <>{dryDay}<div class="w-28">{dryDays}</div></>)}
+      <div class={`flex flex-wrap items-center gap-1.5 ${mode === 'kind' ? '@[67rem]:col-span-3' : '@[67rem]:justify-end'}`}>
+        {i.timing === 'boil' && <div class={durationBox} title="vor Kochende">{boilTime}</div>}
+        {isDryHop(i) && (mode === 'kind' ? <div class="w-28">{dryDays}</div> : <>{dryDay}<div class={durationBox}>{dryDays}</div></>)}
         <Strength i={i} agent={agentOf(i, entries)} onChange={(strengthPct) => patch({ strengthPct })} />
       </div>
     );
