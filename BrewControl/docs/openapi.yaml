@@ -5538,6 +5538,10 @@ components:
           description: Id of version 1 of this recipe; unset = this is version 1.
         version: { type: integer, minimum: 1, description: "Version number; unset = 1." }
         updatedAt: { type: integer, format: int64, description: Unix epoch milliseconds. }
+        ogPlato: { type: number, description: "Original gravity in °P, as the editor computed it when saving; unset on recipes saved before." }
+        abvPct: { type: number, description: Alcohol by volume in percent (same origin as `ogPlato`). }
+        ibu: { type: number, description: Bitterness (same origin as `ogPlato`). }
+        ebc: { type: number, description: Colour in EBC (same origin as `ogPlato`). }
 
     BrewSummary:
       type: object

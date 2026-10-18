@@ -9,6 +9,8 @@ import {
   deleteRecipe, duplicateRecipe, exportRecipes, getRecipe, groupVersions, listRecipes, newVersion, rootOf,
   saveRecipe, versionOf, type Recipe, type RecipeSummary,
 } from '../recipes';
+import { useCatalog } from '../ingredientSource';
+import { listFigures } from '../recipeList';
 import { Breadcrumb } from '../components/Breadcrumb';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PageShell } from '../components/PageShell';
@@ -34,8 +36,8 @@ const TABS: { id: string; label: string; view: (p: TabProps) => JSX.Element }[] 
   { id: 'brews', label: 'Sude', view: () => <></> },  // rendered by the page, it needs the brews
 ];
 
-const summaryOf = ({ id, name, style, volumeL, status, rootId, version, updatedAt }: Recipe): RecipeSummary =>
-  ({ id, name, style, volumeL, status, rootId, version, updatedAt });
+const summaryOf = ({ id, name, style, volumeL, status, rootId, version, updatedAt, ogPlato, abvPct, ibu, ebc }: Recipe): RecipeSummary =>
+  ({ id, name, style, volumeL, status, rootId, version, updatedAt, ogPlato, abvPct, ibu, ebc });
 
 // Recipe editor. Changes stay in a local draft until "Speichern" — no autosave.
 export function RecipeEditPage({ id }: { path?: string; id?: string }) {
@@ -52,6 +54,7 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirm, setConfirm] = useState<{ discardFor: string } | 'deleteVersion' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const catalog = useCatalog();
 
   useEffect(() => {
     let alive = true;
@@ -89,8 +92,9 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
     );
   }
 
-  // updatedAt only changes on save, so it must not count as an edit.
-  const dirty = JSON.stringify({ ...draft, updatedAt: 0 }) !== JSON.stringify({ ...saved, updatedAt: 0 });
+  // updatedAt and the list figures only change on save, so they must not count as an edit.
+  const core = (r: Recipe) => JSON.stringify({ ...r, updatedAt: 0, ogPlato: 0, abvPct: 0, ibu: 0, ebc: 0 });
+  const dirty = core(draft) !== core(saved);
   const View = TABS.find((t) => t.id === tab)!.view;
   // The versions of this recipe, the saved state of the open one included even
   // when the list is stale or did not load.
@@ -139,13 +143,16 @@ export function RecipeEditPage({ id }: { path?: string; id?: string }) {
   // The saved copy is what was sent, so edits made while the request runs stay dirty.
   function save() {
     setSaveError(false);
+    // Without the catalog the figures stay as they were rather than going missing.
+    const bh = brewhouses?.find((b) => b.id === draft!.brewhouseId);
+    const figures = catalog ? listFigures(draft!, catalog.entries, bh, brewery) : {};
     if (usedBy.length > 0) {
-      saveRecipe(newVersion(draft!, versions))
+      saveRecipe({ ...newVersion(draft!, versions), ...figures })
         .then((v) => route(`/rezepte/${v.id}`))
         .catch(() => setSaveError(true));
       return;
     }
-    saveRecipe(draft!)
+    saveRecipe({ ...draft!, ...figures })
       .then(setSaved)
       .catch(() => setSaveError(true));
   }

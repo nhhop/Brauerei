@@ -118,6 +118,18 @@ void test_summary_line_carries_the_version_fields() {
                            recipeSummaryLine(doc, "k9x2").c_str());
 }
 
+void test_summary_line_carries_the_figures() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"id\":\"abc\",\"ogPlato\":12.5,\"abvPct\":5.1,\"ibu\":38,\"ebc\":22,\"mash\":[]}");
+  JsonDocument back;
+  deserializeJson(back, recipeSummaryLine(doc, "abc"));
+  TEST_ASSERT_EQUAL_FLOAT(12.5, back["ogPlato"].as<float>());
+  TEST_ASSERT_EQUAL_FLOAT(5.1, back["abvPct"].as<float>());
+  TEST_ASSERT_EQUAL(38, back["ibu"].as<int>());
+  TEST_ASSERT_EQUAL(22, back["ebc"].as<int>());
+  TEST_ASSERT_TRUE(back["mash"].isNull());
+}
+
 void test_brew_summary_line_keeps_the_occupancy_fields() {
   JsonDocument doc;
   deserializeJson(doc,
@@ -210,6 +222,7 @@ int main(int, char**) {
   RUN_TEST(test_summary_line_keeps_only_the_list_fields_and_starts_with_the_id);
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
   RUN_TEST(test_summary_line_carries_the_version_fields);
+  RUN_TEST(test_summary_line_carries_the_figures);
   RUN_TEST(test_brew_summary_line_keeps_the_occupancy_fields);
   RUN_TEST(test_brew_summary_line_carries_the_results);
   RUN_TEST(test_brew_summary_line_leaves_out_fields_the_brew_lacks);
