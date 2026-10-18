@@ -40,7 +40,7 @@ export function FermentationTab({ recipe, onChange, brewhouses, brewery }: TabPr
   const stats = entries ? calcStats(hot, entries, bh, brewery) : undefined;
   const dilution = wort && resolveDilution(hot, wort.extractKg, bh, wort.draw);
   const bottling = bh && wort && dilution ? calcBottling(hot, bh, dilution, wort.draw, containers) : undefined;
-  const carbonation = calcCarbonation(recipe, { beerL: bottling?.beerL ?? 0, fgPlato: stats?.fgPlato, speiseL: dilution?.speiseL ?? 0 });
+  const carbonation = calcCarbonation(recipe, { beerL: bottling?.beerL ?? 0, fgPlato: stats?.fgPlato, speiseL: dilution?.speiseL ?? 0, keg: (bottling?.kegL ?? 0) > 0 });
 
   const maxBar = maxPhasePressureBar(recipe);
   const pressureHint = maxBar > 0 && fermenters && !fermenters.some((f) => (f.maxPressureBar ?? 0) >= maxBar)
@@ -195,7 +195,7 @@ function BottlingCard({ recipe, onChange, b, containers, missing }: {
   );
 }
 
-// Where the knock-out (and a dilution in the fermenter) ends up. Slots 3 and 4
+// Where the knock-out (and a dilution in the fermenter or keg) ends up. Slots 3 and 4
 // are below 3:1 contrast on the light theme, so the legend carries every value.
 function BottlingBar({ b }: { b: Bottling }) {
   const mix = (v: string) => `color-mix(in srgb, var(${v}) 45%, transparent)`;
@@ -208,7 +208,7 @@ function BottlingBar({ b }: { b: Bottling }) {
     { label: 'Abfüllverlust', l: b.fillLossL, color: mix('--series-4') },
     ...(b.leftL > 0 ? [{ label: 'Rest', l: b.leftL, color: 'color-mix(in srgb, var(--fg) 20%, transparent)' }] : []),
   ];
-  const total = b.intake.cooledL + b.intake.shrinkL + b.dilutionL;
+  const total = b.intake.cooledL + b.intake.shrinkL + b.dilutionL + b.kegL;
   if (total <= 0) return null;
   const pct = (l: number) => (l / total) * 100;
   return (
@@ -249,6 +249,7 @@ function BottlingCalculation({ b, cold }: { b: Bottling; cold: boolean }) {
       {b.dryHopL > 0 && <Row op="−" label="Hopfen im Gärbehälter" l={b.dryHopL} />}
       <Row strong label="Jungbier" l={b.youngL} />
       {b.speiseL > 0 && <Row op="+" label="Speise" l={b.speiseL} basis="zum Karbonisieren" />}
+      {b.kegL > 0 && <Row op="+" label="Verschnitt im Keg" l={b.kegL} basis="Rezept" />}
       {b.fillLossL > 0 && <Row op="−" label="Abfüllverluste" l={b.fillLossL} basis="Gärkeller › Gebinde" />}
       {b.leftL > 0 && <Row op="−" label="Rest, passt in kein ganzes Gebinde" l={b.leftL} />}
       <Row strong label="Abgefüllt" l={b.bottledL} />

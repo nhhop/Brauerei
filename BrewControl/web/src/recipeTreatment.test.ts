@@ -124,6 +124,17 @@ describe('calcTreatment', () => {
     const undiluted = columns[0].after.ions.ca * w.preBoilL / w.knockOutL;
     expect(total.after.ions.ca).toBeCloseTo(undiluted * w.dilution.restL! / w.dilution.finalL, 6);
   });
+
+  it('thins the total the same way with a dilution in the keg', () => {
+    const p = { volumeL: 30, water: { dilution: { at: 'keg' as const, lead: 'volume' as const, volumeL: 5 }, sources: { dilution: { waterId: 've' } } } };
+    const { columns, w } = treat([], p);
+    const total = columns.find((c) => c.key === 'total')!;
+    const d = w.dilution;
+    expect(columns.some((c) => c.key === 'dilution')).toBe(true);
+    expect(total.volumeL).toBeCloseTo(d.finalL, 9);
+    const undiluted = columns[0].after.ions.ca * w.preBoilL / w.knockOutL;
+    expect(total.after.ions.ca).toBeCloseTo(undiluted * (d.finalL - d.volumeL) / d.finalL, 6);
+  });
 });
 
 describe('calcTreatment pH (Troester)', () => {

@@ -70,7 +70,8 @@ export interface Bottling {
   trubL: number;
   dryHopL: number;
   youngL: number;         // Jungbier
-  beerL: number;          // young beer plus Speise, ready to fill
+  kegL: number;           // dilution of the beer when it is filled
+  beerL: number;          // young beer plus Speise (or the dilution in the keg), ready to fill
   lines: BottlingLine[];
   fillLossL: number;
   bottledL: number;
@@ -87,7 +88,8 @@ export function calcBottling(recipe: Recipe, bh: Brewhouse, dilution: DilutionRe
   const dilutionL = dilution.at === 'fermenter' ? dilution.volumeL : 0;
   const pitch = pitchL(dilution);
   const youngL = pitch - draw.trubL - draw.dryHopL;
-  const beerL = Math.max(youngL + dilution.speiseL, 0);
+  const kegL = dilution.at === 'keg' ? dilution.volumeL : 0;
+  const beerL = Math.max(youngL + dilution.speiseL, 0) + kegL;
   if (youngL < 0) notes.push('Trub und Stopfhopfen nehmen mehr auf, als angestellt wird.');
 
   const rows = recipe.bottling?.containers ?? [];
@@ -111,7 +113,7 @@ export function calcBottling(recipe: Recipe, bh: Brewhouse, dilution: DilutionRe
   const bottledL = lines.length > 0 ? Math.min(filledL, beerL - fillLossL) : beerL;
   const countOf = (kind: Container['kind']) => lines.reduce((n, l) => n + (l.container?.kind === kind ? l.count : 0), 0);
   return {
-    intake, speiseL: dilution.speiseL, dilutionL, pitchL: pitch, trubL: draw.trubL, dryHopL: draw.dryHopL, youngL, beerL,
+    intake, speiseL: dilution.speiseL, dilutionL, pitchL: pitch, trubL: draw.trubL, dryHopL: draw.dryHopL, youngL, kegL, beerL,
     lines, fillLossL, bottledL, leftL: Math.max(beerL - fillLossL - bottledL, 0),
     bottles: countOf('bottle'), kegs: countOf('keg'), notes,
   };
@@ -131,11 +133,16 @@ export interface CarbonationResult {
 // Unset without a planned carbonation. `fgPlato` from recipeStats, `speiseL`
 // from the dilution (recipeWater.resolveDilution). `tempC` is the highest
 // temperature after the fermentation when it was measured (5c-5), else the
-// phases' highest.
-export function calcCarbonation(recipe: Recipe, p: { beerL: number; fgPlato?: number; speiseL: number; tempC?: number }): CarbonationResult | undefined {
+// phases' highest. `keg`: the beer is diluted when filled, `beerL` includes it;
+// Speise and krausening carbonate the beer before, so they do not fit.
+export function calcCarbonation(recipe: Recipe, p: { beerL: number; fgPlato?: number; speiseL: number; tempC?: number; keg?: boolean }): CarbonationResult | undefined {
   const c = recipe.carbonation;
   if (!c) return undefined;
   const notes: string[] = [];
+  if (p.keg && (c.method === 'speise' || c.method === 'krausen')) {
+    notes.push(`${c.method === 'speise' ? 'Speise' : 'Grünschlauchen'} passt nicht zum Verschnitt im Keg, Zucker oder Zwangskarbonisierung nehmen.`);
+    return { notes };
+  }
   const tempC = p.tempC ?? residualTempC(recipe);
   const out: CarbonationResult = { notes, residualTempC: tempC };
   if (tempC === undefined && c.method !== 'forced') {

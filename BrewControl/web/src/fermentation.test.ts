@@ -87,6 +87,17 @@ describe('calcBottling', () => {
     expect(b.beerL).toBeCloseTo(b.youngL + b.speiseL, 9);
   });
 
+  it('fills the beer diluted in the keg, the fermenter gets the strong wort', () => {
+    const r = recipe({ trubLossL: 1.5, water: { dilution: { at: 'keg', lead: 'volume', volumeL: 6 } } });
+    const plain = chain(recipe({ trubLossL: 1.5 })).b;
+    const { b } = chain(r, null);
+    expect([b.dilutionL, b.kegL]).toEqual([0, 6]);
+    expect(b.pitchL).toBeCloseTo(plain.pitchL, 9);
+    expect(b.youngL).toBeCloseTo(plain.youngL, 9);
+    expect(b.beerL).toBeCloseTo(plain.youngL + 6, 9);
+    expect(b.bottledL).toBeCloseTo(b.beerL, 9);
+  });
+
   it('fills the rest row with whole containers', () => {
     const r = recipe({ bottling: { containers: [{ containerId: 'keg', count: 1 }, { containerId: 'bottle' }] } });
     const { b } = chain(r);
@@ -157,6 +168,20 @@ describe('calcCarbonation', () => {
     expect(c.residualTempC).toBe(17);
     expect(c.sugarG).toBeCloseTo(primingSugarGrams(20, 2.6, 17, 'saccharose'), 9);
     expect(c.sugarG!).toBeLessThan(primingSugarGrams(20, 2.6, 22, 'saccharose'));
+  });
+
+  it('with a dilution in the keg: sugar and pressure for the diluted beer, no Speise or krausening', () => {
+    const r = (method: 'sugar' | 'forced' | 'speise' | 'krausen') =>
+      recipe({ carbonation: { method, targetVol: 2.5 }, water: { dilution: { at: 'keg', lead: 'volume', volumeL: 6 } } });
+    const { b } = chain(r('sugar'), null);
+    const sugar = calcCarbonation(r('sugar'), { beerL: b.beerL, speiseL: 0, keg: true })!;
+    expect(sugar.sugarG).toBeCloseTo(primingSugarGrams(b.youngL + 6, 2.5, 20, 'saccharose'), 9);
+    expect(calcCarbonation(r('forced'), { beerL: b.beerL, speiseL: 0, keg: true })!.pressureBar).toBeCloseTo(forcedCarbonationBar(2.5, 2), 9);
+    for (const m of ['speise', 'krausen'] as const) {
+      const c = calcCarbonation(r(m), { beerL: b.beerL, fgPlato: 2.5, speiseL: 0, keg: true })!;
+      expect([c.speiseL, c.rackingPlato, c.residualVol]).toEqual([undefined, undefined, undefined]);
+      expect(c.notes[0]).toMatch(/passt nicht zum Verschnitt im Keg/);
+    }
   });
 
   it('takes the last phase for a forced carbonation', () => {

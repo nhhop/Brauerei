@@ -25,18 +25,18 @@ import { AutoTreatDialog } from './AutoTreatDialog';
 
 const VOLUME_BASIS: Record<ColumnKey, string> = {
   strike: 'Hauptguss einfüllen', mash: 'Hauptguss in der Maische', sparge: 'Nachguss einfüllen',
-  preBoil: 'Pfannevoll', knockOut: 'Ausschlagmenge', dilution: 'Verschnitt', total: 'Endmenge im Gärbehälter',
+  preBoil: 'Pfannevoll', knockOut: 'Ausschlagmenge', dilution: 'Verschnitt', total: 'Endmenge im Gärbehälter, mit einem Verschnitt im Keg das Bier danach',
 };
 const START: Partial<Record<ColumnKey, string>> = {
   mash: 'der aufbereitete Hauptguss', preBoil: 'Maische und Nachguss, nach Volumen gemischt',
   knockOut: 'die Würze vor dem Kochen, durch die Verdampfung konzentriert, mit einem Verschnitt in der Pfanne',
-  total: 'die Ausschlagwürze, mit einem Verschnitt im Gärbehälter',
+  total: 'die Ausschlagwürze, mit einem Verschnitt im Gärbehälter oder Keg',
 };
 // Where the wort's pH starts, for "Berechnung".
 const PH_START: Partial<Record<ColumnKey, string>> = {
   preBoil: 'Maische nach allen Gaben, mit der Restalkalität des Nachgusses',
   knockOut: `vor dem Kochen nach den Gaben, ${fmtNum(BOIL_PH_DROP, 2)} weniger durchs Kochen, mit einem Verschnitt in der Pfanne`,
-  total: 'Ausschlag nach den Gaben, mit einem Verschnitt im Gärbehälter',
+  total: 'Ausschlag nach den Gaben, mit einem Verschnitt im Gärbehälter oder Keg',
 };
 
 const isWaterKey = (k: ColumnKey): k is WaterKey => k === 'strike' || k === 'sparge' || k === 'dilution';

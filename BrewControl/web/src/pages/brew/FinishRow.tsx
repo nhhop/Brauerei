@@ -16,13 +16,15 @@ const LABEL: Partial<Record<MeasureId, [label: string, sub?: string]>> = {
   finalGravity: ['Restextrakt', 'scheinbar'],
   maxTempAfter: ['Höchsttemperatur nach dem Gärende', 'für die Restkohlensäure'],
   bottledVolume: ['Abgefüllte Menge'],
+  dilutionVolume: ['Verschnitt', 'entgastes Wasser im Keg'],
 };
 
 // A measurement after the fermentation (5c-5), by hand: the final gravity, the
-// highest temperature after its end, the volume filled. Both the maturation and
+// highest temperature after its end, the volume filled, the water a dilution
+// in the keg adds. Both the maturation and
 // the bottling tab show the first two, with the same state.
 export function FinishRow({ id, brew, targets, editable, patch, suggest }: {
-  id: 'finalGravity' | 'maxTempAfter' | 'bottledVolume';
+  id: 'finalGravity' | 'maxTempAfter' | 'bottledVolume' | 'dilutionVolume';
   brew: Brew;
   targets: BrewTargets;
   editable: boolean;

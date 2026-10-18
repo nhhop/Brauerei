@@ -390,6 +390,36 @@ describe('after the fermentation (5c-5)', () => {
     });
   });
 
+  describe('with a dilution in the keg', () => {
+    const kegged = { ...r, water: { ...newRecipe().water, dilution: { at: 'keg' as const, lead: 'volume' as const, volumeL: 4 } } };
+    const tk = brewTargets(kegged, inputs());
+
+    it('targets the strong wort up to the fermentation, then the water', () => {
+      expect(tk.values.pitchGravity).toBe(t.values.pitchGravity);
+      expect(tk.values.finalGravity).toBe(t.values.finalGravity);
+      expect(tk.values.batchVolume).toBe(t.values.batchVolume);
+      expect(tk.values.dilutionVolume).toBe(4);
+      expect(t.values.dilutionVolume).toBeUndefined();
+      expect(tk.bottling!.beerL).toBeCloseTo(t.bottling!.beerL + 4, 9);
+      expect(unitOfMeasure('dilutionVolume')).toBe('l');
+    });
+
+    it('plans the alcohol as the recipe does, and thins the measured one by the water measured', () => {
+      const stats = calcStats(own(kegged), catalog, herms, brewery);
+      expect(plannedBeer(tk)!.abvPct).toBeCloseTo(stats.abv!, 9);
+      const strong = ballingBeerAnalysis(12.5, 2.5).abvPercent;
+      const beerL = tk.bottling!.youngL;
+      expect(actualBeer({ pitchGravity: 12.5, finalGravity: 2.5 }, tk)!.abvPct).toBeCloseTo(strong * beerL / (beerL + 4), 9);
+      expect(actualBeer({ pitchGravity: 12.5, finalGravity: 2.5, dilutionVolume: 5 }, tk)!.abvPct).toBeCloseTo(strong * beerL / (beerL + 5), 9);
+    });
+
+    it('keeps the overall efficiency of the undiluted wort', () => {
+      const { batchVolume, pitchGravity } = tk.values;
+      expect(tk.efficiency!.fermenterPct).toBeCloseTo(t.efficiency!.fermenterPct!, 9);
+      expect(measuredFermenterPct({ batchVolume, pitchGravity }, tk)).toBeCloseTo(tk.efficiency!.fermenterPct!, 6);
+    });
+  });
+
   it('drops the results the measurements no longer give', () => {
     const b = withResults({ ...m({ pitchGravity: 12.5 }), fgPlato: 2.5, abvPct: 5, attenuationPct: 80, bottledL: 18 }, t);
     expect('fgPlato' in b || 'abvPct' in b || 'attenuationPct' in b || 'bottledL' in b).toBe(false);

@@ -34,10 +34,10 @@ export type PhaseId = (typeof PHASES)[number]['id'];
 // A brew day value: the brewhouse's measurements plus the mash pH after the
 // acid (5b-2), the wort drawn off at the knock-out (5b-3) and the gravity of
 // the pitched wort (5c-2) and, after the fermentation, the final gravity, the
-// highest temperature after its end and the volume filled (5c-5). Gravities in
-// °P. `src` is the sensor it was taken from.
+// highest temperature after its end and the volume filled (5c-5), and the water
+// a dilution in the keg adds. Gravities in °P. `src` is the sensor it was taken from.
 export type MeasureId = MeasureKey | 'mashPhAcid' | 'speiseVolume' | 'dipWortVolume' | 'pitchGravity'
-  | 'finalGravity' | 'maxTempAfter' | 'bottledVolume';
+  | 'finalGravity' | 'maxTempAfter' | 'bottledVolume' | 'dilutionVolume';
 export interface Measurement { v: number; at: number; src?: string }
 
 export interface Frozen {
