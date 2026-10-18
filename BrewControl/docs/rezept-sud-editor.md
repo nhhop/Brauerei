@@ -145,17 +145,29 @@ Die Übersicht ist Steckbrief und Zusammenfassung. Prozessparameter stehen in de
 - **Stil-Karte:** Überschrift „Stil“ auf gleicher Höhe wie „Rezept“. Sie zeigt die Stilwerte als
   Bereichsbalken mit dem Rezeptwert, dazu „x von 5 im Stil“, BU:GU, Endvergärungsgrad und CO₂-Ziel in
   g/l. Abweichungen stehen als Abzeichen direkt hinter dem Parameternamen, damit die Werte rechtsbündig
-  bleiben. Mit „Ändern“ öffnet sich der Stil-Dialog; das Stilfeld im Formular gibt es nicht mehr.
+  bleiben. **Umgesetzt (2026-10-18):** die Bereichsbalken mit „x von y im Stil“; BU:GU, Endvergärungsgrad
+  und CO₂-Ziel fehlen noch. Die Karte erscheint nur, wenn der Stil des Rezepts aufgelöst wird (BJCP nur mit
+  Stildaten, siehe Stil-Auswahl). Das Stilfeld im Formular bleibt, aber als Name mit Quelle und „Ändern“,
+  das den Stil-Dialog öffnet; ohne Stil heißt der Knopf „Wählen“.
 - **Versionen:** Liste unter der Stil-Karte mit Link zum Vergleichsdialog (siehe oben).
 - Eine Zeitleiste vom Brautag bis „trinkfertig“ wurde erwogen, aber vorerst nicht übernommen.
 
-### Stil-Auswahl (Dialog) — *wird später noch besprochen*
-- Stilrichtlinie wählbar, voreingestellt BJCP 2021.
-- Suche, Filter nach Familie, Schalter „Nur passende (≥ 4 von 5)“.
-- Sortiert nach Übereinstimmung mit dem Rezept. Die Detailansicht zeigt je Wert, ob er im Bereich liegt.
-- Ist noch kein Stil gewählt, zeigt die Karte „Stil wählen“. Dieser Zustand ist nicht gezeichnet.
-- **Datenquelle offen:** Die Stilbereiche im Design sind aus dem Gedächtnis eingetragen und nicht geprüft.
-  Die offizielle Stiltabelle wird gebraucht.
+### Stil-Auswahl (Dialog, seit 2026-10-18)
+`pages/recipe/StyleDialog.tsx`, ersetzt das Vorschlagsfeld `StylePicker`.
+- **Stilquelle** als Dropdown: „BJCP 2021“ (nur wenn die Stildaten da sind, siehe Profile › Bierstile) und
+  „Eigene“. Voreingestellt ist die Quelle des gewählten Stils, sonst BJCP, wenn vorhanden, sonst Eigene.
+- Suche (Nummer, Name, Familie), Filter nach Familie, Schalter „Nur passende (≥ 4 von 5)“ (aus, solange
+  der Katalog fehlt und es keine Kennwerte gibt).
+- Sortiert nach Übereinstimmung mit dem Rezept (`rankStyles` in `web/src/styleCompare.ts`): zuerst die meisten
+  Kennwerte im Bereich, bei Gleichstand die kleinste Abweichung, gemessen in Bereichsbreiten. Jede Zeile
+  zeigt „x von 5“; ein fehlender Bereich eines eigenen Stils zählt als unbekannt, nie als Treffer.
+- Ein Klick wählt den Stil und klappt die Detailansicht auf (Bereich, Rezeptwert, Abweichung je Kennwert);
+  „Übernehmen“ setzt ihn.
+- Dazu „Nur ein Name, ohne Kennwerte“ (Freitext, keine Karte) und „Kein Stil“.
+- **Ablage im Rezept:** `style` (Name), `styleId` und `styleGuide` (`'own'` für eigene Stile, fehlt = BJCP 2021,
+  wie bei allen Rezepten vor 2026-10-18). Ein gelöschter eigener Stil lässt den Namen stehen; das Feld sagt
+  dann „Eigener Stil nicht mehr vorhanden“, die Karte entfällt. Der Versionsvergleich zeigt den Stil mit
+  Quelle, damit ein Wechsel zwischen BJCP- und eigenem Stil gleichen Namens auffällt.
 
 ### Zutaten
 Der Tab Zutaten zeigt **nur die Ansicht nach Art**. Die frühere Prozess-Ansicht mit Umschalter ist aufgelöst:
@@ -908,7 +920,7 @@ Entscheidungen des Nutzers (2026-10-18): Wasserprofile bekommen eine eigene Abla
 Rezept-Editor bleibt für Maisch- und Gärprofile nur Laden und Speichern, gepflegt wird auf der Seite; ein
 Gärprofil sind die Phasen und der Haken Druckgärung; eigene Bierstile, bis die BJCP zustimmt, mit einem
 Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: A Wasser (erledigt), B Maische
-(erledigt), C Gärung (erledigt), D Bierstile.
+(erledigt), C Gärung (erledigt), D Bierstile (erledigt).
 
 - **Wasser:** Analysen mit Ca, Mg, Na, K, Cl, SO₄, HCO₃ in mg/l, optional pH und Notiz, im Dialog. Eingabehilfen
   rechnen KS4,3 (× 61,02) oder Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14
@@ -969,6 +981,18 @@ Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: 
   Kopfzeile (Phase, Temperatur, Dauer, Rampe, Druck), sonst Name und Löschen oben, die Zahlen darunter.
   Eine Phase „Anstellen“ verträgt sich mit dem Gärprogramm des Suds: Dessen eigener erster Schritt „Anstellen“
   hält die Temperatur der ersten Phase, bis die Hefe drin ist.
+- **Bierstile** (Tab `stile`, `pages/profiles/BeerStylesTab.tsx`): eigene Stile mit Name, Familie, Beschreibung
+  und fünf Bereichen Min–Max (Stammwürze und Restextrakt in °P, Alkohol in % vol, IBU, EBC). Ein Bereich hat
+  beide Grenzen oder keine; ein leerer zählt im Vergleich als unbekannt. Tabellenspalten: Name (Familie
+  darunter), die fünf Bereiche. Unter „Mitgeliefert“ stehen die BJCP-2021-Stile, nach Familie gruppiert in der
+  Reihenfolge der BJCP (Zwischenzeile „1 Standard American Beer“, „2 International Lager“ …, unter dem Namen nur
+  die Nummer; Nutzer, 2026-10-18), aber nur, wenn ihre Daten da sind (`pnpm dev` oder ein Build mit `VITE_STYLE_COMPARISON=1`, bis die BJCP zustimmt); dann auch die
+  Copyright-Zeile. „Duplizieren“ übernimmt einen BJCP-Stil als eigenen (Werte auf 0,1 °P/% bzw. ganze IBU/EBC
+  gerundet, Herkunft in der Beschreibung).
+  - **Gemeinsamer Typ** `BeerStyle` (`web/src/styleSource.ts`) in den Einheiten der App: `loadStyles` rechnet die
+    BJCP-Datei beim Laden um (SG → °P, SRM × 1,97 → EBC), `useStyleSources()` liefert Eigene immer und BJCP 2021
+    nur mit Daten. Ohne Route (LittleFS-Boards, ältere Firmware) bleibt „Eigene“ leer.
+  - **Ablage:** `/api/styles`, eine Datei je Stil (`/styles/<id>.json`), nur eigene Stile.
 
 ## Anlage (Einstellungen › Brauanlage)
 

@@ -806,6 +806,8 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/water-profiles/<id>` | PUT, DELETE | Wasserprofil anlegen oder ersetzen / löschen |
 | `/api/fermentation-profiles` | GET | alle eigenen Gärprofile, vollständig (`/fermprofiles/<id>.json`, kein Index), nur SD-Boards; die mitgelieferten stehen im Web-UI |
 | `/api/fermentation-profiles/<id>` | PUT, DELETE | Gärprofil anlegen oder ersetzen / löschen |
+| `/api/styles` | GET | alle eigenen Bierstile, vollständig (`/styles/<id>.json`, kein Index), nur SD-Boards; die BJCP-Stile stehen im Web-UI |
+| `/api/styles/<id>` | PUT, DELETE | eigenen Bierstil anlegen oder ersetzen / löschen |
 | `/api/ingredients` | GET | alle eigenen Zutaten, vollständig (`/ingredients/<id>.json`, kein Index), nur SD-Boards; der Katalog steht im Web-UI |
 | `/api/ingredients/<id>` | PUT, DELETE | eigene Zutat anlegen oder ersetzen / löschen |
 | `/api/stock` | GET | alle Lagerposten, vollständig (`/stock/<id>.json`, kein Index), nur SD-Boards |
@@ -1082,8 +1084,9 @@ die Firmware normalisiert die in `SdTarSink` weg (die Glob-Variante
 `webui-full.tar`). Ein SD-Board mit dem schlanken `webui.tar` hat weder Rezepte noch Rechner.
 
 #### Lokaler Test mit den BJCP-Stilwerten
-Der Stilvergleich ist in Builds aus, bis die BJCP zugestimmt hat (PLAN.md), und
-`bjcp-2021.json` liegt nicht im Repo. Für einen lokalen Test-Build die Datei aus der
+Die BJCP-Stile sind in Builds aus, bis die BJCP zugestimmt hat (PLAN.md), und
+`bjcp-2021.json` liegt nicht im Repo; eigene Stile (Profile › Bierstile) und der Stilvergleich
+mit ihnen gehen immer. Für einen lokalen Test-Build die Datei aus der
 Historie holen und den Schalter setzen; die Datei ist in `.gitignore`:
 
 ```powershell

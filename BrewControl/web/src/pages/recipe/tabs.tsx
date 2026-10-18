@@ -13,14 +13,14 @@ import {
   type RecipeSummary, type Timing,
 } from '../../recipes';
 import { Segmented } from '../../components/Segmented';
-import { badgeAccent, inp } from '../../ui';
+import { badgeAccent, btnSecondary, inp } from '../../ui';
 import { Card, Field, NumInput, Override } from './fields';
 import { KindTable, ProcessTable, type IngredientGroup } from './IngredientCard';
 import { StyleCard } from './StyleCard';
-import { StylePicker } from './StylePicker';
+import { StyleDialog } from './StyleDialog';
 import { VersionCompareDialog } from './VersionCompareDialog';
 import { VersionsCard } from './Versions';
-import { STYLE_COMPARISON } from '../../styleSource';
+import { resolveStyle, styleCode, useStyleSources, type StyleSource } from '../../styleSource';
 
 export interface TabProps {
   recipe: Recipe;
@@ -65,9 +65,37 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewe
   );
 }
 
+// The style as a name with its source; the dialog sets it. A link whose style
+// is gone (an own style deleted) keeps the name and says so.
+function StyleField({ recipe, sources, onOpen }: { recipe: Recipe; sources: StyleSource[] | null; onOpen: () => void }) {
+  const linked = resolveStyle(sources, recipe);
+  const ownSource = sources?.find((s) => s.guide === 'own');
+  const sub = linked ? `${linked.source.label}${styleCode(linked.style) ? ` ${styleCode(linked.style)}` : ''}`
+    : recipe.styleGuide === 'own' && ownSource && !ownSource.failed ? 'Eigener Stil nicht mehr vorhanden'
+    : recipe.style && !recipe.styleId ? 'ohne Kennwerte'
+    : undefined;
+  return (
+    <div class="block text-xs text-muted">
+      <span class="mb-1 block">Stil</span>
+      <div class="flex items-center gap-2">
+        <span class={`${inp} min-w-0 flex-1 truncate`}>
+          {recipe.style || <span class="text-muted">Kein Stil</span>}
+          {sub && <span class="ml-2 text-xs text-muted">{sub}</span>}
+        </span>
+        <button type="button" class={btnSecondary} disabled={!sources} onClick={onOpen}>
+          {recipe.style ? 'Ändern' : 'Wählen'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, onOpenVersion, dirty }: TabProps) {
   const [comparing, setComparing] = useState(false);
+  const [pickingStyle, setPickingStyle] = useState(false);
   const catalog = useCatalog();
+  const { sources } = useStyleSources();
+  const linked = resolveStyle(sources, recipe);
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const entries = catalog?.entries ?? null;
   const hot = atKnockOut(recipe, bh, entries, brewery);
@@ -87,14 +115,7 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
             <input class={`${inp} w-full`} value={recipe.name}
               onInput={(e) => onChange({ name: e.currentTarget.value })} />
           </Field>
-          <Field label="Stil">
-            {STYLE_COMPARISON ? (
-              <StylePicker recipe={recipe} onChange={onChange} />
-            ) : (
-              <input class={`${inp} w-full`} value={recipe.style} placeholder="z.B. Pale Ale"
-                onInput={(e) => onChange({ style: e.currentTarget.value })} />
-            )}
-          </Field>
+          <StyleField recipe={recipe} sources={sources} onOpen={() => setPickingStyle(true)} />
           <VolumeField recipe={recipe} onChange={onChange} bh={bh} entries={entries} brewery={brewery} knockOutL={hot.volumeL} />
           <EfficiencyField recipe={recipe} onChange={onChange} bh={bh} brewery={brewery} />
           <Field label="Sudhaus">
@@ -143,7 +164,11 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
           <So4ClScale ratio={so4Cl} />
         </Card>
       )}
-      {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
+      {linked && <StyleCard style={linked.style} source={linked.source} stats={stats ?? { notes: [] }} />}
+      {pickingStyle && sources && (
+        <StyleDialog recipe={recipe} sources={sources} stats={stats}
+          onPick={(p) => { onChange(p); setPickingStyle(false); }} onClose={() => setPickingStyle(false)} />
+      )}
       {versions && versions.length > 1 && onOpenVersion && (
         <VersionsCard versions={versions} current={recipe.id} onOpen={onOpenVersion} onCompare={() => setComparing(true)} />
       )}

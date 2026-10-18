@@ -87,6 +87,8 @@ constexpr const char* kContainerDir = "/containers";
 constexpr const char* kWaterProfileDir = "/waterprofiles";
 // Fermentation profiles of the profile page (phase sequences of the recipe editor).
 constexpr const char* kFermProfileDir = "/fermprofiles";
+// Own beer styles of the profile page (the BJCP styles live in the web UI).
+constexpr const char* kStyleDir = "/styles";
 #endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
@@ -2121,6 +2123,7 @@ void WebUI::begin(bool serve) {
   // ── Profiles ────────────────────────────────────────────────────────────────
   serveJsonDocDir_("/api/water-profiles", kWaterProfileDir);
   serveJsonDocDir_("/api/fermentation-profiles", kFermProfileDir);
+  serveJsonDocDir_("/api/styles", kStyleDir);
 
   // ── Brewery ─────────────────────────────────────────────────────────────────
   // Site values shared by all brewhouses, one file; opaque to the firmware.
