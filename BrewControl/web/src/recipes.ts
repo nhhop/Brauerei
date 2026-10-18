@@ -217,12 +217,13 @@ export type WaterKey = 'strike' | 'sparge' | 'dilution';
 export type PhKey = WaterKey | 'mash' | 'preBoil' | 'knockOut';
 export interface WaterSource { waterId?: string; blendId?: string; blendPct?: number }
 
-// Planned dilution (high gravity), at the end of the boil or in the fermenter.
-// Volume and gravity depend on each other; `lead` names the one last edited,
-// the other is computed. `plato` is the gravity the grist does not fix: in the
-// kettle before the dilution, or the pitched wort after it.
+// Planned dilution (high gravity), at the end of the boil, in the fermenter or
+// of the finished beer when it is filled into the keg. Volume and gravity
+// depend on each other; `lead` names the one last edited, the other is
+// computed. `plato` is the gravity the grist does not fix: in the kettle before
+// the dilution, the pitched wort after it, or the beer after it (keg).
 export interface Dilution {
-  at: 'kettle' | 'fermenter';
+  at: 'kettle' | 'fermenter' | 'keg';
   lead: 'volume' | 'gravity';
   volumeL?: number;
   plato?: number;

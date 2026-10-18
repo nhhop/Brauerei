@@ -122,13 +122,14 @@ function DilutionSection({ w, value, onChange }: {
       <div class="mt-2 flex flex-wrap items-end gap-4">
         <Field label="Ort">
           <Segmented value={at} onChange={(v) => set({ at: v, lead: 'volume', volumeL: round1(d.volumeL), plato: undefined })}
-            options={[{ value: 'kettle', label: 'Pfanne bei Kochende' }, { value: 'fermenter', label: 'Gärbehälter' }]} />
+            options={[{ value: 'kettle', label: 'Pfanne bei Kochende' }, { value: 'fermenter', label: 'Gärbehälter' },
+              { value: 'keg', label: 'Keg beim Abfüllen' }]} />
         </Field>
         <Field label="Menge">
           <NumInput unit="l" value={value?.lead !== 'gravity' ? (value?.volumeL ?? 0) : round1(d.volumeL)}
             onChange={(n) => set({ lead: 'volume', volumeL: n })} />
         </Field>
-        <Field label={at === 'kettle' ? 'Pfannen-Stammwürze' : 'Anstell-Stammwürze'}>
+        <Field label={at === 'kettle' ? 'Pfannen-Stammwürze' : at === 'fermenter' ? 'Anstell-Stammwürze' : 'Stammwürze nach Verschnitt'}>
           {gravity === undefined ? (
             <input class={`${inp} w-28 text-muted`} readOnly value="—" title="Braucht die Stammwürze (Vergärbares verknüpfen)" />
           ) : (
@@ -145,6 +146,12 @@ function DilutionSection({ w, value, onChange }: {
           <>
             <Stat label="Pfannenmenge" value={d.kettleL} unit="l" digits={1} sub="am Kochende, vor dem Verschnitt" />
             <Stat label="Stammwürze nach Verschnitt" value={d.finalPlato} unit="°P" digits={1} />
+          </>
+        ) : at === 'keg' ? (
+          <>
+            <Stat label="Bier vor dem Verschnitt" value={d.finalL - d.volumeL} unit="l" digits={1} sub="Jungbier, ohne Trub und Stopfhopfen" />
+            <Stat label="Gebraute Stammwürze" value={d.kettlePlato} unit="°P" digits={1} sub="vergoren wird stark" />
+            <Stat label="Bier nach Verschnitt" value={d.finalL} unit="l" digits={1} />
           </>
         ) : (
           <>

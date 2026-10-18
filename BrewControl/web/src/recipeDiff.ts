@@ -230,7 +230,7 @@ function waterGroups(a: Recipe, b: Recipe, da: Derived, db: Derived, brewery: Br
   const onA = sourceOn(a, spargeA), onB = sourceOn(b, spargeB);
 
   const dil = (r: Recipe) => r.water?.dilution;
-  const dilAt = (r: Recipe) => dil(r) && (dil(r)!.at === 'kettle' ? 'Pfanne bei Kochende' : 'Gärbehälter');
+  const dilAt = (r: Recipe) => dil(r) && (dil(r)!.at === 'kettle' ? 'Pfanne bei Kochende' : dil(r)!.at === 'fermenter' ? 'Gärbehälter' : 'Keg beim Abfüllen');
   const dilLead = (r: Recipe) => dil(r) && (dil(r)!.lead === 'gravity' ? 'Stammwürze' : 'Menge');
   const dilVolume = (r: Recipe, d: Derived) => dil(r) && (d.water?.dilution.volumeL ?? when(dil(r)!.lead === 'volume', dil(r)!.volumeL));
   const dilPlato = (r: Recipe) => when(dil(r)?.lead === 'gravity', dil(r)?.plato);

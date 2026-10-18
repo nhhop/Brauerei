@@ -139,6 +139,25 @@ describe('calcStats', () => {
       expect(s.ibu).toBeCloseTo(plain.ibu! * factor, 9);
     });
 
+    it('thins the finished beer in the keg, its alcohol by volume', () => {
+      const yeast = row({ kind: 'yeast', amount: 1, timing: 'pitch', ingredientId: 'yeast:us05' });
+      const keg = (volumeL?: number) => calcStats(recipeWith([pils, hop, yeast], {
+        volumeL: 30, trubLossL: 1, water: volumeL === undefined ? undefined : { dilution: { at: 'keg', lead: 'volume', volumeL } },
+      }), catalog, herms);
+      const plain = keg();
+      const s = keg(6);
+      // 25.7 l arrive, 1 l trub: 24.7 l beer, then 6 l water
+      const factor = 24.7 / 30.7;
+      expect(s.ogPlato).toBeLessThan(plain.ogPlato! * 0.9);
+      expect(s.ogPlato).toBeGreaterThan(plain.ogPlato! * factor);
+      expect(s.fgPlato).toBeCloseTo(s.ogPlato! * 0.2, 9);
+      expect(s.ebc).toBeCloseTo(plain.ebc! * factor, 9);
+      expect(s.ibu).toBeCloseTo(plain.ibu! * factor, 9);
+      expect(s.abv).toBeCloseTo(plain.abv! * factor, 9);
+      // The extract does not change, nor do the efficiencies.
+      expect(s.efficiency).toEqual(plain.efficiency);
+    });
+
     it('takes the whole knock-out without a brewhouse, and says so', () => {
       const s = calcStats(at('fermenter', 5), catalog);
       expect(s.notes).toContain('Ohne Sudhaus kommt die ganze Ausschlagmenge in den Gärbehälter.');
