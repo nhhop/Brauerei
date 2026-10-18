@@ -802,6 +802,8 @@ Hier steht nur die Übersicht, welche Route es gibt und wofür sie da ist.
 | `/api/fermenters/<id>` | PUT, DELETE | Gärplatz anlegen oder ersetzen / löschen |
 | `/api/containers` | GET | alle Gebinde, vollständig (`/containers/<id>.json`, kein Index), nur SD-Boards |
 | `/api/containers/<id>` | PUT, DELETE | Gebinde anlegen oder ersetzen / löschen |
+| `/api/water-profiles` | GET | alle eigenen Wasserprofile (Ausgangswasser und Zielprofile), vollständig (`/waterprofiles/<id>.json`, kein Index), nur SD-Boards; VE-Wasser und die mitgelieferten Zielprofile stehen im Web-UI |
+| `/api/water-profiles/<id>` | PUT, DELETE | Wasserprofil anlegen oder ersetzen / löschen |
 | `/api/ingredients` | GET | alle eigenen Zutaten, vollständig (`/ingredients/<id>.json`, kein Index), nur SD-Boards; der Katalog steht im Web-UI |
 | `/api/ingredients/<id>` | PUT, DELETE | eigene Zutat anlegen oder ersetzen / löschen |
 | `/api/stock` | GET | alle Lagerposten, vollständig (`/stock/<id>.json`, kein Index), nur SD-Boards |

@@ -83,6 +83,8 @@ constexpr const char* kStockDir = "/stock";
 // The fermentation cellar: fermenters (Gärplätze) and containers (Gebinde).
 constexpr const char* kFermenterDir = "/fermenters";
 constexpr const char* kContainerDir = "/containers";
+// Water profiles of the profile page (source waters and own targets).
+constexpr const char* kWaterProfileDir = "/waterprofiles";
 #endif
 
 // Flash usage around a UI package upload — the small LittleFS data partition
@@ -2113,6 +2115,9 @@ void WebUI::begin(bool serve) {
   // ── Fermentation cellar ─────────────────────────────────────────────────────
   serveJsonDocDir_("/api/fermenters", kFermenterDir);
   serveJsonDocDir_("/api/containers", kContainerDir);
+
+  // ── Profiles ────────────────────────────────────────────────────────────────
+  serveJsonDocDir_("/api/water-profiles", kWaterProfileDir);
 
   // ── Brewery ─────────────────────────────────────────────────────────────────
   // Site values shared by all brewhouses, one file; opaque to the firmware.
