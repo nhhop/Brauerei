@@ -178,8 +178,8 @@ export function calcTreatment(recipe: Recipe, w: Water, brewery: Brewery | null,
 
   // The wort carries what mash and sparge water brought, mixed by volume (grain
   // and losses hold back their share alike); the boil concentrates it. A
-  // dilution in the kettle is in the knock-out, one in the fermenter only in
-  // the total. Malt ions and what precipitates are not counted.
+  // dilution in the kettle is in the knock-out, one in the fermenter or keg
+  // only in the total. Malt ions and what precipitates are not counted.
   const spargeShare = sparge && w.spargeL > 0 ? (100 * w.spargeL) / (w.strikeL + w.spargeL) : 0;
   const preBoil = column('preBoil', w.preBoilL, sparge ? blend(mash.state, sparge.state, spargeShare) : mash.state, undefined, true,
     wortBasis(mash.ph?.after, sparge ? sparge.after.ra * w.spargeL : 0));
@@ -188,7 +188,7 @@ export function calcTreatment(recipe: Recipe, w: Water, brewery: Brewery | null,
   if (inKettle) boiled = blend(boiled, dilution.state, (100 * d.volumeL) / w.knockOutL);
   const knockOut = column('knockOut', w.knockOutL, boiled, undefined, true,
     wortBasis(preBoil.ph && preBoil.ph.after - BOIL_PH_DROP, inKettle ? dilution.after.ra * d.volumeL : 0));
-  const inFermenter = dilution && d.at === 'fermenter';
+  const inFermenter = dilution && d.at !== 'kettle';  // or in the keg, the same for the total
   const final = inFermenter ? blend(knockOut.state, dilution.state, (100 * d.volumeL) / d.finalL) : knockOut.state;
   const total = column('total', d.finalL, final, undefined, true,
     wortBasis(knockOut.ph?.after, inFermenter ? dilution.after.ra * d.volumeL : 0));

@@ -59,6 +59,19 @@ describe('carbonationNow', () => {
     expect(carbonationNow(forced, brewTargets(forced, inputs()), {}, catalog)!.result!.pressureBar).toBeCloseTo(forcedCarbonationBar(2.5, 2), 9);
   });
 
+  it('counts the sugar for the beer diluted in the keg, with the water as measured; no Speise', () => {
+    const kegged = (method: 'sugar' | 'speise') =>
+      recipe({ carbonation: { method, targetVol: 2.5 }, water: { dilution: { at: 'keg', lead: 'volume', volumeL: 4 } } });
+    const tk = brewTargets(kegged('sugar'), inputs());
+    expect(carbonationNow(kegged('sugar'), tk, {}, catalog)!.beerL).toBeCloseTo(t.bottling!.beerL + 4, 9);
+    const now = carbonationNow(kegged('sugar'), tk, { dilutionVolume: 5 }, catalog)!;
+    expect(now.beerL).toBeCloseTo(t.bottling!.beerL + 5, 9);
+    expect(now.result!.sugarG).toBeCloseTo(primingSugarGrams(t.bottling!.beerL + 5, 2.5, 19, 'saccharose'), 9);
+    const speise = carbonationNow(kegged('speise'), brewTargets(kegged('speise'), inputs()), {}, catalog)!;
+    expect(speise.speise).toBeUndefined();
+    expect(speise.result!.notes[0]).toMatch(/passt nicht zum Verschnitt im Keg/);
+  });
+
   it('is unset without a carbonation or the chain', () => {
     expect(carbonationNow(recipe(), brewTargets(recipe(), inputs()), {}, catalog)).toBeUndefined();
     expect(carbonationNow(sugar, brewTargets(sugar, { ...inputs(), bh: undefined }), {}, catalog)).toBeUndefined();

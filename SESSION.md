@@ -2866,3 +2866,18 @@ Neuer Tab „Verkostung“ im Sud. Einzelheiten stehen in `BrewControl/docs/reze
 ## 2026-10-17 — Wassermenge und Abfüllmenge wie im Mockup
 
 Darstellung der Karten „Wassermenge“ (Rezept › Wasser) und „Abfüllmenge“ (Rezept › Gärung) ans Canvas-Mockup angeglichen: Überschrift außerhalb der Karte (`Section`), größere Kennzahlen (`Stat large`), runder Balken mit Punkt-Legende, „Berechnung“ als Akkordeon-Leiste mit Tabelle (Vorgabe · Volumen · Grundlage, Zwischensummen hervorgehoben). Neue Datei `web/src/pages/recipe/CalcTable.tsx` (`Section`, `Row`, `CalcTable`); Eingaben und Rechnung unverändert (Nutzerentscheidung: nur Darstellung). `pnpm typecheck` sauber, `pnpm test` 744 grün. **Nicht im Browser angesehen** (hell/dunkel, 390 px).
+
+## 2026-10-18 — Verschnitt im Keg (dritter Ort für High Gravity)
+
+- **Anlass:** Nutzer vermisste das Verdünnen des fertigen Biers beim Abfüllen ins Keg neben Pfanne und Gärbehälter.
+- **Entscheidungen (Nutzer):** Kennwerte und Stil-Badges zeigen das Bier nach Verschnitt; Karbonisierung nur Zucker und Zwang
+  (Speise/Grünschlauchen mit Hinweis, ohne Zahl); Aufbereitungsspalte wie beim Gärbehälter; im Sud Messwert „Verschnitt“ mit Soll,
+  Bilanz und Alkohol damit, Stammwürze/Restextrakt bleiben die des vergorenen Biers. Effizienzen unverändert (kein Extrakt im Wasser).
+- **Umsetzung:** `Dilution.at` um `'keg'`; `resolveDilution` neuer Zweig (Bier = Anstellwürze − Trub − Stopfhopfen, Massenbilanz,
+  keine Speise), `pitchPlato`; `calcStats` (Alkohol = Balling stark × Faktor), `beerEbc`; `calcBottling.kegL`, `calcCarbonation`
+  mit `keg`; `calcTreatment` Gesamt; Sud: `MeasureId` `dilutionVolume`, `brewTargets`, `beerNow`, `beerFrom`; UI Wasser-Tab
+  (Ort „Keg beim Abfüllen“, Stats), Gärung-Tab (Tabelle, Balken), Sud-Abfüllung (Messwert, Bilanz), Versionsvergleich.
+- **Verifikation:** `pnpm test` 754 grün (neue Fälle in `recipeWater`, `recipeStats`, `fermentation`, `brewDay`, `bottlingDay`,
+  `recipeTreatment`), `pnpm typecheck` sauber, `pnpm build` ok; im Node-Mock (dunkel, Desktop) geprüft: Wasser-Tab (18,5 l
+  bei 13,1 °P + 4 l → 22,5 l bei 10,8 °P), Aufbereitung mit Spalte Verschnitt, Gärung-Tab (Tabelle, Zucker 136 g, Speise-Hinweis),
+  Sud › Abfüllung (Soll 4,0 l, Bilanz, Alkohol 4,6 % wie im Rezept). **Nicht angesehen:** hell, 390 px, Ist-Werte im gestarteten Sud.

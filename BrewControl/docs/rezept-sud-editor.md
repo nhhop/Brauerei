@@ -449,7 +449,7 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   knackig (Grenzen 0,8 und 1,5, wie gängige Rechner; noch ohne Primärquelle).
 
 **Verschnitt (High Gravity)** gehört ins Rezept, als Abschnitt der Karte „Wassermenge“:
-- **Ort** je Rezept: Pfanne bei Kochende oder Gärbehälter. **Menge und Stammwürze** hängen voneinander ab;
+- **Ort** je Rezept: Pfanne bei Kochende, Gärbehälter oder Keg beim Abfüllen (seit 2026-10-18). **Menge und Stammwürze** hängen voneinander ab;
   was zuletzt geändert wurde, führt, das andere wird berechnet. Ein Ortswechsel behält die Menge.
 - **Pfanne:** Ausschlagmenge und Stammwürze des Rezepts gelten nach dem Verschnitt. Die Pfanne kocht
   Ausschlag − Verschnitt bei entsprechend höherer Stammwürze; die Rückrechnung der Wassermengen beginnt
@@ -458,8 +458,25 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
 - **Gärbehälter:** Der Ausschlag bleibt unverdünnt. Im Gärbehälter kommt Ausschlag − Kühlschwund − Totraum
   der Pfanne − Transferverluste ab Whirlpool an (ohne Sudhaus der ganze Ausschlag, mit Hinweis), dazu der
   Verschnitt. Die Stammwürze folgt aus der Massenbilanz. Hopfenaufnahme und Trub kommen mit dem Gärung-Tab.
+- **Keg beim Abfüllen** (2026-10-18, Nutzer): Bis zum Gärbehälter rechnet alles wie ohne Verschnitt, vergoren
+  wird die starke Würze; beim Abfüllen kommt entgastes, keimfreies Wasser zum ganzen Bier (nicht nur zu den
+  Kegs). Bier vor dem Verschnitt = Anstellwürze − Trub − Stopfhopfen; Stammwürze nach Verschnitt aus der
+  Massenbilanz wie beim Gärbehälter, Faktor = Bier / (Bier + Verschnitt). `pitchPlato` liefert die
+  Anstell-Stammwürze (beim Keg die vor dem Verschnitt). Speise wird nicht abgezweigt.
+  - **Kennwerte** zeigen das Bier nach dem Verschnitt (auch für den Stilvergleich): Stammwürze und Restextrakt
+    rechnerisch, Farbe und Bittere × Faktor, **Alkohol** = Balling der vergorenen Würze × Faktor (Verdünnung nach
+    Volumen, so rechnet auch der Sud).
+  - **Karbonisierung:** Zucker und Zwangskarbonisierung rechnen fürs verdünnte Bier; Speise und Grünschlauchen
+    passen nicht (Hinweis, keine Zahl).
+  - **Aufbereitung:** Die Spalte Verschnitt wirkt wie beim Gärbehälter nur in „Gesamt“ (Bier nach Verschnitt).
+  - **Effizienzen** bleiben unverändert: Wasser bringt keinen Extrakt, Soll und Ist der Gesamteffizienz rechnen
+    mit Anstellwürze und Anstell-Stammwürze vor dem Verschnitt.
+  - **Abfüllmenge:** + Verschnitt im Keg nach Jungbier und Speise.
+  - **Sud › Abfüllung:** Messwert `dilutionVolume` (Verschnitt, Soll aus dem Rezept), Bilanz-Zeile „Verschnitt im
+    Keg“; Bier zum Abfüllen und Zucker mit der gemessenen Menge; Alkohol × Bier / (Bier + Verschnitt). Stammwürze
+    und Restextrakt bleiben die gemessenen des vergorenen Biers.
 - **Kennwerte:** Stammwürze ist die nach dem Verschnitt. Die Bittere rechnet Tinseth mit Menge und
-  Stammwürze der Pfanne und verdünnt das Ergebnis; beim Gärbehälter verdünnt sich auch die Farbe.
+  Stammwürze der Pfanne und verdünnt das Ergebnis; beim Gärbehälter und Keg verdünnt sich auch die Farbe.
 - Der Balken der Wassermenge bekommt das Segment Verschnitt.
 
 **Wassermenge:**
@@ -806,6 +823,7 @@ Anstellwürze sein; die Berechnung nennt dann sie als Rezeptwert, nicht den Auss
 - **Abfüllmenge** (`calcBottling`):
   - **Anstellwürze** = Ausschlag − Kühlschwund − Totraum und Transfers ab Whirlpool − Hopfen im Kessel − Speise
     + Verschnitt im Gärbehälter.
+  - Bei einem Verschnitt im Keg: + Verschnitt nach Jungbier und Speise (seit 2026-10-18).
   - **Jungbier** = Anstellwürze − Trub (`trubLossL`, ohne Angabe 0 l, Nutzer) − Hopfen im Gärbehälter (Dip,
     Hauptgärung, Reifung).
   - **Abgefüllt** = Jungbier + Speise − Abfüllverluste.

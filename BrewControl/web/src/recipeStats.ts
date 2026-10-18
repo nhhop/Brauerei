@@ -146,9 +146,9 @@ export function yeastAttenuation(recipe: Recipe, catalog: CatalogIngredient[]): 
 }
 
 // Beer colour after a planned dilution: in the kettle the knock-out already
-// includes it, in the fermenter it thins the wort that arrives.
+// includes it, in the fermenter it thins the wort that arrives, in the keg the beer.
 export function beerEbc(colors: { kg: number; ebc: number }[], volumeL: number, dilution: DilutionResult): number {
-  return moreyEbc(colors, volumeL) * (dilution.at === 'fermenter' ? dilution.factor : 1);
+  return moreyEbc(colors, volumeL) * (dilution.at !== 'kettle' ? dilution.factor : 1);
 }
 
 // `bh` is the recipe's brewhouse; it only matters for a dilution in the fermenter.
@@ -176,7 +176,10 @@ export function calcStats(recipe: Recipe, catalog: CatalogIngredient[], bh?: Bre
   if (stats.ogPlato !== undefined) {
     if (attenuation !== undefined) {
       stats.fgPlato = stats.ogPlato * (1 - attenuation / 100);
-      stats.abv = ballingBeerAnalysis(stats.ogPlato, stats.fgPlato).abvPercent;
+      // In the keg the finished beer is diluted: its alcohol by volume.
+      const og = dilution.at === 'keg' ? dilution.kettlePlato! : stats.ogPlato;
+      const factor = dilution.at === 'keg' ? dilution.factor : 1;
+      stats.abv = ballingBeerAnalysis(og, og * (1 - attenuation / 100)).abvPercent * factor;
     } else {
       notes.push('Alkohol braucht eine Hefe mit Katalogverknüpfung');
     }

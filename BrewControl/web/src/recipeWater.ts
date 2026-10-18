@@ -91,7 +91,7 @@ export interface DilutionResult {
   kettlePlato?: number;   // gravity at the end of the boil
   restL: number;          // wort that arrives in the fermenter, before a dilution there
   speiseL: number;        // set aside at the knock-out for the carbonation (WortDraw)
-  finalL: number;         // after the dilution: knock-out (kettle) or rest + V_d (fermenter)
+  finalL: number;         // after the dilution: knock-out (kettle), rest + V_d (fermenter) or beer + V_d (keg)
   finalPlato?: number;    // original gravity after the dilution
   factor: number;         // share of wort in the final volume, (final − V_d) / final
   notes: string[];
@@ -99,6 +99,8 @@ export interface DilutionResult {
 
 // Anstellwürze: the wort in the fermenter, a dilution there included.
 export const pitchL = (d: DilutionResult) => d.restL + (d.at === 'fermenter' ? d.volumeL : 0);
+// Its gravity: a dilution in the keg comes after the fermentation.
+export const pitchPlato = (d: DilutionResult) => d.at === 'keg' ? d.kettlePlato : d.finalPlato;
 
 // Wort that reaches the fermenter: knock-out less chill shrinkage, the kettle's
 // dead space at the outlet, the transfers from the whirlpool on and what the
@@ -143,7 +145,7 @@ export function resolveDilution(recipe: Recipe, extractKg: number | undefined, b
   // Speise per litre of beer to fill, at the knock-out's gravity.
   const s = draw?.speise;
   let speisePerL = 0;
-  if (s) {
+  if (s && at !== 'keg') {
     if (knockOutPlato === undefined || s.attenuationPct === undefined || s.tempC === undefined) {
       notes.push('Die Speise braucht Stammwürze, Gärphasen und eine Hefe mit Endvergärungsgrad, gerechnet wird ohne.');
     } else {
@@ -171,6 +173,26 @@ export function resolveDilution(recipe: Recipe, extractKg: number | undefined, b
   }
 
   if (!bh) notes.push('Ohne Sudhaus kommt die ganze Ausschlagmenge in den Gärbehälter.');
+
+  if (at === 'keg') {
+    // The fermentation runs with the strong wort; the beer (young beer, the
+    // fermenter's losses off) is diluted when it is filled. No Speise: it
+    // would have to carbonate the water too (fermentation.calcCarbonation says so).
+    const beerL = Math.max(rest0 - fermenterLossL, 0);
+    const beerKg = knockOutPlato === undefined ? undefined : beerL * platoToSg(knockOutPlato);
+    let volumeL = !byGravity ? (d?.volumeL ?? 0) : beerKg === undefined ? 0 : beerKg * (knockOutPlato! / d.plato! - 1);
+    if (volumeL < 0) {
+      notes.push('Die Stammwürze nach Verschnitt liegt über der Stammwürze, gerechnet wird ohne Verschnitt.');
+      volumeL = 0;
+    }
+    const finalL = beerL + volumeL;
+    return {
+      at, volumeL, kettleL: knockOutL, kettlePlato: knockOutPlato, restL: rest0, speiseL: 0, finalL, notes,
+      finalPlato: beerKg === undefined ? undefined : beerKg + volumeL > 0 ? (knockOutPlato! * beerKg) / (beerKg + volumeL) : knockOutPlato,
+      factor: finalL > 0 ? beerL / finalL : 1,
+    };
+  }
+
   // The Speise leaves less wort to dilute, a dilution led by gravity then
   // needs less water, and that again less Speise: a few rounds settle it.
   // Mass balance: the rest has restL · SG kg of wort, the water 1 kg/l.

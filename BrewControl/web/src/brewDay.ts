@@ -15,7 +15,7 @@ import { DEFAULT_MASH_PH, mashPh } from './mashPh';
 import { calcMash, type MashPlan } from './mashPlan';
 import { atKnockOut, wortExtract, yeastAttenuation } from './recipeStats';
 import { calcTreatment, suggestAgent, type Column } from './recipeTreatment';
-import { calcWater, fermenterShare, pitchL, type Water } from './recipeWater';
+import { calcWater, fermenterShare, pitchL, pitchPlato, type Water } from './recipeWater';
 import { DEFAULT_SPARGE_TEMP, type Recipe } from './recipes';
 import { WATER_AGENTS, isAcid } from './waterChem';
 
@@ -120,14 +120,17 @@ export function brewTargets(recipe: Recipe, { bh, brewery, entries, fermenter, c
   if (d.speiseL > 0) values.speiseVolume = d.speiseL;
   // Pitching (5c-2): the wort in the fermenter, a dilution there included.
   values.batchVolume = pitchL(d);
-  values.pitchGravity = d.finalPlato;
+  const pitchGravity = pitchPlato(d);
+  values.pitchGravity = pitchGravity;
   values.pitchTemp = r.fermentation[0]?.tempC;
 
   // After the fermentation (5c-5): the final gravity from the yeast's attenuation
   // (the same as recipeStats.calcStats), the highest phase temperature (what
   // the CO₂ left in the beer follows) and the volume filled.
   const att = entries ? yeastAttenuation(r, entries) : undefined;
-  if (d.finalPlato !== undefined && att !== undefined) values.finalGravity = d.finalPlato * (1 - att / 100);
+  if (pitchGravity !== undefined && att !== undefined) values.finalGravity = pitchGravity * (1 - att / 100);
+  // A dilution in the keg: the water added when the beer is filled.
+  if (d.at === 'keg' && d.volumeL > 0) values.dilutionVolume = d.volumeL;
   values.maxTempAfter = residualTempC(r);
   if (r.carbonation?.method === 'speise') out.speiseTargetVol = r.carbonation.targetVol;
 
@@ -259,10 +262,13 @@ function beerFrom(og: number | undefined, fg: number | undefined, t: BeerTargets
   let withSpeise = false;
   const beer = beerNow(t, m);
   const tempC = m.maxTempAfter ?? t.values.maxTempAfter;
-  if (beer && beer.speiseL > 0 && beer.beerL > 0 && t.speiseTargetVol !== undefined && tempC !== undefined) {
-    abvPct = (a.abvPercent * beer.youngL + speiseAlcoholPct(t.speiseTargetVol, tempC) * beer.beerL) / beer.beerL;
+  const fermentedL = beer ? beer.beerL - beer.dilutionL : 0;
+  if (beer && beer.speiseL > 0 && fermentedL > 0 && t.speiseTargetVol !== undefined && tempC !== undefined) {
+    abvPct = (a.abvPercent * beer.youngL + speiseAlcoholPct(t.speiseTargetVol, tempC) * fermentedL) / fermentedL;
     withSpeise = true;
   }
+  // A dilution in the keg thins the finished beer by volume.
+  if (beer && beer.dilutionL > 0 && beer.beerL > 0) abvPct *= Math.max(fermentedL, 0) / beer.beerL;
   return { abvPct, attenuationPct: a.apparentAttenuationPercent, withSpeise };
 }
 
@@ -314,7 +320,7 @@ export function withResults(brew: Brew, t: BrewTargets): Brew {
 export const TOLERANCE: Record<string, number> = { '°P': 0.2, l: 2.5, pH: 0.1, '°C': 1, '%': 2 };
 
 export const unitOfMeasure = (key: MeasureId): string =>
-  key === 'mashPhAcid' ? 'pH' : key === 'speiseVolume' || key === 'dipWortVolume' || key === 'bottledVolume' ? 'l'
+  key === 'mashPhAcid' ? 'pH' : key === 'speiseVolume' || key === 'dipWortVolume' || key === 'bottledVolume' || key === 'dilutionVolume' ? 'l'
     : key === 'pitchGravity' || key === 'finalGravity' ? '°P' : key === 'maxTempAfter' ? '°C'
     : MEASUREMENTS.find((x) => x.key === (key as MeasureKey))?.unit ?? '';
 

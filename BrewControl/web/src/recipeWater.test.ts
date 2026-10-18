@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GRAIN_ABSORPTION, TEMPLATES, type Brewhouse } from './brewhouse';
 import { platoFromExtract } from './brewMath';
-import { calcWater, resolveDilution } from './recipeWater';
+import { calcWater, pitchL, pitchPlato, resolveDilution } from './recipeWater';
 import { newRecipe, type Ingredient, type MashStep, type Recipe } from './recipes';
 
 const template = (key: string) => TEMPLATES.find((t) => t.key === key)!.build();
@@ -164,7 +164,33 @@ describe('dilution (high gravity)', () => {
     expect(back.volumeL).toBeCloseTo(5, 6);
   });
 
+  it('dilutes the beer in the keg, after the fermentation', () => {
+    const plain = withDilution(undefined);
+    const draw = { kettleHopL: 0, dryHopL: 0.5, trubL: 1.5 };
+    const d = resolveDilution(recipeFor(herms, { volumeL: 30, water: { dilution: { at: 'keg', lead: 'volume', volumeL: 6 } } }), extractKg, herms, draw);
+    // The fermenter gets the strong wort, as without a dilution.
+    expect([d.kettleL, d.restL, pitchL(d)]).toEqual([30, plain.restL, plain.restL]);
+    expect(pitchPlato(d)).toBe(plain.finalPlato);
+    // 25.8 l pitched − 2 l trub and dry hops = 23.8 l beer, plus 6 l
+    expect(round(d.finalL)).toBe(29.8);
+    expect(d.factor).toBeCloseTo(23.8 / 29.8, 9);
+    expect(d.finalPlato).toBeLessThan(d.kettlePlato!);
+    const back = resolveDilution(recipeFor(herms, { volumeL: 30, water: { dilution: { at: 'keg', lead: 'gravity', plato: d.finalPlato } } }),
+      extractKg, herms, draw);
+    expect(back.volumeL).toBeCloseTo(6, 6);
+  });
+
+  it('sets no Speise aside for a dilution in the keg', () => {
+    const draw = { kettleHopL: 0, dryHopL: 0, trubL: 1, speise: { targetVol: 2.5, tempC: 20, attenuationPct: 80 } };
+    const r = (at: 'fermenter' | 'keg') => recipeFor(herms, { volumeL: 30, water: { dilution: { at, lead: 'volume', volumeL: 4 } } });
+    expect(resolveDilution(r('fermenter'), extractKg, herms, draw).speiseL).toBeGreaterThan(0);
+    const d = resolveDilution(r('keg'), extractKg, herms, draw);
+    expect([d.speiseL, d.notes]).toEqual([0, []]);
+  });
+
   it('refuses a gravity on the wrong side, and one without extract', () => {
+    expect(withDilution({ at: 'keg', lead: 'gravity', plato: 30 }).notes)
+      .toEqual(['Die Stammwürze nach Verschnitt liegt über der Stammwürze, gerechnet wird ohne Verschnitt.']);
     expect(withDilution({ at: 'kettle', lead: 'gravity', plato: 5 }).notes)
       .toEqual(['Die Pfannen-Stammwürze liegt unter der Stammwürze, gerechnet wird ohne Verschnitt.']);
     const noExtract = resolveDilution(recipeFor(herms, { water: { dilution: { at: 'kettle', lead: 'gravity', plato: 18 } } }), undefined, herms);

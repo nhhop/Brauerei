@@ -14,15 +14,17 @@ type Measured = Partial<Record<MeasureId, number>>;
 // The carbonation as the recipe plans it, on the beer the chain gives.
 export function carbonationPlan(recipe: Recipe, t: BrewTargets): CarbonationResult | undefined {
   const b = t.bottling;
-  return b && calcCarbonation(recipe, { beerL: b.beerL, fgPlato: t.values.finalGravity, speiseL: b.speiseL });
+  return b && calcCarbonation(recipe, { beerL: b.beerL, fgPlato: t.values.finalGravity, speiseL: b.speiseL, keg: b.kegL > 0 });
 }
 
 // The beer as brewed: the pitched wort as measured (else as planned) less trub
-// and dry hops, and the Speise set aside as measured (else as planned).
+// and dry hops, the Speise set aside and the dilution in the keg as measured
+// (else as planned).
 export interface BeerNow {
   youngL: number;
   speiseL: number;
-  beerL: number;               // young beer plus Speise: what is carbonated and filled
+  dilutionL: number;           // water added in the keg; 0 without such a dilution
+  beerL: number;               // young beer plus Speise and dilution: what is carbonated and filled
   measured: boolean;           // the pitched wort was measured
 }
 
@@ -31,7 +33,8 @@ export function beerNow(t: Pick<BrewTargets, 'bottling'>, m: Measured): BeerNow 
   if (!b) return undefined;
   const youngL = b.youngL + ((m.batchVolume ?? b.pitchL) - b.pitchL);
   const speiseL = m.speiseVolume ?? b.speiseL;
-  return { youngL, speiseL, beerL: Math.max(youngL + speiseL, 0), measured: m.batchVolume !== undefined };
+  const dilutionL = b.kegL > 0 ? m.dilutionVolume ?? b.kegL : 0;
+  return { youngL, speiseL, dilutionL, beerL: Math.max(youngL + speiseL, 0) + dilutionL, measured: m.batchVolume !== undefined };
 }
 
 export interface CarbonationNow {
@@ -54,10 +57,11 @@ export function carbonationNow(recipe: Recipe, t: BrewTargets, m: Measured, entr
   if (!beer || !c) return undefined;
   const { speiseL: haveL, beerL } = beer;
   const tempC = m.maxTempAfter ?? residualTempC(recipe);
+  const keg = (t.bottling?.kegL ?? 0) > 0;
 
   let speise: CarbonationNow['speise'];
   let needL = 0;
-  if (c.method === 'speise') {
+  if (c.method === 'speise' && !keg) {
     const plato = t.dilutionInKettle ? t.water?.dilution.finalPlato : m.postBoilGravity ?? t.values.postBoilGravity;
     const att = entries ? yeastAttenuation(recipe, entries) : undefined;
     if (plato !== undefined && att !== undefined && tempC !== undefined) {
@@ -66,7 +70,7 @@ export function carbonationNow(recipe: Recipe, t: BrewTargets, m: Measured, entr
     }
   }
   const result = calcCarbonation(recipe, {
-    beerL, fgPlato: m.finalGravity ?? t.values.finalGravity, speiseL: needL, tempC,
+    beerL, fgPlato: m.finalGravity ?? t.values.finalGravity, speiseL: needL, tempC, keg,
   });
   return { result, beerL, speise };
 }
