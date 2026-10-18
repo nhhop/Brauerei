@@ -929,7 +929,9 @@ Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: 
   `BUILTIN_MASH_PROFILES`. Als Liste ohne Spalten (Nutzer, 2026-10-18; `ProfileList` ohne `columns`): je
   Zeile Name, Beschreibung (eine Zeile) und Verfahren · Ablauf (`mashProfileSummary`). Der Editor (Name, Verfahren, Beschreibung, Einmaischen und
   Schritte mit Rast, Zubrühen, Dekoktion und weiterer Schüttung) ist der aus dem früheren Rezept-Dialog.
-  „Duplizieren“ öffnet die Kopie im Editor, gespeichert wird erst mit „Speichern“ (vorher sofort). Im Rezept
+  „Duplizieren“ öffnet die Kopie im Editor, gespeichert wird erst mit „Speichern“ (vorher sofort). Ein Klick
+  auf ein mitgeliefertes Profil zeigt seine Schritte schreibgeschützt (`MashProfileView`, mit „Duplizieren“;
+  Nutzer, 2026-10-18). Im Rezept
   bleiben Laden und „Plan als Profil speichern“ (siehe Maischen).
 
 ## Anlage (Einstellungen › Brauanlage)

@@ -137,6 +137,56 @@ const KIND_LABEL: Record<MashProfileStep['kind'], string> = {
   rest: 'Rast', infusion: 'Zubrühen', decoction: 'Dekoktion', doughIn: 'Schüttung',
 };
 
+const num = (n: number | undefined) => String(n ?? '?').replace('.', ',');
+
+// What a step does beyond its temperature and hold, as text.
+function stepDetail(s: MashProfileStep): string | undefined {
+  if (s.kind === 'infusion') return `Wasser ${s.waterTempC === undefined ? 'kochend' : `${num(s.waterTempC)} °C`}`;
+  if (s.kind === 'doughIn') return `${num(s.sharePct)} % der ganzen Schüttung`;
+  if (s.kind === 'decoction' && s.decoction) {
+    const d = s.decoction;
+    return [d.thin ? 'dünn' : 'dick', ...d.rests.map((r) => `Rast ${num(r.tempC)} °C ${r.durationMin} min`), `kochen ${d.boilMin} min`].join(' · ');
+  }
+  return undefined;
+}
+
+// Read-only view of a profile (the shipped ones); "Duplizieren" hands a copy
+// to the editor.
+export function MashProfileView({ profile: p, onDuplicate, onClose }: {
+  profile: MashProfile; onDuplicate: () => void; onClose: () => void;
+}) {
+  const row = (kind: string, name: string, values: string, detail?: string) => (
+    <div class="grid grid-cols-[6rem_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 rounded-md border border-border px-3 py-2">
+      <span class="text-xs text-muted">{kind}</span>
+      <span class="min-w-0">{name}</span>
+      <span class="text-right tabular-nums">{values}</span>
+      {detail && <span class="col-span-3 text-xs text-muted sm:col-start-2">{detail}</span>}
+    </div>
+  );
+  return (
+    <div class={dialogScrim} onClick={onClose}>
+      <div class={`max-h-[90vh] w-full max-w-2xl ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+          <h2 class="text-base font-medium text-fg">{p.name || 'Ohne Namen'}</h2>
+          {p.method && <p class="mt-0.5 text-xs text-muted">{p.method}</p>}
+          {p.description && <p class="mt-3 text-sm text-muted">{p.description}</p>}
+          <h3 class="mb-2 mt-5 text-sm font-medium">Schritte</h3>
+          <div class="space-y-1 text-sm">
+            {row('Einmaischen', 'Einmaischen', `${num(p.doughIn.tempC)} °C · ${p.doughIn.durationMin} min`)}
+            {p.steps.map((s) => row(KIND_LABEL[s.kind], s.name || KIND_LABEL[s.kind],
+              s.kind === 'doughIn' ? `${s.durationMin} min` : `${num(s.tempC)} °C · ${s.durationMin} min`, stepDetail(s)))}
+          </div>
+          <p class="mt-3 text-xs text-muted">Mitgelieferte Profile sind schreibgeschützt; geändert wird eine Kopie.</p>
+        </div>
+        <div class={dialogFooter}>
+          <button type="button" class={btnSecondary} onClick={onClose}>Schließen</button>
+          <button type="button" class={btnPrimary} onClick={onDuplicate}>Duplizieren</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Thick or thin, the rests in the decoction vessel and the boil.
 function DecoctionEditor({ d, onChange }: {
   d: NonNullable<MashProfileStep['decoction']>; onChange: (d: NonNullable<MashProfileStep['decoction']>) => void;

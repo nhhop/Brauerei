@@ -5,7 +5,7 @@ import {
   saveMashProfile, type MashProfile,
 } from '../../mashProfiles';
 import { btnPrimary } from '../../ui';
-import { MashProfileEditor } from './MashProfileEditor';
+import { MashProfileEditor, MashProfileView } from './MashProfileEditor';
 import { ProfileList } from './ProfileList';
 
 // Tab "Maische" of the profile page: own mash profiles from the SD card, the
@@ -16,6 +16,7 @@ export function MashProfilesTab() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<MashProfile | null>(null);
+  const [viewing, setViewing] = useState<MashProfile | null>(null);
   const [deleting, setDeleting] = useState<MashProfile | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,8 +53,12 @@ export function MashProfilesTab() {
         mobile={(p) => (p.method ? `${p.method} · ${mashProfileSummary(p)}` : mashProfileSummary(p))}
         action={<button type="button" class={btnPrimary} onClick={() => setEditing(newMashProfile())}>+ Neues Maischprofil</button>}
         ownEmpty="Noch kein eigenes Maischprofil. Ein mitgeliefertes lässt sich als Vorlage duplizieren, ein Rezept seinen Plan als Profil speichern."
-        onEdit={setEditing} onDuplicate={(p) => setEditing(duplicateMashProfile(p))} onDelete={setDeleting}
+        onEdit={setEditing} onView={setViewing} onDuplicate={(p) => setEditing(duplicateMashProfile(p))} onDelete={setDeleting}
         footnote="Ein Profil enthält Temperaturen und Haltezeiten, keine Aufheizzeiten; die rechnet das Rezept mit dem Sudhaus." />
+      {viewing && (
+        <MashProfileView profile={viewing} onClose={() => setViewing(null)}
+          onDuplicate={() => { setEditing(duplicateMashProfile(viewing)); setViewing(null); }} />
+      )}
       {editing && <MashProfileEditor profile={editing} onSave={save} onClose={() => setEditing(null)} />}
       <ConfirmModal open={deleting !== null} title="Maischprofil löschen?" confirmLabel="Löschen" destructive pending={busy}
         onConfirm={confirmDelete} onCancel={() => setDeleting(null)}>
