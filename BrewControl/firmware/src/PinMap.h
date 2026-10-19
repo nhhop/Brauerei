@@ -252,6 +252,10 @@ inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
       if (strcmp(d->type->provides.cap, u.cap) != 0)
         return fail(400, d->id + " has no " + u.cap + " channels");
       if (u.gpio >= d->type->provides.count) return fail(400, ref + " does not exist");
+      if (const ChannelNote* n = findChannelNote(*d, u.gpio)) {
+        if (!n->inputOnly) return fail(409, ref + " is reserved by the board (" + n->note + ")");
+        if (u.output) return fail(400, ref + " is input-only (" + n->note + ")");
+      }
       if (!u.output && !u.pullup && d->type->provides.inputsPullup)
         return fail(400, ref + ": inputs of " + d->type->type +
                              " always have a pull-up (set pullup)");
@@ -449,6 +453,10 @@ inline void writePinsJson(const Board& b, const char* boardName,
       v["index"] = i;
       v["label"] = c.channelNames[i];
       v[c.cap] = true;
+      if (const ChannelNote* n = findChannelNote(d, i)) {
+        v[n->inputOnly ? "inputOnly" : "reserved"] = true;
+        v["note"] = n->note;
+      }
       JsonArray users = v["users"].to<JsonArray>();
       for (const PinUse& u : uses)
         if (u.device == d.id && u.gpio == i) writeUsers(users, u);

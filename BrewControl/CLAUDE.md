@@ -75,7 +75,7 @@ pnpm typecheck
   Variant per Default auf SDA 18 / SCL 17, und GPIO 17 ist der Panel-Reset. Deshalb startet
   `main.cpp` `Wire` als Allererstes auf `BREWCTL_I2C_SDA/SCL`.
 - **Waveshare ESP32-S3-Touch-AMOLED-1.75** (`waveshare_s3_amoled_175`, seit 2026-10-07, am
-  Gerät noch nicht geprüft): gleicher Chip und gleiches Panel wie das LilyGo, andere Pins —
+  Gerät seit 2026-10-19 geprüft): gleicher Chip und gleiches Panel wie das LilyGo, andere Pins —
   QSPI CS 12, SCLK 38, D0–D3 4–7, RST 39, **kein** EN-Pin; Touch CST9217 0x5A (INT 11, RST 40);
   I²C SDA 15 / SCL 14 mit QMI8658 0x6B (normales Item), PCF85063 0x51, AXP2101 0x34, ES8311
   0x18, ES7210 0x40, TCA9554 0x20; SD per **SDMMC 1-Bit** (CLK 2, CMD 1, D0 3,

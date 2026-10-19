@@ -4821,7 +4821,7 @@ components:
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         virtual:
           type: array
-          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728, sixteen per PCF8575.
+          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728, sixteen per PCF8575, eight per TCA9554.
           items:
             type: object
             required: [ref, device, index, label, users]
@@ -4830,9 +4830,12 @@ components:
               device: { type: string, description: Device id. }
               deviceLabel: { type: string, description: The device's label; absent when it has none. }
               index: { type: integer, description: Channel number from 0. }
-              label: { type: string, description: 'Channel name: `A`..`D` (MCP4728), `P00`..`P07`, `P10`..`P17` (PCF8575).' }
+              label: { type: string, description: 'Channel name: `A`..`D` (MCP4728), `P00`..`P07`, `P10`..`P17` (PCF8575), `EXIO0`..`EXIO7` (TCA9554).' }
               dac: { type: boolean, description: The channel is a DAC output. }
               gpio: { type: boolean, description: The channel is a digital pin of a port expander. }
+              reserved: { type: boolean, description: 'The board itself uses the channel (onboard device only): an item on it is refused with 409.' }
+              inputOnly: { type: boolean, description: 'The board drives the channel (onboard device only): a `DigitalInput` may read it, a `DigitalOutput` on it is refused with 400.' }
+              note: { type: string, description: 'What the board uses a `reserved` or `inputOnly` channel for.' }
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         battery:
           type: object
@@ -4977,6 +4980,7 @@ components:
                 required: [cap, channels]
                 properties:
                   cap: { type: string, enum: [dac, gpio], description: What the channels offer. }
+                  fixed: { type: boolean, description: 'Wired by the board (the Waveshare''s TCA9554): never stored, `PUT` and `DELETE` are refused with 409, `type` `tca9554` cannot be created (400 `device type exists only onboard`).' }
                   channels:
                     type: array
                     items:
@@ -4984,8 +4988,11 @@ components:
                       required: [index, name, users]
                       properties:
                         index: { type: integer }
-                        name: { type: string, description: 'Channel name, e.g. `A` or `P05`.' }
+                        name: { type: string, description: 'Channel name, e.g. `A`, `P05` or `EXIO4`.' }
                         users: { type: array, items: { type: string }, description: Ids of the items driving this channel. }
+                        reserved: { type: boolean, description: 'Onboard device only; the board uses this channel, no item may take it.' }
+                        inputOnly: { type: boolean, description: 'Onboard device only; items may read this channel, not drive it.' }
+                        note: { type: string, description: What the board uses a `reserved` or `inputOnly` channel for. }
         types:
           type: array
           items:

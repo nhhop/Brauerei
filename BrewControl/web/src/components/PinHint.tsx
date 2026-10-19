@@ -31,7 +31,7 @@ export function PinHint({ pins, value, selfId, output, analog, pullup, irq, rtc,
   const suggestions = suggest
     ? suggestPins(pins, { selfId, output, exclude, ...needs }).slice(0, MAX_SUGGESTIONS)
     : [];
-  const allChannels = suggest && expander ? gpioChannels(pins, selfId) : [];
+  const allChannels = suggest && expander ? gpioChannels(pins, selfId, output) : [];
   const channels = allChannels.filter((c) => !c.taken).slice(0, MAX_SUGGESTIONS);
   // With a single expander the channel name alone ("P05") is unambiguous.
   const oneDevice = new Set(allChannels.map((c) => c.value.slice(0, c.value.lastIndexOf(':')))).size <= 1;
@@ -40,7 +40,7 @@ export function PinHint({ pins, value, selfId, output, analog, pullup, irq, rtc,
   const ref = isChannelRef(trimmed);
   const gpio = trimmed === '' || ref ? NaN : parseInt(trimmed, 10);
   const hint = !pins ? null
-    : ref ? channelStatus(pins, trimmed, selfId)
+    : ref ? channelStatus(pins, trimmed, selfId, output)
     : !isNaN(gpio) ? pinStatus(pins, gpio, { selfId, output, ...needs })
     : null;
 

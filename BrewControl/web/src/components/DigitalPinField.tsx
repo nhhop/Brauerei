@@ -23,7 +23,7 @@ export function DigitalPinField({ pins, value, onChange, selfId, output, pullup,
   labelClass: string;
 }) {
   const hasExpander = availableCaps(pins).has('gpio');
-  const channels = gpioChannels(pins, selfId);
+  const channels = gpioChannels(pins, selfId, output);
   const [source, setSource] = useState<'gpio' | 'expander'>(isChannelRef(value) ? 'expander' : 'gpio');
   // An edited item's config arrives after the first render.
   useEffect(() => {

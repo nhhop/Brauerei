@@ -102,9 +102,23 @@ class Pcf8575Device : public Peripheral {
   PCF8575 port_;
 };
 
+class Tca9554Device : public Peripheral {
+ public:
+  Tca9554Device(PeripheralRegistry::Ref bus, uint8_t address)
+      : bus_(std::move(bus)), port_(bus_.as<I2cBus>().wire, address) {}
+  const char* type() const override { return "tca9554"; }
+  void begin() override { port_.begin(); }
+  GpioPort* gpio() override { return &port_; }
+
+ private:
+  PeripheralRegistry::Ref bus_;  // before port_: constructed first, destroyed last
+  TCA9554 port_;
+};
+
 }  // namespace
 
-DynamicItems::DynamicItems() : buses_(currentFixedBuses()) {}
+DynamicItems::DynamicItems()
+    : buses_(currentFixedBuses()), devices_(currentFixedDevices()) {}
 
 // ── Buses ─────────────────────────────────────────────────────────────────
 
@@ -303,6 +317,8 @@ PeripheralRegistry::Ref DynamicItems::acquireDevice(const DeviceDef& d) {
   // its own.
   if (strcmp(d.type->type, "pcf8575") == 0)
     return peripherals_.acquire<Pcf8575Device>(d.id, acquireBus(*bus), d.address);
+  if (strcmp(d.type->type, "tca9554") == 0)
+    return peripherals_.acquire<Tca9554Device>(d.id, acquireBus(*bus), d.address);
   return peripherals_.acquire<Mcp4728Device>(d.id, acquireBus(*bus), d.address);
 }
 
@@ -349,6 +365,7 @@ DynamicItems::Result DynamicItems::updateDevice(const char* id, const JsonObject
   DeviceDef* old = nullptr;
   for (DeviceDef& d : devices_) if (d.id == id) old = &d;
   if (!old) return busFail("device not found", false);
+  if (old->fixed) return busFail("device " + old->id + " is wired by the board", true);
   DeviceDef d;
   std::string err;
   if (!parseDeviceDef(def, d, err)) return busFail(err, false);
@@ -369,6 +386,7 @@ DynamicItems::Result DynamicItems::updateDevice(const char* id, const JsonObject
 DynamicItems::Result DynamicItems::removeDevice(const char* id) {
   for (auto it = devices_.begin(); it != devices_.end(); ++it) {
     if (it->id != id) continue;
+    if (it->fixed) return busFail("device " + it->id + " is wired by the board", true);
     const std::vector<std::string> users = deviceUsers(it->id);
     if (!users.empty()) return busFail("device " + it->id + " is used by " + joined(users), true);
     devices_.erase(it);
@@ -383,6 +401,7 @@ void DynamicItems::writeDevices(JsonObject out) const {
   for (const DeviceDef& d : devices_) {
     JsonObject o = arr.add<JsonObject>();
     writeDeviceDef(d, o);
+    if (d.fixed) o["fixed"] = true;
     const DeviceCap& cap = d.type->provides;
     o["cap"] = cap.cap;
     JsonArray chs = o["channels"].to<JsonArray>();
@@ -390,6 +409,10 @@ void DynamicItems::writeDevices(JsonObject out) const {
       JsonObject ch = chs.add<JsonObject>();
       ch["index"] = i;
       ch["name"] = cap.channelNames[i];
+      if (const ChannelNote* n = findChannelNote(d, i)) {
+        ch[n->inputOnly ? "inputOnly" : "reserved"] = true;
+        ch["note"] = n->note;
+      }
       JsonArray users = ch["users"].to<JsonArray>();
       for (const PinUse& u : uses)
         if (u.device == d.id && u.gpio == i) users.add(u.item);
@@ -397,6 +420,7 @@ void DynamicItems::writeDevices(JsonObject out) const {
   }
   JsonArray types = out["types"].to<JsonArray>();
   for (const DeviceType& t : kDeviceTypes) {
+    if (t.fixedOnly) continue;
     JsonObject o = types.add<JsonObject>();
     o["type"] = t.type;
     o["bus"] = t.bus;
@@ -1703,7 +1727,8 @@ void DynamicItems::loadFromSD(fs::FS& sd, Registry& reg) {
 std::string DynamicItems::storedDevicesJson() const {
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
-  for (const DeviceDef& d : devices_) writeDeviceDef(d, arr.add<JsonObject>());
+  for (const DeviceDef& d : devices_)
+    if (!d.fixed) writeDeviceDef(d, arr.add<JsonObject>());
   std::string out;
   serializeJson(doc, out);
   return out;

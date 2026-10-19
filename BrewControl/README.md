@@ -317,6 +317,17 @@ als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den
   Kanäle P00–P07 und P10–P17): zusätzliche Schaltausgänge und Eingänge, siehe unten.
   Auf dem Waveshare liegt der Onboard-Expander TCA9554 auf 0x20 (reservierte Adresse des
   Board-Busses) — dort den PCF8575 auf 0x21–0x27 jumpern.
+- **TCA9554** (8 digitale Pins, Kanäle `EXIO0`–`EXIO7`): nur als **fest verdrahtetes
+  Onboard-Gerät** des Waveshare (`tca9554-i2c-board-20`, in `GET /api/peripherals` mit
+  `fixed: true`, nie gespeichert, nicht änderbar oder löschbar, als Typ nicht anlegbar). Belegung
+  laut Waveshares `HARDWARE_REFERENCE.md`: `EXIO0`–`EXIO2` frei (nur an Testpunkten
+  herausgeführt), `EXIO3` RTC-Interrupt, `EXIO4` PWR-Taste (High = gedrückt), `EXIO5`
+  PMU-Interrupt, `EXIO6` IMU-Interrupt — diese vier sind Board-Eingänge, ein `DigitalInput`
+  darf sie lesen, ein `DigitalOutput` ist 400 —, `EXIO7` GNSS-Reset, ganz gesperrt (409). Der
+  Chip hat echte Richtungsregister und **keinen** Pull-up; `pullup` wird still ignoriert. Der
+  Treiber übernimmt beim Start Ausgangs- und Richtungsregister des Chips und schreibt danach
+  nur das eine Register, das sich ändert — Kanäle, die kein Item anfasst, bleiben, wie das
+  Board sie hinterlassen hat.
 
 - **Id** aus Typ, Bus und Adresse, z. B. `mcp4728-i2c-board-60`; optional ein `label`.
 - **Kanal-Referenz im `pin`-Feld**: `AnalogOutput` mit `mode: "dac"` nimmt statt einer

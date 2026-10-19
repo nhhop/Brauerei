@@ -208,6 +208,9 @@ export interface VirtualPin {
   label: string; // channel name: "A".."D" (DAC), "P00".."P17" (PCF8575)
   dac?: boolean; // a DAC channel
   gpio?: boolean; // a digital pin of a port expander
+  reserved?: boolean; // the board itself uses it: no item may take it
+  inputOnly?: boolean; // the board drives it: items may read, not drive it
+  note?: string; // what the board uses it for
   users: PinUser[];
 }
 
@@ -542,12 +545,16 @@ export interface DeviceStored {
 
 export interface DeviceChannel {
   index: number;
-  name: string; // "A".."D", "P00".."P17"
+  name: string; // "A".."D", "P00".."P17", "EXIO0".."EXIO7"
   users: string[]; // ids of the items on this channel
+  reserved?: boolean;
+  inputOnly?: boolean;
+  note?: string;
 }
 
 export interface DeviceInfo extends DeviceStored {
   cap: string; // capability the channels offer: "dac", "gpio"
+  fixed?: boolean; // wired by the board, read-only
   channels: DeviceChannel[];
 }
 

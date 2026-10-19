@@ -242,6 +242,25 @@ describe('port-expander pins', () => {
     expect(channelStatus(v, 'pcf8575-i2c-board-21:0').level).toBe('error');
   });
 
+  it('marks channels the board uses: reserved never, input-only for outputs', () => {
+    const v: PinsInfo = {
+      ...info,
+      virtual: [
+        { ref: 'tca9554-i2c-board-20:0', device: 'tca9554-i2c-board-20', index: 0, label: 'EXIO0', gpio: true, users: [] },
+        { ref: 'tca9554-i2c-board-20:4', device: 'tca9554-i2c-board-20', index: 4, label: 'EXIO4', gpio: true,
+          inputOnly: true, note: 'PWR-Taste', users: [] },
+        { ref: 'tca9554-i2c-board-20:7', device: 'tca9554-i2c-board-20', index: 7, label: 'EXIO7', gpio: true,
+          reserved: true, note: 'GNSS-Reset (LC76G)', users: [] },
+      ],
+    };
+    expect(gpioChannels(v)[0].taken).toBeUndefined();
+    expect(gpioChannels(v)[1].taken).toBeUndefined(); // reading the button is fine
+    expect(gpioChannels(v, undefined, true)[1].taken).toBe('nur als Eingang nutzbar (PWR-Taste)');
+    expect(gpioChannels(v)[2].taken).toBe('vom Board belegt (GNSS-Reset (LC76G))');
+    expect(channelStatus(v, 'tca9554-i2c-board-20:4', undefined, true).level).toBe('error');
+    expect(channelStatus(v, 'tca9554-i2c-board-20:4').level).toBe('ok');
+  });
+
   it('tells refs from GPIO numbers and leaves refs out of the risky-pin check', () => {
     expect(isChannelRef('pcf8575-i2c-board-20:3')).toBe(true);
     expect(isChannelRef('3')).toBe(false);

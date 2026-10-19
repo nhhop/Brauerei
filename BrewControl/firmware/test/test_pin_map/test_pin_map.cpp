@@ -606,6 +606,68 @@ void test_legacy_dac_number_unchanged() {
   TEST_ASSERT_EQUAL_STRING("this board has no DAC", r.error.c_str());
 }
 
+// The Waveshare board's TCA9554: free EXIO0..2, board inputs EXIO3..6, EXIO7
+// reserved.
+std::vector<DeviceDef> onboardExpander() {
+  DeviceDef d;
+  d.type = findDeviceType("tca9554");
+  d.bus = "i2c-board";
+  d.address = 0x20;
+  d.id = deviceIdFor(*d.type, d.bus, d.address);
+  d.fixed = true;
+  d.notes = kWaveshareAmoled175ExpanderNotes;
+  d.noteCount = sizeof(kWaveshareAmoled175ExpanderNotes) / sizeof(ChannelNote);
+  return {d};
+}
+
+void test_onboard_expander_channels() {
+  const std::vector<DeviceDef> dev = onboardExpander();
+  auto checkOb = [&](const char* cfg) {
+    JsonDocument d = parse(cfg);
+    return checkItemPins(kLilyGoAmoled, {}, d.as<JsonObjectConst>(), "", dev);
+  };
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20", dev[0].id.c_str());
+  // EXIO0 is free, as an output and as an input.
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalOutput","id":"d","pin":"tca9554-i2c-board-20:0"})").ok);
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalInput","id":"i","pin":"tca9554-i2c-board-20:2"})").ok);
+  // No pull-up on the chip, but that is not an error (unlike the PCF8575).
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalInput","id":"i","pin":"tca9554-i2c-board-20:1","pullup":true})").ok);
+  // EXIO4 (power button) may be read ...
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalInput","id":"btn","pin":"tca9554-i2c-board-20:4"})").ok);
+  // ... but not driven.
+  auto r = checkOb(
+      R"({"type":"DigitalOutput","id":"d","pin":"tca9554-i2c-board-20:4"})");
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20:4 is input-only (PWR-Taste)", r.error.c_str());
+  // EXIO7 belongs to the board: neither reading nor driving.
+  r = checkOb(
+      R"({"type":"DigitalInput","id":"i","pin":"tca9554-i2c-board-20:7"})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20:7 is reserved by the board (GNSS-Reset (LC76G))",
+                           r.error.c_str());
+  r = checkOb(
+      R"({"type":"DigitalOutput","id":"d","pin":"tca9554-i2c-board-20:8"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20:8 does not exist", r.error.c_str());
+
+  JsonDocument doc;
+  writePinsJson(kLilyGoAmoled, "waveshare", {}, doc.to<JsonObject>(), dev);
+  JsonArrayConst v = doc["virtual"];
+  TEST_ASSERT_EQUAL(8, v.size());
+  TEST_ASSERT_TRUE(v[0]["gpio"].as<bool>());
+  TEST_ASSERT_FALSE(v[0]["reserved"].as<bool>());
+  TEST_ASSERT_FALSE(v[0]["inputOnly"].as<bool>());
+  TEST_ASSERT_TRUE(v[4]["inputOnly"].as<bool>());
+  TEST_ASSERT_EQUAL_STRING("PWR-Taste", v[4]["note"]);
+  TEST_ASSERT_TRUE(v[7]["reserved"].as<bool>());
+  TEST_ASSERT_EQUAL_STRING("EXIO7", v[7]["label"]);
+}
+
 void test_pins_json_virtual_channels() {
   auto uses = usesOf({R"({"type":"AnalogOutput","id":"boil","pin":"mcp4728-i2c-board-60:1","mode":"dac"})"});
   JsonDocument doc;
@@ -680,5 +742,6 @@ int main(int, char**) {
   RUN_TEST(test_gpio_numbers_unchanged);
   RUN_TEST(test_legacy_dac_number_unchanged);
   RUN_TEST(test_pins_json_virtual_channels);
+  RUN_TEST(test_onboard_expander_channels);
   return UNITY_END();
 }

@@ -32,6 +32,7 @@
 
 #include "devices/MCP4728.h"
 #include "devices/PCF8575.h"
+#include "devices/TCA9554.h"
 
 #include "sensors/DigitalInputSensor.h"
 #include "sensors/AnalogInputSensor.h"

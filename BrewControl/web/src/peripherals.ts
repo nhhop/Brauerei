@@ -3,6 +3,7 @@
 export const DEVICE_TYPE_LABEL: Record<string, string> = {
   mcp4728: 'MCP4728',
   pcf8575: 'PCF8575',
+  tca9554: 'TCA9554',
 };
 
 export const DEVICE_TYPE_HINT: Record<string, string> = {

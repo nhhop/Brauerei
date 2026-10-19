@@ -231,6 +231,17 @@ inline constexpr FixedBus kWaveshareAmoled175Buses[] = {
      "Fest verdrahtet mit Touch, IMU, RTC, PMU und Audio",
      kWaveshareAmoled175I2cReserved, sizeof(kWaveshareAmoled175I2cReserved) / sizeof(AddrDef)},
 };
+// EXIO0..2 are free (test points only), EXIO3..6 are inputs the board wires to
+// RTC, power button, PMU and IMU, EXIO7 is the GNSS reset (Waveshare
+// HARDWARE_REFERENCE.md). The driver adopts the chip's state, so channels no
+// item takes stay as the board left them.
+inline constexpr ChannelNote kWaveshareAmoled175ExpanderNotes[] = {
+    {3, true, "RTC-Interrupt (PCF85063)"},
+    {4, true, "PWR-Taste"},
+    {5, true, "PMU-Interrupt (AXP2101)"},
+    {6, true, "IMU-Interrupt (QMI8658)"},
+    {7, false, "GNSS-Reset (LC76G)"},
+};
 
 #if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
 static_assert(BREWCTL_I2C_SDA == 15 && BREWCTL_I2C_SCL == 14,
@@ -344,6 +355,25 @@ inline std::vector<BusDef> currentFixedBuses() {
   for (const FixedBus& f : kWaveshareAmoled175Buses) out.push_back(busFromFixed(f));
 #elif defined(BREWCTL_BOARD_LILYGO_AMOLED)
   for (const FixedBus& f : kLilyGoAmoledBuses) out.push_back(busFromFixed(f));
+#endif
+  return out;
+}
+
+// The peripheral devices the current board wires itself (only the Waveshare
+// has one: its TCA9554), analogous to currentFixedBuses().
+inline std::vector<DeviceDef> currentFixedDevices() {
+  std::vector<DeviceDef> out;
+#if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+  DeviceDef d;
+  d.type = findDeviceType("tca9554");
+  d.bus = "i2c-board";
+  d.address = 0x20;
+  d.id = deviceIdFor(*d.type, d.bus, d.address);
+  d.label = "Onboard-Expander";
+  d.fixed = true;
+  d.notes = kWaveshareAmoled175ExpanderNotes;
+  d.noteCount = sizeof(kWaveshareAmoled175ExpanderNotes) / sizeof(ChannelNote);
+  out.push_back(d);
 #endif
   return out;
 }

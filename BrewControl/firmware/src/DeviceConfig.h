@@ -35,6 +35,7 @@ struct DeviceType {
   uint8_t addrLast;
   uint8_t addrDefault;
   DeviceCap provides;
+  bool fixedOnly = false;  // exists only as an onboard device (BoardPins.h), never created by a user
 };
 
 inline constexpr const char* kMcp4728Channels[] = {"A", "B", "C", "D"};
@@ -42,12 +43,17 @@ inline constexpr const char* kPcf8575Channels[] = {
     "P00", "P01", "P02", "P03", "P04", "P05", "P06", "P07",
     "P10", "P11", "P12", "P13", "P14", "P15", "P16", "P17"};
 
+inline constexpr const char* kTca9554Channels[] = {
+    "EXIO0", "EXIO1", "EXIO2", "EXIO3", "EXIO4", "EXIO5", "EXIO6", "EXIO7"};
+
 // PCF8575: quasi-bidirectional pins (0 sinks hard, 1 is a weak pull-up that
-// doubles as input), so its inputs always have a pull-up. On the Waveshare
-// board 0x20 is the onboard TCA9554 (reserved address of i2c-board).
+// doubles as input), so its inputs always have a pull-up. TCA9554: real
+// direction registers, no pull-up; only the Waveshare board has one (onboard,
+// 0x20), so it is not creatable (fixedOnly).
 inline constexpr DeviceType kDeviceTypes[] = {
     {"mcp4728", "i2c", 0x60, 0x67, 0x60, {"dac", 4, 4095, kMcp4728Channels}},
     {"pcf8575", "i2c", 0x20, 0x27, 0x20, {"gpio", 16, 1, kPcf8575Channels, true}},
+    {"tca9554", "i2c", 0x20, 0x27, 0x20, {"gpio", 8, 1, kTca9554Channels, false}, true},
 };
 
 inline const DeviceType* findDeviceType(const char* type) {
@@ -56,13 +62,32 @@ inline const DeviceType* findDeviceType(const char* type) {
   return nullptr;
 }
 
+// A channel of an onboard device that the board itself uses: reserved (no
+// item may take it) or input-only (items may read it, not drive it).
+struct ChannelNote {
+  uint8_t channel;
+  bool inputOnly;
+  const char* note;
+};
+
 struct DeviceDef {
   std::string id;
   std::string label;
   const DeviceType* type = nullptr;
   std::string bus;  // bus id
   uint8_t address = 0;
+  // Onboard device (BoardPins.h currentFixedDevices): never stored, not
+  // editable or removable. notes marks the channels the board uses.
+  bool fixed = false;
+  const ChannelNote* notes = nullptr;
+  size_t noteCount = 0;
 };
+
+inline const ChannelNote* findChannelNote(const DeviceDef& d, int channel) {
+  for (size_t i = 0; i < d.noteCount; ++i)
+    if (d.notes[i].channel == channel) return &d.notes[i];
+  return nullptr;
+}
 
 // "mcp4728-i2c-board-60": type, bus id and address (hex). One address per
 // bus, so the id is unique; it changes with bus or address (allowed only
@@ -80,6 +105,7 @@ inline std::string deviceIdFor(const DeviceType& t, const std::string& bus, uint
 inline bool parseDeviceDef(JsonObjectConst in, DeviceDef& out, std::string& err) {
   const DeviceType* t = findDeviceType(in["type"] | "");
   if (!t) { err = "unknown device type"; return false; }
+  if (t->fixedOnly) { err = "device type exists only onboard"; return false; }
   DeviceDef d;
   d.type = t;
   d.bus = in["bus"] | "";
