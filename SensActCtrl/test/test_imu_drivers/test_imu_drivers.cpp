@@ -146,6 +146,21 @@ void test_tilt_on_bmi160() {
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 25.0f, s.channel(2).reading.value);
 }
 
+void test_axis_signs_flip_accel_and_gyro() {
+  imuAccelG[0] = 0.5f; imuAccelG[1] = 0.25f; imuAccelG[2] = -1.0f;
+  imuGyroDps[0] = 10.0f; imuGyroDps[1] = 20.0f; imuGyroDps[2] = 30.0f;
+  QMI8658Sensor s("imu", 0x6B);
+  s.setAxisSigns(-1.0f, 1.0f, -1.0f);
+  s.begin();
+  s.tick();
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -0.5f, s.channel(0).reading.value);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.25f, s.channel(1).reading.value);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, s.channel(2).reading.value);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -10.0f, s.channel(3).reading.value);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 20.0f, s.channel(4).reading.value);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, -30.0f, s.channel(5).reading.value);
+}
+
 void setUp() {
   imuPresent = true;
   imuNowMs   = 0;
@@ -163,5 +178,6 @@ int main(int, char**) {
   RUN_TEST(test_bmi160_decode_scales_and_byte_order);
   RUN_TEST(test_bmi160_decode_temperature_below_zero_point);
   RUN_TEST(test_tilt_on_bmi160);
+  RUN_TEST(test_axis_signs_flip_accel_and_gyro);
   return UNITY_END();
 }

@@ -4571,6 +4571,9 @@ components:
             (as `<id>.<channel>`, in the order listed here). `derived` requires
             `factor`. An unknown key, an empty array or `derived` without
             `factor` is rejected with 400.
+        invertX: { type: boolean, description: "IMUs only: flip the X axis (accel and gyro) for a chip mounted the other way round. Same for `invertY` and `invertZ`. With the device lying flat, face up, `az` must read about +1 g." }
+        invertY: { type: boolean }
+        invertZ: { type: boolean }
         pullup: { type: boolean }
         invert: { type: boolean }
         debounce_ms: { type: integer }

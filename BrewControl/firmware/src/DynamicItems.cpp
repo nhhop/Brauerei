@@ -532,6 +532,9 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     else if (strcmp(type, "BMI270") == 0) raw = std::make_unique<BMI270Sensor>(id, wire, addr);
     else if (strcmp(type, "BMI160") == 0) raw = std::make_unique<BMI160Sensor>(id, wire, addr);
     else                                  raw = std::make_unique<GY521Sensor>(id, wire, addr);
+    raw->setAxisSigns(cfg["invertX"] | false ? -1.0f : 1.0f,
+                      cfg["invertY"] | false ? -1.0f : 1.0f,
+                      cfg["invertZ"] | false ? -1.0f : 1.0f);
     auto sensor = std::make_unique<ImuTiltSensor>(id, std::move(raw));
     sensor->setChannelMask(mask);
     e->ptr = std::move(sensor);

@@ -160,6 +160,8 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // GY521 and the other IMUs
   const [gy521Addr, setGy521Addr] = useState<number>(0x68);
   const [gy521Channels, setGy521Channels] = useState<string[]>(['pitch']);
+  // Mounting correction: axes of the chip that point the wrong way on the board.
+  const [imuInvert, setImuInvert] = useState({ x: false, y: false, z: false });
 
   // HCSR04
   const [trigPin, setTrigPin] = useState('');
@@ -349,6 +351,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           // No "channels": a GY521 from before it had them, i.e. pitch only.
           const chs = editConfig.channels as string[] | undefined;
           setGy521Channels(chs ?? ['pitch']);
+          setImuInvert({ x: !!editConfig.invertX, y: !!editConfig.invertY, z: !!editConfig.invertZ });
         } else if (t === 'HX711') {
           setHx711Dout(String(editConfig.dout ?? ''));
           setHx711Sck(String(editConfig.sck ?? ''));
@@ -726,6 +729,9 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
           const channels = GY521_ORDER.filter((k) => gy521Channels.includes(k));
           if (!channels.length) throw new Error('Mindestens einen Kanal wählen');
           cfg = { type: sensorType, id: trimId, bus, address: gy521Addr, channels };
+          if (imuInvert.x) cfg.invertX = true;
+          if (imuInvert.y) cfg.invertY = true;
+          if (imuInvert.z) cfg.invertZ = true;
         } else if (sensorType === 'HX711') {
           const dout = parseInt(hx711Dout, 10);
           const sck  = parseInt(hx711Sck,  10);
@@ -1614,6 +1620,25 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
                     </div>
                   ))}
                 </div>
+              </div>
+              <div>
+                <label class={lbl}>Einbaulage</label>
+                <div class="flex items-center gap-4">
+                  {(['x', 'y', 'z'] as const).map((a) => (
+                    <label key={a} class="flex items-center gap-1.5 text-sm text-fg cursor-pointer">
+                      <input type="checkbox" checked={imuInvert[a]} class="accent-accent"
+                        onChange={(e) => {
+                          const on = (e.target as HTMLInputElement).checked;
+                          setImuInvert((v) => ({ ...v, [a]: on }));
+                        }} />
+                      {a.toUpperCase()} umkehren
+                    </label>
+                  ))}
+                </div>
+                <p class="mt-1 text-xs text-faint">
+                  Für einen Chip, der anders herum eingebaut ist: Liegt das Gerät flach, muss <strong>az</strong> positiv
+                  sein. Wirkt auf Beschleunigung und Drehrate dieser Achse.
+                </p>
               </div>
               <p class="text-xs text-faint">
                 Je Kanal <strong>id.kanal</strong>: <strong>pitch</strong> (um Y), <strong>roll</strong> (um X),
