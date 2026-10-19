@@ -74,13 +74,13 @@ void test_mask_rejects_unknown_empty_and_non_array() {
 }
 
 void test_mask_eleven_gy521_keys() {
-  JsonDocument doc = parse(R"({"channels":["gz","pitch","temp","tilt","dir"]})");
+  JsonDocument doc = parse(R"({"channels":["gz","pitch","temp","tilt","dir","motion"]})");
   uint16_t m = 0;
   const char* err = nullptr;
-  TEST_ASSERT_EQUAL(11, kGy521ChannelCount);
+  TEST_ASSERT_EQUAL(12, kGy521ChannelCount);
   TEST_ASSERT_TRUE(parseChannelMask(doc.as<JsonObjectConst>(), kGy521Channels,
                                     kGy521ChannelCount, 1, m, err));
-  TEST_ASSERT_EQUAL_UINT16(0x400 | 0x200 | 0x001 | 0x008 | 0x004, m);
+  TEST_ASSERT_EQUAL_UINT16(0x800 | 0x400 | 0x200 | 0x001 | 0x008 | 0x004, m);
   // A key from before the angles were split up is unknown now.
   JsonDocument old = parse(R"({"channels":["angle"]})");
   TEST_ASSERT_FALSE(parseChannelMask(old.as<JsonObjectConst>(), kGy521Channels,

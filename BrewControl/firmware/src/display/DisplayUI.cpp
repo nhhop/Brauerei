@@ -330,9 +330,28 @@ void DisplayUI::updateRotation_() {
   lv_obj_invalidate(lv_scr_act());  // the whole picture, turned
 }
 
+bool DisplayUI::motionWake_() {
+  if (millis() - lastMotionMs_ < kOrientPollMs) return moving_;
+  lastMotionMs_ = millis();
+  moving_ = false;
+  const String& id = settings_->displayOrientationSensor();
+  if (!settings_->displayWakeOnMotion() || !id.length()) return false;
+  if (SensActCtrl::Sensor* s = registry_->findSensor(id.c_str())) {
+    for (size_t i = 0; i < s->channelCount(); ++i) {
+      const SensActCtrl::Channel c = s->channel(i);
+      if (strcmp(c.key, "motion") == 0) {
+        moving_ = c.reading.valid && c.reading.value > 0.5f;
+        break;
+      }
+    }
+  }
+  return moving_;
+}
+
 void DisplayUI::tick(bool holdAwake) {
   if (!ready_) return;
   updateRotation_();
+  holdAwake = motionWake_() || holdAwake;
   if (power_ != Power::Off) {
     lv_timer_handler();
   } else if (g_touchUp && millis() - lastPollMs_ >= kDarkPollMs) {

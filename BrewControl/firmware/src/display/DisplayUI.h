@@ -58,12 +58,18 @@ class DisplayUI {
   // Applies display.rotation, or follows the orientation sensor; at most every
   // kOrientPollMs.
   void updateRotation_();
+  // True while the orientation sensor reports "motion" and display.wakeOnMotion
+  // is on; at most every kOrientPollMs. The registry ticks in loop() whether
+  // or not the panel is lit, so this works on a dark panel too.
+  bool motionWake_();
   static constexpr uint32_t kOrientPollMs = 250;
 
   bool ready_ = false;
   const SettingsStore* settings_ = nullptr;
   SensActCtrl::Registry* registry_ = nullptr;
   uint32_t lastOrientMs_ = 0;
+  uint32_t lastMotionMs_ = 0;
+  bool     moving_       = false;
   Power power_ = Power::Awake;
   uint8_t brightness_ = 0;   // last value written to the panel
   uint32_t lastPollMs_ = 0;  // touch poll while dark

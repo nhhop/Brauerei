@@ -111,6 +111,10 @@ pnpm typecheck
   - Ist das Display schwarz (Burn-in-Schutz), läuft `lv_timer_handler()` nicht. Auch die
     Timer von `DisplayPages` stehen dann still und laufen erst nach dem Aufwecken nach.
     Nichts, was ohne Display weiterlaufen muss, gehört in einen LVGL-Timer.
+  - **Wecken bei Bewegung** (`DisplayUI::motionWake_()`) liest den Kanal `motion` des
+    `orientationSensor`-Items alle 250 ms direkt aus der Registry — nicht aus einem
+    LVGL-Timer, weil der bei schwarzem Display steht. Der Kanal muss im Item gewählt sein
+    (kein eingebauter Zwang, damit die Kanalwahl die einzige Quelle bleibt).
   - Den Touch nur über `readTouch()` bzw. `noteTouch()` in `DisplayUI.cpp` lesen. Jeder
     `getTouchPoints()`-Aufruf quittiert den Frame, ein zweiter Leser sieht leere Frames.
   - **Drehung** (`display.rotation`/`orientationSensor`, seit 2026-10-07) passiert nur in

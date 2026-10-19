@@ -4565,7 +4565,12 @@ components:
             temperature in °C; `ax`/`ay`/`az` acceleration in g; `gx`/`gy`/`gz`
             rotation rate in °/s; `dir` direction of the lean in °, 0…360,
             `atan2(roll, pitch)` — the side that is up, 0 = the −X side,
-            90 = +Y, 180 = +X, 270 = −Y; invalid below 0.5° of tilt). Absent → all channels; for the IMUs only
+            90 = +Y, 180 = +X, 270 = −Y; invalid below 0.5° of tilt; `motion`
+            binary 0/1, 1 while the device is lifted, tilted or moved — the
+            rotation rate or the deviation of the acceleration from 1 g
+            exceeds `motionThreshold` for a total of 100 ms, and it falls back
+            3 s after the last time; a tremor on a table does not trigger it).
+            Absent → all channels; for the IMUs only
             `pitch`. The measurement itself always
             runs; the array only decides which channels appear in the snapshot
             (as `<id>.<channel>`, in the order listed here). `derived` requires
@@ -4574,6 +4579,16 @@ components:
         invertX: { type: boolean, description: "IMUs only: flip the X axis (accel and gyro) for a chip mounted the other way round. Same for `invertY` and `invertZ`. With the device lying flat, face up, `az` must read about +1 g." }
         invertY: { type: boolean }
         invertZ: { type: boolean }
+        motionThreshold:
+          type: number
+          minimum: 1
+          maximum: 500
+          default: 20
+          description: |
+            IMUs only: sensitivity of the `motion` channel in °/s of rotation
+            rate. An acceleration deviating from 1 g by 0.004 g per °/s of it
+            (default 0.08 g) counts alike. Lower = more sensitive. Outside
+            1…500 is rejected with 400 `invalid motionThreshold`.
         pullup: { type: boolean }
         invert: { type: boolean }
         debounce_ms: { type: integer }
@@ -6459,7 +6474,7 @@ components:
         counts from the last touch; touching, a latched emergency stop and a
         new alert wake the display, and the waking touch triggers nothing.
         Stored and validated on every board, used only where `supported`.
-      required: [brightness, dimAfterSec, dimPercent, offAfterSec, pixelShift, rotation, orientationSensor, orientationMirror, supported]
+      required: [brightness, dimAfterSec, dimPercent, offAfterSec, pixelShift, rotation, orientationSensor, orientationMirror, wakeOnMotion, supported]
       properties:
         brightness:
           type: integer
@@ -6508,6 +6523,14 @@ components:
           type: boolean
           default: false
           description: Reverse the sense of rotation for an IMU that sees the panel from behind.
+        wakeOnMotion:
+          type: boolean
+          default: true
+          description: |
+            A dimmed or dark display wakes, like on a touch, while the
+            `orientationSensor` item's `motion` channel (an IMU with that
+            channel selected) is 1. Without `orientationSensor` or the
+            channel it has no effect.
         supported:
           type: boolean
           readOnly: true

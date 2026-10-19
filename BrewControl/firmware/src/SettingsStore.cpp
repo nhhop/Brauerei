@@ -81,6 +81,7 @@ void SettingsStore::loadFromSD(fs::FS& sd) {
     if (const char* s = display["orientationSensor"]) displayOrientationSensor_ = s;
     if (display["orientationMirror"].is<bool>())
       displayOrientationMirror_ = display["orientationMirror"].as<bool>();
+    if (display["wakeOnMotion"].is<bool>()) displayWakeOnMotion_ = display["wakeOnMotion"].as<bool>();
   }
   JsonObject energy = doc["energy"].as<JsonObject>();
   if (!energy.isNull()) readEnergy_(energy);
@@ -183,6 +184,7 @@ String SettingsStore::serialize() const {
   display["rotation"]    = displayRotation_;
   display["orientationSensor"] = displayOrientationSensor_.c_str();
   display["orientationMirror"] = displayOrientationMirror_;
+  display["wakeOnMotion"] = displayWakeOnMotion_;
 #ifdef BREWCTL_HAS_DISPLAY
   display["supported"] = true;
 #else
@@ -278,6 +280,7 @@ void SettingsStore::update(const JsonObject& patch) {
     if (const char* s = display["orientationSensor"]) displayOrientationSensor_ = s;
     if (display["orientationMirror"].is<bool>())
       displayOrientationMirror_ = display["orientationMirror"].as<bool>();
+    if (display["wakeOnMotion"].is<bool>()) displayWakeOnMotion_ = display["wakeOnMotion"].as<bool>();
     // "supported" is read-only (server-computed) — never read from a patch.
   }
   JsonObject energy = patch["energy"].as<JsonObject>();
