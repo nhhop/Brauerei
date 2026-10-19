@@ -581,11 +581,18 @@ Neustart):
 | Helligkeit gedimmt | 20 % | Anteil der eingestellten Helligkeit |
 | Ausschalten nach | 10 min | Zeit ohne Berührung; „Nie“ = 0 |
 | Pixel-Shift | aus | verschiebt das Bild jede Minute um 3 px, im Kreis über 8 Positionen |
+| Bei Bewegung wecken | an | nur mit Ausrichtungs-Sensor: geht dessen Kanal `motion` auf 1, wacht das Display wie bei einer Berührung |
 
 - **Aufwecken:** Ein Tipp weckt das Display. Dieser erste Druck erreicht LVGL
   nie, er löst also weder Power-Knopf noch Tippzone, Griff oder Wischen aus.
   Erst der nächste Druck zählt. Das gilt aus dem gedimmten wie aus dem
   schwarzen Zustand.
+- **Bewegung** (`display.wakeOnMotion`): Das IMU-Item aus `orientationSensor` braucht
+  dafür den Kanal „Bewegung“ (`motion`, im Item-Formular wählbar). Anheben oder Kippen
+  weckt das Display und hält es wach, solange die Bewegung anhält; Zittern auf dem
+  Tisch nicht. Die Empfindlichkeit ist pro Item einstellbar (`motionThreshold` in °/s,
+  Default 20, Formularfeld „Bewegungs-Schwelle“); das Item selbst wird weiterhin
+  jeden `loop()`-Durchlauf gelesen, auch bei schwarzem Display.
 - **Not-Aus** hält das Display voll hell, solange er eingerastet ist. Nach dem
   Aufheben läuft die Wartezeit von vorn.
 - **Jede neue Meldung** der Alarm-Zentrale weckt das Display, auch

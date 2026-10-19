@@ -107,7 +107,11 @@ Registertreiber); `ImuTiltSensor` (Winkel aus einem eigenen `ImuSensor`,
 gelerntem Kreisel-Nullpunkt, `tilt` als Neigung der Z-Achse gegen die
 Senkrechte, `dir` als Richtung der Neigung — Peilung der oberen Seite in
 der X/Y-Ebene, `atan2(roll, pitch)`, 0…360° (0 = −X-Seite oben, 90 = +Y,
-180 = +X, 270 = −Y), unter 0,5° Neigung ungültig; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 11;
+180 = +X, 270 = −Y), unter 0,5° Neigung ungültig; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 12;
+`motion` ist ein Binärkanal „Gerät wird angehoben, gekippt oder bewegt“: Drehrate
+oder Abweichung des Betrags der Beschleunigung von 1 g über `setMotionThreshold()`
+(°/s, Default 20; 0,004 g je °/s), zusammen mindestens 100 ms lang, danach 3 s Nachlauf —
+Zittern auf dem Tisch und einzelne Stöße lösen nicht aus;
 kein Gierwinkel, der braucht ein Magnetometer), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei
 konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),

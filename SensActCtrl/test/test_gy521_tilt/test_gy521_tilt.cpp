@@ -226,9 +226,128 @@ void test_dir_is_invalid_when_level() {
 void test_dir_is_last_in_a_full_mask() {
   GY521TiltSensor s("imu", 0x68);
   s.setChannelMask(GY521TiltSensor::kChannelAll);
-  TEST_ASSERT_EQUAL(11u, s.channelCount());
+  TEST_ASSERT_EQUAL(12u, s.channelCount());
   TEST_ASSERT_EQUAL_STRING("gz",  s.channel(9).key);
   TEST_ASSERT_EQUAL_STRING("dir", s.channel(10).key);
+  TEST_ASSERT_EQUAL_STRING("motion", s.channel(11).key);
+}
+
+// ── motion ──────────────────────────────────────────────────────────────────
+
+namespace {
+GY521TiltSensor* motionSensor(GY521TiltSensor& s) {
+  s.setChannelMask(GY521TiltSensor::kChannelMotion);
+  s.begin();
+  run(s, 1);
+  return &s;
+}
+bool moving(const GY521TiltSensor& s) { return s.channel(0).reading.value > 0.5f; }
+}  // namespace
+
+void test_motion_is_binary_and_valid_at_rest() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  TEST_ASSERT_EQUAL_STRING("motion", s.channel(0).key);
+  TEST_ASSERT_EQUAL(ValueKind::Binary, s.channel(0).meta.kind);
+  TEST_ASSERT_TRUE(s.channel(0).reading.valid);
+  TEST_ASSERT_FALSE(moving(s));
+}
+
+// A tremor on a table (~1 deg/s, 0.01 g) never counts, however long it lasts.
+void test_motion_ignores_tremor() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  setAccel(0.01f, 0.0f, 1.01f);
+  setGyro(1.0f, -1.0f, 0.5f);
+  for (int i = 0; i < 500; ++i) { run(s, 1); TEST_ASSERT_FALSE(moving(s)); }
+}
+
+// One knock (a single sample) is too short.
+void test_motion_ignores_a_single_spike() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  setAccel(0.0f, 0.0f, 1.6f);
+  run(s, 1);
+  setAccel(0.0f, 0.0f, 1.0f);
+  run(s, 100);
+  TEST_ASSERT_FALSE(moving(s));
+}
+
+// Lifting: |accel| leaves 1 g, with no rotation at all.
+void test_motion_on_lift() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  setAccel(0.0f, 0.0f, 1.2f);
+  run(s, 5);
+  TEST_ASSERT_FALSE(moving(s));  // 50 ms: not yet
+  run(s, 10);
+  TEST_ASSERT_TRUE(moving(s));
+}
+
+// Tilting in the hand: |accel| stays 1 g, only the gyro shows it.
+void test_motion_on_rotation() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  setGyro(0.0f, 40.0f, 0.0f);
+  run(s, 20);
+  TEST_ASSERT_TRUE(moving(s));
+}
+
+// The flag outlasts the movement by kMotionHoldMs, then falls.
+void test_motion_holds_then_falls() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  setGyro(0.0f, 40.0f, 0.0f);
+  run(s, 20);
+  setGyro(0.0f, 0.0f, 0.0f);
+  run(s, 280);  // 2.8 s after the last exceedance
+  TEST_ASSERT_TRUE(moving(s));
+  run(s, 30);   // 3.1 s
+  TEST_ASSERT_FALSE(moving(s));
+}
+
+// A swing that crosses zero rate every few samples still counts.
+void test_motion_survives_zero_crossings() {
+  GY521TiltSensor s("imu", 0x68);
+  motionSensor(s);
+  for (int i = 0; i < 30; ++i) {
+    setGyro(0.0f, (i % 3 == 0) ? 0.0f : 50.0f, 0.0f);
+    run(s, 1);
+  }
+  TEST_ASSERT_TRUE(moving(s));
+}
+
+void test_motion_threshold_is_configurable() {
+  GY521TiltSensor lo("imu", 0x68), hi("imu", 0x68);
+  hi.setMotionThreshold(40.0f);
+  lo.setMotionThreshold(-1.0f);  // ignored: stays at the default
+  motionSensor(lo);
+  motionSensor(hi);
+  setGyro(0.0f, 25.0f, 0.0f);
+  for (int i = 0; i < 20; ++i) { imuNowMs += 10; lo.tick(); hi.tick(); }
+  TEST_ASSERT_TRUE(moving(lo));
+  TEST_ASSERT_FALSE(moving(hi));
+  // The accel limit scales with it: 0.1 g is over 15 deg/s (0.06 g), not over 40 (0.16 g).
+  setGyro(0.0f, 0.0f, 0.0f);
+  imuNowMs += 5000; lo.tick(); hi.tick();
+  setAccel(0.0f, 0.0f, 1.1f);
+  for (int i = 0; i < 20; ++i) { imuNowMs += 10; lo.tick(); hi.tick(); }
+  TEST_ASSERT_TRUE(moving(lo));
+  TEST_ASSERT_FALSE(moving(hi));
+}
+
+void test_motion_runs_without_its_channel_and_drops_with_the_device() {
+  GY521TiltSensor s("imu", 0x68);  // default mask: pitch only
+  s.begin();
+  run(s, 1);
+  setGyro(0.0f, 40.0f, 0.0f);
+  run(s, 20);
+  s.setChannelMask(GY521TiltSensor::kChannelMotion);
+  TEST_ASSERT_TRUE(moving(s));
+  imuPresent = false;
+  imuNowMs += 100;
+  s.tick();
+  TEST_ASSERT_FALSE(s.channel(0).reading.valid);
 }
 
 // Pitch follows the gyro's Y axis, roll its X axis: a short positive rate on
@@ -344,6 +463,15 @@ int main(int, char**) {
   RUN_TEST(test_dir_meta);
   RUN_TEST(test_dir_is_invalid_when_level);
   RUN_TEST(test_dir_is_last_in_a_full_mask);
+  RUN_TEST(test_motion_is_binary_and_valid_at_rest);
+  RUN_TEST(test_motion_ignores_tremor);
+  RUN_TEST(test_motion_ignores_a_single_spike);
+  RUN_TEST(test_motion_on_lift);
+  RUN_TEST(test_motion_on_rotation);
+  RUN_TEST(test_motion_holds_then_falls);
+  RUN_TEST(test_motion_survives_zero_crossings);
+  RUN_TEST(test_motion_threshold_is_configurable);
+  RUN_TEST(test_motion_runs_without_its_channel_and_drops_with_the_device);
   RUN_TEST(test_gyro_axes_feed_the_matching_angle);
   RUN_TEST(test_gyro_offset_is_learned);
   RUN_TEST(test_caller_bus_delegates_to_raw_sensor);

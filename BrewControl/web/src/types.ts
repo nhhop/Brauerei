@@ -699,6 +699,7 @@ export interface DisplaySettings {
   rotation: number;
   orientationSensor: string;  // tilt sensor id (pitch + roll channels), "" = fixed
   orientationMirror: boolean; // reverse the sense of rotation (IMU seen from behind)
+  wakeOnMotion: boolean;      // orientationSensor's "motion" channel wakes a dimmed/dark display
   supported: boolean;    // read-only, server-computed: this build drives a display
 }
 

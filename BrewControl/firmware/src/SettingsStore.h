@@ -77,6 +77,9 @@ class SettingsStore {
   uint8_t displayDimPercent() const { return displayDimPercent_; }  // % of displayBrightness
   uint32_t displayOffAfterSec() const { return displayOffAfterSec_; }
   bool displayPixelShift() const { return displayPixelShift_; }
+  // A dimmed or dark panel wakes when the orientation sensor's "motion"
+  // channel (ImuTiltSensor) goes 1, like on a touch.
+  bool displayWakeOnMotion() const { return displayWakeOnMotion_; }
   // Orientation (DisplayOrientation.h): without an orientation sensor the
   // picture is turned by displayRotation() clockwise; with one it follows the
   // sensor's pitch/roll, and displayRotation() is the mounting offset.
@@ -155,6 +158,7 @@ class SettingsStore {
   uint8_t  displayDimPercent_  = 20;
   uint32_t displayOffAfterSec_ = 600;
   bool     displayPixelShift_  = false;
+  bool     displayWakeOnMotion_ = true;
   uint16_t displayRotation_    = 0;
   String   displayOrientationSensor_ = "";
   bool     displayOrientationMirror_ = false;

@@ -548,6 +548,12 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     if (!parseChannelMask(cfg, kGy521Channels, kGy521ChannelCount,
                           ImuTiltSensor::kChannelPitch, mask, err))
       return {false, err};
+    // °/s of rotation (or 0.004 g per °/s of accel deviation) that count as
+    // "motion"; checked here, not clamped, so a typo is reported.
+    const float motionThreshold =
+        cfg["motionThreshold"] | ImuTiltSensor::kDefaultMotionThresholdDps;
+    if (!(motionThreshold >= 1.0f && motionThreshold <= 500.0f))
+      return {false, "invalid motionThreshold"};
     e->bus = acquireBus(*bus);
     TwoWire&    wire = e->bus.as<I2cBus>().wire;
     const char* id   = e->id.c_str();
@@ -561,6 +567,7 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
                       cfg["invertZ"] | false ? -1.0f : 1.0f);
     auto sensor = std::make_unique<ImuTiltSensor>(id, std::move(raw));
     sensor->setChannelMask(mask);
+    sensor->setMotionThreshold(motionThreshold);
     e->ptr = std::move(sensor);
   } else if (strcmp(type, "YF-S201") == 0) {
     int pin = cfg["pin"] | -1;
