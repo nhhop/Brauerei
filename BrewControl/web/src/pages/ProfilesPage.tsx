@@ -106,13 +106,13 @@ export function ProfilesPage({ snap }: { path?: string; snap: Snapshot | null })
   return (
     <PageShell>
       <header class="flex items-center justify-between gap-3">
-        <h1 class="text-2xl font-semibold tracking-tight">Profile</h1>
+        <h1 class="text-2xl font-semibold tracking-tight">Programmvorlagen</h1>
         <button type="button" onClick={openCreate} disabled={!activeCategory}
           class={`${btnPrimary} hidden md:inline-flex`}>
-          + Neues Profil
+          + Neue Vorlage
         </button>
       </header>
-      {activeCategory && <Fab icon={Plus} label="Neues Profil" onClick={openCreate} />}
+      {activeCategory && <Fab icon={Plus} label="Neue Vorlage" onClick={openCreate} />}
 
       <div class="my-4 flex items-end gap-2 border-b border-border">
         <div class="flex flex-1 overflow-x-auto">
@@ -160,11 +160,11 @@ export function ProfilesPage({ snap }: { path?: string; snap: Snapshot | null })
         <SkeletonList count={2} />
       ) : categories.length === 0 ? (
         <p class="text-sm text-muted">
-          Noch keine Kategorie. Lege über „+ Neu“ eine an (z.B. Maische oder Gärung), danach kannst du Profile darin ablegen.
+          Noch keine Kategorie. Lege über „+ Neu“ eine an (z.B. Maische oder Gärung), danach kannst du Vorlagen darin ablegen.
         </p>
       ) : shown.length === 0 ? (
         <p class="text-sm text-muted">
-          Noch keine Profile in dieser Kategorie. Ein Profil ist eine wiederverwendbare Schrittfolge, die du in ein Programm übernehmen kannst.
+          Noch keine Vorlagen in dieser Kategorie. Eine Vorlage ist eine wiederverwendbare Schrittfolge, die du in ein Programm übernehmen kannst.
         </p>
       ) : (
         <div class="space-y-4">
@@ -185,12 +185,12 @@ export function ProfilesPage({ snap }: { path?: string; snap: Snapshot | null })
                 <div class="flex shrink-0 items-center gap-2 text-xs">
                   <button type="button" onClick={() => { setEditing(p); setEditorOpen(true); }}
                     class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10"
-                    title="Profil bearbeiten">
+                    title="Vorlage bearbeiten">
                     <Pencil size={14} />
                   </button>
                   <button type="button" onClick={() => setDeleteTarget(p)}
                     class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10"
-                    title="Profil löschen">
+                    title="Vorlage löschen">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -226,7 +226,7 @@ export function ProfilesPage({ snap }: { path?: string; snap: Snapshot | null })
 
       <ConfirmModal
         open={deleteTarget !== null}
-        title="Profil löschen?"
+        title="Vorlage löschen?"
         confirmLabel="Löschen"
         destructive
         pending={deleting}

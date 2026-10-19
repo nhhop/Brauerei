@@ -227,3 +227,21 @@ input[type="range"].range-slider:disabled::-moz-range-thumb {
     flex-direction: column-reverse;
   }
 }
+
+/* ── Beer glass (recipe overview): bubbles rise through the beer ───────────── */
+.bubble {
+  fill: #fff;
+  fill-opacity: 0.75;
+  opacity: 0;
+  animation: bubble-rise 3.2s ease-in infinite;
+}
+@keyframes bubble-rise {
+  0% { transform: translate(0, 0); opacity: 0; }
+  12% { opacity: 0.9; }
+  50% { transform: translate(0.6px, -34px); }
+  88% { opacity: 0.7; }
+  100% { transform: translate(-0.4px, -68px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none; opacity: 0.5; }
+}

@@ -12,11 +12,12 @@ import { PageShell } from '../components/PageShell';
 import { SkeletonList } from '../components/Skeleton';
 import { BASIS_LABEL, DEFAULT_BASIS, basisOf, type EfficiencyBasis } from '../efficiency';
 import { DEFAULT_PH_MODEL, type PhModel } from '../mashPh';
+import { sourceWaters } from '../recipeTreatment';
+import { VE_WATER } from '../waterChem';
 import type { Snapshot } from '../types';
 import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
 import { CellarSection } from './CellarSection';
 import { Field, NumInput } from './recipe/fields';
-import { WaterProfilesSection } from './WaterProfiles';
 
 const editUrl = (id: string) => `/settings/anlage/sudhaus/${encodeURIComponent(id)}`;
 
@@ -125,6 +126,7 @@ function BreweryCard() {
   }, []);
 
   const dirty = saved !== null && JSON.stringify(draft) !== JSON.stringify(saved);
+  const sources = sourceWaters(draft);
 
   function save() {
     setState('saving');
@@ -177,7 +179,19 @@ function BreweryCard() {
           </select>
         </Field>
       </div>
-      <WaterProfilesSection brewery={draft} onChange={setDraft} />
+      <div class="mt-4">
+        <Field label="Standardwasser neuer Rezepte">
+          <select class={`${inp} w-full sm:w-72`} value={draft.defaultWaterId ?? ''}
+            onChange={(e) => setDraft({ ...draft, defaultWaterId: e.currentTarget.value || undefined })}>
+            <option value="">{sources.length > 0 ? `— erstes Profil (${sources[0].name || 'Ohne Namen'}) —` : `— ${VE_WATER.name} —`}</option>
+            {sources.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
+            <option value={VE_WATER.id}>{VE_WATER.name}</option>
+          </select>
+        </Field>
+        <p class="mt-1 text-xs text-muted">
+          Die Wasserprofile stehen unter <a href="/profile/wasser" class="underline">Profile › Wasser</a>.
+        </p>
+      </div>
       {state === 'error' && <p class="mt-2 text-sm text-critical">Speichern fehlgeschlagen.</p>}
       {state === 'loadError' && <p class="mt-2 text-sm text-critical">Brauerei konnte nicht geladen werden.</p>}
     </section>

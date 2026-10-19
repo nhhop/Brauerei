@@ -1,11 +1,11 @@
 import { useState } from 'preact/hooks';
-import type { ComponentChildren } from 'preact';
-import { Plus, Target, Trash2, Wand2, X } from 'lucide-preact';
+import { Fragment, type ComponentChildren } from 'preact';
+import { Calculator, Plus, Target, Trash2, Wand2, X } from 'lucide-preact';
 import type { Brewery } from '../../brewhouse';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { BOIL_PH_DROP, DEFAULT_MASH_PH, MALT_BUFFER, PH_MODEL_LABEL, alkalinitySlope, type PhModel } from '../../mashPh';
 import {
-  COLUMN_LABEL, TIMING_OF, agentOf, calcTreatment, isTreatmentRow, sourceWaters, suggestAgent, waterById,
+  COLUMN_LABEL, TIMING_OF, agentOf, calcTreatment, doseContribution, isTreatmentRow, phOf, sourceParts, sourceWaters, suggestAgent, waterById,
   type Column, type ColumnKey, type Grist,
 } from '../../recipeTreatment';
 import { fmtL, type Water } from '../../recipeWater';
@@ -18,7 +18,8 @@ import { DH_PER_MEQ, RA_REFERENCE_PH, VE_WATER, figuresOf, stateOf, type TargetI
 import { OWN_TARGET, TARGET_PROFILES, resolveTarget, targetProfiles } from '../../waterSolver';
 import { btnSecondary, inp } from '../../ui';
 import { fmtNum } from '../WaterProfiles';
-import { Card, NumInput, OptNum } from './fields';
+import { Section } from './CalcTable';
+import { NumInput, OptNum } from './fields';
 import { IngredientPicker } from './IngredientPicker';
 import { Strength } from './IngredientCard';
 import { AutoTreatDialog } from './AutoTreatDialog';
@@ -93,7 +94,8 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
     </>
   );
   // The target's value with the strike water's deviation; own values are typed in.
-  const targetIon = (ion: keyof TargetIons, compare = true) => {
+  // `stacked` puts the deviation under the value instead of behind it.
+  const targetIon = (ion: keyof TargetIons, compare = true, stacked = false) => {
     if (target?.ions) {
       return <NumInput value={target.ions[ion]} class="w-full" onChange={(n) => setWater({ target: { ions: { ...target.ions!, [ion]: n } } })} />;
     }
@@ -101,11 +103,12 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
     const t = resolved.ions[ion];
     const off = compare && ion !== 'hco3' ? strike.after.ions[ion] - t : 0;
     return (
-      <span class="tabular-nums" title={compare ? `Hauptguss ${fmtNum(t + off)} mg/l` : 'Regelt die Säure über den Ziel-pH'}>
+      <span class={`tabular-nums ${stacked ? 'flex flex-col items-end' : ''}`}
+        title={compare ? `Hauptguss ${fmtNum(t + off)} mg/l` : 'Regelt die Säure über den Ziel-pH'}>
         {fmtNum(t)}
         {Math.abs(off) >= 0.5 && (
-          <span class={`ml-1 text-xs ${Math.abs(off) > Math.max(10, 0.2 * t) ? 'text-caution' : 'text-muted'}`}>
-            ({off > 0 ? '+' : '−'}{fmtNum(Math.abs(off))})
+          <span class={`${stacked ? '' : 'ml-1'} text-xs ${Math.abs(off) > Math.max(10, 0.2 * t) ? 'text-caution' : 'text-muted'}`}>
+            {off > 0 ? '+' : '−'}{fmtNum(Math.abs(off))}
           </span>
         )}
       </span>
@@ -126,25 +129,260 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
     );
   };
   // Alkalinity, RA and pH follow the water model only in water and mash.
-  const fig = (get: (f: WaterFigures) => number | undefined, digits = 0, waterOnly = false) => (c: Column) => {
+  // `withBefore` false (desktop table) leaves out the brackets: the value before has its own row there.
+  const fig = (get: (f: WaterFigures) => number | undefined, digits = 0, waterOnly = false, withBefore = true) => (c: Column) => {
     if (waterOnly && c.wort) return <span class="text-xs text-muted" title="In der Würze nicht aus dem Wassermodell">—</span>;
-    return pair(get(c.after), get(c.before), digits);
+    return pair(get(c.after), withBefore ? get(c.before) : undefined, digits);
   };
   // Water by the carbonate balance; mash and wort by the brewery's model.
-  const ph = (c: Column) => {
+  const ph = (c: Column, withBefore = true) => {
     if (c.ph) {
       const title = c.key === 'mash'
-        ? `Geschätzt nach ${PH_MODEL_LABEL[model]}, etwa ± 0,1–0,2. In Klammern: vor der Gabe nach pH-Messung`
-        : 'Grobe Schätzung über die Pufferung der Schüttung. In Klammern: vor den Gaben';
-      return pair(c.ph.after, c.ph.before, 2, title, '≈ ');
+        ? `Geschätzt nach ${PH_MODEL_LABEL[model]}, etwa ± 0,1–0,2${withBefore ? '. In Klammern: vor der Gabe nach pH-Messung' : ''}`
+        : `Grobe Schätzung über die Pufferung der Schüttung${withBefore ? '. In Klammern: vor den Gaben' : ''}`;
+      return pair(c.ph.after, withBefore ? c.ph.before : undefined, 2, title, '≈ ');
     }
-    if (!c.wort && c.key !== 'mash') return fig((f) => f.ph, 2)(c);
+    if (!c.wort && c.key !== 'mash') return fig((f) => f.ph, 2, false, withBefore)(c);
     const why = model === 'kolbach' ? 'Das Modell Kolbach schätzt keinen pH' : 'Für die pH-Schätzung fehlen verknüpfte Malze';
     return <span class="text-xs text-muted" title={why}>—</span>;
   };
 
+  // Desktop: one row per water, with its source water and additions below it;
+  // the columns are the figures (the mobile tabs show the same data per column).
+  const num = 'px-1 py-1.5 text-right tabular-nums';
+  const ionOf = (c: Column) => (['ca', 'mg', 'na', 'cl', 'so4'] as const).map((ion) => (
+    <td key={ion} class={num}>{fig((f) => f.ions[ion], 0, false, false)(c)}</td>
+  ));
+  const phTarget = (c: Column) => {
+    if (!isPhKey(c.key) || (!isWaterKey(c.key) && !c.ph)) return null;
+    const key = c.key;
+    const water = isWaterKey(key);
+    const known = water ? c.after.ph !== undefined : true;
+    return (
+      <div class="flex items-center gap-1">
+        <OptNum value={settings.targetPh?.[key]} placeholder={key === 'mash' ? fmtNum(DEFAULT_MASH_PH, 1) : '—'} class="w-16"
+          onChange={(n) => setWater({ targetPh: { ...settings.targetPh, [key]: n } })} />
+        <button type="button" class={`${btnSecondary} px-1.5`} disabled={targetOf(key) === undefined || !known}
+          aria-label={water ? 'Säure berechnen' : 'Säure/Base berechnen'}
+          title={!known ? 'Das Ausgangswasser hat keinen pH'
+            : water ? 'Säure berechnen: setzt die Säuregabe dieser Zeile, sonst legt sie Milchsäure an'
+            : `Säure/Base berechnen: setzt die Säure oder Base${key === 'mash' ? ' mit Zeitpunkt „Maische nach pH-Messung“' : ' dieser Zeile'}, sonst legt sie Milchsäure bzw. Natron an`}
+          onClick={() => computeAgent(c)}>
+          <Calculator size={14} />
+        </button>
+      </div>
+    );
+  };
+  const small = 'px-1 pb-1 tabular-nums';
+  // A change with its sign; nothing when it rounds to zero.
+  const delta = (n: number, digits = 0) => (Math.abs(n) < 0.5 * 10 ** -digits ? '' : `${n > 0 ? '+' : '−'}${fmtNum(Math.abs(n), digits)}`);
+  // The source water and its blend water of a water column: the share is
+  // editable (the two add up to 100 %), the rest is what each brings.
+  const sourceRows = (c: Column) => {
+    const key = c.key as WaterKey;
+    const v = settings.sources?.[key];
+    const waters = [...sourceWaters(brewery), VE_WATER];
+    const setSrc = (p: WaterSource) => {
+      const next = { ...v, ...p };
+      setWater({ sources: { ...settings.sources, [key]: Object.values(next).some((x) => x !== undefined) ? next : undefined } });
+    };
+    const missing = v?.waterId && !waterById(brewery, v.waterId);
+    return sourceParts(c).map((p, i) => (
+      <tr key={`${c.key}-src${i}`} class="text-xs text-muted">
+        <td class="pb-1 pl-4 pr-1">
+          {i === 0 ? (
+            <select class={`${inp} w-full py-1 text-xs`} aria-label={`Ausgangswasser ${COLUMN_LABEL[c.key]}`} value={v?.waterId ?? ''}
+              onChange={(e) => setSrc({ waterId: e.currentTarget.value || undefined })}>
+              <option value="">Standard ({c.source!.water.name})</option>
+              {waters.map((w) => <option key={w.id} value={w.id}>{w.name || 'Ohne Namen'}</option>)}
+              {missing && <option value={v!.waterId}>{v!.waterId} (fehlt)</option>}
+            </select>
+          ) : (
+            <div class="flex items-center gap-1">
+              <span>+</span>
+              <select class={`${inp} w-full min-w-0 py-1 text-xs`} aria-label={`Verschnittwasser ${COLUMN_LABEL[c.key]}`} value={v?.blendId ?? VE_WATER.id}
+                onChange={(e) => setSrc({ blendId: e.currentTarget.value === VE_WATER.id ? undefined : e.currentTarget.value })}>
+                {waters.map((w) => <option key={w.id} value={w.id}>{w.name || 'Ohne Namen'}</option>)}
+              </select>
+            </div>
+          )}
+        </td>
+        <td class="px-1 pb-1" title="Die Anteile ergeben zusammen 100 %">
+          <NumInput unit="%" class="w-full" value={p.pct}
+            onChange={(n) => setSrc({ blendPct: i === 0 ? (n < 100 ? Math.min(100 - n, 100) : undefined) : (n > 0 ? Math.min(n, 100) : undefined) })} />
+        </td>
+        <td class={`${small} text-right`}>{fmtL(p.litres)}</td>
+        {(['ca', 'mg', 'na', 'cl', 'so4'] as const).map((ion) => (
+          <td key={ion} class={`${small} text-right`}>{fmtNum(p.figures.ions[ion])}</td>
+        ))}
+        <td class={`${small} text-right`}>{fmtNum(p.figures.hco3)}</td>
+        <td class={`${small} text-right`}>{fmtNum(p.figures.raDh, 1)}</td>
+        <td class={`${small} text-right`} title={`Verhältnis im ${p.water.name}`}>{p.so4Cl === undefined ? '' : fmtNum(p.so4Cl, 2)}</td>
+        <td /><td />
+      </tr>
+    ));
+  };
+  const th = 'px-1 py-1 text-right font-semibold';
+  const desk = (
+    <div class="-mx-4 hidden overflow-x-auto md:block">
+      <table class="w-full min-w-[62rem] table-fixed text-sm">
+        <colgroup>
+          <col /><col class="w-28" /><col class="w-16" />
+          {[...Array(6)].map((_, i) => <col key={i} class="w-14" />)}
+          <col class="w-14" /><col class="w-14" /><col class="w-20" /><col class="w-36" />
+        </colgroup>
+        <thead class="text-xs text-muted">
+          <tr>
+            <th rowSpan={2} class="py-1 pl-4 pr-1 text-left font-semibold align-bottom">Wasser</th>
+            <th rowSpan={2} class={`${th} align-bottom`}>Anteil</th>
+            <th rowSpan={2} class={`${th} align-bottom`}>Menge</th>
+            <th colSpan={6} class="border-b border-border px-1 pb-1 text-center font-semibold">Ergebnis (mg/l)</th>
+            <th rowSpan={2} class={`${th} align-bottom`} title="Restalkalität">RA<span class="block font-normal">°dH</span></th>
+            <th rowSpan={2} class={`${th} align-bottom`}>SO₄ : Cl</th>
+            <th rowSpan={2} class={`${th} align-bottom`}>pH<span class="block font-normal">{PH_MODEL_LABEL[model]}</span></th>
+            <th rowSpan={2} class="py-1 pl-3 pr-4 text-left font-semibold align-bottom">Ziel-pH</th>
+          </tr>
+          <tr>
+            {[['Ca²⁺', 'Calcium'], ['Mg²⁺', 'Magnesium'], ['Na⁺', 'Natrium'], ['Cl⁻', 'Chlorid'], ['SO₄²⁻', 'Sulfat'], ['HCO₃⁻', 'Hydrogencarbonat']]
+              .map(([l, t]) => <th key={l} class={`${th} font-semibold`} title={t}>{l}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {columns.map((c) => (
+            <Fragment key={c.key}>
+              <tr key={c.key} class={`border-t border-border align-top ${c.key === 'total' ? 'bg-fg/[0.03]' : ''}`}>
+                <td class="py-1.5 pl-4 pr-1 font-medium">
+                  {COLUMN_LABEL[c.key]}
+                  {c.key === 'total' && <span class="block text-xs font-normal text-muted">alles</span>}
+                </td>
+                <td />
+                <td class={`${num} text-muted`} title={VOLUME_BASIS[c.key]}>{fmtL(c.volumeL)}</td>
+                {ionOf(c)}
+                <td class={num}>{fig((f) => f.hco3, 0, true, false)(c)}</td>
+                <td class={num}>{fig((f) => f.raDh, 1, true, false)(c)}</td>
+                <td class={num}>{fig((f) => f.so4Cl, 2, false, false)(c)}</td>
+                <td class={num}>{ph(c, false)}</td>
+                <td class="py-1 pl-3 pr-4">{phTarget(c)}</td>
+              </tr>
+              {c.key === 'mash' && c.doses.length > 0 && (
+                <tr class="text-xs text-muted" title="Das Wasser der Maische vor den Gaben">
+                  <td class="pb-1 pl-8 pr-1">aus dem Hauptguss</td>
+                  <td />
+                  <td class="px-1 pb-1 text-right tabular-nums">{fmtL(c.volumeL)}</td>
+                  {(['ca', 'mg', 'na', 'cl', 'so4'] as const).map((ion) => (
+                    <td key={ion} class={`${small} text-right`}>{fmtNum(c.before.ions[ion])}</td>
+                  ))}
+                  <td class={`${small} text-right`}>{fmtNum(c.before.hco3)}</td>
+                  <td class={`${small} text-right`}>{fmtNum(c.before.raDh, 1)}</td>
+                  <td class={`${small} text-right`}>{c.before.so4Cl === undefined ? '' : fmtNum(c.before.so4Cl, 2)}</td>
+                  <td class={`${small} text-right`}>{(() => { const p = phOf(c, c.start); return p === undefined ? '' : `≈ ${fmtNum(p, 2)}`; })()}</td>
+                  <td />
+                </tr>
+              )}
+              {c.source && isWaterKey(c.key) && sourceRows(c)}
+              {c.doses.map((d) => {
+                const k = doseContribution(c, d);
+                return (
+                  <tr key={`${c.key}-${d.ingredient.id}`} class="text-xs text-muted"
+                    title={d.share ? 'Anteil der Gabe „Brauwasser“, nach Einfüllmenge' : undefined}>
+                    <td class="pb-1 pl-8 pr-1">
+                      + {d.ingredient.name || 'Ohne Namen'}
+                      <span class="block pl-3 text-faint">{TIMING_LABEL[d.ingredient.timing]}</span>
+                    </td>
+                    <td class={`${small} text-right`}>{d.share && d.ingredient.amount > 0 ? `${Math.round((100 * d.amount) / d.ingredient.amount)} %` : ''}</td>
+                    <td class={`${small} text-right`}>{fmtNum(d.amount, 2)} {d.agent?.unit ?? 'g'}</td>
+                    {(['ca', 'mg', 'na', 'cl', 'so4'] as const).map((ion) => (
+                      <td key={ion} class={`${small} text-right`}>{k && delta(k.ions[ion])}</td>
+                    ))}
+                    <td class={`${small} text-right`}>{k && delta(k.hco3)}</td>
+                    <td class={`${small} text-right`}>{k && delta(k.raDh, 1)}</td>
+                    <td />
+                    <td class={`${small} text-right`} title="Allein gerechnet">{k && k.ph !== undefined && delta(k.ph, 2)}</td>
+                    <td />
+                  </tr>
+                );
+              })}
+            </Fragment>
+          ))}
+          {target && (
+            <tr class="border-t-2 border-border bg-fg/[0.03] align-top text-muted">
+              <td class="py-1.5 pl-4 pr-1">
+                <div class="flex items-center gap-1">
+                  <span class="font-medium">Ziel</span>
+                  <span class="text-xs">für den Hauptguss</span>
+                </div>
+                <div class="mt-1"><TargetSelect brewery={brewery} value={target} onChange={(t) => setWater({ target: t })} /></div>
+              </td>
+              <td /><td />
+              {(['ca', 'mg', 'na', 'cl', 'so4'] as const).map((ion) => <td key={ion} class={`${num} text-fg`}>{targetIon(ion, true, true)}</td>)}
+              <td class={`${num} text-fg`}>{targetIon('hco3', false, true)}</td>
+              <td class={num}>{targetFigures && fmtNum(targetFigures.raDh, 1)}</td>
+              <td class={num}>{targetFigures?.so4Cl !== undefined && fmtNum(targetFigures.so4Cl, 2)}</td>
+              <td />
+              <td class="py-1.5 pl-3 pr-4 text-right">
+                <button type="button" title="Vergleich entfernen" aria-label="Vergleich entfernen" onClick={() => setWater({ target: undefined })}
+                  class="rounded-md p-0.5 hover:bg-fg/10"><X size={14} /></button>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const autoBtn = (
+    <button type="button" class={headerBtn} title="VE-Anteil, Salze und Säure auf ein Zielprofil rechnen" onClick={() => setAuto(true)}>
+      <Wand2 size={12} /> Automatisch
+    </button>
+  );
+  const addBtn = (
+    <button type="button" onClick={add} class={headerBtn}>
+      <Plus size={12} /> Salz/Säure
+    </button>
+  );
+  const salts = (
+    <div class="hidden md:block">
+      <Section title="Salze und Säuren" sub="dieselben Einträge wie unter Zutaten › Hilfsstoffe"
+        action={<div class="flex gap-1">{autoBtn}{addBtn}</div>}>
+        <div class="flex flex-col gap-2 px-4 py-3">
+          {rows.length === 0 ? <span class="text-sm text-muted">Noch keine Salze oder Säuren.</span> : (
+            <>
+              <div class="grid grid-cols-[minmax(0,1fr)_14rem_8rem_7rem_2rem] gap-2 text-xs font-semibold text-muted">
+                <span>Zutat</span><span>Zeitpunkt</span><span class="text-right">Menge gesamt</span><span class="text-right">Konzentration</span><span />
+              </div>
+              {rows.map((i) => {
+                const agent = agentOf(i, catalog);
+                return (
+                  <div key={i.id} class="grid grid-cols-[minmax(0,1fr)_14rem_8rem_7rem_2rem] items-center gap-2">
+                    <IngredientPicker ingredient={i} onChange={(p) => patch(i.id, p)} only={(e) => e.kind === 'auxiliary' && !!e.waterAgent} />
+                    <select class={inp} value={i.timing} aria-label="Zeitpunkt"
+                      onChange={(e) => patch(i.id, { timing: e.currentTarget.value as Ingredient['timing'] })}>
+                      {allowedTimings('auxiliary', 'water').map((t) => <option key={t} value={t}>{TIMING_LABEL[t]}</option>)}
+                    </select>
+                    <NumInput unit={agent?.unit ?? 'g'} value={i.amount} class="w-full" onChange={(n) => patch(i.id, { amount: n })} />
+                    {agent?.agent.form === 'liquid'
+                      ? <Strength i={i} agent={agent} onChange={(strengthPct) => patch(i.id, { strengthPct })} />
+                      : <span class="text-right text-xs text-muted">{agent ? 'fest' : ''}</span>}
+                    <button type="button" title="Entfernen" aria-label="Entfernen"
+                      onClick={() => setIngredients(recipe.ingredients.filter((x) => x.id !== i.id))}
+                      class="rounded-md p-1 text-critical hover:bg-fg/10"><Trash2 size={14} /></button>
+                  </div>
+                );
+              })}
+              <span class="text-xs text-muted">
+                „Brauwasser“ verteilt sich nach Einfüllmenge auf Haupt- und Nachguss; die Tabelle zeigt je Zeile die Menge, die dort landet.
+              </span>
+            </>
+          )}
+        </div>
+      </Section>
+    </div>
+  );
+
   return (
-    <Card title="Aufbereitung"
+    <>
+    {salts}
+    <Section title="Aufbereitung"
       action={
         <div class="flex flex-wrap justify-end gap-1">
           {!target && (
@@ -153,14 +391,10 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
               <Target size={12} /> Ziel
             </button>
           )}
-          <button type="button" class={headerBtn} title="VE-Anteil, Salze und Säure auf ein Zielprofil rechnen" onClick={() => setAuto(true)}>
-            <Wand2 size={12} /> Automatisch
-          </button>
-          <button type="button" onClick={add} class={headerBtn}>
-            <Plus size={12} /> Salz/Säure
-          </button>
+          <div class="contents md:hidden">{autoBtn}{addBtn}</div>
         </div>
       }>
+      <div class="p-4">
       <div class="-mt-1 mb-2 flex overflow-x-auto border-b border-border md:hidden">
         {columns.map((c) => (
           <TabBtn key={c.key} active={c.key === active} onClick={() => setTab(c.key)}>{COLUMN_LABEL[c.key]}</TabBtn>
@@ -168,7 +402,7 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
         {target && <TabBtn active={active === 'target'} onClick={() => setTab('target')}>Ziel</TabBtn>}
       </div>
       <div style={{ '--n': columns.length + (target ? 1 : 0) }}
-        class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 md:grid-cols-[minmax(13rem,1.6fr)_repeat(var(--n),minmax(0,1fr))]">
+        class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-x-3 md:hidden">
         {row(<span class="text-xs text-muted">Volumenbasis</span>, (c) => (
           <div>
             <div class="hidden font-medium md:block">{COLUMN_LABEL[c.key]}</div>
@@ -245,6 +479,8 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
         })}
       </div>
 
+      {desk}
+
       <Calculation columns={columns} model={model} grist={grist} target={target && resolved} />
       {notes.length > 0 && (
         <ul class="mt-3 space-y-1 text-xs text-muted">
@@ -252,7 +488,9 @@ export function TreatmentCard({ recipe, onChange, w, brewery, catalog }: {
         </ul>
       )}
       {auto && <AutoTreatDialog recipe={recipe} w={w} brewery={brewery} catalog={catalog} onChange={onChange} onClose={() => setAuto(false)} />}
-    </Card>
+      </div>
+    </Section>
+    </>
   );
 }
 

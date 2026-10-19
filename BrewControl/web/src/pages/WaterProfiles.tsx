@@ -1,11 +1,14 @@
-import { useState } from 'preact/hooks';
-import { Pencil, Plus, Trash2 } from 'lucide-preact';
-import type { Brewery } from '../brewhouse';
+import { useEffect, useState } from 'preact/hooks';
+import { getBrewery, saveBrewery, type Brewery } from '../brewhouse';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { uid } from '../recipes';
+import { TARGET_PROFILES } from '../waterSolver';
+import { deleteWaterProfile, saveWaterProfile } from '../waterProfiles';
 import {
   CA_PER_DH, HCO3_PER_DH, HCO3_PER_KS43, MG_PER_DH, VE_WATER, figuresOf, ionBalance, stateOf, type WaterProfile,
 } from '../waterChem';
-import { badgeAccent, btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
+import { btnPrimary, btnSecondary, dialogFooter, dialogFrame, dialogScrim, dialogSheet, inp } from '../ui';
+import { ProfileList, type ProfileColumn } from './profiles/ProfileList';
 import { Field, NumInput, OptNum } from './recipe/fields';
 
 export const fmtNum = (n: number, digits = 0) => n.toFixed(digits).replace('.', ',');
@@ -16,75 +19,104 @@ export function profileSummary(p: WaterProfile): string {
     + `HCO₃ ${fmtNum(p.hco3)} mg/l · RA ${fmtNum(f.raDh, 1)} °dH${p.ph === undefined ? '' : ` · pH ${fmtNum(p.ph, 2)}`}`;
 }
 
-// Section "Wasserprofile" of the brewery card: the analyses, own target profiles
-// and the default water of new recipes. Edits go into the card's draft.
-export function WaterProfilesSection({ brewery, onChange }: { brewery: Brewery; onChange: (b: Brewery) => void }) {
-  const [editing, setEditing] = useState<WaterProfile | null>(null);
-  const waters = brewery.waters ?? [];
-  const sources = waters.filter((w) => !w.target);
+// Ions in mg/l, then the residual alkalinity and the pH.
+const ION_COLS: { key: 'ca' | 'mg' | 'na' | 'k' | 'cl' | 'so4' | 'hco3'; label: string }[] = [
+  { key: 'ca', label: 'Ca' }, { key: 'mg', label: 'Mg' }, { key: 'na', label: 'Na' }, { key: 'k', label: 'K' },
+  { key: 'cl', label: 'Cl' }, { key: 'so4', label: 'SO₄' }, { key: 'hco3', label: 'HCO₃' },
+];
+const WATER_COLUMNS: ProfileColumn<WaterProfile>[] = [
+  ...ION_COLS.map(({ key, label }): ProfileColumn<WaterProfile> =>
+    ({ label, align: 'right', cell: (p) => (p[key] === undefined ? '–' : fmtNum(p[key]!)) })),
+  { label: 'RA °dH', align: 'right', cell: (p) => fmtNum(figuresOf(stateOf(p)).raDh, 1) },
+  { label: 'pH', align: 'right', cell: (p) => (p.ph === undefined ? '–' : fmtNum(p.ph, 2)) },
+];
+const WATER_COLS = 'lg:grid-cols-[minmax(8rem,2fr)_repeat(7,44px)_56px_40px_92px]';
 
-  function commit(p: WaterProfile) {
-    const exists = waters.some((w) => w.id === p.id);
-    onChange({
-      ...brewery, waters: exists ? waters.map((w) => (w.id === p.id ? p : w)) : [...waters, p],
-      // a target is no source water
-      defaultWaterId: p.target && brewery.defaultWaterId === p.id ? undefined : brewery.defaultWaterId,
-    });
+// Tab "Wasser" (source waters, VE water shipped) or "Zielwasser" (own targets,
+// the shipped TARGET_PROFILES) of the profile page. The default water stays in
+// Settings › Brauanlage. getBrewery also moves profiles still in the brewery
+// document (waterProfiles.ts).
+export function WaterProfilesTab({ target }: { target: boolean }) {
+  const [brewery, setBrewery] = useState<Brewery | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<WaterProfile | null>(null);
+  const [viewing, setViewing] = useState<WaterProfile | null>(null);
+  const [deleting, setDeleting] = useState<WaterProfile | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reload = () => getBrewery().then(setBrewery);
+  useEffect(() => { reload().catch(() => setLoadFailed(true)); }, []);
+
+  if (!brewery) return <p class="text-sm text-muted">{loadFailed ? 'Die Wasserprofile konnten nicht geladen werden.' : 'Lädt …'}</p>;
+
+  const own = (brewery.waters ?? []).filter((w) => !!w.target === target);
+  const builtin = target ? TARGET_PROFILES : [VE_WATER];
+  const blank = (): WaterProfile =>
+    ({ id: uid(), name: '', ca: 0, mg: 0, na: 0, cl: 0, so4: 0, hco3: 0, ...(target ? { target: true as const } : {}) });
+
+  async function save(p: WaterProfile) {
+    await saveWaterProfile(p);
+    await reload();
     setEditing(null);
   }
 
-  function remove(id: string) {
-    const rest = waters.filter((w) => w.id !== id);
-    onChange({
-      ...brewery, waters: rest.length > 0 ? rest : undefined,
-      defaultWaterId: brewery.defaultWaterId === id ? undefined : brewery.defaultWaterId,
-    });
+  function duplicate(p: WaterProfile) {
+    const copy: WaterProfile = { ...p, id: uid(), name: `${p.name} (Kopie)` };
+    delete copy.updatedAt;
+    setEditing(copy);
+  }
+
+  // A deleted default water would leave recipes without a choice pointing at nothing.
+  async function confirmDelete() {
+    const p = deleting!;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteWaterProfile(p.id);
+      if (brewery!.defaultWaterId === p.id) await saveBrewery({ ...brewery!, defaultWaterId: undefined });
+      await reload();
+    } catch {
+      setError('Löschen fehlgeschlagen.');
+    }
+    setBusy(false);
+    setDeleting(null);
   }
 
   return (
-    <div class="mt-5">
-      <div class="mb-2 flex items-center justify-between gap-3">
-        <h3 class="text-sm font-medium">Wasserprofile</h3>
-        <button type="button" onClick={() => setEditing({ id: uid(), name: '', ca: 0, mg: 0, na: 0, cl: 0, so4: 0, hco3: 0 })}
-          class="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-fg/10">
-          <Plus size={12} /> Profil
-        </button>
-      </div>
-      <div class="space-y-1">
-        {waters.map((p) => (
-          <div key={p.id} class="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm">
-                {p.name || 'Ohne Namen'}
-                {p.target && <span class={`ml-2 ${badgeAccent}`}>Ziel</span>}
-                {p.note && <span class="ml-2 text-xs text-muted">{p.note}</span>}
-              </div>
-              <div class="text-xs text-muted">{profileSummary(p)}</div>
-            </div>
-            <button type="button" title="Profil bearbeiten" onClick={() => setEditing(p)}
-              class="rounded-md border border-border px-2 py-1 text-muted hover:bg-fg/10">
-              <Pencil size={14} />
-            </button>
-            <button type="button" title="Profil löschen" onClick={() => remove(p.id)}
-              class="rounded-md border border-border px-2 py-1 text-critical hover:bg-fg/10">
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-        <div class="px-3 py-1 text-xs text-muted">{VE_WATER.name}: fest eingebaut, alle Ionen 0, pH 7</div>
-      </div>
-      <div class="mt-3">
-        <Field label="Standardwasser neuer Rezepte">
-          <select class={`${inp} w-full sm:w-72`} value={brewery.defaultWaterId ?? ''}
-            onChange={(e) => onChange({ ...brewery, defaultWaterId: e.currentTarget.value || undefined })}>
-            <option value="">{sources.length > 0 ? `— erstes Profil (${sources[0].name || 'Ohne Namen'}) —` : `— ${VE_WATER.name} —`}</option>
-            {sources.map((p) => <option key={p.id} value={p.id}>{p.name || 'Ohne Namen'}</option>)}
-            <option value={VE_WATER.id}>{VE_WATER.name}</option>
-          </select>
-        </Field>
-      </div>
-      {editing && <ProfileDialog profile={editing} onSave={commit} onClose={() => setEditing(null)} />}
-    </div>
+    <>
+      <p class="text-sm text-muted">
+        {target
+          ? 'Ziele für den Vergleich und die Automatik im Wasser-Tab des Rezepts.'
+          : 'Wasseranalysen, aus denen ein Rezept sein Brauwasser nimmt.'}
+      </p>
+      {error && <p class="mt-3 text-sm text-critical">{error}</p>}
+      <ProfileList own={own} builtin={builtin} cols={WATER_COLS} columns={WATER_COLUMNS}
+        sub={(p) => p.note} mobile={profileSummary}
+        action={
+          <button type="button" class={btnPrimary} onClick={() => setEditing(blank())}>
+            + {target ? 'Neues Zielprofil' : 'Neues Wasserprofil'}
+          </button>
+        }
+        ownEmpty={target
+          ? 'Noch kein eigenes Zielprofil. Ein mitgeliefertes lässt sich als Vorlage duplizieren.'
+          : 'Noch kein Wasserprofil angelegt. Ohne Profil rechnen Rezepte mit VE-Wasser.'}
+        onEdit={setEditing} onView={setViewing} onDuplicate={duplicate} onDelete={setDeleting}
+        footnote={target
+          ? 'Ionen in mg/l, Restalkalität in °dH.'
+          : <>Ionen in mg/l, Restalkalität in °dH. Das Standardwasser neuer Rezepte steht unter{' '}
+            <a href="/settings/anlage" class="underline">Einstellungen › Brauanlage</a>.</>} />
+      {editing && <ProfileDialog profile={editing} onSave={save} onClose={() => setEditing(null)} />}
+      {viewing && (
+        <ProfileView profile={viewing} onClose={() => setViewing(null)}
+          onDuplicate={() => { duplicate(viewing); setViewing(null); }} />
+      )}
+      <ConfirmModal open={deleting !== null} title={target ? 'Zielprofil löschen?' : 'Wasserprofil löschen?'}
+        confirmLabel="Löschen" destructive pending={busy} onConfirm={confirmDelete} onCancel={() => setDeleting(null)}>
+        „{deleting?.name || 'Ohne Namen'}“ wird dauerhaft entfernt.
+        {target ? ' Rezepte mit diesem Ziel zeigen es als fehlend.' : ' Rezepte, die es nutzen, rechnen danach mit VE-Wasser.'}
+      </ConfirmModal>
+    </>
   );
 }
 
@@ -95,16 +127,50 @@ const IONS: { key: 'ca' | 'mg' | 'na' | 'k' | 'cl' | 'so4' | 'hco3'; label: stri
 ];
 
 // Analyses often give hardness instead of ions; each helper fills one field.
-const HELPERS: { label: string; key: 'ca' | 'mg' | 'hco3'; factor: number }[] = [
-  { label: 'KS4,3 (mmol/l)', key: 'hco3', factor: HCO3_PER_KS43 },
-  { label: 'Karbonathärte (°dH)', key: 'hco3', factor: HCO3_PER_DH },
-  { label: 'Calciumhärte (°dH)', key: 'ca', factor: CA_PER_DH },
-  { label: 'Magnesiumhärte (°dH)', key: 'mg', factor: MG_PER_DH },
+const HELPERS: { label: string; unit: string; key: 'ca' | 'mg' | 'hco3'; factor: number }[] = [
+  { label: 'KS4,3', unit: 'mmol/l', key: 'hco3', factor: HCO3_PER_KS43 },
+  { label: 'Karbonathärte', unit: '°dH', key: 'hco3', factor: HCO3_PER_DH },
+  { label: 'Calciumhärte', unit: '°dH', key: 'ca', factor: CA_PER_DH },
+  { label: 'Magnesiumhärte', unit: '°dH', key: 'mg', factor: MG_PER_DH },
 ];
 
-function ProfileDialog({ profile, onSave, onClose }: {
-  profile: WaterProfile; onSave: (p: WaterProfile) => void; onClose: () => void;
+// A shipped profile, read-only; "Duplizieren" opens the editor with a copy.
+function ProfileView({ profile: p, onClose, onDuplicate }: {
+  profile: WaterProfile; onClose: () => void; onDuplicate: () => void;
 }) {
+  const value = (label: string, v: string) => (
+    <div key={label}>
+      <dt class="text-xs text-muted">{label}</dt>
+      <dd class="text-sm tabular-nums">{v}</dd>
+    </div>
+  );
+  return (
+    <div class={dialogScrim} onClick={onClose}>
+      <div class={`max-h-[90vh] w-full max-w-lg ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
+        <div class="min-h-0 flex-1 overflow-y-auto p-5">
+          <h2 class="text-base font-medium text-fg">{p.name}</h2>
+          <p class="mt-1 text-xs text-muted">Mitgeliefert, nicht änderbar. Zum Anpassen duplizieren.</p>
+          {p.note && <p class="mt-3 text-sm">{p.note}</p>}
+          <dl class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {IONS.map(({ key, label }) => value(label, p[key] === undefined ? '–' : `${fmtNum(p[key]!)} mg/l`))}
+            {value('Restalkalität', `${fmtNum(figuresOf(stateOf(p)).raDh, 1)} °dH`)}
+            {p.ph !== undefined && value('pH', fmtNum(p.ph, 2))}
+          </dl>
+        </div>
+        <div class={dialogFooter}>
+          <button type="button" class={btnSecondary} onClick={onClose}>Schließen</button>
+          <button type="button" class={btnPrimary} onClick={onDuplicate}>Duplizieren</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileDialog({ profile, onSave, onClose }: {
+  profile: WaterProfile; onSave: (p: WaterProfile) => Promise<void>; onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [p, setP] = useState(profile);
   const set = (patch: Partial<WaterProfile>) => setP({ ...p, ...patch });
   const off = ionBalance(p);
@@ -112,10 +178,10 @@ function ProfileDialog({ profile, onSave, onClose }: {
     <div class={dialogScrim} onClick={onClose}>
       <div class={`max-h-[90vh] w-full max-w-lg ${dialogFrame} ${dialogSheet}`} onClick={(e) => e.stopPropagation()}>
         <div class="min-h-0 flex-1 overflow-y-auto p-5">
-          <h2 class="mb-4 text-base font-medium text-fg">Wasserprofil</h2>
+          <h2 class="mb-4 text-base font-medium text-fg">{p.target ? 'Zielprofil' : 'Wasserprofil'}</h2>
           <div class="grid gap-3 sm:grid-cols-2">
             <Field label="Name">
-              <input class={`${inp} w-full`} value={p.name} placeholder="z.B. Leitungswasser"
+              <input class={`${inp} w-full`} value={p.name} placeholder={p.target ? 'z.B. Pils weich' : 'z.B. Leitungswasser'}
                 onInput={(e) => set({ name: e.currentTarget.value })} />
             </Field>
             <Field label="Notiz">
@@ -125,10 +191,10 @@ function ProfileDialog({ profile, onSave, onClose }: {
           </div>
           <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {IONS.map(({ key, label }) => (
-              <Field key={key} label={`${label} (mg/l)`}>
+              <Field key={key} label={label}>
                 {key === 'k'
-                  ? <OptNum value={p.k} onChange={(k) => set({ k })} class="w-full" />
-                  : <NumInput value={p[key]} onChange={(n) => set({ [key]: n })} class="w-full" />}
+                  ? <OptNum unit="mg/l" value={p.k} onChange={(k) => set({ k })} class="w-full" />
+                  : <NumInput unit="mg/l" value={p[key]} onChange={(n) => set({ [key]: n })} class="w-full" />}
               </Field>
             ))}
             <Field label="pH">
@@ -145,7 +211,7 @@ function ProfileDialog({ profile, onSave, onClose }: {
             <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {HELPERS.map((h) => (
                 <Field key={h.label} label={h.label}>
-                  <OptNum value={undefined} class="w-full"
+                  <OptNum unit={h.unit} value={undefined} class="w-full"
                     onChange={(n) => { if (n !== undefined) set({ [h.key]: Math.round(n * h.factor * 10) / 10 }); }} />
                 </Field>
               ))}
@@ -154,21 +220,15 @@ function ProfileDialog({ profile, onSave, onClose }: {
               HCO₃ = KS4,3 × 61,02 bzw. Karbonathärte × 21,8; Ca = Calciumhärte × 7,14; Mg = Magnesiumhärte × 4,34.
             </p>
           </details>
-          <label class="mt-4 flex items-start gap-2 text-sm">
-            <input type="checkbox" class="mt-0.5 accent-accent" checked={!!p.target}
-              onChange={(e) => set({ target: e.currentTarget.checked || undefined })} />
-            <span>
-              Zielprofil
-              <span class="block text-xs text-muted">
-                Kein Ausgangswasser, sondern ein Ziel für den Vergleich und die Automatik im Wasser-Tab.
-              </span>
-            </span>
-          </label>
-          <p class="mt-3 text-xs text-muted">Ohne pH lässt sich der Wasser-pH nach Säure nicht berechnen.</p>
+          {!p.target && <p class="mt-3 text-xs text-muted">Ohne pH lässt sich der Wasser-pH nach Säure nicht berechnen.</p>}
+          {failed && <p class="mt-3 text-sm text-critical">Speichern fehlgeschlagen.</p>}
         </div>
         <div class={dialogFooter}>
           <button type="button" class={btnSecondary} onClick={onClose}>Abbrechen</button>
-          <button type="button" class={btnPrimary} onClick={() => onSave(p)}>Übernehmen</button>
+          <button type="button" class={btnPrimary} disabled={busy}
+            onClick={() => { setBusy(true); setFailed(false); onSave(p).catch(() => { setFailed(true); setBusy(false); }); }}>
+            Speichern
+          </button>
         </div>
       </div>
     </div>

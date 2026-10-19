@@ -56,6 +56,13 @@ export function IngredientsRoute({ tab }: { path?: string; tab?: string }) {
   return <r.mod.IngredientsPage tab={tab} />;
 }
 
+// Route for /profile and /profile/:tab.
+export function BrewProfilesRoute({ tab }: { path?: string; tab?: string }) {
+  const r = usePackage('Profile', 'Die Profilverwaltung ist');
+  if ('page' in r) return r.page;
+  return <r.mod.BrewProfilesPage tab={tab} />;
+}
+
 // Route for /rechner and /rechner/:calc.
 export function RechnerRoute({ calc }: { path?: string; calc?: string }) {
   const r = usePackage('Rechner', 'Die Rechner sind');

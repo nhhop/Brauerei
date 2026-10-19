@@ -64,7 +64,7 @@ export function ProfileEditorModal({ open, categories, snap, initial, editing, o
       <form onSubmit={handleSubmit} class={`max-h-[90vh] w-full max-w-2xl ${dialogFrame} ${dialogSheet}`}>
         <div class="min-h-0 flex-1 overflow-y-auto p-6">
         <h2 class="mb-4 text-base font-medium text-fg">
-          {editing ? 'Profil bearbeiten' : 'Neues Profil'}
+          {editing ? 'Vorlage bearbeiten' : 'Neue Vorlage'}
         </h2>
 
         <div class="mb-4 flex gap-3">

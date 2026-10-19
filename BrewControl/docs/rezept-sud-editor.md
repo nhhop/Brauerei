@@ -145,17 +145,29 @@ Die Übersicht ist Steckbrief und Zusammenfassung. Prozessparameter stehen in de
 - **Stil-Karte:** Überschrift „Stil“ auf gleicher Höhe wie „Rezept“. Sie zeigt die Stilwerte als
   Bereichsbalken mit dem Rezeptwert, dazu „x von 5 im Stil“, BU:GU, Endvergärungsgrad und CO₂-Ziel in
   g/l. Abweichungen stehen als Abzeichen direkt hinter dem Parameternamen, damit die Werte rechtsbündig
-  bleiben. Mit „Ändern“ öffnet sich der Stil-Dialog; das Stilfeld im Formular gibt es nicht mehr.
+  bleiben. **Umgesetzt (2026-10-18):** die Bereichsbalken mit „x von y im Stil“; BU:GU, Endvergärungsgrad
+  und CO₂-Ziel fehlen noch. Die Karte erscheint nur, wenn der Stil des Rezepts aufgelöst wird (BJCP nur mit
+  Stildaten, siehe Stil-Auswahl). Das Stilfeld im Formular bleibt, aber als Name mit Quelle und „Ändern“,
+  das den Stil-Dialog öffnet; ohne Stil heißt der Knopf „Wählen“.
 - **Versionen:** Liste unter der Stil-Karte mit Link zum Vergleichsdialog (siehe oben).
 - Eine Zeitleiste vom Brautag bis „trinkfertig“ wurde erwogen, aber vorerst nicht übernommen.
 
-### Stil-Auswahl (Dialog) — *wird später noch besprochen*
-- Stilrichtlinie wählbar, voreingestellt BJCP 2021.
-- Suche, Filter nach Familie, Schalter „Nur passende (≥ 4 von 5)“.
-- Sortiert nach Übereinstimmung mit dem Rezept. Die Detailansicht zeigt je Wert, ob er im Bereich liegt.
-- Ist noch kein Stil gewählt, zeigt die Karte „Stil wählen“. Dieser Zustand ist nicht gezeichnet.
-- **Datenquelle offen:** Die Stilbereiche im Design sind aus dem Gedächtnis eingetragen und nicht geprüft.
-  Die offizielle Stiltabelle wird gebraucht.
+### Stil-Auswahl (Dialog, seit 2026-10-18)
+`pages/recipe/StyleDialog.tsx`, ersetzt das Vorschlagsfeld `StylePicker`.
+- **Stilquelle** als Dropdown: „BJCP 2021“ (nur wenn die Stildaten da sind, siehe Profile › Bierstile) und
+  „Eigene“. Voreingestellt ist die Quelle des gewählten Stils, sonst BJCP, wenn vorhanden, sonst Eigene.
+- Suche (Nummer, Name, Familie), Filter nach Familie, Schalter „Nur passende (≥ 4 von 5)“ (aus, solange
+  der Katalog fehlt und es keine Kennwerte gibt).
+- Sortiert nach Übereinstimmung mit dem Rezept (`rankStyles` in `web/src/styleCompare.ts`): zuerst die meisten
+  Kennwerte im Bereich, bei Gleichstand die kleinste Abweichung, gemessen in Bereichsbreiten. Jede Zeile
+  zeigt „x von 5“; ein fehlender Bereich eines eigenen Stils zählt als unbekannt, nie als Treffer.
+- Ein Klick wählt den Stil und klappt die Detailansicht auf (Bereich, Rezeptwert, Abweichung je Kennwert);
+  „Übernehmen“ setzt ihn.
+- Dazu „Nur ein Name, ohne Kennwerte“ (Freitext, keine Karte) und „Kein Stil“.
+- **Ablage im Rezept:** `style` (Name), `styleId` und `styleGuide` (`'own'` für eigene Stile, fehlt = BJCP 2021,
+  wie bei allen Rezepten vor 2026-10-18). Ein gelöschter eigener Stil lässt den Namen stehen; das Feld sagt
+  dann „Eigener Stil nicht mehr vorhanden“, die Karte entfällt. Der Versionsvergleich zeigt den Stil mit
+  Quelle, damit ein Wechsel zwischen BJCP- und eigenem Stil gleichen Namens auffällt.
 
 ### Zutaten
 Der Tab Zutaten zeigt **nur die Ansicht nach Art**. Die frühere Prozess-Ansicht mit Umschalter ist aufgelöst:
@@ -432,7 +444,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   | Dublin | 110 | 4 | 12 | 19 | 53 | 280 | BF |
   | Edinburgh | 100 | 18 | 20 | 45 | 105 | 235 | BF |
 
-  Eigene Zielprofile legt man in Anlage › Wasserprofile mit dem Haken „Zielprofil“ an.
+  Eigene Zielprofile legt man unter Profile › Zielwasser an (bis 2026-10-18 in Anlage › Wasserprofile mit dem
+  Haken „Zielprofil“).
 - **Automatisch** (Dialog, seit 2b-3): Zielprofil (oder eigene Werte), erlaubte Salze, eine Säure, Anteil des
   Zweitwassers (meist VE) frei oder fest, Ziel-pH der Maische. Der Löser sucht den Anteil von 0 bis 100 % in
   1-%-Schritten. Je Anteil passt er die Salze per NNLS (Lawson-Hanson) auf Ca, Mg, Na, Cl und SO₄ des
@@ -546,7 +559,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
 ### Maischen und Würzekochen
 - **Maischen** (Tab): Kopfkarte, Zutaten (Maische), Maischeplan, Temperaturverlauf.
   - Konversion (Vorgabe aus dem Sudhaus, siehe Effizienz)
-  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge lässt sich per Ziehgriff ändern.
+  - Maischeplan aus Schritten, aus Vorlagen oder frei; die Reihenfolge ändern die Pfeile je Zeile (den Ziehgriff
+    gibt es seit 2026-10-18 nicht mehr, Nutzer).
     Die erste Spalte legt die **Art des Schritts** fest:
     - **Wasser vorlegen:** Hauptguss auf Temperatur bringen. Menge und Temperatur sind nur lesbar: Die
       Menge ist der Hauptguss minus alle Zubrühmengen, die Temperatur ergibt sich aus der Vorgabe des
@@ -588,9 +602,12 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     oder Sudhaus.
   - Split-Buttons: „+ Rast hinzufügen“ fügt eine freie Rast an, der Pfeil daneben bietet die übrigen
     Schritt-Arten (Zubrühen, Einmaischen, Dekoktion) und vordefinierte Rasten.
-    „Profile“ öffnet den Dialog Maischprofile, der Pfeil daneben lädt ein Profil direkt.
-  - **Dialog Maischprofile:** Liste (eigene und mitgelieferte) und Editor mit Name, Verfahren, Beschreibung
-    und Rasten (Temperatur, Dauer). Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
+    „Profile“ öffnet die Seite Profile › Maische, der Pfeil daneben lädt ein Profil direkt und bietet „Plan
+    als Profil speichern …“ (fragt nur den Namen) und „Profile verwalten …“. Die Profilseite öffnet sich wie
+    beim Gärung-Tab in einem neuen Browser-Tab, damit der ungespeicherte Entwurf bleibt; das Menü lädt die
+    eigenen Profile bei jedem Öffnen neu (seit 2026-10-18, Nutzer).
+  - **Gepflegt** werden die Maischprofile auf der Seite Profile › Maische (siehe Profile); bis 2026-10-18
+    in einem Dialog im Rezept. Aufheizzeiten gehören nicht zum Profil, sie rechnet das Rezept mit der
     Heizrate des Sudhauses.
   - **Mitgelieferte Profile** sind schreibgeschützte Vorlagen; geändert wird eine Kopie (Duplizieren).
     Umgesetzt (3c): Hochkurz, Einrast-Infusion, Weizen mit Ferulasäurerast, Klassisch mit Eiweißrast und
@@ -652,6 +669,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
   Whirlpool). Danach die Zutaten (Vorderwürze, Kochen, Whirlpool) und der Hinweis, wenn das Sudhaus keinen
   Hop Back hat.
 - **Stand 3c (2026-10-09, `web/src/mashProfiles.ts`, `pages/recipe/MashProfileDialog.tsx`):** Maischprofile.
+  Seit 2026-10-18 (Profilseite, Etappe B) steht der Editor in `pages/profiles/MashProfileEditor.tsx`, der
+  Dialog ist entfallen.
   - **Ablage:** `/mashprofiles/<id>.json` auf der SD (`JsonDocDir`, Routen `GET /api/mash-profiles`,
     `PUT`/`DELETE /api/mash-profiles/:id`, nur SD-Boards, kein Index). Die Firmware prüft nur die `id`. Im
     Code heißt das `mashProfile`; die Reglerprogramme unter `/api/profiles` sind etwas anderes. Die fünf
@@ -665,7 +684,8 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     des Einmaischens aus `doughIn` und ersetzt alle weiteren Schritte durch `steps`. Zubrühen kommt als
     Wasser am Siedepunkt, die Menge rechnet der Plan. Weitere Schüttungen behandelt 3d (unten).
   - **Speichern** („Plan als Profil speichern“): übernimmt Einmaischen und alle Rasten und Zubrühschritte;
-    Mengen des Zubrühens und Heizzeiten bleiben draußen.
+    Mengen des Zubrühens und Heizzeiten bleiben draußen. Seit 2026-10-18 fragt es nur den Namen und
+    speichert sofort; Verfahren und Beschreibung ergänzt man auf der Profilseite.
   - **Backup:** `/mashprofiles` liegt wie `/brewhouses` außerhalb von `/config` und ist nicht im Backup.
 - **Stand 3d (2026-10-09, `web/src/mashPlan.ts`, `web/src/mashProfiles.ts`, `pages/recipe/MashTab.tsx`):**
   Dekoktion, Kochen im Maischbehälter und Profile mit Dekoktion und weiteren Schüttungen. Entscheidungen des
@@ -885,6 +905,95 @@ Konzept (vor 5c-1):
   Stammwürze Soll/Ist, Maische- und Gesamteffizienz und abgefüllte Menge dazu, dazu ein Diagramm der
   Effizienz über die Sude.
 
+## Profile (Menü „Profile“, seit 2026-10-18)
+
+Eine Seite für alle bierbezogenen Profile (`pages/BrewProfilesPage.tsx`, Route `/profile/<tab>`, Paket
+`recipes`). Je Art ein Tab mit zwei Tabellen im Stil der Rezeptliste, **Eigene** (Zeile öffnet den Editor;
+bearbeiten, duplizieren, löschen) und **Mitgeliefert** (schreibgeschützt; die Zeile öffnet eine Ansicht
+ohne Eingabefelder, seit Etappe C auf Wunsch des Nutzers; „Duplizieren“ legt ein eigenes Profil an); die Titel stehen über den Tabellen, ohne Anzahl, und in der Zeile von „Eigene“ steht rechts der
+Knopf für ein neues Profil (auch am Handy, kein FAB). Keine Suche (Nutzer, 2026-10-18)
+(`pages/profiles/ProfileList.tsx`, Spalten je Tab). Die Spalten erscheinen ab `lg`, darunter zeigt jede Zeile
+Name und eine Kurzzeile. Die Reglerseite, die bis dahin „Profile“ hieß, heißt jetzt
+**Programmvorlagen** (`/vorlagen`); ihre API `/api/profiles` ist unverändert.
+
+Entscheidungen des Nutzers (2026-10-18): Wasserprofile bekommen eine eigene Ablage wie die Maischprofile; im
+Rezept-Editor bleibt für Maisch- und Gärprofile nur Laden und Speichern, gepflegt wird auf der Seite; ein
+Gärprofil sind die Phasen und der Haken Druckgärung; eigene Bierstile, bis die BJCP zustimmt, mit einem
+Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: A Wasser (erledigt), B Maische
+(erledigt), C Gärung (erledigt), D Bierstile (erledigt).
+
+- **Wasser:** Analysen mit Ca, Mg, Na, K, Cl, SO₄, HCO₃ in mg/l, optional pH und Notiz, im Dialog. Eingabehilfen
+  rechnen KS4,3 (× 61,02) oder Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14
+  bzw. × 4,34) in Ca und Mg; weicht die Ionenbilanz um mehr als 10 % ab, erscheint ein Hinweis. VE-Wasser ist
+  mitgeliefert und wird nicht gespeichert. Tabellenspalten: Name (Notiz darunter), Ca, Mg, Na, K, Cl, SO₄,
+  HCO₃ in mg/l, Restalkalität in °dH, pH. Das Standardwasser wird nicht hier eingestellt, sondern in der Anlage
+  (Nutzer, 2026-10-18); löscht man es hier, fällt die Wahl zurück auf „erstes Profil“.
+- **Zielwasser:** eigene Zielprofile (`target: true`) und die mitgelieferten (siehe Wasser › Aufbereitung,
+  „Ziel“). Ein Zielprofil ist kein Ausgangswasser; der Tab bestimmt, was ein neues Profil ist, den Haken
+  „Zielprofil“ gibt es nicht mehr.
+- **Ablage:** `/api/water-profiles`, eine Datei je Profil (`/waterprofiles/<id>.json`). `getBrewery()` holt die
+  Profile von dort und hängt sie im Speicher als `Brewery.waters` an, `saveBrewery()` lässt das Feld weg. So
+  rechnen Rezepte und die eingefrorene Brauerei eines gestarteten Suds unverändert. **Umzug:** Stehen noch
+  Profile in `/brewery.json`, schreibt der erste Ladevorgang die fehlenden mit derselben id in die Sammlung
+  (Rezeptverweise bleiben gültig) und speichert die Brauerei danach ohne sie; war kein Standardwasser gewählt,
+  wird das erste Ausgangswasser der alten Liste zum Standardwasser, damit Rezepte ohne Wahl gleich rechnen.
+  Scheitert ein Schritt, bleibt `/brewery.json` unverändert und der Umzug läuft beim nächsten Laden erneut.
+- **Maische** (seit 2026-10-18, `pages/profiles/MashProfiles.tsx`, Editor `MashProfileEditor.tsx`): eigene
+  Maischprofile von der SD (`/api/mash-profiles`, Ablage siehe Maischen › Stand 3c) und die mitgelieferten
+  `BUILTIN_MASH_PROFILES`. Als Liste ohne Spalten (Nutzer, 2026-10-18; `ProfileList` ohne `columns`): je
+  Zeile Name, Beschreibung (eine Zeile) und Verfahren · Ablauf (`mashProfileSummary`). Der Editor (Name, Verfahren, Beschreibung, Einmaischen und
+  Schritte mit Rast, Zubrühen, Dekoktion und weiterer Schüttung) sieht aus wie der Maischeplan im Rezept
+  (Spalten Schritt, Bezeichnung, Zugabe, Temperatur, Dauer; Teilmaische unter der Dekoktion; Pfeile und
+  Löschen), aber ohne gemeinsamen Code, weil Rezeptschritte und Plan anders gebaut sind (Nutzer, 2026-10-18).
+  Zugabe: Wassertemperatur beim Zubrühen, Anteil in % bei einer weiteren Schüttung, dick/dünn bei der
+  Dekoktion. Angefügt wird über den Split-Button „+ Rast ▾“ wie im Rezept (nächste Rast, Zubrühen,
+  Einmaischen, Dekoktion, Rast-Vorlagen `REST_PRESETS`); die schreibgeschützte Ansicht nimmt dieselben Spalten.
+  „Duplizieren“ öffnet die Kopie im Editor, gespeichert wird erst mit „Speichern“ (vorher sofort). Ein Klick
+  auf ein mitgeliefertes Profil zeigt seine Schritte schreibgeschützt (`MashProfileView`, mit „Duplizieren“;
+  Nutzer, 2026-10-18). Im Rezept
+  bleiben Laden und „Plan als Profil speichern“ (siehe Maischen).
+- **Gärung** (Etappe C, `web/src/fermentationProfiles.ts`, `pages/profiles/FermentationProfiles.tsx`): ein
+  Gärprofil sind Name, Beschreibung, die Phasen (Name, Temperatur, Dauer in Tagen, Rampe, Druck; ohne id) und
+  der Haken Druckgärung. Stopfgaben und Karbonisierung bleiben im Rezept. Tabellenspalten: Name (Beschreibung
+  darunter), Zahl der Phasen, Tage gesamt (die Rampe zählt zu ihrer Phase), höchster Druck. Der Editor nimmt die
+  `PhaseList` des Rezepts; ohne Druckgärung speichert er keine Drücke. Ein Klick auf ein mitgeliefertes Profil
+  zeigt es schreibgeschützt (Beschreibung, Druck ja/nein, Phasentabelle) mit „Duplizieren“, das den Editor mit
+  der Kopie öffnet (Nutzer, 2026-10-18; `ProfileList` mit `onView`; ebenso VE-Wasser und die mitgelieferten
+  Zielprofile mit ihren Werten). Sechs mitgelieferte Profile: untergärig
+  klassisch (9 °C, 1 °C lagern), untergärig mit Diacetylrast (10 → 17 → 1 °C), obergärig (19 → 21 °C, Cold Crash
+  2 °C), Weizen (20 °C, nicht kalt stellen), Kveik (35 °C) und Druckgärung untergärig warm (18 °C, 1 → 1,5 bar,
+  kalt lagern). Die Werte sind Richtwerte aus Hefe-Herstellern, Fachartikeln und Foren, Quellen im Kommentar
+  von `BUILTIN_FERMENTATION_PROFILES` (`TODO(verify)` gegen ein Lehrbuch). Ablage `/api/fermentation-profiles`,
+  eine Datei je Profil (`/fermprofiles/<id>.json`).
+  **Im Rezept** (Gärung-Tab, Karte Gärführung) ein SplitButton „Profile ▾“ wie im Maische-Tab: der Pfeil lädt ein
+  Profil (mitgeliefert oder eigen; ersetzt alle Phasen mit neuen ids und setzt oder löscht die Druckgärung,
+  nach Bestätigung, wenn das Rezept schon Phasen hat), „Als Profil speichern …“ fragt nur den Namen,
+  „Profile verwalten …“ und der Knopf selbst öffnen Profile › Gärung. Weil der Rezept-Editor beim Verlassen den
+  ungespeicherten Entwurf ohne Rückfrage verwirft, öffnet sich die Seite in einem neuen Browser-Tab; das Menü
+  lädt die eigenen Profile bei jedem Öffnen neu.
+  **Phasenliste** (`PhaseList`, Rezept und Editor gleich, Nutzer 2026-10-18): Titel, „Unter Druck vergären“
+  (Text links vom Schalter), „Profile ▾“ (nur im Rezept) und „+ Phase ▾“ stehen über der Karte. Die Hinweise
+  „Rampe länger als die Phase“ und „Kein Gärplatz ist bis … bar druckfest“ (nur im Rezept, gegen den
+  druckfestesten Gärplatz) stehen unter der betroffenen Phase. Der Pfeil an
+  „+ Phase“ bietet vordefinierte Phasen wie „+ Rast“ beim Maischen: Anstellen und Hauptgärung je unter- und
+  obergärig, Diacetylrast, Cold Crash, Lagerung (`PHASE_PRESETS`, Werte wie die mitgelieferten Profile). Phasen
+  lassen sich nicht mehr verschieben, keine Nummern. Ist die Karte breit genug, stehen die Phasen in Spalten mit
+  Kopfzeile (Phase, Temperatur, Dauer, Rampe, Druck), sonst Name und Löschen oben, die Zahlen darunter.
+  Eine Phase „Anstellen“ verträgt sich mit dem Gärprogramm des Suds: Dessen eigener erster Schritt „Anstellen“
+  hält die Temperatur der ersten Phase, bis die Hefe drin ist.
+- **Bierstile** (Tab `stile`, `pages/profiles/BeerStylesTab.tsx`): eigene Stile mit Name, Familie, Beschreibung
+  und fünf Bereichen Min–Max (Stammwürze und Restextrakt in °P, Alkohol in % vol, IBU, EBC). Ein Bereich hat
+  beide Grenzen oder keine; ein leerer zählt im Vergleich als unbekannt. Tabellenspalten: Name (Familie
+  darunter), die fünf Bereiche. Unter „Mitgeliefert“ stehen die BJCP-2021-Stile, nach Familie gruppiert in der
+  Reihenfolge der BJCP (Zwischenzeile „1 Standard American Beer“, „2 International Lager“ …, unter dem Namen nur
+  die Nummer; Nutzer, 2026-10-18), aber nur, wenn ihre Daten da sind (`pnpm dev` oder ein Build mit `VITE_STYLE_COMPARISON=1`, bis die BJCP zustimmt); dann auch die
+  Copyright-Zeile. „Duplizieren“ übernimmt einen BJCP-Stil als eigenen (Werte auf 0,1 °P/% bzw. ganze IBU/EBC
+  gerundet, Herkunft in der Beschreibung).
+  - **Gemeinsamer Typ** `BeerStyle` (`web/src/styleSource.ts`) in den Einheiten der App: `loadStyles` rechnet die
+    BJCP-Datei beim Laden um (SG → °P, SRM × 1,97 → EBC), `useStyleSources()` liefert Eigene immer und BJCP 2021
+    nur mit Daten. Ohne Route (LittleFS-Boards, ältere Firmware) bleibt „Eigene“ leer.
+  - **Ablage:** `/api/styles`, eine Datei je Stil (`/styles/<id>.json`), nur eigene Stile.
+
 ## Anlage (Einstellungen › Brauanlage)
 
 Die Anlage ist in **Sudhaus** und **Gärkeller** geteilt. Die meisten Brauer haben ein Sudhaus, aber oft
@@ -894,13 +1003,11 @@ mehrere Gärplätze, sodass mehrere Sude gleichzeitig aktiv sein können.
 nicht an der Anlage, und werden deshalb einmal für alle Sudhäuser gepflegt. Sie sind Vorgabe für die
 Rezept-Rechnungen und Vorbelegung im Sud; die Werte vom Brautag trägt der Sud als Messung ein.
 
-Ebenfalls auf Brauerei-Ebene stehen die **Wasserprofile** (seit 2b-1): Analysen mit Ca, Mg, Na, K, Cl, SO₄,
-HCO₃ in mg/l, optional pH und Notiz, als Liste mit Dialog. Eingabehilfen rechnen KS4,3 (× 61,02) oder
-Karbonathärte (°dH × 21,8) in HCO₃ um, Calcium- und Magnesiumhärte (°dH × 7,14 bzw. × 4,34) in Ca und Mg;
-weicht die Ionenbilanz um mehr als 10 % ab, erscheint ein Hinweis. VE-Wasser ist fest eingebaut und wird
-nicht gespeichert. Das **Standardwasser** ist das Ausgangswasser von Rezepten, die keines wählen; ohne Wahl
-gilt das erste Profil, ohne Profil VE-Wasser. Rezepte lesen es beim Rechnen, ändert es sich, rechnen auch
-bestehende Rezepte ohne eigene Wahl damit.
+Die **Wasserprofile** standen bis 2026-10-18 ebenfalls hier; sie sind auf die Seite Profile umgezogen (siehe
+dort), die Karte Brauerei verweist mit einem Link darauf. Hier bleibt das **Standardwasser** (Nutzer,
+2026-10-18), das Ausgangswasser von Rezepten, die keines wählen; ohne Wahl gilt das erste Profil (nach
+Namen), ohne Profil VE-Wasser. Rezepte lesen es beim Rechnen, ändert es sich, rechnen auch bestehende Rezepte
+ohne eigene Wahl damit.
 
 Ebenfalls dort steht die **Höhe** (seit 3a, m ü. NN). Daraus folgt der Siedepunkt nach der
 Normatmosphäre: p = 1013,25 · (1 − 2,25577·10⁻⁵ · h)^5,25588 hPa, Siedepunkt nach Clausius-Clapeyron mit
@@ -914,10 +1021,6 @@ Vorgabe) oder Kolbach (Restalkalität nach Bierfarbe, ohne pH). Siehe Wasser ›
 
 Ebenfalls dort steht die **Grundlage der Effizienz** (seit 3b), eine für alle Rezepte: Konversion,
 Maischeeffizienz (Vorgabe), Sudhausausbeute oder Brewhouse-Efficiency. Siehe Rezept › Effizienz.
-
-Ein Wasserprofil mit dem Haken **Zielprofil** (seit 2b-3, `target: true`) ist kein Ausgangswasser: Es fehlt in
-der Auswahl der Ausgangswässer und des Standardwassers und dient nur dem Vergleich und der Automatik im
-Wasser-Tab (siehe Wasser › Aufbereitung, „Ziel“). Die mitgelieferten Zielprofile sind fest eingebaut.
 
 ### Sudhaus
 Umgesetzt seit 2026-10-04 (Etappe 1, `web/src/brewhouse.ts`, `/api/brewhouses`, `/api/brewery`), nur auf

@@ -18,7 +18,8 @@ export function Section({ title, sub, action, children }: {
         </div>
         {action}
       </div>
-      <div class="overflow-hidden rounded-md border border-card-border bg-card shadow-elev-2">{children}</div>
+      {/* No overflow-hidden: the ingredient picker's suggestion list must reach past the last row. */}
+      <div class="rounded-md border border-card-border bg-card shadow-elev-2 [&>:first-child]:rounded-t-md [&>:last-child]:rounded-b-md">{children}</div>
     </section>
   );
 }

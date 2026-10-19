@@ -10,7 +10,7 @@ import { AlertCenter } from './components/AlertCenter';
 import { EmergencyStopBanner } from './components/EmergencyStopBanner';
 import { Dashboard } from './pages/Dashboard';
 import { ProfilesPage } from './pages/ProfilesPage';
-import { AnlageRoute, BrewsRoute, IngredientsRoute, RecipesRoute, RechnerRoute } from './pages/PackageRoutes';
+import { AnlageRoute, BrewProfilesRoute, BrewsRoute, IngredientsRoute, RecipesRoute, RechnerRoute } from './pages/PackageRoutes';
 import { SettingsIndex } from './pages/SettingsIndex';
 import { ConnectivityPage } from './pages/ConnectivityPage';
 import { AppearancePage } from './pages/AppearancePage';
@@ -188,12 +188,13 @@ export function App() {
       <EmergencyStopBanner active={!!snap?.estop} />
       <Router>
         <Dashboard path="/" snap={snap} err={err} alarmByRef={alarmByRef} />
-        <ProfilesPage path="/profiles" snap={snap} />
+        <ProfilesPage path="/vorlagen" snap={snap} />
         <RecipesRoute path="/rezepte" />
         <RecipesRoute path="/rezepte/:id" />
         <BrewsRoute path="/sude" snap={snap} />
         <BrewsRoute path="/sude/:id" snap={snap} />
         <IngredientsRoute path="/zutaten/:tab?" />
+        <BrewProfilesRoute path="/profile/:tab?" />
         <RechnerRoute path="/rechner" />
         <RechnerRoute path="/rechner/:calc" />
         <SettingsIndex path="/settings" />

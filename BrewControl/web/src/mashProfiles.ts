@@ -2,9 +2,9 @@
 // /mashprofiles/<id>.json (global, not per recipe or brewhouse). Not to be
 // confused with the controller programs under /api/profiles. A profile holds the
 // temperatures and holds only; the heating times come from the brewhouse.
-import { failed } from './api';
+import { deleteDoc, listDocs, saveDoc } from './docStore';
 import {
-  VALID_ID, chargeIdOf, chargesOf, isMashGrain, splitCharge, uid, type Charge, type MashStep, type Recipe,
+  chargeIdOf, chargesOf, isMashGrain, splitCharge, uid, type Charge, type MashStep, type Recipe,
 } from './recipes';
 
 // A step after the fixed "Einmaischen". `tempC` is the target (decoction: the
@@ -41,6 +41,17 @@ const decoction = (name: string, tempC: number, durationMin: number, boilMin: nu
   kind: 'decoction', name, tempC, durationMin,
   decoction: { ...(thin ? { thin } : {}), rests: rests.map(([c, m]) => ({ tempC: c, durationMin: m })), boilMin },
 });
+
+// Rests the "+ Rast" menus of the mash plan and the profile editor offer; the
+// button itself adds the next one above the last temperature.
+export const REST_PRESETS: { name: string; tempC: number; durationMin: number }[] = [
+  { name: 'Gummirast', tempC: 40, durationMin: 20 },
+  { name: 'Ferulasäurerast', tempC: 45, durationMin: 15 },
+  { name: 'Eiweißrast', tempC: 52, durationMin: 10 },
+  { name: 'Maltoserast', tempC: 63, durationMin: 40 },
+  { name: 'Verzuckerungsrast', tempC: 72, durationMin: 20 },
+  { name: 'Abmaischen', tempC: 78, durationMin: 5 },
+];
 
 const NOTE = 'Richtwerte, an Malz und Sudhaus anpassen.';
 
@@ -330,26 +341,6 @@ export function mashProfileSummary(p: MashProfile): string {
 const BASE = '/api/mash-profiles';
 
 // The profiles of the SD card; the shipped ones are not among them.
-export async function listMashProfiles(): Promise<MashProfile[]> {
-  const r = await fetch(BASE);
-  if (!r.ok) await failed(r);
-  return ((await r.json()) as (Partial<MashProfile> & { id: string })[])
-    .map(normalizeMashProfile).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export async function saveMashProfile(p: MashProfile): Promise<MashProfile> {
-  if (!VALID_ID.test(p.id)) throw new Error('ungültige ID');
-  const saved = { ...p, updatedAt: Date.now() };
-  const r = await fetch(`${BASE}/${encodeURIComponent(p.id)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(saved),
-  });
-  if (!r.ok) await failed(r);
-  return saved;
-}
-
-export async function deleteMashProfile(id: string): Promise<void> {
-  const r = await fetch(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!r.ok) await failed(r);
-}
+export const listMashProfiles = () => listDocs<MashProfile>(BASE, normalizeMashProfile, (p) => p.name);
+export const saveMashProfile = (p: MashProfile) => saveDoc(BASE, p);
+export const deleteMashProfile = (id: string) => deleteDoc(BASE, id);

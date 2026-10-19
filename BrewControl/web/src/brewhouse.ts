@@ -6,6 +6,7 @@ import type { EfficiencyBasis } from './efficiency';
 import type { PhModel } from './mashPh';
 import type { Snapshot } from './types';
 import type { WaterProfile } from './waterChem';
+import { listWaterProfiles, migrateWaters, saveWaterProfile } from './waterProfiles';
 
 // Brewing system ("Brauanlage"): the brewery (site values shared by all
 // brewhouses) and its brewhouses. Process steps are assigned freely to vessels.
@@ -33,7 +34,7 @@ export const stepLabel = (k: StepKey) => STEPS.find((s) => s.key === k)!.label;
 export interface Brewery {
   grainTempC: number;
   tapWaterTempC: number;
-  waters?: WaterProfile[];  // water analyses; VE water is built in (waterChem.VE_WATER)
+  waters?: WaterProfile[];  // water profiles, loaded from their own collection (waterProfiles.ts), never saved here; VE water is built in (waterChem.VE_WATER)
   defaultWaterId?: string;  // the source water of recipes that pick none
   phModel?: PhModel;        // mash and wort pH of all recipes; unset = DEFAULT_PH_MODEL
   altitudeM?: number;       // site altitude; unset = sea level
@@ -777,15 +778,23 @@ export async function deleteBrewhouse(id: string): Promise<void> {
   if (!r.ok) await failed(r);
 }
 
-// The defaults until the brewery was first saved.
+// The defaults until the brewery was first saved. `waters` comes from the water
+// profile collection (waterProfiles.ts).
 export async function getBrewery(): Promise<Brewery> {
   const r = await fetch('/api/brewery');
-  if (r.status === 404) return { ...DEFAULT_BREWERY };
-  if (!r.ok) await failed(r);
-  return { ...DEFAULT_BREWERY, ...((await r.json()) as Partial<Brewery>) };
+  if (!r.ok && r.status !== 404) await failed(r);
+  const b = { ...DEFAULT_BREWERY, ...(r.ok ? ((await r.json()) as Partial<Brewery>) : {}) };
+  return migrateWaters(b, { list: listWaterProfiles, save: saveWaterProfile, saveBrewery: putBrewery });
 }
 
+// Without `waters`: they are stored as profiles of their own.
 export async function saveBrewery(b: Brewery): Promise<void> {
+  const rest = { ...b };
+  delete rest.waters;
+  await putBrewery(rest);
+}
+
+async function putBrewery(b: Brewery): Promise<void> {
   const r = await fetch('/api/brewery', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

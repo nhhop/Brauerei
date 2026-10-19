@@ -29,6 +29,7 @@ export interface WaterProfile {
   ph?: number;
   note?: string;
   target?: true;   // a target to compare with and to treat towards, never a source water
+  updatedAt?: number;  // set when stored (waterProfiles.ts)
 }
 
 // The ions a target profile sets, mg/l.

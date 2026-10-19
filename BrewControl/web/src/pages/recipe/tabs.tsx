@@ -1,10 +1,11 @@
 import { useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
 import { DEFAULT_CONVERSION, type Brewery, type Brewhouse } from '../../brewhouse';
 import { BASIS_LABEL, basisOf, efficiencyInput, lauterText, type Efficiency, type EfficiencyBasis } from '../../efficiency';
 import type { CatalogIngredient } from '../../ingredientCatalog';
 import { useCatalog } from '../../ingredientSource';
 import { ingredientFigures } from '../../ingredientRows';
-import { atKnockOut, calcStats, pitchedL, wortExtract } from '../../recipeStats';
+import { atKnockOut, buGu, calcStats, pitchedL, wortExtract } from '../../recipeStats';
 import { calcTreatment } from '../../recipeTreatment';
 import { calcMash, fmtClock } from '../../mashPlan';
 import { calcWater, fmtL } from '../../recipeWater';
@@ -13,14 +14,16 @@ import {
   type RecipeSummary, type Timing,
 } from '../../recipes';
 import { Segmented } from '../../components/Segmented';
-import { badgeAccent, inp } from '../../ui';
+import { badgeAccent, btnSecondary, inp } from '../../ui';
+import { BeerGlass } from './BeerGlass';
+import { Section } from './CalcTable';
 import { Card, Field, NumInput, Override } from './fields';
 import { KindTable, ProcessTable, type IngredientGroup } from './IngredientCard';
 import { StyleCard } from './StyleCard';
-import { StylePicker } from './StylePicker';
+import { StyleDialog } from './StyleDialog';
 import { VersionCompareDialog } from './VersionCompareDialog';
 import { VersionsCard } from './Versions';
-import { STYLE_COMPARISON } from '../../styleSource';
+import { resolveStyle, styleCode, useStyleSources, type StyleSource } from '../../styleSource';
 
 export interface TabProps {
   recipe: Recipe;
@@ -65,9 +68,37 @@ function BrewhouseSelect({ recipe, onChange, brewhouses }: Omit<TabProps, 'brewe
   );
 }
 
+// The style as a name with its source; the dialog sets it. A link whose style
+// is gone (an own style deleted) keeps the name and says so.
+function StyleField({ recipe, sources, onOpen }: { recipe: Recipe; sources: StyleSource[] | null; onOpen: () => void }) {
+  const linked = resolveStyle(sources, recipe);
+  const ownSource = sources?.find((s) => s.guide === 'own');
+  const sub = linked ? `${linked.source.label}${styleCode(linked.style) ? ` ${styleCode(linked.style)}` : ''}`
+    : recipe.styleGuide === 'own' && ownSource && !ownSource.failed ? 'Eigener Stil nicht mehr vorhanden'
+    : recipe.style && !recipe.styleId ? 'ohne Kennwerte'
+    : undefined;
+  return (
+    <div class="block text-xs text-muted">
+      <span class="mb-1 block">Stil</span>
+      <div class="flex items-center gap-2">
+        <span class={`${inp} min-w-0 flex-1 truncate`}>
+          {recipe.style || <span class="text-muted">Kein Stil</span>}
+          {sub && <span class="ml-2 text-xs text-muted">{sub}</span>}
+        </span>
+        <button type="button" class={btnSecondary} disabled={!sources} onClick={onOpen}>
+          {recipe.style ? 'Ändern' : 'Wählen'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, onOpenVersion, dirty }: TabProps) {
   const [comparing, setComparing] = useState(false);
+  const [pickingStyle, setPickingStyle] = useState(false);
   const catalog = useCatalog();
+  const { sources } = useStyleSources();
+  const linked = resolveStyle(sources, recipe);
   const bh = brewhouses?.find((b) => b.id === recipe.brewhouseId);
   const entries = catalog?.entries ?? null;
   const hot = atKnockOut(recipe, bh, entries, brewery);
@@ -78,72 +109,80 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
   // Picking a brewhouse without a decoction vessel leaves the plan's decoctions
   // to be counted as rests; offer to turn them into rests for good.
   const stranded = !!mash && !mash.decoction && recipe.mash.some((s) => s.kind === 'decoction');
+  const bugu = stats?.ibu !== undefined && stats.ogPlato !== undefined ? buGu(stats.ibu, stats.ogPlato) : undefined;
   const so4Cl = water && calcTreatment(recipe, water, brewery, catalog?.entries ?? null).columns[0].after.so4Cl;
   return (
     <>
-      <Card title="Rezept">
-        <div class="grid gap-3 md:grid-cols-2">
-          <Field label="Name">
-            <input class={`${inp} w-full`} value={recipe.name}
-              onInput={(e) => onChange({ name: e.currentTarget.value })} />
-          </Field>
-          <Field label="Stil">
-            {STYLE_COMPARISON ? (
-              <StylePicker recipe={recipe} onChange={onChange} />
-            ) : (
-              <input class={`${inp} w-full`} value={recipe.style} placeholder="z.B. Pale Ale"
-                onInput={(e) => onChange({ style: e.currentTarget.value })} />
-            )}
-          </Field>
-          <VolumeField recipe={recipe} onChange={onChange} bh={bh} entries={entries} brewery={brewery} knockOutL={hot.volumeL} />
-          <EfficiencyField recipe={recipe} onChange={onChange} bh={bh} brewery={brewery} />
-          <Field label="Sudhaus">
-            <BrewhouseSelect recipe={recipe} onChange={onChange} brewhouses={brewhouses} />
-            {stranded && (
-              <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-caution">
-                <span>„{bh!.name}“ hat keinen zweiten beheizten Behälter, die Dekoktionen im Maischeplan zählen als Rasten.</span>
-                <button type="button" class="rounded-md border border-border px-2 py-0.5 text-muted hover:bg-fg/10"
-                  onClick={() => onChange({ mash: replaceDecoctions(recipe.mash, (s) => mash?.rows.find((r) => r.step.id === s.id)?.tempC) })}>
-                  Durch Rasten ersetzen
-                </button>
-              </div>
-            )}
-          </Field>
-          <div class="md:col-span-2">
-            <Field label="Beschreibung">
-              <textarea class={`${inp} w-full`} rows={3} value={recipe.description}
-                onInput={(e) => onChange({ description: e.currentTarget.value })} />
+      <Section title="Rezept">
+        <div class="flex flex-col gap-4 p-4">
+          <div class="flex items-center gap-5">
+            <BeerGlass ebc={stats?.ebc} />
+            <div class="flex min-w-0 flex-1 flex-col gap-2.5">
+              <input class={`${inp} w-full px-2.5 py-1.5 text-xl font-semibold`} aria-label="Name" value={recipe.name}
+                onInput={(e) => onChange({ name: e.currentTarget.value })} />
+              <textarea class={`${inp} w-full`} rows={2} aria-label="Beschreibung" placeholder="Was soll das Bier sein?"
+                value={recipe.description} onInput={(e) => onChange({ description: e.currentTarget.value })} />
+            </div>
+          </div>
+          <div class="grid gap-3 md:grid-cols-2">
+            <Field label="Sudhaus">
+              <BrewhouseSelect recipe={recipe} onChange={onChange} brewhouses={brewhouses} />
+              {stranded && (
+                <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-caution">
+                  <span>„{bh!.name}“ hat keinen zweiten beheizten Behälter, die Dekoktionen im Maischeplan zählen als Rasten.</span>
+                  <button type="button" class="rounded-md border border-border px-2 py-0.5 text-muted hover:bg-fg/10"
+                    onClick={() => onChange({ mash: replaceDecoctions(recipe.mash, (s) => mash?.rows.find((r) => r.step.id === s.id)?.tempC) })}>
+                    Durch Rasten ersetzen
+                  </button>
+                </div>
+              )}
             </Field>
+            <VolumeField recipe={recipe} onChange={onChange} bh={bh} entries={entries} brewery={brewery} knockOutL={hot.volumeL} />
+            <StyleField recipe={recipe} sources={sources} onOpen={() => setPickingStyle(true)} />
+            <EfficiencyField recipe={recipe} onChange={onChange} bh={bh} brewery={brewery} />
           </div>
         </div>
-      </Card>
-      <Card title="Kennwerte">
-        {stats ? (
-          <>
-            <dl class="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              <Stat label="Stammwürze" value={stats.ogPlato} unit="°P" digits={1} />
-              <Stat label="Restextrakt" value={stats.fgPlato} unit="°P" digits={1} />
-              <Stat label="Alkohol" value={stats.abv} unit="% vol" digits={1} />
-              <Stat label="Bittere" value={stats.ibu} unit="IBU" digits={0} />
-              <Stat label="Farbe" value={stats.ebc} unit="EBC" digits={0} />
-            </dl>
-            {stats.efficiency && <EfficiencyChain e={stats.efficiency} />}
-            {stats.notes.length > 0 && (
-              <ul class="mt-3 space-y-1 text-xs text-muted">
-                {stats.notes.map((n) => <li key={n}>{n}</li>)}
-              </ul>
+      </Section>
+      <Section title="Kennwerte">
+        <div class="p-4">
+          {stats ? (
+            <>
+              <dl class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <Stat label="Stammwürze" value={stats.ogPlato} unit="°P" digits={1} />
+                <Stat label="Restextrakt" value={stats.fgPlato} unit="°P" digits={1} />
+                <Stat label="Alkohol" value={stats.abv} unit="% vol" digits={1} />
+                <Stat label="Bittere" value={stats.ibu} unit="IBU" digits={0} />
+                <Stat label="Farbe" value={stats.ebc} unit="EBC" digits={0} />
+              </dl>
+              {stats.efficiency && <EfficiencyChain e={stats.efficiency} />}
+              {stats.notes.length > 0 && (
+                <ul class="mt-3 space-y-1 text-xs text-muted">
+                  {stats.notes.map((n) => <li key={n}>{n}</li>)}
+                </ul>
+              )}
+            </>
+          ) : (
+            <p class="text-sm text-muted">Katalog nicht geladen, Kennwerte nicht verfügbar.</p>
+          )}
+        </div>
+      </Section>
+      {(bugu !== undefined || so4Cl !== undefined) && (
+        <Section title="Charakter">
+          <div class="flex flex-col gap-5 p-4">
+            {bugu !== undefined && (
+              <Scale label="Bittere" detail={<>BU:GU <span class="font-medium text-fg">{bugu.toFixed(2).replace('.', ',')}</span></>}
+                at={(bugu - BUGU_MIN) / (BUGU_MAX - BUGU_MIN)} zone={[(0.5 - BUGU_MIN) / (BUGU_MAX - BUGU_MIN), (0.8 - BUGU_MIN) / (BUGU_MAX - BUGU_MIN)]}
+                ends={['mild', 'ausgewogen', 'herb']} />
             )}
-          </>
-        ) : (
-          <p class="text-sm text-muted">Katalog nicht geladen, Kennwerte nicht verfügbar.</p>
-        )}
-      </Card>
-      {so4Cl !== undefined && (
-        <Card title="Charakter">
-          <So4ClScale ratio={so4Cl} />
-        </Card>
+            {so4Cl !== undefined && <So4ClScale ratio={so4Cl} />}
+          </div>
+        </Section>
       )}
-      {STYLE_COMPARISON && <StyleCard recipe={recipe} stats={stats ?? { notes: [] }} />}
+      {linked && <StyleCard style={linked.style} source={linked.source} stats={stats ?? { notes: [] }} />}
+      {pickingStyle && sources && (
+        <StyleDialog recipe={recipe} sources={sources} stats={stats}
+          onPick={(p) => { onChange(p); setPickingStyle(false); }} onClose={() => setPickingStyle(false)} />
+      )}
       {versions && versions.length > 1 && onOpenVersion && (
         <VersionsCard versions={versions} current={recipe.id} onOpen={onOpenVersion} onCompare={() => setComparing(true)} />
       )}
@@ -151,14 +190,14 @@ export function OverviewTab({ recipe, onChange, brewhouses, brewery, versions, o
         <VersionCompareDialog versions={versions} recipe={recipe} dirty={!!dirty} brewhouses={brewhouses} brewery={brewery}
           onClose={() => setComparing(false)} />
       )}
-      <Card title="Brauplan">
-        <ul class="space-y-1 text-sm text-muted">
+      <Section title="Brauplan">
+        <ul class="space-y-1 p-4 text-sm text-muted">
           <li>{recipe.ingredients.length} Zutat{recipe.ingredients.length === 1 ? '' : 'en'}</li>
           <li>Maischen: {recipe.mash.length} Schritte{mash ? `, ${fmtClock(mash.totalMin)} h` : ''}</li>
           <li>Würzekochen: {recipe.boil.durationMin} min</li>
           <li>Gärung: {recipe.fermentation.length} Phase{recipe.fermentation.length === 1 ? '' : 'n'}</li>
         </ul>
-      </Card>
+      </Section>
     </>
   );
 }
@@ -238,28 +277,44 @@ function EfficiencyChain({ e }: { e: Efficiency }) {
   );
 }
 
+// A marker on a bar with the balanced zone highlighted; `at` and `zone` are 0..1.
+function Scale({ label, detail, at, zone, ends }: {
+  label: string; detail: ComponentChildren; at: number; zone: [number, number]; ends: [string, string, string];
+}) {
+  const pos = (x: number) => Math.min(Math.max(x, 0), 1) * 100;
+  return (
+    <div>
+      <div class="mb-1 flex items-baseline justify-between text-xs text-muted">
+        <span>{label}</span>
+        <span>{detail}</span>
+      </div>
+      <div class="relative h-2 rounded-full bg-fg/10">
+        <div class="absolute inset-y-0 rounded-full bg-accent/25" style={{ left: `${pos(zone[0])}%`, width: `${pos(zone[1]) - pos(zone[0])}%` }} />
+        <div class="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-accent"
+          style={{ left: `${pos(at)}%` }} />
+      </div>
+      <div class="mt-1 grid grid-cols-3 text-xs text-muted">
+        <span>{ends[0]}</span>
+        <span class="text-center">{ends[1]}</span>
+        <span class="text-right">{ends[2]}</span>
+      </div>
+    </div>
+  );
+}
+
+// BU:GU on a linear scale; the zone limits follow common brewing guides.
+// TODO(verify): 0.5 and 0.8 have no primary source here yet.
+const BUGU_MIN = 0.2;
+const BUGU_MAX = 1.4;
+
 // Sulfate : chloride of the strike water on a log scale from 1:4 to 4:1.
 // TODO(verify): the zone limits 0.8 and 1.5 follow common calculators
 // (Brewfather, Bru'n Water) and have no primary source here yet.
 function So4ClScale({ ratio }: { ratio: number }) {
-  const pos = (r: number) => Math.min(Math.max((Math.log(r) / Math.log(4) + 1) / 2, 0), 1) * 100;
+  const pos = (r: number) => (Math.log(r) / Math.log(4) + 1) / 2;
   return (
-    <div>
-      <div class="mb-1 flex items-baseline justify-between text-xs text-muted">
-        <span>Wasserprofil (Hauptguss)</span>
-        <span>SO₄ : Cl <span class="font-medium text-fg">{ratio.toFixed(2).replace('.', ',')}</span></span>
-      </div>
-      <div class="relative h-2 rounded-full bg-fg/10">
-        <div class="absolute inset-y-0 rounded-full bg-accent/25" style={{ left: `${pos(0.8)}%`, width: `${pos(1.5) - pos(0.8)}%` }} />
-        <div class="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card bg-accent"
-          style={{ left: `${pos(ratio)}%` }} />
-      </div>
-      <div class="mt-1 grid grid-cols-3 text-xs text-muted">
-        <span>weich, vollmundig</span>
-        <span class="text-center">ausgewogen</span>
-        <span class="text-right">trocken, knackig</span>
-      </div>
-    </div>
+    <Scale label="Wasserprofil (Hauptguss)" detail={<>SO₄ : Cl <span class="font-medium text-fg">{ratio.toFixed(2).replace('.', ',')}</span></>}
+      at={pos(ratio)} zone={[pos(0.8), pos(1.5)]} ends={['weich, vollmundig', 'ausgewogen', 'trocken, knackig']} />
   );
 }
 

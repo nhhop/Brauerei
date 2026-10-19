@@ -4,7 +4,7 @@ import { versionOf, type RecipeSummary } from '../../recipes';
 import { formatDate, loadTimeSettings } from '../../time';
 import type { TimeSettings } from '../../types';
 import { badgeAccent, badgeSuccess, inp } from '../../ui';
-import { Card } from './fields';
+import { Section } from './CalcTable';
 
 export function useTimeSettings(): TimeSettings | undefined {
   const [time, setTime] = useState<TimeSettings>();
@@ -46,9 +46,9 @@ export function VersionsCard({ versions, current, onOpen, onCompare }: {
 }) {
   const time = useTimeSettings();
   return (
-    <Card title="Versionen"
+    <Section title="Versionen"
       action={<button type="button" class="text-sm text-accent hover:underline" onClick={onCompare}>Vergleichen</button>}>
-      <ul class="divide-y divide-border">
+      <ul class="divide-y divide-border px-2 py-1">
         {[...versions].reverse().map((v) => (
           <li key={v.id}>
             <button type="button" disabled={v.id === current} onClick={() => onOpen(v.id)}
@@ -61,6 +61,6 @@ export function VersionsCard({ versions, current, onOpen, onCompare }: {
           </li>
         ))}
       </ul>
-    </Card>
+    </Section>
   );
 }

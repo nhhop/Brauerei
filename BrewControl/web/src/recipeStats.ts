@@ -22,6 +22,13 @@ export interface RecipeStats {
   notes: string[];
 }
 
+// Bitterness units per gravity point (IBU / (SG − 1) · 1000): bitterness
+// relative to the wort strength.
+export function buGu(ibu: number, ogPlato: number): number | undefined {
+  const gu = (platoToSg(ogPlato) - 1) * 1000;
+  return gu > 0 ? ibu / gu : undefined;
+}
+
 // Midpoint, or the one end that is set ("min. 80.5", "max. 5").
 export function rangeValue(r: Range): number {
   const [lo, hi] = r;
