@@ -14,7 +14,7 @@ import type { Water } from './recipeWater';
 import { SCOPE_TIMINGS, type Ingredient, type PhKey, type Recipe, type Timing, type WaterKey } from './recipes';
 import {
   VE_WATER, WATER_AGENTS, agentMmol, amountForPh, applyAgents, blend, concentrate, figuresOf, isAcid, stateOf, waterPh,
-  type Dose, type WaterAgent, type WaterAgentId, type WaterFigures, type WaterProfile, type WaterState,
+  type Dose, type Ions, type WaterAgent, type WaterAgentId, type WaterFigures, type WaterProfile, type WaterState,
 } from './waterChem';
 
 export type ColumnKey = 'strike' | 'mash' | 'sparge' | 'preBoil' | 'knockOut' | 'dilution' | 'total';
@@ -106,6 +106,44 @@ export function phOf(col: Column, state: WaterState): number | undefined {
   if (!b) return col.wort || col.key === 'mash' ? undefined : waterPh(state);
   if (b.kind === 'mash') return mashPh(b.diPh, b.ratio, state);
   return b.startPh + ((figuresOf(state).ra - figuresOf(col.start).ra) * col.volumeL) / b.bufferMeq;
+}
+
+// What one part of a column adds to it (a source water's share or one dose on
+// its own): mg/l, hco3 in mg/l, RA in °dH, pH shift when the model knows one.
+export interface Contribution { ions: Ions; hco3: number; raDh: number; ph?: number }
+
+function contribution(base: WaterState, after: WaterState, col: Column): Contribution {
+  const a = figuresOf(base);
+  const b = figuresOf(after);
+  const ions = { ...b.ions };
+  for (const k of Object.keys(ions) as (keyof Ions)[]) ions[k] -= a.ions[k];
+  const ph0 = phOf(col, base);
+  const ph1 = phOf(col, after);
+  return { ions, hco3: b.hco3 - a.hco3, raDh: b.raDh - a.raDh, ph: ph0 === undefined || ph1 === undefined ? undefined : ph1 - ph0 };
+}
+
+// A dose applied alone to the water it lands in; one after the pH measurement
+// starts from the mash as it is by then. Undefined when the row is no water agent.
+export function doseContribution(col: Column, d: ColumnDose): Contribution | undefined {
+  if (!d.agent) return undefined;
+  const base = d.ingredient.timing === 'mashPh' ? col.mid ?? col.start : col.start;
+  return contribution(base, applyAgents(base, col.volumeL, dosesOf([d])), col);
+}
+
+// The source water and its blend water of a water column, each with its share
+// and what it brings (the figures scale with the share, the ratio is its own).
+export interface SourcePart { water: WaterProfile; pct: number; litres: number; figures: WaterFigures; so4Cl?: number }
+export function sourceParts(col: Column): SourcePart[] {
+  const s = col.source;
+  if (!s) return [];
+  const part = (water: WaterProfile, pct: number): SourcePart => {
+    const own = stateOf(water);
+    return {
+      water, pct, litres: (col.volumeL * pct) / 100, so4Cl: figuresOf(own).so4Cl,
+      figures: figuresOf(blend(own, stateOf(VE_WATER), 100 - pct)),
+    };
+  };
+  return [part(s.water, 100 - s.blendPct), part(s.blendWith, s.blendPct)];
 }
 
 // Unset source water: the brewery's default, else its first profile, else VE water.

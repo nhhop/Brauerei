@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEMPLATES } from './brewhouse';
-import { calcStats, rangeValue, wortExtract } from './recipeStats';
+import { buGu, calcStats, rangeValue, wortExtract } from './recipeStats';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 import type { CatalogIngredient } from './ingredientCatalog';
 import { withLotEntries } from './stockLots';
@@ -168,5 +168,12 @@ describe('calcStats', () => {
     it('shares the extract with the water tab', () => {
       expect(wortExtract(recipeWith([pils]), catalog).extractKg).toBeCloseTo(5 * 0.805 * 0.95 * 0.75, 9);
     });
+  });
+});
+
+describe('buGu', () => {
+  it('relates IBU to the gravity points', () => {
+    expect(buGu(38, 12.5)).toBeCloseTo(0.74, 1);
+    expect(buGu(38, 0)).toBeUndefined();
   });
 });

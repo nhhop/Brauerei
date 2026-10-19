@@ -2,7 +2,7 @@ import type { RecipeStats } from '../../recipeStats';
 import { compareToStyle, type StyleRow } from '../../styleCompare';
 import { styleCode, type BeerStyle, type StyleSource } from '../../styleSource';
 import { badgeCaution, badgeSuccess } from '../../ui';
-import { Card } from './fields';
+import { Section } from './CalcTable';
 
 // Shows how far each figure is from the style's range: the range as a band on a
 // scale one half-width wider on both sides, the recipe's value as a marker.
@@ -45,13 +45,14 @@ export function StyleCard({ style, source, stats }: { style: BeerStyle; source: 
   const cmp = compareToStyle(stats, style);
   const unknown = cmp.rows.length - cmp.knownCount;
   return (
-    <Card title="Stil"
+    <Section title="Stil"
       action={
         <span class="text-right text-xs text-muted">
           {source.label} · {styleCode(style) && `${styleCode(style)} `}{style.name} · {cmp.inCount} von {cmp.knownCount} im Stil
           {unknown > 0 && ` (${unknown} unbekannt)`}
         </span>
       }>
+      <div class="p-4">
       <ul class="space-y-3">
         {cmp.rows.map((r) => (
           <li key={r.key} class="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -73,6 +74,7 @@ export function StyleCard({ style, source, stats }: { style: BeerStyle; source: 
           <a href="https://www.bjcp.org" target="_blank" rel="noopener noreferrer" class="underline">www.bjcp.org</a>.
         </p>
       )}
-    </Card>
+      </div>
+    </Section>
   );
 }

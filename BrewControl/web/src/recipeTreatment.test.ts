@@ -4,7 +4,7 @@ import type { CatalogIngredient } from './ingredientCatalog';
 import { calcWater } from './recipeWater';
 import { BOIL_PH_DROP, alkalinitySlope, raRangeForColor } from './mashPh';
 import { beerEbc, wortExtract } from './recipeStats';
-import { calcTreatment, suggestAgent, type Column } from './recipeTreatment';
+import { calcTreatment, doseContribution, sourceParts, suggestAgent, type Column } from './recipeTreatment';
 import { newRecipe, type Ingredient, type Recipe } from './recipes';
 import { HCO3_PER_KS43, applyAgents, agentMmol, WATER_AGENTS, waterPh } from './waterChem';
 
@@ -134,6 +134,27 @@ describe('calcTreatment', () => {
     expect(total.volumeL).toBeCloseTo(d.finalL, 9);
     const undiluted = columns[0].after.ions.ca * w.preBoilL / w.knockOutL;
     expect(total.after.ions.ca).toBeCloseTo(undiluted * (d.finalL - d.volumeL) / d.finalL, 6);
+  });
+});
+
+describe('contributions', () => {
+  it('splits the strike water into its source and blend water', () => {
+    const { columns } = treat([], { water: { sources: { strike: { blendPct: 70 } } } });
+    const [src, blend] = sourceParts(columns[0]);
+    expect([src.pct, blend.pct]).toEqual([30, 70]);
+    expect(src.litres + blend.litres).toBeCloseTo(columns[0].volumeL, 9);
+    expect(src.figures.ions.ca).toBeCloseTo(96.7 * 0.3, 9);
+    expect(src.figures.ions.ca + blend.figures.ions.ca).toBeCloseTo(columns[0].before.ions.ca, 9);
+    expect(blend.figures.ions.ca).toBe(0);
+  });
+
+  it('shows what a dose adds on its own', () => {
+    const { columns } = treat([aux({ amount: 6, timing: 'mainWater', ingredientId: 'aux:gypsum' })]);
+    const strike = columns[0];
+    const c = doseContribution(strike, strike.doses[0])!;
+    expect(strike.before.ions.so4 + c.ions.so4).toBeCloseTo(strike.after.ions.so4, 9);
+    expect(c.ions.ca).toBeGreaterThan(0);
+    expect(doseContribution(strike, { ...strike.doses[0], agent: undefined })).toBeUndefined();
   });
 });
 
