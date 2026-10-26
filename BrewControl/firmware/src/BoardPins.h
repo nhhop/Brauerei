@@ -134,12 +134,14 @@ inline constexpr Board kLilyGoAmoled = {
     4,      // BATTERY_VOLTAGE_ADC_DATA in LilyGo's pin_config.h
     100.0f, // 1:2 divider: GPIO 4 read 2.11 V on a charged cell (SESSION.md).
     100.0f, // Actual resistor values unknown, only the ratio matters.
+    "SY6970", 0x6A,
 };
-// Onboard devices sharing this board's I2C bus (BrewControl/CLAUDE.md).
+// Onboard devices sharing this board's I2C bus (BrewControl/CLAUDE.md). The
+// PMU is read through a sensor item of its own type.
 inline constexpr AddrDef kLilyGoAmoledI2cReserved[] = {
     {0x51, "RTC (PCF8563)"},
     {0x5A, "Touch (CST9217)"},
-    {0x6A, "PMU (SY6970)"},
+    {0x6A, "PMU (SY6970)", "SY6970"},
 };
 inline constexpr FixedBus kLilyGoAmoledBuses[] = {
     {"i2c-board", "i2c", {7, 6, -1},
@@ -214,14 +216,16 @@ inline constexpr Board kWaveshareAmoled175 = {
     pinRange(0, 21),
     false,  // ADC2 arbitrated with Wi-Fi
     15, 14,  // BREWCTL_I2C_SDA/SCL — see static_assert below
-    // No battery divider: the AXP2101 measures the cell (PLAN.md).
+    -1, 0, 0,  // No battery divider: the AXP2101 measures the cell.
+    "AXP2101", 0x34,
 };
 // Onboard devices sharing this board's I2C bus. Not the QMI8658 (0x6B): the
-// IMU is meant to be added as a sensor item on this bus.
+// IMU is meant to be added as a sensor item on this bus; the PMU is read
+// through a sensor item of its own type.
 inline constexpr AddrDef kWaveshareAmoled175I2cReserved[] = {
     {0x18, "Audio-Codec (ES8311)"},
     {0x20, "Port-Expander (TCA9554)"},
-    {0x34, "PMU (AXP2101)"},
+    {0x34, "PMU (AXP2101)", "AXP2101"},
     {0x40, "Mikrofon-ADC (ES7210)"},
     {0x51, "RTC (PCF85063)"},
     {0x5A, "Touch (CST9217)"},

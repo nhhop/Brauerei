@@ -225,6 +225,8 @@ export interface PinsInfo {
   // Onboard battery voltage divider (LilyGo), absent on boards without one.
   // r1 (battery → pin) and r2 (pin → GND) in kΩ.
   battery?: { gpio: number; r1: number; r2: number };
+  // Onboard charger IC: preset for a PMU sensor item.
+  pmu?: { type: string; bus: string; address: number };
 }
 
 // Per-widget dashboard display variant. 'normal' entries are never stored —

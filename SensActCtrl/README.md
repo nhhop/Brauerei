@@ -112,7 +112,12 @@ der X/Y-Ebene, `atan2(roll, pitch)`, 0…360° (0 = −X-Seite oben, 90 = +Y,
 oder Abweichung des Betrags der Beschleunigung von 1 g über `setMotionThreshold()`
 (°/s, Default 20; 0,004 g je °/s), zusammen mindestens 100 ms lang, danach 3 s Nachlauf —
 Zittern auf dem Tisch und einzelne Stöße lösen nicht aus;
-kein Gierwinkel, der braucht ein Magnetometer), `HX711LoadCellSensor`
+kein Gierwinkel, der braucht ein Magnetometer), Lade-ICs (PMU) über I2C mit
+gemeinsamer Basis `PmuSensor` (Akkuspannung `vbat` und USB-Spannung `vbus` in V,
+Binärkanal `charging` beim Vor- und Schnellladen, höchstens ein Lesevorgang pro
+Sekunde, Retry und Hot-Plug wie bei den IMUs): `SY6970Sensor` (SensorLib, dazu
+Ladestrom `ichg` in A; `begin()` setzt den Chip auf seine Lade-Defaults zurück)
+und `AXP2101Sensor` (SensorLib, dazu Fuel-Gauge `soc` in %), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei
 konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),
 `CalibratedSensor` (Decorator: umhüllt einen beliebigen Sensor und rechnet

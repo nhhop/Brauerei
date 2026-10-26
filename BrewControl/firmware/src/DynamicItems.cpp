@@ -569,6 +569,16 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     sensor->setChannelMask(mask);
     sensor->setMotionThreshold(motionThreshold);
     e->ptr = std::move(sensor);
+#ifdef BREWCTL_I2C_SDA
+  // Only boards with a fixed I2C bus carry a charger IC; elsewhere the
+  // drivers stay out of the image (esp32dev's flash is nearly full).
+  } else if (const PmuType* pmu = findPmuType(type)) {
+    uint8_t addr = static_cast<uint8_t>(cfg["address"] | pmu->defaultAddress);
+    e->bus = acquireBus(*bus);
+    TwoWire& wire = e->bus.as<I2cBus>().wire;
+    if (strcmp(type, "AXP2101") == 0) e->ptr = std::make_unique<AXP2101Sensor>(e->id.c_str(), wire, addr);
+    else                              e->ptr = std::make_unique<SY6970Sensor>(e->id.c_str(), wire, addr);
+#endif
   } else if (strcmp(type, "YF-S201") == 0) {
     int pin = cfg["pin"] | -1;
     if (pin < 0) return {false, "missing pin"};

@@ -48,7 +48,8 @@ inline const BusType* findBusType(const char* type) {
 inline const char* itemBusType(const char* itemType) {
   if (strcmp(itemType, "DS18B20") == 0) return "onewire";
   if (strcmp(itemType, "MAX31865") == 0) return "spi";
-  if (strcmp(itemType, "BME280") == 0 || findImuType(itemType)) return "i2c";
+  if (strcmp(itemType, "BME280") == 0 || findImuType(itemType) || findPmuType(itemType))
+    return "i2c";
   return nullptr;
 }
 

@@ -9,6 +9,7 @@
 
 #include "DeviceConfig.h"
 #include "ImuTypes.h"
+#include "PmuTypes.h"
 
 namespace BrewControl {
 
@@ -25,6 +26,9 @@ namespace BrewControl {
 struct AddrDef {
   uint8_t addr;
   const char* note;
+  // Item type that may sit on this address anyway: the onboard chip itself,
+  // read through a sensor item (the PMU). nullptr = nothing may.
+  const char* allowType = nullptr;
 };
 
 struct AddressUse {
@@ -39,10 +43,13 @@ struct AddressCheck {
   std::string error;
 };
 
+// itemType: the type asking for addr; an entry allowing it does not count.
 inline bool addressReserved(const AddrDef* reserved, size_t count, uint8_t addr,
-                            const char** note = nullptr) {
+                            const char** note = nullptr, const char* itemType = "") {
   for (size_t i = 0; i < count; ++i) {
     if (reserved[i].addr == addr) {
+      if (reserved[i].allowType && itemType && strcmp(reserved[i].allowType, itemType) == 0)
+        return false;
       if (note) *note = reserved[i].note;
       return true;
     }
@@ -50,7 +57,7 @@ inline bool addressReserved(const AddrDef* reserved, size_t count, uint8_t addr,
   return false;
 }
 
-// Appends the I2C address a BME280/IMU config occupies (default per type
+// Appends the I2C address a BME280/IMU/PMU config occupies (default per type
 // if "address" is absent). Other item types add nothing.
 inline void collectAddresses(JsonObjectConst cfg, std::vector<AddressUse>& out) {
   const char* type = cfg["type"] | "";
@@ -60,6 +67,8 @@ inline void collectAddresses(JsonObjectConst cfg, std::vector<AddressUse>& out) 
     out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | 0x76)});
   } else if (const ImuType* imu = findImuType(type)) {
     out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | imu->defaultAddress)});
+  } else if (const PmuType* pmu = findPmuType(type)) {
+    out.push_back({id, bus, static_cast<uint8_t>(cfg["address"] | pmu->defaultAddress)});
   }
 }
 
@@ -73,10 +82,12 @@ inline void collectDeviceAddresses(const std::vector<DeviceDef>& devices,
 // Checks one address use u against the reserved addresses of its bus
 // (onboard devices of a fixed bus) and the addresses already in use on that
 // bus. replaceId names the item or device being replaced, whose own address
-// does not count as taken.
+// does not count as taken; itemType lets a reservation allowing that type
+// through (AddrDef::allowType).
 inline AddressCheck checkAddressUse(const AddrDef* reserved, size_t reservedCount,
                                     const std::vector<AddressUse>& uses,
-                                    const AddressUse& u, const char* replaceId = "") {
+                                    const AddressUse& u, const char* replaceId = "",
+                                    const char* itemType = "") {
   AddressCheck r;
   auto fail = [&](const std::string& msg) {
     r.ok = false;
@@ -90,7 +101,7 @@ inline AddressCheck checkAddressUse(const AddrDef* reserved, size_t reservedCoun
   snprintf(hex, sizeof(hex), "0x%02x", u.addr);
 
   const char* note = "";
-  if (addressReserved(reserved, reservedCount, u.addr, &note))
+  if (addressReserved(reserved, reservedCount, u.addr, &note, itemType))
     return fail(std::string(hex) + " is reserved on bus " + u.bus + " (" + note + ")");
 
   for (const AddressUse& e : uses) {
@@ -108,7 +119,8 @@ inline AddressCheck checkItemAddress(const AddrDef* reserved, size_t reservedCou
   std::vector<AddressUse> mine;
   collectAddresses(cfg, mine);
   if (mine.empty()) return {};
-  return checkAddressUse(reserved, reservedCount, uses, mine[0], replaceId);
+  return checkAddressUse(reserved, reservedCount, uses, mine[0], replaceId,
+                         cfg["type"] | "");
 }
 
 }  // namespace BrewControl

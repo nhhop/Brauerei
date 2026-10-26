@@ -346,6 +346,7 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_TRUE(pin(27)["rtc"].as<bool>());
   TEST_ASSERT_TRUE(pin(16)["rtc"].isNull());
   TEST_ASSERT_TRUE(doc["battery"].isNull());  // no onboard divider
+  TEST_ASSERT_TRUE(doc["pmu"].isNull());      // no charger IC
 
   JsonDocument s3;
   writePinsJson(kLilyGoAmoled, "lilygo", {}, s3.to<JsonObject>());
@@ -353,6 +354,16 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_EQUAL(4, s3["battery"]["gpio"].as<int>());
   TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r1"].as<float>());
   TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r2"].as<float>());
+  TEST_ASSERT_EQUAL_STRING("SY6970", s3["pmu"]["type"]);
+  TEST_ASSERT_EQUAL_STRING("i2c-board", s3["pmu"]["bus"]);
+  TEST_ASSERT_EQUAL(0x6A, s3["pmu"]["address"].as<int>());
+
+  // Waveshare: the PMU only, no divider.
+  JsonDocument ws;
+  writePinsJson(kWaveshareAmoled175, "waveshare", {}, ws.to<JsonObject>());
+  TEST_ASSERT_TRUE(ws["battery"].isNull());
+  TEST_ASSERT_EQUAL_STRING("AXP2101", ws["pmu"]["type"]);
+  TEST_ASSERT_EQUAL(0x34, ws["pmu"]["address"].as<int>());
 }
 
 void test_wake_pin() {

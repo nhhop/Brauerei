@@ -175,8 +175,8 @@ PCF85063 (0x51), AXP2101 (0x34), ES8311 (0x18), ES7210 (0x40) und TCA9554 (0x20)
 — diese Adressen sind reserviert. Die IMU **QMI8658 (0x6B)** ist bewusst nicht
 reserviert: Sie wird als normaler Sensor `QMI8658` auf `i2c-board` angelegt.
 Audio (I2S) belegt GPIO 8–10, 42, 45, 46. Für eigene Items frei bleiben nur
-GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101
-(PLAN.md).
+GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101,
+gelesen über einen Sensor vom Typ `AXP2101` (siehe Energiemanagement).
 
 **M5Stack StopWatch (`m5stack_stopwatch`)**
 
@@ -684,8 +684,24 @@ Einstellungen → Energiemanagement (`/settings/energy`, Abschnitt `energy` in
   „Batterie“). Boards mit eigenem Batterie-Messeingang liefern Pin und
   Widerstände in `GET /api/pins` → `battery` (Tabelle in `BoardPins.h`, bisher
   nur LilyGo: GPIO 4, 100/100 kΩ für das Verhältnis 1:2).
+- **PMU-Sensor:** Boards mit Lade-IC am festen Bus lesen ihn über einen Sensor
+  vom Typ `SY6970` (LilyGo, 0x6A) bzw. `AXP2101` (Waveshare, 0x34),
+  `SensActCtrl::SY6970Sensor`/`AXP2101Sensor` über SensorLib. Kanäle: `vbat`
+  und `vbus` in V, `charging` (1 beim Vor- und Schnellladen), dazu `ichg`
+  (Ladestrom in A, SY6970) bzw. `soc` (Ladezustand in % aus dem Fuel-Gauge,
+  AXP2101). Gelesen wird höchstens einmal pro Sekunde. Die Adresse des Chips
+  ist am Bus reserviert, für genau diesen Typ aber frei. `GET /api/pins` →
+  `pmu` liefert Typ, Bus und Adresse; damit bietet die Seite „PMU-Sensor
+  anlegen“ an (vor dem Teiler-Knopf), als Batteriesensor gilt dann
+  `<id>.vbat`. Die Treiber werden nur auf Boards mit festem I²C-Bus gebaut
+  (`BREWCTL_I2C_SDA`), esp32dev und S2 kennen die Typen nicht.
+  ⚠ SensorLibs `begin()` setzt den SY6970 zurück: Danach gelten die
+  Lade-Defaults des Chips, sein Watchdog ist aus. Beim AXP2101 schaltet es die
+  NTC-Messung (TS) ab.
 - Die Prozentangabe ist eine grobe LiPo-Kennlinie in der UI (`web/src/energy.ts`),
-  gilt nur für eine Zelle ohne Last und nicht beim Laden.
+  gilt nur für eine Zelle ohne Last und nicht beim Laden. Liefert der
+  Batteriesensor einen `soc`-Kanal (AXP2101), zeigt die Seite stattdessen
+  diesen.
 
 ### Deep-Sleep
 

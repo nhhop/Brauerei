@@ -27,7 +27,7 @@ const AUTOTUNE_METHODS = [
 ] as const;
 
 type Role = 'sensor' | 'actuator' | 'controller';
-type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | ImuType | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'Voltage' | 'MqttGeneric' | 'Remote';
+type SensorType = 'DS18B20' | 'MAX31865' | 'YF-S201' | 'BME280' | ImuType | PmuType | 'HCSR04' | 'HX711' | 'DigitalInput' | 'AnalogInput' | 'Voltage' | 'MqttGeneric' | 'Remote';
 type ControllerType = 'PID' | 'TwoPoint' | 'DualStage' | 'SplitRangePID';
 type Wires = 2 | 3 | 4;
 type RtdType = 'PT100' | 'PT1000';
@@ -44,6 +44,12 @@ const IMU_ADDRESSES: Record<ImuType, number[]> = {
   GY521: [0x68, 0x69], QMI8658: [0x6b, 0x6a], BMI270: [0x68, 0x69], BMI160: [0x68, 0x69],
 };
 const isImu = (t: string): t is ImuType => t in IMU_ADDRESSES;
+
+// The PMU types read the board's charger IC; one fixed address each (the
+// firmware's PmuTypes.h). Only offered where GET /api/pins names the chip.
+type PmuType = 'SY6970' | 'AXP2101';
+const PMU_ADDRESS: Record<PmuType, number> = { SY6970: 0x6a, AXP2101: 0x34 };
+const isPmu = (t: string): t is PmuType => t in PMU_ADDRESS;
 
 // IMU channel keys in the firmware's order (the first four are calibratable).
 const GY521_ORDER = ['pitch', 'roll', 'tilt', 'temp', 'ax', 'ay', 'az', 'gx', 'gy', 'gz', 'dir', 'motion'];
@@ -579,14 +585,18 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   // compact pane, the wizard is the "create from scratch" path only.
   const wizard = !isEdit && !prefill;
 
+  // A PMU type only where the board has that chip (the firmware elsewhere
+  // doesn't know the type).
+  const offeredTypes = ITEM_TYPES.filter((t) => !isPmu(t.type) || pins?.pmu?.type === t.type);
+
   // Categories of the current role, in ITEM_TYPES order.
-  const categories = ITEM_TYPES.reduce<{ group: string; count: number }[]>((acc, t) => {
+  const categories = offeredTypes.reduce<{ group: string; count: number }[]>((acc, t) => {
     if (t.role !== role) return acc;
     const hit = acc.find((c) => c.group === t.group);
     if (hit) hit.count++; else acc.push({ group: t.group, count: 1 });
     return acc;
   }, []);
-  const typesInCategory = ITEM_TYPES.filter((t) => t.role === role && t.group === category);
+  const typesInCategory = offeredTypes.filter((t) => t.role === role && t.group === category);
 
   function applyType(e: ItemTypeEntry) {
     if (e.role === 'sensor') {
@@ -607,7 +617,7 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
   function pickCategory(g: string) {
     if (g === category) return;
     setCategory(g); setMaxStep(2);
-    const list = ITEM_TYPES.filter((t) => t.role === role && t.group === g);
+    const list = offeredTypes.filter((t) => t.role === role && t.group === g);
     // Most sensor categories hold exactly one type — preselect it so step 3 is
     // a "Weiter" instead of a click with no alternative.
     if (list.length === 1) applyType(list[0]); else setTypeChosen(false);
@@ -740,6 +750,10 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
             if (isNaN(mt) || mt < 1 || mt > 500) throw new Error('Bewegungs-Schwelle: 1 bis 500 °/s');
             cfg.motionThreshold = mt;
           }
+        } else if (isPmu(sensorType)) {
+          const bus = effectiveBus('i2c');
+          if (!bus) throw new Error('Kein I²C-Bus gewählt');
+          cfg = { type: sensorType, id: trimId, bus, address: PMU_ADDRESS[sensorType] };
         } else if (sensorType === 'HX711') {
           const dout = parseInt(hx711Dout, 10);
           const sck  = parseInt(hx711Sck,  10);
@@ -1592,6 +1606,21 @@ export function AddItemModal({ open, snap, onClose, editConfig, editRole, initia
               </div>
               <p class="text-xs text-faint">
                 3 Kanäle: <strong>id.temp</strong> (°C), <strong>id.hum</strong> (%RH), <strong>id.pres</strong> (hPa).
+              </p>
+            </div>
+          )}
+
+          {/* PMU fields */}
+          {role === 'sensor' && isPmu(sensorType) && (
+            <div class="space-y-3">
+              {busField('i2c')}
+              <p class="text-xs text-faint">
+                Lade-IC des Boards auf 0x{PMU_ADDRESS[sensorType].toString(16)}. Kanäle:{' '}
+                <strong>id.vbat</strong> (Akku, V), <strong>id.vbus</strong> (USB, V),{' '}
+                <strong>id.charging</strong> (lädt),{' '}
+                {sensorType === 'AXP2101'
+                  ? <><strong>id.soc</strong> (Ladezustand, %)</>
+                  : <><strong>id.ichg</strong> (Ladestrom, A)</>}.
               </p>
             </div>
           )}

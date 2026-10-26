@@ -87,7 +87,7 @@ tags:
   - name: Bus Discovery
     description: |
       Bus definitions (OneWire, SPI, I2C) and scanning them for attached
-      devices. Items on a bus (DS18B20, MAX31865, BME280, the IMUs GY521/QMI8658/BMI270/BMI160) reference it
+      devices. Items on a bus (DS18B20, MAX31865, BME280, the IMUs GY521/QMI8658/BMI270/BMI160, the PMUs SY6970/AXP2101) reference it
       by id (`bus`) instead of carrying the bus pins themselves.
   - name: Peripherals
     description: |
@@ -1492,6 +1492,8 @@ paths:
         or the GPIO 36/39 interrupt glitch are warnings to confirm.
         `battery` is present on boards with an onboard battery divider — the
         preset for the battery sensor the energy settings page can create.
+        `pmu` likewise names the board's charger IC on its fixed I2C bus, the
+        preset for a PMU sensor item (`SY6970`, `AXP2101`).
         The deep-sleep wake pin (`energy.wakePin`) shows up as user
         `{id: energy, key: wake_pin}`; it must be an RTC GPIO (`rtc`).
         `virtual` lists the channels of the peripheral devices
@@ -4518,7 +4520,15 @@ components:
       properties:
         type:
           type: string
-          enum: [DS18B20, MAX31865, BME280, GY521, QMI8658, BMI270, BMI160, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
+          enum: [DS18B20, MAX31865, BME280, GY521, QMI8658, BMI270, BMI160, SY6970, AXP2101, YF-S201, HCSR04, HX711, DigitalInput, AnalogInput, Voltage, MqttGeneric, Remote]
+          description: |
+            `SY6970` and `AXP2101` read the charger IC (PMU) of a battery board
+            — channels `vbat` and `vbus` in V, `charging` (1 while pre- or
+            fast-charging), plus `ichg` (charge current in A, SY6970) or `soc`
+            (fuel gauge in %, AXP2101). Only firmware for boards with a fixed
+            I2C bus builds them; elsewhere they are refused with 400
+            (`unknown sensor type`, or a bus error first if `bus` is missing
+            or unknown).
         id: { type: string }
         label: { type: string, description: "Optional display name; falls back to id in the UI when absent." }
         pin:
@@ -4535,10 +4545,10 @@ components:
           type: string
           description: >-
             Id of the bus the item sits on (`GET /api/buses`): required for
-            DS18B20 (`onewire`), BME280 and the IMUs GY521, QMI8658, BMI270,
-            BMI160 (`i2c`); optional for
+            DS18B20 (`onewire`), BME280, the IMUs GY521, QMI8658, BMI270,
+            BMI160 and the PMUs SY6970, AXP2101 (`i2c`); optional for
             MAX31865 (`spi` — without it, the chip's hardware SPI is used).
-        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280 and the IMUs (default BME280 0x76, GY521/BMI270/BMI160 0x68, QMI8658 0x6B). BME280 and the IMUs are rejected with 409 if the address is already used on their bus or reserved there by an onboard device (see `PinConflict`)." }
+        address: { type: string, description: "DS18B20 ROM address (16 lowercase hex chars), or the numeric I2C address for BME280, the IMUs and the PMUs (default BME280 0x76, GY521/BMI270/BMI160 0x68, QMI8658 0x6B, SY6970 0x6A, AXP2101 0x34). They are rejected with 409 if the address is already used on their bus or reserved there by an onboard device (see `PinConflict`) — except a PMU item on the address reserved for its own chip." }
         cs: { type: integer, description: MAX31865 chip select — the only pin of its own; the SPI lines come from its bus. }
         wires: { type: integer, enum: [2, 3, 4], description: MAX31865 wiring. }
         rtd: { type: string, enum: [PT100, PT1000], default: PT100, description: MAX31865 RTD type. }
@@ -4860,10 +4870,19 @@ components:
             gpio: { type: integer, description: ADC pin behind the divider. }
             r1: { type: number, description: 'Resistor battery → pin in kΩ (only the ratio to r2 matters).' }
             r2: { type: number, description: 'Resistor pin → GND in kΩ.' }
+        pmu:
+          type: object
+          required: [type, bus, address]
+          description: Onboard charger IC; absent on boards without one.
+          properties:
+            type: { type: string, enum: [SY6970, AXP2101], description: Sensor item type that reads it. }
+            bus: { type: string, description: Id of the fixed bus it sits on. }
+            address: { type: integer, description: Its I2C address. }
       example:
         board: lilygo_t_display_s3_amoled
         caps: { dac: false, rmtTx: 4, rmtUsed: 1, adc2Wifi: shared }
         battery: { gpio: 4, r1: 100, r2: 100 }
+        pmu: { type: SY6970, bus: i2c-board, address: 106 }
         pins:
           - { gpio: 2, class: free, adc: 1, users: [{ id: pump, key: pin }] }
           - { gpio: 3, class: risky, note: Strapping-Pin, adc: 1, users: [] }
@@ -6539,8 +6558,9 @@ components:
     EnergySettings:
       type: object
       description: |
-        Energy management. The battery is a normal sensor item (typically a
-        `Voltage` sensor) picked here; the id is not checked against
+        Energy management. The battery is a normal sensor item (a `Voltage`
+        sensor behind a divider, or the `vbat` channel of a PMU item, e.g.
+        `pmu.vbat`) picked here; the id is not checked against
         the registry, so it may point to a deleted item.
 
         Deep sleep: a timer wakeup with the wake pin released is a short wake
@@ -6556,7 +6576,7 @@ components:
         batterySensor:
           type: string
           default: ""
-          description: Id of the sensor that measures the battery voltage. "" = none.
+          description: Id of the sensor (channel) that measures the battery voltage. "" = none.
         deepSleep:
           type: boolean
           default: false

@@ -64,6 +64,11 @@ struct Board {
   int batteryPin = -1;
   float batteryR1 = 0;
   float batteryR2 = 0;
+  // Onboard charger IC on the board's fixed I2C bus ("i2c-board"), nullptr =
+  // none. Only a preset for the PMU sensor (PmuTypes.h) the energy settings
+  // page offers to create.
+  const char* pmuType = nullptr;
+  uint8_t pmuAddress = 0;
 };
 
 struct PinUse {
@@ -412,6 +417,12 @@ inline void writePinsJson(const Board& b, const char* boardName,
     bat["gpio"] = b.batteryPin;
     bat["r1"] = b.batteryR1;
     bat["r2"] = b.batteryR2;
+  }
+  if (b.pmuType) {
+    JsonObject pmu = out["pmu"].to<JsonObject>();
+    pmu["type"] = b.pmuType;
+    pmu["bus"] = "i2c-board";
+    pmu["address"] = b.pmuAddress;
   }
 
   auto writeUsers = [](JsonArray arr, const PinUse& u) {
