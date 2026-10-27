@@ -3034,3 +3034,10 @@ Nach dem verworfenen `custom_sdkconfig`-Versuch (siehe Eintrag davor) drei Brock
 Ergebnis, je ~60 s nach dem Boot: **LilyGo** (ESP-NOW aus) 88 statt 30 KB frei, größter Block 44 statt 18 KB, Boot-Ende 106 statt 49 KB, minimal während Push + Update-Prüfung 69 statt 10,6 KB (Core 2: ~68 KB frei). **Waveshare** (ESP-NOW an) 123 statt 78 KB frei, größter Block 80 statt 33 KB (Core 2: ~128 KB). Statischer RAM laut Build 57 statt 98 KB.
 
 Verifikation am LilyGo: Push-Test (Nutzer: angekommen), Update-Prüfung `updateAvailable`, Testalarm (Regel `sensor/HLT > 0`) landet im Ring mit allen Feldern und als Push beim Nutzer, Regel danach gelöscht; Display nach Nutzer-Eindruck unverändert flüssig. Waveshare: automatische Update-Prüfung beim Boot ok. Heap-Punkt in PLAN.md entfernt.
+
+## 2026-10-27 (nachts) — Core-3-Spike: CI mit pioarduino und „Installieren“ eines Core-3-Release
+
+- **Workflow:** `release.yml` veröffentlicht Tags mit Suffix (`contains(github.ref_name, '-')`) jetzt als Pre-Release, damit sie nur der Vorschau-Kanal sieht und `/releases/latest` auf v0.8.0 bleibt.
+- **CI:** Tag `v0.9.0-rc.1` auf `spike/core3-curier` (vom Nutzer freigegeben). Run 40583854700 grün, alle vier Jobs in gut 6 Minuten; pioarduino installiert sich auf dem Linux-Runner ohne Zutun. Pre-Release mit `firmware-lilygo_t_display_s3_amoled.bin` (2 375 184 B), `firmware-waveshare_s3_amoled_175.bin` (2 403 600 B), `firmware-m5stack_stopwatch.bin` (2 356 368 B), `webui.tar`, `webui-full.tar`. Nur Hinweise zu Node 20 und Ubuntu 26 bei den GitHub-Actions selbst.
+- **Installieren:** Waveshare im Vorschau-Kanal: Prüfung findet `v0.9.0-rc.1`, `POST /api/update/install` — nach 55 s läuft `v0.9.0-rc.1`, Heap 122 KB frei, Einstellungen und alle 16 Items erhalten. Die Release-UI kommt ohne BJCP-Stilvergleich; die lokale UI per `VITE_STYLE_COMPARISON=1 pnpm build:tars` und `POST /api/update/assets` wieder aufgespielt (`bjcp-2021.json.gz` zurück).
+- **Gefunden:** Die automatische Prüfung im stabilen Kanal meldet danach v0.8.0 als Update (Abweichung statt Vergleich) — neu in PLAN.md. Beide Punkte (CI, „Installieren“) aus der Merge-Checkliste entfernt.
