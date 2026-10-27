@@ -18,7 +18,9 @@ namespace SensActCtrl {
 // + JSON payloads) so payloads can be inspected uniformly across both
 // transports.
 //
-// Wire framing (one ESP-Now packet, max 250 B total):
+// Wire framing (one ESP-Now packet, max 250 B total with ESP-NOW v1, 1470 B
+// with v2 — ESP-IDF >= 5.4, Arduino core 3; a v1 receiver drops anything
+// longer than 250 B):
 //   Data:             [0x01][u8 topic_len][topic chars][payload chars]
 //   Retained-Request: [0x02]
 //
@@ -53,7 +55,7 @@ class EspNowTransport : public ITransport {
   bool connected() const override { return initialized_; }
   // Covers both init failure (connected() == false) and the last send-level
   // failure while initialized (e.g. a packet silently dropped for exceeding
-  // the 250-byte ESP-NOW limit) — the latter doesn't affect connected(), but
+  // the ESP-NOW size limit) — the latter doesn't affect connected(), but
   // is otherwise invisible to callers. Empty once a send succeeds again.
   const char* lastErrorMessage() const override;
 
@@ -84,10 +86,10 @@ class EspNowTransport : public ITransport {
   // Packets received on the WiFi task wait here until tick() delivers them, so
   // subscriber callbacks (e.g. an actuator's /set) run on the loop task like
   // MQTT's — under the host's registry lock. A full queue drops the newest.
+  // Sized to the packet: a fixed v2-sized buffer would cost 16 x 1470 B.
   struct Incoming {
     uint8_t mac[6];
-    uint8_t len;
-    uint8_t data[250];
+    std::vector<uint8_t> data;
   };
   static constexpr size_t kIncomingQueueSize = 16;
   std::mutex incomingMutex_;
@@ -95,6 +97,7 @@ class EspNowTransport : public ITransport {
 
   uint8_t channel_;
   bool initialized_ = false;
+  size_t maxPacket_ = 250;  // raised to the v2 limit in initEspNow_() when available
   uint32_t lastRetainedRequestMs_ = 0;
   bool retainedRequestPending_ = false;
   std::vector<std::pair<std::string, MessageCallback>> subs_;

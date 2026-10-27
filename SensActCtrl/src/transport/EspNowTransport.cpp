@@ -17,7 +17,6 @@ namespace {
 
 constexpr uint8_t kPacketData = 0x01;
 constexpr uint8_t kPacketRetainedRequest = 0x02;
-constexpr size_t kMaxPacket = 250;
 
 EspNowTransport* g_active = nullptr;
 const uint8_t kBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -85,6 +84,13 @@ bool EspNowTransport::initEspNow_() {
   }
   esp_now_register_recv_cb(onRecv);
   esp_now_register_send_cb(onSent);
+#if defined(ESP_NOW_MAX_DATA_LEN_V2)
+  // ESP-NOW v2 (ESP-IDF >= 5.4) carries up to 1470 B per packet, enough for
+  // the meta of controllers with many params that v1's 250 B could not hold.
+  uint32_t version = 0;
+  if (esp_now_get_version(&version) == ESP_OK && version >= 2)
+    maxPacket_ = ESP_NOW_MAX_DATA_LEN_V2;
+#endif
 
   peerChannel_ = staConnected ? 0 : channel_;
   esp_now_peer_info_t peer = {};
@@ -101,7 +107,7 @@ bool EspNowTransport::initEspNow_() {
 }
 
 bool EspNowTransport::sendRaw_(const uint8_t* data, size_t len, const uint8_t* dest) {
-  if (!initialized_ || len > kMaxPacket) return false;
+  if (!initialized_ || len > maxPacket_) return false;
   const bool ok = esp_now_send(dest, data, len) == ESP_OK;
   if (ok) {
     lastErrorMsg_.clear();
@@ -119,18 +125,20 @@ bool EspNowTransport::sendDataPacket_(const char* topic, const char* payload,
     lastErrorMsg_ = "Ungültiges Topic";
     return false;
   }
-  if (2 + tlen + plen > kMaxPacket) {
+  if (2 + tlen + plen > maxPacket_) {
     lastErrorMsg_ = "Paket zu groß (" + std::to_string(2 + tlen + plen) +
-                     " Byte, max " + std::to_string(kMaxPacket) + ") — verworfen";
+                     " Byte, max " + std::to_string(maxPacket_) + ") — verworfen";
     return false;
   }
 
-  uint8_t buf[kMaxPacket];
+  // Heap, not stack: with v2 a packet is up to 1470 B, and publish() also
+  // runs on tasks with small stacks (REST handlers on AsyncTCP).
+  std::vector<uint8_t> buf(2 + tlen + plen);
   buf[0] = kPacketData;
   buf[1] = static_cast<uint8_t>(tlen);
-  std::memcpy(buf + 2, topic, tlen);
-  std::memcpy(buf + 2 + tlen, payload, plen);
-  return sendRaw_(buf, 2 + tlen + plen, dest);
+  std::memcpy(buf.data() + 2, topic, tlen);
+  std::memcpy(buf.data() + 2 + tlen, payload, plen);
+  return sendRaw_(buf.data(), buf.size(), dest);
 }
 
 bool EspNowTransport::ensurePeer_(const EspNowPeerTable::Mac& mac) {
@@ -227,22 +235,26 @@ void EspNowTransport::tick() {
     {
       std::lock_guard<std::mutex> lock(incomingMutex_);
       if (incoming_.empty()) break;
-      in = incoming_.front();
+      in = std::move(incoming_.front());
       incoming_.pop_front();
     }
-    processIncoming_(in.mac, in.data, in.len);
+    processIncoming_(in.mac, in.data.data(), static_cast<int>(in.data.size()));
   }
 }
 
 void EspNowTransport::dispatchIncoming(const uint8_t* mac, const uint8_t* data,
                                        int length) {
-  if (length < 1 || length > static_cast<int>(sizeof(Incoming::data))) return;
+  if (length < 1 || length > static_cast<int>(maxPacket_)) return;
+  {
+    // Checked before allocating: a full queue drops the newest anyway.
+    std::lock_guard<std::mutex> lock(incomingMutex_);
+    if (incoming_.size() >= kIncomingQueueSize) return;
+  }
   Incoming in;
   if (mac) std::memcpy(in.mac, mac, 6); else std::memset(in.mac, 0, 6);
-  in.len = static_cast<uint8_t>(length);
-  std::memcpy(in.data, data, length);
+  in.data.assign(data, data + length);
   std::lock_guard<std::mutex> lock(incomingMutex_);
-  if (incoming_.size() < kIncomingQueueSize) incoming_.push_back(in);
+  if (incoming_.size() < kIncomingQueueSize) incoming_.push_back(std::move(in));
 }
 
 void EspNowTransport::processIncoming_(const uint8_t* mac, const uint8_t* data,
