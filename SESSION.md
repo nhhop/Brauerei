@@ -3022,3 +3022,15 @@ Beide S3-Boards per OTA von Core 2 auf den Spike gehoben (`/api/update/firmware`
 - **Befund Heap:** Intern ~38 KB weniger frei als unter Core 2 (LilyGo 30–50 statt 68 KB, beim Push-Test minimal 10,6 KB; Waveshare 78–90 statt 128 KB). Erste Vermutung `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` (fehlt in der vorkompilierten Core-3-Konfiguration) per `custom_sdkconfig` getestet: Hybrid-Build lief erst mit Platform 55.03.312-1 und pioarduino-Core `6.2.0` (statt `6.2.0.post1`) im isolierten penv, LilyGo danach nach 55 s 40 statt 30 KB frei, Boot-Ende 55 352 statt 48 820 Byte. Zu wenig für den Preis (frische Platform, Core-Pin, CI bräche) — auf Wunsch zurückgenommen, Gerät wieder auf dem Standard-Build. Der Abstand verteilt sich laut Boot-Phasen und ELF-Sektionen auf ~20 KB vor `setup()` (IRAM +7 KB, `.bss`/`.data` +2,3 KB, Core-Heap ~10 KB), ~6 KB WLAN und Kleinkram. Stand in PLAN.md.
 - **Befund ESP-NOW groß:** Einmaliger Ausfall des Waveshare nach einem ~310-Byte-Meta-Paket, mit seriellem Mitschnitt nicht nachstellbar; ob v2-Pakete über 250 Byte ankommen, bleibt unbelegt (PLAN.md). Test-Sensor wieder gelöscht, ESP-NOW auf beiden Boards eingeschaltet gelassen.
 - **Nicht geprüft:** IDS am Gerät (Platte hängt am S2), Watchdog, Deep-Sleep, „Installieren“ einer Core-3-Release, CI.
+
+## 2026-10-27 (spät) — Core-3-Spike: interner Heap über PSRAM zurückgeholt
+
+Nach dem verworfenen `custom_sdkconfig`-Versuch (siehe Eintrag davor) drei Brocken ins PSRAM gelegt, die nur die CPU anfasst — gleiches Muster wie `tlsAllocToPsram()` (2026-09-27):
+
+- **LVGL-Pool** (32 KB, bisher statisches Array `work_mem_int` in `.bss`): `LV_MEM_POOL_INCLUDE`/`LV_MEM_POOL_ALLOC` in `lv_conf.h`, `heap_caps_malloc_prefer` PSRAM vor intern. Größe und Seitenlimit unverändert; Draw- und Rotationspuffer (DMA) bleiben intern.
+- **Alarm-Ring** (`AlarmStore::ring_`, 40 × `Alert`, ~8 KB): einmal im Konstruktor im PSRAM angelegt (Placement-new), statt festem Array.
+- **Curier**: Queue/Jobs und Worker-Stack wieder `PreferExternal` (Curiers Vorgabe). Die frühere Vorsicht stammte aus einem IRAM-Problem von esp-webPush am esp32dev; ein PSRAM-Stack verbietet nur eigenes Flash-Schreiben, der Worker macht TLS/HTTP.
+
+Ergebnis, je ~60 s nach dem Boot: **LilyGo** (ESP-NOW aus) 88 statt 30 KB frei, größter Block 44 statt 18 KB, Boot-Ende 106 statt 49 KB, minimal während Push + Update-Prüfung 69 statt 10,6 KB (Core 2: ~68 KB frei). **Waveshare** (ESP-NOW an) 123 statt 78 KB frei, größter Block 80 statt 33 KB (Core 2: ~128 KB). Statischer RAM laut Build 57 statt 98 KB.
+
+Verifikation am LilyGo: Push-Test (Nutzer: angekommen), Update-Prüfung `updateAvailable`, Testalarm (Regel `sensor/HLT > 0`) landet im Ring mit allen Feldern und als Push beim Nutzer, Regel danach gelöscht; Display nach Nutzer-Eindruck unverändert flüssig. Waveshare: automatische Update-Prüfung beim Boot ok. Heap-Punkt in PLAN.md entfernt.
