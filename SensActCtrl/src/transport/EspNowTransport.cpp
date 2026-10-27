@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_idf_version.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 
@@ -21,13 +22,28 @@ constexpr size_t kMaxPacket = 250;
 EspNowTransport* g_active = nullptr;
 const uint8_t kBroadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+// ESP-IDF 5 hands the sender in a struct, 5.5 does the same for the send
+// callback; Arduino core 2 (IDF 4.4) still passes bare MACs.
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  if (g_active && info) g_active->dispatchIncoming(info->src_addr, data, len);
+}
+#else
 void onRecv(const uint8_t* mac, const uint8_t* data, int len) {
   if (g_active) g_active->dispatchIncoming(mac, data, len);
 }
+#endif
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
+void onSent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
+  if (g_active && info && info->des_addr)
+    g_active->onSendStatus(info->des_addr, status == ESP_NOW_SEND_SUCCESS);
+}
+#else
 void onSent(const uint8_t* mac, esp_now_send_status_t status) {
   if (g_active && mac) g_active->onSendStatus(mac, status == ESP_NOW_SEND_SUCCESS);
 }
+#endif
 
 bool isBroadcast(const uint8_t* mac) {
   return std::memcmp(mac, kBroadcastMac, 6) == 0;

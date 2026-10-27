@@ -26,8 +26,8 @@ pio test -e native               # 358 Tests
 # BrewControl — Firmware
 cd BrewControl/firmware
 pio test -e native               # 178 Tests der Firmware selbst (test/, kein Hardware nötig)
-pio run -e esp32dev              # compile-smoke
-pio run -e esp32dev -t upload    # flash
+pio run -e lilygo_t_display_s3_amoled              # compile-smoke
+pio run -e lilygo_t_display_s3_amoled -t upload    # flash
 pio device monitor               # serial @ 115200
 # Achtung: `pio run -e native` schlägt hier fehl und ist kein Defekt —
 # das Env ist mit `test_build_src = no` reines Test-Env, `src/` gehört

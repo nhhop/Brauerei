@@ -198,7 +198,7 @@ bool FirmwareUpdater::streamBody_(HTTPClient& http,
                                   std::function<bool(const uint8_t*, size_t)>& sink) {
   int total = http.getSize();
   int got = 0;
-  WiFiClient* stream = http.getStreamPtr();
+  NetworkClient* stream = http.getStreamPtr();
   uint8_t buf[1024];
   while (http.connected() && (total < 0 || got < total)) {
     feedLoopWDT();  // runs on loopTask; a full image takes longer than its WDT

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ArduinoJson.h>
-#include <ESPWebPush.h>
+#include <Curier.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -87,14 +87,14 @@ class PushService {
 
   void load_();
   void persist_() const;
-  // deinit()/init() on the push worker — blocks, so loopTask only (tick()).
+  // end()/init() on the push worker — blocks, so loopTask only (tick()).
   void applyConfig_();
   void sendTo_(const Sub& s, const String& title, const String& body,
                const String& tag);
   // Alert → German notification text, mirroring the wording of the alert center.
   static void describe_(const AlarmStore::Alert& a, String& title, String& body);
 
-  ESPWebPush push_;
+  Curier push_;
   std::string vapidPub_;
   std::string vapidPriv_;
   std::vector<Sub> subs_;

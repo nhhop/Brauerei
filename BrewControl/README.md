@@ -107,8 +107,8 @@ Browser einen vollständigen Snapshot.
 
 ```powershell
 cd firmware
-pio run -e esp32dev               # compile-smoke (~30 s nach erstem Toolchain-DL)
-pio run -e esp32dev -t upload     # flash über USB
+pio run -e lilygo_t_display_s3_amoled  # compile-smoke
+pio run -e lilygo_t_display_s3_amoled -t upload # flash über USB
 pio device monitor                # serial @ 115200, mit exception_decoder
 ```
 
@@ -430,9 +430,9 @@ derselben Sicherung unter `readings`, die Verkostungen (`/brewtasting/<id>.json`
 `/api/brews/<id>/tasting`) unter `tasting`; eine ältere Sicherung ohne diese Schlüssel lässt sich weiter
 einspielen.
 
-## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
+## Web-UI bauen + auf LittleFS deployen (`m5stack_stopwatch`)
 
-Diese beiden Boards haben keinen SD-Slot — die UI landet stattdessen per USB auf einer
+Dieses Board hat keinen SD-Slot — die UI landet stattdessen per USB auf einer
 internen LittleFS-Partition (`pio run -t uploadfs`, s. „Partition-Layout" unten). Nur die
 **gzippten** Assets werden geshippt (die Firmware serviert `.gz` transparent, auch
 ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ihre `.gz`
@@ -444,9 +444,8 @@ pnpm install                      # einmalig
 pnpm build:lfs                    # build:sd + dist/ (ohne modules/) nach ../firmware/data/www
 
 cd ..\firmware
-pio run -e esp32dev -t buildfs        # optional: Größen-Check ohne Hardware
-pio run -e esp32dev -t uploadfs       # LittleFS-Image per USB flashen
-pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
+pio run -e m5stack_stopwatch -t buildfs        # optional: Größen-Check ohne Hardware
+pio run -e m5stack_stopwatch -t uploadfs       # LittleFS-Image per USB flashen
 ```
 
 `pnpm build:lfs` lässt `dist/modules/` bewusst weg: Die optionalen UI-Pakete (Rezepte) sind
@@ -1143,7 +1142,7 @@ in `public/` liegt. Ein so gebautes Tar nicht verteilen und nicht in ein Release
 Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:
 
 ```powershell
-pio run -e esp32dev      # oder lolin_s2_mini / lilygo_t_display_s3_amoled
+pio run -e lilygo_t_display_s3_amoled      # oder waveshare_s3_amoled_175 / m5stack_stopwatch
 # Ergebnis: .pio\build\<env>\firmware.bin
 ```
 

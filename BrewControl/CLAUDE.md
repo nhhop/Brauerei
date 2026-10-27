@@ -32,8 +32,8 @@ Fixiert in [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1, Single Source 
 
 ```powershell
 # Firmware (in firmware/)
-pio run -e esp32dev              # compile-smoke
-pio run -e esp32dev -t upload    # flash
+pio run -e lilygo_t_display_s3_amoled              # compile-smoke
+pio run -e lilygo_t_display_s3_amoled -t upload    # flash
 pio device monitor               # serial @ 115200
 
 # Web (in web/)
@@ -122,22 +122,15 @@ pnpm typecheck
     `readTouch()` dreht zurück (`DisplayOrientation.h`). Seiten-Code muss nichts davon wissen.
     Der `rounder()` bleibt gültig, weil 465 ungerade ist — bei einem Panel mit gerader
     Kantenlänge nicht mehr.
-- esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
-  Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
-  `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
-  ESPAsyncWebServer serviert .gz transparent), und **ohne `modules/`**: `pnpm build:lfs` (in `web/`)
-  baut und legt das so ab. Deploy über `pio run -t uploadfs` (USB) oder,
-  wenn kein serieller Zugriff möglich ist, über `POST /api/update/assets` oder „Installieren“
-  mit dem normalen `webui.tar`. Das enthält seit 2026-09-26 **nur `.gz`-Dateien** (~160 KB,
-  `pnpm build:sd` ersetzt die Originale); roh + gzip (~610 KB) passte nicht in die 256-KB-
-  Partition. Optionale UI-Pakete (`dist/modules/`, derzeit Rezepte und Rechner) sind für diese Boards nicht
-  vorgesehen: `webui.tar` kommt ohne sie, `webui-full.tar` (mit Paketen) bekommen die SD-Boards
-  (Auswahl in `FirmwareUpdater::fetchReleaseMeta`). Beide Envs setzen `BREWCTL_ASSETS_IN_PLACE`:
-  `/www` wird vor dem Entpacken geleert (altes + neues Bundle passen nicht gleichzeitig), bei Fehlschlag liefert die
-  Firmware eine eingebettete Notfall-Upload-Seite. Upload und „Installieren“ teilen sich
-  diese Logik in `src/AssetInstall.h` — dort ändern, nicht in einem der beiden Aufrufer.
-  Das Flag gehört zur **kleinen Partition, nicht zu LittleFS** — ein neues Board ohne SD, aber mit größerer Datenpartition lässt es weg
-  und behält den atomaren `/www.new`-Tausch.
+- `m5stack_stopwatch` nutzt LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
+  Datenpartition 3,4 MB aus `default_16MB.csv`. `firmware/data/www/` enthält nur die gzippten
+  UI-Assets, **ohne `modules/`**: `pnpm build:lfs` (in `web/`) baut und legt das so ab. Deploy über
+  `pio run -e m5stack_stopwatch -t uploadfs` (USB), `POST /api/update/assets` oder „Installieren“
+  mit dem schlanken `webui.tar` (Auswahl in `FirmwareUpdater::fetchReleaseMeta`). Upload und
+  „Installieren“ teilen sich die Logik in `src/AssetInstall.h` — dort ändern, nicht in einem der
+  beiden Aufrufer. Seit esp32dev und lolin_s2_mini entfernt sind (Arduino Core 3, 2026-10-27),
+  setzt kein Env mehr `BREWCTL_ASSETS_IN_PLACE` (`/www` vor dem Entpacken leeren, für die frühere
+  256-KB-Partition); der Code dafür steht noch.
 - Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md`/`SESSION-archive.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).
 - Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum Root-SESSION.md-Eintrag im Root-`PLAN.md` → „Bugs & bekannte Einschränkungen" eintragen, statt nur im Session-Log zu vergraben.
 - Wird ein solcher Eintrag später gefixt: den Punkt **ersatzlos aus `PLAN.md` entfernen** (kein durchgestrichener „erledigt"-Eintrag, keine Pointer-Zeile) und stattdessen einen SESSION.md-Eintrag mit Root Cause / Umsetzung / Verifikation anlegen. `PLAN.md` führt nur Offenes.

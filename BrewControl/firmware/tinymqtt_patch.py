@@ -23,10 +23,10 @@ if not os.path.exists(header):
     Return()  # TinyMqtt not a dependency for this env — nothing to do
 
 
-def apply_edits(path, edits, label):
+def apply_edits(path, edits, label, sentinel=SENTINEL):
     """edits: list of (old, new) pairs, all applied in one read/write pass."""
     text = open(path, "r", encoding="utf-8").read()
-    if SENTINEL in text:
+    if sentinel in text:
         return False  # already patched (cached from a prior build)
     for old, new in edits:
         if old not in text:
@@ -92,3 +92,39 @@ patched |= apply_edits(
 
 if patched:
     print("tinymqtt_patch.py: TinyMqtt auth patch applied (%s)" % env["PIOENV"])
+
+# Arduino core 3 builds with GCC 14, where two things no longer compile (not
+# fixed upstream as of TinyMqtt 1.1.4 / TinyConsole 0.4.7): IPAddress::toString()
+# is a String there, so connect(const char*) matches both the string and the
+# IPAddress overload; and on Xtensa int32_t became `long`, so TinyString's
+# operator+=(int) definition no longer matches its int32_t declaration. Both
+# edits are neutral on core 2 (int32_t is int there).
+CORE3_SENTINEL = "BREWCTL_PATCHED_CORE3"
+core3 = apply_edits(
+    header,
+    [
+        (
+            "    { connect(ip.toString().c_str(), port, keep_alive); }\n",
+            "    { connect(string(ip.toString().c_str()), port, keep_alive); }  // %s\n"
+            % CORE3_SENTINEL,
+        ),
+    ],
+    "MqttClient::connect(IPAddress) ambiguity",
+    CORE3_SENTINEL,
+)
+tiny_string = os.path.join(env.subst("$PROJECT_LIBDEPS_DIR"), env["PIOENV"],
+                           "TinyConsole", "src", "TinyString.cpp")
+if os.path.exists(tiny_string):
+    core3 |= apply_edits(
+        tiny_string,
+        [
+            ("#include <cstdlib>\n",
+             "#include <cstdlib>\n#include <utility>  // %s: std::exchange\n" % CORE3_SENTINEL),
+            ("TinyString& TinyString::operator +=(int i)\n",
+             "TinyString& TinyString::operator +=(int32_t i)\n"),
+        ],
+        "TinyString std::exchange / operator+=(int32_t)",
+        CORE3_SENTINEL,
+    )
+if core3:
+    print("tinymqtt_patch.py: GCC 14 compatibility patch applied (%s)" % env["PIOENV"])
