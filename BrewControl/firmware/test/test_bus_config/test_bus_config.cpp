@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "BoardPins.h"
+#include "../TestBoards.h"
 #include "BusConfig.h"
 
 using namespace BrewControl;

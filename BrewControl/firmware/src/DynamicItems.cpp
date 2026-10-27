@@ -571,7 +571,7 @@ DynamicItems::Result DynamicItems::addSensorNoBegin(const JsonObject& cfg,
     e->ptr = std::move(sensor);
 #ifdef BREWCTL_I2C_SDA
   // Only boards with a fixed I2C bus carry a charger IC; elsewhere the
-  // drivers stay out of the image (esp32dev's flash is nearly full).
+  // drivers stay out of the image.
   } else if (const PmuType* pmu = findPmuType(type)) {
     uint8_t addr = static_cast<uint8_t>(cfg["address"] | pmu->defaultAddress);
     e->bus = acquireBus(*bus);

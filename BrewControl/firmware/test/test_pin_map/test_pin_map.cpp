@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "BoardPins.h"
+#include "../TestBoards.h"
 #include "PinMap.h"
 
 using namespace BrewControl;

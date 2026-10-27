@@ -65,7 +65,7 @@ using BrewControl::WiFiSetupPortal;
 #ifndef BREWCTL_SD_CS
 #define BREWCTL_SD_CS 5
 #endif
-constexpr int kSdCsPin = BREWCTL_SD_CS;  // ⚠ on esp32dev: strapping pin (MTDI) — see README
+constexpr int kSdCsPin = BREWCTL_SD_CS;
 constexpr int kBootButtonPin = 0;
 constexpr uint32_t kResetHoldMs = 5000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 30000;

@@ -89,8 +89,10 @@ pnpm typecheck
   `TouchDrvCST816`) mit halber Auflösung. I²C SDA 47 / SCL 48, BMI270 0x68 als normales Item.
 - **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED`,
   `BREWCTL_BOARD_WAVESHARE_AMOLED175` bzw. `BREWCTL_BOARD_M5_STOPWATCH` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
-  Display-Pins (`DisplayUI.cpp`). Ein S3-Build ohne Flag bricht mit `#error` ab — vorher galt
-  jedes S3-Board als LilyGo.
+  Display-Pins (`DisplayUI.cpp`). Ein Target-Build ohne Flag bricht mit `#error` ab; seit Arduino
+  Core 3 gibt es nur noch S3-Boards. Die Tabellen von esp32dev und lolin_s2_mini liegen als
+  Test-Fixture in `firmware/test/TestBoards.h` (sie decken DAC, Input-only-Pins, ADC2 und Errata ab).
+  `BREWCTL_ASSETS_IN_PLACE` samt Notfall-Upload-Seite bleibt bewusst im Code, ohne Env.
 - Das Display wird seit 2026-09-24 angesteuert, Code in `src/display/`: `DisplayUI` übernimmt
   Panel, Touch und LVGL, `DisplayPages` die Inhalte. Alles steht hinter `BREWCTL_HAS_DISPLAY`.
   Einen Überblick gibt `README.md` → „Rundes Touch-Display“. Regeln:

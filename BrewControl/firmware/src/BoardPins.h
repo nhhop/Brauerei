@@ -5,77 +5,15 @@
 
 namespace BrewControl {
 
-// Pin tables for the boards BrewControl builds for (see platformio.ini).
-// Chip facts from the Espressif datasheets (ADC channels, pull-ups) and the
-// ESP32 errata (3.11: GPIO 36/39 glitch while the SAR ADC is powered); board
-// wiring from the build flags, main.cpp and display/DisplayUI.cpp — keep them
-// in sync when those change.
+// Pin tables for the boards BrewControl builds for (see platformio.ini): ESP32-S3
+// only since Arduino core 3. Chip facts from the Espressif datasheets (ADC
+// channels, pull-ups); board wiring from the build flags, main.cpp and
+// display/DisplayUI.cpp — keep them in sync when those change. The former
+// esp32dev and lolin_s2_mini tables live on as test fixtures
+// (test/TestBoards.h), because they exercise checks (DAC, input-only pins,
+// ADC2 under Wi-Fi, errata) that no S3 table triggers.
 // GPIO 0 is the BOOT button everywhere, which main.cpp reads for the factory
 // reset (kBootButtonPin), so it counts as reserved, not merely as strapping.
-
-// ── esp32dev (ESP32-WROOM-32) ────────────────────────────────────────────────
-inline constexpr PinDef kEsp32DevSpecial[] = {
-    {0, PinClass::Reserved, "BOOT-Taste"},
-    {1, PinClass::Risky, "UART0 TX (serielles Log)"},
-    {2, PinClass::Risky, "Strapping-Pin"},
-    {3, PinClass::Risky, "UART0 RX (serielles Log)"},
-    {5, PinClass::Risky, "Strapping-Pin"},
-    {6, PinClass::Forbidden, "Flash"},
-    {7, PinClass::Forbidden, "Flash"},
-    {8, PinClass::Forbidden, "Flash"},
-    {9, PinClass::Forbidden, "Flash"},
-    {10, PinClass::Forbidden, "Flash"},
-    {11, PinClass::Forbidden, "Flash"},
-    {12, PinClass::Risky, "Strapping-Pin (Flash-Spannung)"},
-    {15, PinClass::Risky, "Strapping-Pin"},
-};
-inline constexpr Board kEsp32Dev = {
-    pinRange(0, 19) | pinRange(21, 23) | pinRange(25, 27) | pinRange(32, 39),
-    pinRange(34, 39),
-    pinBit(25) | pinBit(26),
-    kEsp32DevSpecial, sizeof(kEsp32DevSpecial) / sizeof(PinDef),
-    8,
-    pinRange(32, 39),
-    pinBit(0) | pinBit(2) | pinBit(4) | pinRange(12, 15) | pinRange(25, 27),
-    pinRange(34, 39),
-    pinBit(36) | pinBit(39),
-    pinBit(0) | pinBit(2) | pinBit(4) | pinRange(12, 15) | pinRange(25, 27) | pinRange(32, 39),
-    true,  // ADC2 reads fail while Wi-Fi is on
-    21, 22,  // Arduino-ESP32 default Wire pins (variants/esp32/pins_arduino.h)
-};
-
-// ── lolin_s2_mini (ESP32-S2FN4R2) ────────────────────────────────────────────
-inline constexpr PinDef kLolinS2MiniSpecial[] = {
-    {0, PinClass::Reserved, "BOOT-Taste"},
-    {15, PinClass::Risky, "Onboard-LED"},
-    {19, PinClass::Risky, "USB D- (Seriell + Upload)"},
-    {20, PinClass::Risky, "USB D+ (Seriell + Upload)"},
-    {26, PinClass::Forbidden, "PSRAM"},
-    {27, PinClass::Forbidden, "Flash"},
-    {28, PinClass::Forbidden, "Flash"},
-    {29, PinClass::Forbidden, "Flash"},
-    {30, PinClass::Forbidden, "Flash"},
-    {31, PinClass::Forbidden, "Flash"},
-    {32, PinClass::Forbidden, "Flash"},
-    {43, PinClass::Risky, "UART0 TX"},
-    {44, PinClass::Risky, "UART0 RX"},
-    {45, PinClass::Risky, "Strapping-Pin (Flash-Spannung)"},
-    {46, PinClass::Risky, "Strapping-Pin"},
-};
-inline constexpr Board kLolinS2Mini = {
-    pinRange(0, 21) | pinRange(26, 46),
-    pinBit(46),
-    pinBit(17) | pinBit(18),
-    kLolinS2MiniSpecial, sizeof(kLolinS2MiniSpecial) / sizeof(PinDef),
-    4,
-    pinRange(1, 10),
-    pinRange(11, 20),
-    pinBit(46),  // fixed pull-down
-    0,
-    pinRange(0, 21),
-    false,  // ADC2 arbitrated with Wi-Fi
-    33, 35,  // Arduino-ESP32 default Wire pins (variants/lolin_s2_mini/pins_arduino.h)
-};
 
 // ── lilygo_t_display_s3_amoled (ESP32-S3R8, T-Display-S3-AMOLED-1.75) ────────
 // No DAC; only RMT channels 0–3 can transmit. SD, I2C and display pins as in
@@ -330,8 +268,9 @@ static_assert(BREWCTL_I2C_SDA == 47 && BREWCTL_I2C_SCL == 48,
               "update kM5StopWatchSpecial and kM5StopWatchBuses to the new I2C pins");
 #endif
 
-#if defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BREWCTL_BOARD_LILYGO_AMOLED) &&     !defined(BREWCTL_BOARD_WAVESHARE_AMOLED175) && !defined(BREWCTL_BOARD_M5_STOPWATCH)
-#error "ESP32-S3 build without a BREWCTL_BOARD_* flag: the S3 boards differ in every pin"
+#if defined(ARDUINO) && !defined(BREWCTL_BOARD_LILYGO_AMOLED) && \
+    !defined(BREWCTL_BOARD_WAVESHARE_AMOLED175) && !defined(BREWCTL_BOARD_M5_STOPWATCH)
+#error "Build without a BREWCTL_BOARD_* flag: only the S3 boards in platformio.ini are supported"
 #endif
 
 // The table of the board this firmware is built for.
@@ -340,17 +279,14 @@ inline const Board& currentBoard() {
   return kM5StopWatch;
 #elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
   return kWaveshareAmoled175;
-#elif defined(BREWCTL_BOARD_LILYGO_AMOLED)
-  return kLilyGoAmoled;
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-  return kLolinS2Mini;
 #else
-  return kEsp32Dev;
+  // BREWCTL_BOARD_LILYGO_AMOLED, and the native unit tests (which pass their
+  // board explicitly and never call this).
+  return kLilyGoAmoled;
 #endif
 }
 
-// The buses the current board wires itself (none on esp32dev/lolin_s2_mini:
-// there every bus is user-defined), analogous to currentBoard().
+// The buses the current board wires itself, analogous to currentBoard().
 inline std::vector<BusDef> currentFixedBuses() {
   std::vector<BusDef> out;
 #if defined(BREWCTL_BOARD_M5_STOPWATCH)
