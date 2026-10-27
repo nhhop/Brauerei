@@ -50,16 +50,20 @@
 #if LV_MEM_CUSTOM == 0
     /*Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB)*/
     /*Measured 2026-09-24: 7.7 kB peak with 5 pages while swiping, ~1.5 kB per
-     *page - 32 kB leaves room for ~20. The pool is static internal RAM.*/
+     *page - 32 kB leaves room for ~20.*/
     #define LV_MEM_SIZE (32U * 1024U)          /*[bytes]*/
 
     /*Set an address for the memory pool instead of allocating it as a normal array. Can be in external SRAM too.*/
     #define LV_MEM_ADR 0     /*0: unused*/
     /*Instead of an address give a memory allocator that will be called to get a memory pool for LVGL. E.g. my_malloc*/
-    #if LV_MEM_ADR == 0
-        #undef LV_MEM_POOL_INCLUDE
-        #undef LV_MEM_POOL_ALLOC
-    #endif
+    /*The pool goes to PSRAM once at lv_init(): only the CPU touches it (objects,
+     *styles), never DMA or an ISR - the draw buffer, which DMA reads, stays
+     *internal (DisplayUI.cpp). As a static array it cost 32 kB of internal RAM,
+     *which Arduino core 3 no longer has to spare. Same size, same page limit.*/
+    #define LV_MEM_POOL_INCLUDE <esp_heap_caps.h>
+    #define LV_MEM_POOL_ALLOC(size) \
+        heap_caps_malloc_prefer((size), 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, \
+                                MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
 
 #else       /*LV_MEM_CUSTOM*/
     #define LV_MEM_CUSTOM_INCLUDE <stdlib.h>   /*Header for the dynamic memory function*/

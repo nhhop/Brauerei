@@ -65,7 +65,7 @@ using BrewControl::WiFiSetupPortal;
 #ifndef BREWCTL_SD_CS
 #define BREWCTL_SD_CS 5
 #endif
-constexpr int kSdCsPin = BREWCTL_SD_CS;  // ⚠ on esp32dev: strapping pin (MTDI) — see README
+constexpr int kSdCsPin = BREWCTL_SD_CS;
 constexpr int kBootButtonPin = 0;
 constexpr uint32_t kResetHoldMs = 5000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 30000;
@@ -454,11 +454,16 @@ void setup() {
   // Watchdog on loopTask. The web API runs on the AsyncTCP task and keeps
   // answering while loopTask hangs, so a stuck loop() (no control, no program
   // steps) would otherwise look healthy. 30 s is far above any legitimate
-  // pass; the arduino core feeds the WDT before every loop(). Re-initialising
+  // pass; the arduino core feeds the WDT before every loop(). Reconfiguring
   // only changes timeout/panic of the TWDT the core already started (5 s, it
   // watches IDLE0), so idle starvation is now also reported after 30 s.
   // Programs and timers resume after the reboot from their persisted state.
-  esp_task_wdt_init(kLoopWdtTimeoutS, /*panic=*/true);
+  const esp_task_wdt_config_t wdtConfig = {
+      .timeout_ms = kLoopWdtTimeoutS * 1000,
+      .idle_core_mask = 1U << 0,  // IDLE0, as the core set it up
+      .trigger_panic = true,
+  };
+  esp_task_wdt_reconfigure(&wdtConfig);
   enableLoopWDT();
   loopStartMs = millis();
   Serial.println(F("BrewControl ready"));

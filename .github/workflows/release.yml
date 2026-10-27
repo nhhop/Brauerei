@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [esp32dev, lolin_s2_mini, lilygo_t_display_s3_amoled, waveshare_s3_amoled_175, m5stack_stopwatch]
+        env: [lilygo_t_display_s3_amoled, waveshare_s3_amoled_175, m5stack_stopwatch]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,6 +31,9 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: BrewControl/firmware/firmware-${{ matrix.env }}.bin
+          # Tags with a suffix (v0.9.0-rc.1) are pre-releases: only the preview
+          # channel picks them up (FirmwareUpdater), /releases/latest skips them.
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   webui:
     runs-on: ubuntu-latest
@@ -45,8 +48,8 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           # build:sd leaves only .gz files in dist/ (scripts/gzip-dist.js): the
-          # raw copies are never served and would not fit the 256 KB data
-          # partition of esp32dev/lolin_s2_mini during "Installieren".
+          # raw copies are never served, and on the LittleFS boards they would
+          # only eat flash during "Installieren".
           pnpm build:sd
           # dist/modules holds the optional UI packages (recipes, ...). The
           # small-partition boards get webui.tar without them, the others
@@ -58,3 +61,4 @@ jobs:
           files: |
             BrewControl/webui.tar
             BrewControl/webui-full.tar
+          prerelease: ${{ contains(github.ref_name, '-') }}

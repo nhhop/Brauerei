@@ -3506,8 +3506,8 @@ paths:
         next main-loop tick. **No reboot.**
 
         Boards whose data partition cannot hold the old and the new UI at once
-        (build flag `BREWCTL_ASSETS_IN_PLACE`, currently `esp32dev` and
-        `lolin_s2_mini` with their 256 KB LittleFS partition) skip the staging
+        (build flag `BREWCTL_ASSETS_IN_PLACE`; no current environment sets it,
+        it was for the 256 KB LittleFS partition of the retired 4 MB boards) skip the staging
         step: `/www` is cleared first and the tar is extracted straight into
         it. The UI is gone during the upload, and stays gone if the upload
         fails or the connection drops. The API keeps working. `index.html`
@@ -6755,7 +6755,7 @@ components:
         currentVersion:
           type: string
           description: "Build version — `git describe`, or the CI release tag."
-        variant: { type: string, description: "PlatformIO environment, e.g. `esp32dev`." }
+        variant: { type: string, description: "PlatformIO environment, e.g. `lilygo_t_display_s3_amoled`." }
         resetReason:
           type: string
           enum: [power_on, external, sw, panic, int_wdt, task_wdt, wdt, deep_sleep, brownout, sdio, unknown]

@@ -20,7 +20,10 @@ Library, auch ungenutzte Backends. Ein selbstgeschriebener Treiber brachte im
 Spike 2026-09-22 trotz gleicher Init-Sequenz kein Bild (siehe `SESSION.md`).
 
 **Gekürzt:** Nur die Dateien, die `Arduino_ESP32QSPI` + `Arduino_CO5300`
-brauchen, sind übernommen, und zwar **inhaltlich unverändert**. Die 17 MB Fonts
+brauchen, sind übernommen, und zwar **inhaltlich unverändert** — bis auf zwei
+Includes für Arduino Core 3 / ESP-IDF 5 (`<sys/queue.h>` in `Arduino_DataBus.h`,
+`<soc/gpio_struct.h>` in `Arduino_ESP32QSPI.h`, je mit Kommentar „BrewControl:“),
+die IDF 4 noch transitiv mitbrachte. Die 17 MB Fonts
 sowie alle anderen Busse und Controller fehlen. Die U8g2-Fonts hängen an
 `__has_include(<U8g2lib.h>)` und bleiben dadurch aus. `src/pin_config.h`
 ersetzt LilyGos `Mylibrary/pin_config.h`: `Arduino_TFT.cpp` braucht daraus nur
