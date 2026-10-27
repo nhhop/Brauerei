@@ -58,6 +58,8 @@ export function FirmwarePage(_: { path?: string }) {
 
   const busy = ['checking', 'downloading', 'flashing'].includes(st.state);
   const channel = st.channel;
+  // e.g. the stable release while a preview build runs
+  const older = !!st.available?.older;
 
   const setChannel = (c: 'stable' | 'preview') =>
     updateSettings({ firmware: { channel: c, autoCheck: st.autoCheck } }).then(refresh);
@@ -88,10 +90,14 @@ export function FirmwarePage(_: { path?: string }) {
                 {st.available && (
                   <div class="rounded-md bg-fg/5 p-3 text-sm">
                     <div class="flex items-center justify-between gap-3">
-                      <div>Verfügbar: <span class="font-mono">{st.available.version}</span></div>
+                      <div>
+                        {older ? 'Älter als die laufende: ' : 'Verfügbar: '}
+                        <span class="font-mono">{st.available.version}</span>
+                      </div>
                       {st.state === 'updateAvailable' && (
-                        <button onClick={() => setConfirmInstall(true)} class={`shrink-0 ${btnPrimary}`}>
-                          Installieren
+                        <button onClick={() => setConfirmInstall(true)}
+                          class={`shrink-0 ${older ? btnSecondary : btnPrimary}`}>
+                          {older ? 'Zurück auf diese Version' : 'Installieren'}
                         </button>
                       )}
                     </div>
@@ -145,7 +151,7 @@ export function FirmwarePage(_: { path?: string }) {
         <TriangleAlert size={16} class="shrink-0" /> Nicht während eines laufenden Brauvorgangs aktualisieren — das Gerät startet neu.
       </div>
 
-      <ConfirmModal open={confirmInstall} title="Update installieren?"
+      <ConfirmModal open={confirmInstall} title={older ? 'Ältere Version installieren?' : 'Update installieren?'}
         confirmLabel="Installieren" cancelLabel="Abbrechen" destructive
         onCancel={() => setConfirmInstall(false)}
         onConfirm={() => {
@@ -162,6 +168,7 @@ export function FirmwarePage(_: { path?: string }) {
             .catch((e) => setInstallErr(String(e)));
         }}>
         Firmware <span class="font-mono">{st.available?.version}</span> wird geflasht und das Gerät startet neu.
+        {older && <> Sie ist älter als die laufende <span class="font-mono">{st.currentVersion}</span>.</>}
       </ConfirmModal>
     </PageShell>
   );

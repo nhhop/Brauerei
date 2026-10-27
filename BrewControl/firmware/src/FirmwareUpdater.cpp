@@ -13,6 +13,7 @@
 #include "SdLock.h"
 #include "SdTarSink.h"
 #include "TarExtractor.h"
+#include "VersionCompare.h"
 #include "version.h"
 
 namespace BrewControl {
@@ -309,6 +310,9 @@ void FirmwareUpdater::doCheck(const String& channel) {
     state_ = State::Error;
     return;
   }
+  // An older release stays installable — it is the way back from the preview
+  // to the stable channel — but is flagged so the UI offers it as a downgrade.
+  availOlder_ = isOlderVersion(tag.c_str(), currentVersion_.c_str());
   if (fwUrl.length() == 0) {
     availVersion_ = tag;
     availNotes_ = String("Kein Image für Variante ") + variant_;
@@ -456,6 +460,7 @@ String FirmwareUpdater::statusJson() const {
     JsonObject av = doc["available"].to<JsonObject>();
     av["version"] = availVersion_;
     av["notes"] = availNotes_;
+    av["older"] = availOlder_;
   } else {
     doc["available"] = nullptr;
   }
