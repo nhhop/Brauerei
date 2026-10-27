@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "controllers/PIDController.h"
 #include "controllers/TwoPointController.h"
 #include "remote/RemoteActuator.h"
 #include "remote/RemotePublisher.h"
@@ -169,6 +170,24 @@ void test_controller_tune_round_trip() {
   const std::string meta = tx.lastPayload(
       "sensactctrl/node-e/controller/mash_ctrl/meta");
   TEST_ASSERT_TRUE(meta.find("75") != std::string::npos);
+}
+
+// A PID's params JSON (ten %.4f fields plus refs) is ~330 B — the publisher
+// used to render it into 256 B, got 0 back and never published the meta.
+void test_pid_controller_meta_published() {
+  MockTransport tx;
+  MockSensor s("t", tempMeta());
+  MockActuator a("o", switchMeta());
+  SensActCtrl::PIDController pid("Maischen", s, a, 0.0f, 1.0f);
+
+  RemotePublisher pub(tx, "node-p");
+  pub.attach(pid);
+  pub.begin();
+
+  const std::string meta =
+      tx.lastPayload("sensactctrl/node-p/controller/Maischen/meta");
+  TEST_ASSERT_TRUE(meta.size() > 256);
+  TEST_ASSERT_TRUE(meta.find("\"autotuneCyclesTotal\"") != std::string::npos);
 }
 
 void test_multichannel_both_channels_published() {
@@ -456,6 +475,7 @@ int main(int, char**) {
   RUN_TEST(test_actuator_state_round_trip);
   RUN_TEST(test_meta_retained_replay_for_late_subscriber);
   RUN_TEST(test_controller_tune_round_trip);
+  RUN_TEST(test_pid_controller_meta_published);
   RUN_TEST(test_multichannel_both_channels_published);
   RUN_TEST(test_multichannel_channel_values_correct);
   RUN_TEST(test_single_channel_flat_topic_unchanged);

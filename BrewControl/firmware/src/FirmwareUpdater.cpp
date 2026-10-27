@@ -243,11 +243,20 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   // Filter to keep only the fields we need (releases JSON is large).
   JsonDocument filter;
   makeReleaseFilter(filter, channel != "stable");
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(
-      doc, http.getStream(), DeserializationOption::Filter(filter));
+  // Read the body completely before parsing: under Arduino core 3 parsing
+  // straight from getStream() ended with IncompleteInput after ~2 s. getString()
+  // reads up to Content-Length; the String lands in PSRAM on boards that have it.
+  const int expected = http.getSize();
+  const String body = http.getString();
   http.end();
-  if (err) { netError_ = String("release JSON: ") + err.c_str(); return false; }
+  JsonDocument doc;
+  DeserializationError err =
+      deserializeJson(doc, body, DeserializationOption::Filter(filter));
+  if (err) {
+    netError_ = String("release JSON: ") + err.c_str() + " (" + body.length() +
+                " of " + expected + " bytes)";
+    return false;
+  }
 
   JsonObject rel;
   if (channel == "stable") {
