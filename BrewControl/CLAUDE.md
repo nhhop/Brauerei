@@ -106,7 +106,7 @@ pnpm typecheck
     identischer Init-Sequenz kein Bild.
   - Umlaute gibt es nur mit den eigenen Fonts in `src/display/fonts/`; die eingebauten
     `lv_font_montserrat_*` haben keine. Wie man die Fonts neu erzeugt, steht im README dort.
-  - Jede Seite belegt LVGL-Pool (`LV_MEM_SIZE` 32 KB, etwa 1,5 KB pro Seite). Ist der Pool
+  - Jede Seite belegt LVGL-Pool (`LV_MEM_SIZE` 32 KB im PSRAM über `LV_MEM_POOL_ALLOC`, etwa 1,5 KB pro Seite). Ist der Pool
     voll, endet das im Watchdog-Reboot. Deshalb gilt die Grenze `kMaxPages`.
   - Ist das Display schwarz (Burn-in-Schutz), läuft `lv_timer_handler()` nicht. Auch die
     Timer von `DisplayPages` stehen dann still und laufen erst nach dem Aufwecken nach.

@@ -1,8 +1,11 @@
 #include "AlarmStore.h"
 
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 #include <math.h>
 #include <string.h>
+
+#include <new>
 
 #include "ProgramEvents.h"
 #include "SdLock.h"
@@ -35,7 +38,15 @@ constexpr time_t kClockValidEpoch = 946684800L;
 
 }  // namespace
 
-AlarmStore::AlarmStore() : mutex_(xSemaphoreCreateRecursiveMutex()) {}
+AlarmStore::AlarmStore() : mutex_(xSemaphoreCreateRecursiveMutex()) {
+  // PSRAM is on the heap before global constructors run; internal RAM is the
+  // fallback. Only the CPU touches the ring, so PSRAM is fine.
+  void* mem = heap_caps_malloc_prefer(sizeof(Alert) * kRing, 2,
+                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
+                                      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  ring_ = static_cast<Alert*>(mem);
+  for (size_t i = 0; i < kRing; ++i) new (&ring_[i]) Alert();
+}
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 

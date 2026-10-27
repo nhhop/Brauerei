@@ -118,14 +118,14 @@ void PushService::applyConfig_() {
   cfg.vapidConfig.subject          = kVapidSubject;
   cfg.vapidConfig.publicKeyBase64  = vapidPub_;
   cfg.vapidConfig.privateKeyBase64 = vapidPriv_;
-  // Not `Internal`: with esp-webPush that meant MALLOC_CAP_INTERNAL, which
-  // includes IRAM, and IRAM only allows 32-bit accesses - std::string members
-  // built byte-wise there panicked with a LoadStoreError. `Default` is
-  // MALLOC_CAP_DEFAULT, byte-addressable. The task stack stays out of PSRAM
-  // too (the library prefers it there): the worker runs TLS, and a PSRAM
-  // stack is unusable while the flash cache is off.
-  cfg.memory.allocation = Strata::Placement::Default;
-  cfg.memory.taskStack  = Strata::Placement::Default;
+  // Queue, jobs and the worker's stack in PSRAM (internal RAM as fallback):
+  // under Arduino core 3 the internal heap is ~38 KB smaller than before. A
+  // PSRAM stack only rules out code that itself disables the flash cache
+  // (flash/NVS writes); the worker does TLS and HTTP, and the send callback
+  // below only sets lastError_. TLS buffers already go to PSRAM
+  // (tlsAllocToPsram() in main.cpp).
+  cfg.memory.allocation = Strata::Placement::PreferExternal;
+  cfg.memory.taskStack  = Strata::Placement::PreferExternal;
   cfg.queueSize = 8;  // 4 alerts per WebUI::tick, times a couple of subscriptions
   // 4096 (the library default) does not survive a TLS handshake; 12 KB was
   // enough with esp-webPush and leaves the heap alone.
