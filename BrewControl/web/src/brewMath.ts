@@ -69,10 +69,11 @@ export function blendGravitySg(v1L: number, sg1: number, v2L: number, sg2: numbe
   return fromGravityPoints(blendWeighted(v1L, gravityPoints(sg1), v2L, gravityPoints(sg2)));
 }
 
-// Heat capacity of grain relative to water: 1 kg of grain warms like 0.41 kg
-// of water. The commonly published metric value; the mash plan uses it too.
-// TODO(verify): cross-check 0.41 against a primary source.
-export const GRAIN_HEAT_RATIO = 0.41;
+// Heat capacity of grain relative to water: 1 kg of grain warms like 0.4 kg of
+// water. Palmer, How to Brew, chapter 16 "Calculations for Infusions" ("the
+// grain has 40% of the heat capacity compared to the water"). The mash plan
+// uses it too.
+export const GRAIN_HEAT_RATIO = 0.4;
 
 // Strike water temperature (Einmaischtemperatur) — Palmer-style formula,
 // metric variant (R = water in L per grain in kg).
@@ -119,21 +120,22 @@ export type SugarType = 'saccharose' | 'traubenzucker' | 'dme';
 
 // CO2 grams released per gram of sugar, from fermentation stoichiometry
 // (C6H12O6 → 2 C2H5OH + 2 CO2; sucrose inverts to two fermentable hexoses).
-// DME is not pure sugar — its fermentable-equivalent yield is approximated
-// as a multiple of the dextrose figure.
-// TODO(verify): DME multiplier (1.4) is a commonly cited rule of thumb.
+// DME is not pure sugar: Palmer, How to Brew, chapter 11 (table 13) gives 90 %
+// solids and a typical fermentability of about 75 %.
 const CO2_YIELD_G_PER_G: Record<SugarType, number> = {
   saccharose: (4 * 44.01) / 342.3, // inverts to 2 hexoses, 2 CO2 each
   traubenzucker: (2 * 44.01) / 180.16,
-  dme: ((2 * 44.01) / 180.16) / 1.4,
+  dme: ((2 * 44.01) / 180.16) * 0.9 * 0.75,
 };
 
 // CO2 density at 0°C/1atm (definition of "1 volume of CO2" per liter of beer).
 const CO2_G_PER_L_PER_VOLUME = 44.01 / 22.414;
 
-// Residual (already-dissolved) CO2 at a given temperature — standard cubic
-// fit (formula defined in °F internally).
-// TODO(verify): cross-check against a primary source.
+// Residual (already-dissolved) CO2 at a given temperature — standard quadratic
+// fit (formula defined in °F internally). It matches the solubility of CO₂ in
+// water at 1 atm (Lange's Handbook of Chemistry, 10th ed., p. 1100: 1.713 /
+// 1.194 / 0.878 / 0.759 vol at 0 / 10 / 20 / 25 °C) within 2 % up to 25 °C;
+// at 30 °C it is 6 % high.
 export function residualCo2Volumes(tempC: number): number {
   const f = (tempC * 9) / 5 + 32;
   return 3.0378 - 0.050062 * f + 0.00026555 * f * f;
@@ -167,10 +169,10 @@ export function speiseAlcoholPct(targetVolumes: number, tempC: number): number {
 
 // Apparent extract (°P) at which green beer is racked into a closed vessel so
 // that the extract still to ferment brings `targetVolumes` (Grünschlauchen,
-// spunding). Balling: 2.0665 g of real extract give 0.9565 g CO₂; real and
-// apparent extract fall as in ballingBeerAnalysis (0.8192). The beer's SG is
-// taken at the final gravity.
-// TODO(verify): cross-check the chain against a primary source (Narziß).
+// spunding). Balling: 2.0665 g of real extract give 1 g alcohol, 0.9565 g CO₂
+// and 0.11 g yeast (MEBAK method B-590.10.070); real and apparent extract fall
+// as in ballingBeerAnalysis (0.8192). The beer's SG is taken at the final
+// gravity, the small mass loss of the fermentation is left out.
 export function krausenRackingPlato(fgPlato: number, targetVolumes: number, tempC: number): number {
   const co2GPerL = Math.max(0, targetVolumes - residualCo2Volumes(tempC)) * CO2_G_PER_L_PER_VOLUME;
   const realExtractGPerL = co2GPerL * (2.0665 / 0.9565);
@@ -183,7 +185,9 @@ const BAR_PER_PSI = 0.0689476;
 // Gauge pressure (bar) that holds `targetVolumes` of CO₂ in beer at `tempC`
 // (forced carbonation). Common regression of the carbonation chart, in psi
 // and °F internally.
-// TODO(verify): cross-check against a primary source (solubility tables).
+// TODO(verify): no primary beer table (ASBC, Zahm & Nagel) found online. At
+// 2.5 vol it lies 0.03–0.1 bar above Henry's law with CO₂ in water (Lange's
+// Handbook, 0–20 °C), as expected for beer's lower solubility.
 export function forcedCarbonationBar(targetVolumes: number, tempC: number): number {
   const t = (tempC * 9) / 5 + 32;
   const v = targetVolumes;
@@ -305,8 +309,9 @@ export const EBC_PER_SRM = 1.97;
 
 // Beer colour (EBC) after Morey. Sources: Morey's equation SRM = 1.4922 × MCU^0.6859
 // and EBC = 1.97 × SRM (beerandbrewing.com, Brewfather docs); the EBC→°L step
-// inverts Daniels' SRM = 1.3546 × °L − 0.76. TODO(verify): that last conversion
-// has no primary source here yet.
+// inverts SRM = 1.3546 × °L − 0.76. TODO(verify): that last conversion appears
+// only in calculators and Wikipedia; the attribution to Daniels ("Designing
+// Great Beers") or an ASBC method is unchecked.
 export const lovibond = (ebc: number) => (ebc / EBC_PER_SRM + 0.76) / 1.3546;
 
 export function moreyEbc(rows: { kg: number; ebc: number }[], volumeL: number): number {

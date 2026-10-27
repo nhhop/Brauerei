@@ -63,7 +63,8 @@ const NOTE = 'Richtwerte, an Malz und Sudhaus anpassen.';
 // topic 461; Herrmann's maltase rest (TU München, Weihenstephan): sequence
 // after brewingforward.com "Maltase mash" citing Kunze and Esslinger, the
 // 50:50 split after edelstoffquest.wordpress.com) — TODO(verify) against a
-// brewing textbook.
+// brewing textbook (Narziß/Back/Gastl/Zarnkow, "Applied Malting and Brewing
+// Science", or Kunze); neither is available online.
 export const BUILTIN_MASH_PROFILES: MashProfile[] = [
   {
     id: 'std-hochkurz', name: 'Hochkurz', method: 'Infusion, Stufen', updatedAt: 0,

@@ -9,8 +9,9 @@ import { fermenterIntake, pitchL, type DilutionResult, type Intake } from './rec
 import { hopFormOf } from './stockLots';
 
 // Wort a gram of hops holds back (ml/g), in the kettle and in the fermenter.
-// TODO(verify): rules of thumb only (about 5–6 ml/g for cones in homebrewing
-// forums; pellets less, extract nothing); no measured source yet.
+// TODO(verify): rules of thumb only (about 5 ml/g in homebrewing forums; one
+// weighed dry hop of 170 g pellets lost 0.46 l, 2.7 ml/g, brewersfriend.com
+// forum); no study with measured values per hop form found.
 export const KETTLE_HOP_ML_PER_G: Record<HopForm, number> = { cone: 8, t90: 5, t45: 4, lupulin: 3, extract: 0 };
 export const DRY_HOP_ML_PER_G: Record<HopForm, number> = { cone: 7, t90: 5, t45: 4, lupulin: 3, extract: 0 };
 

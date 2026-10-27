@@ -303,13 +303,16 @@ function Scale({ label, detail, at, zone, ends }: {
 }
 
 // BU:GU on a linear scale; the zone limits follow common brewing guides.
-// TODO(verify): 0.5 and 0.8 have no primary source here yet.
+// TODO(verify): 0.5 and 0.8 have no primary source here yet; BU:GU comes from
+// Daniels, "Designing Great Beers" (not available online), and How to Brew
+// only says most styles have gravity points ≈ 2 × IBU, i.e. BU:GU ≈ 0.5
+// (chapter 20, figure 119), no zone limits.
 const BUGU_MIN = 0.2;
 const BUGU_MAX = 1.4;
 
 // Sulfate : chloride of the strike water on a log scale from 1:4 to 4:1.
-// TODO(verify): the zone limits 0.8 and 1.5 follow common calculators
-// (Brewfather, Bru'n Water) and have no primary source here yet.
+// The zone 0.8–1.5 is "Balanced" in Palmer's "Brewing Water Adjustment V5.0"
+// (2025, howtobrew.com); below it "Round and Full", above "Little Dry".
 function So4ClScale({ ratio }: { ratio: number }) {
   const pos = (r: number) => (Math.log(r) / Math.log(4) + 1) / 2;
   return (

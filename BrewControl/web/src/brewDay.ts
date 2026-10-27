@@ -68,7 +68,7 @@ export interface BrewTargets {
 
 // Troester's mash gravity test: the first wort holds the dissolved extract in
 // the mash water, °P = 100 · D / (D + W). The grain's own moisture is left out.
-// TODO(verify): against Troester, "Understanding Efficiency" (braukaiser.com).
+// Troester, "Understanding Efficiency" (braukaiser.com): FWmax = 100 % · m·e / (V + m·e).
 export const firstWortPlato = (dissolvedKg: number, waterKg: number) =>
   dissolvedKg + waterKg > 0 ? (100 * dissolvedKg) / (dissolvedKg + waterKg) : 0;
 const dissolvedOf = (plato: number, waterKg: number) => (waterKg * plato) / (100 - plato);

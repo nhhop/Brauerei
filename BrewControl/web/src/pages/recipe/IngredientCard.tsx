@@ -69,7 +69,7 @@ function optionLabel(c: CatalogIngredient, key: string): string | undefined {
 const LEVEL: Record<Level, string> = { 'very-low': 'sehr gering', low: 'gering', medium: 'mittel', high: 'hoch', 'very-high': 'sehr hoch' };
 
 // Colour of a beer of `ebc` for the swatch. TODO(verify): the common SRM → RGB
-// table of homebrew calculators; no primary source here yet.
+// table of homebrew calculators; no standard or measured source for it found.
 const SRM_RGB = ['#FFE699', '#FFD878', '#FFCA5A', '#FFBF42', '#FBB123', '#F8A600', '#F39C00', '#EA8F00', '#E58500',
   '#DE7C00', '#D77200', '#CF6900', '#CB6200', '#C35900', '#BB5100', '#B54C00', '#B04500', '#A63E00', '#A13700',
   '#9B3200', '#952D00', '#8E2900', '#882300', '#821E00', '#7B1A00', '#771900', '#701400', '#6A0E00', '#660D00',

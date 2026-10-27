@@ -1,7 +1,7 @@
 // Mash plan (tab "Maischen"): strike temperature, mixing temperatures, infusion
 // volumes and heating times from heat balances. Pure, like recipeWater.ts.
 //
-// Heat balance: the mash warms like M = water [kg] + 0.41 × grain [kg] of water.
+// Heat balance: the mash warms like M = water [kg] + 0.4 × grain [kg] of water.
 // The vessel's own heat capacity is left out, as in Palmer.
 import { GRAIN_HEAT_RATIO, strikeWaterTempC } from './brewMath';
 import {
@@ -15,12 +15,16 @@ export const WATER_J_PER_KG_K = 4186;
 // of 334 kJ/kg while melting, then warms from 0 °C.
 export const ICE_TEMP_C = -334 / 4.186;
 // TODO(verify): share of a heater's power that reaches the mash, for the estimate
-// when the brewhouse has no heat rate.
+// when the brewhouse has no heat rate. It depends on the heater and the vessel
+// (insulation, lid, stirring); no published figure for home brewing kettles
+// found, a measured heat rate of the brewhouse replaces it.
 export const HEATER_EFFICIENCY = 0.85;
-// TODO(verify): passive cooling of the mash; a rule of thumb, it depends on the vessel.
+// TODO(verify): passive cooling of the mash; a rule of thumb, it depends on the
+// vessel and its insulation. No published figure found.
 export const PASSIVE_COOL_K_PER_MIN = 0.2;
-// TODO(verify): water per kg grain of a thick decoction, about 1 qt/lb
+// TODO(verify): water per kg grain of a thick decoction, about 1 qt/lb = 2.09 l/kg
 // (BrewUnited, "Decoction Mashing"); a mash thinner than this gives it up.
+// Online only home-brewing figures; the textbook value (Narziß, Kunze) is missing.
 export const THICK_DECOCTION_L_PER_KG = 2.1;
 
 export interface Transition {

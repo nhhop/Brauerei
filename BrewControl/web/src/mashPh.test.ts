@@ -117,7 +117,8 @@ describe('mashPh (Troester)', () => {
 
   it('gives Palmer\'s RA range for the beer colour', () => {
     const [lo, hi] = raRangeForColor(10 * 1.97);   // 10 SRM
-    expect(lo).toBeCloseTo((122 - 122.4) / 50, 9);
-    expect(hi).toBeCloseTo((12.2 * 4.8) / 50, 9);
+    expect(lo).toBeCloseTo(0.2631, 3);              // 13.2 ppm: e^((13.2 + 125)/60) = 10
+    expect(hi).toBeCloseTo(1.1250, 3);              // 56.2 ppm: e^((56.2 + 75)/57) = 10
+    expect(raRangeForColor(0)).toEqual([-2.5, -1.5]);
   });
 });

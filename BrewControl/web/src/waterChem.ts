@@ -72,9 +72,15 @@ export interface WaterAgent {
   efficacy?: number;              // share that acts; chalk 0.5 (Troester)
 }
 
-// Densities: water at 0 %; lactic acid 80 % from MMuM; the others from the CRC
-// Handbook table "Concentrative properties of aqueous solutions" (20 °C).
-// TODO(verify): the CRC rows and lactic acid 88 % are written from memory.
+// Densities at 20 °C: water at 0 %; lactic acid 80 % from MMuM; the others from
+// the CRC Handbook table "Concentrative properties of aqueous solutions".
+// Checked against Engineering ToolBox (CaCl₂ 10–40 %, HCl 10–30 %, H₃PO₄ and
+// H₂SO₄ 10–40 %, H₂SO₄ 50–80 %: within 0.001), HCl 36/38 % (1.1791/1.1886, CRC
+// via Anton Paar),
+// H₃PO₄ 50–85 % (chemister.ru and spec sheets at 25 °C, 0.002–0.006 lower),
+// H₂SO₄ 96 % (Merck 1.834–1.837) and lactic acid 88 % (spec sheets 1.19–1.22).
+// TODO(verify): H₂SO₄ 90 % unchecked; pure lactic acid 80 % is 1.1848 in the
+// CRC-based table, commercial 80 % (MMuM) 1.206 — no manufacturer sheet found.
 const WATER_DENSITY = 0.998;
 export const WATER_AGENTS: Record<WaterAgentId, WaterAgent> = {
   gypsum: { id: 'gypsum', formula: 'CaSO₄·2H₂O', form: 'solid', molarMass: 172.17, ions: { ca: 1, so4: 1 } },

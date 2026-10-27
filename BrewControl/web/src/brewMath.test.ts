@@ -57,6 +57,9 @@ describe('strikeWaterTempC', () => {
   it('requires hotter strike water when grain is colder than the target', () => {
     expect(strikeWaterTempC(20, 5, 20, 66)).toBeGreaterThan(66);
   });
+  it('matches Palmer\'s infusion example (How to Brew, chapter 16)', () => {
+    expect(strikeWaterTempC(2.06 * 4.54, 4.54, 21, 50)).toBeCloseTo(55.6, 1);
+  });
 });
 
 describe('extractEfficiencyPercent', () => {
@@ -82,6 +85,10 @@ describe('primingSugarGrams', () => {
     const s = primingSugarGrams(20, 2.5, 18, 'saccharose');
     const t = primingSugarGrams(20, 2.5, 18, 'traubenzucker');
     expect(t).toBeGreaterThan(s);
+  });
+  it('takes DME at 90 % solids and 75 % fermentability (Palmer, table 13)', () => {
+    const t = primingSugarGrams(20, 2.5, 18, 'traubenzucker');
+    expect(primingSugarGrams(20, 2.5, 18, 'dme')).toBeCloseTo(t / (0.9 * 0.75), 6);
   });
 });
 

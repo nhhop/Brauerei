@@ -36,7 +36,8 @@ const NOTE = 'Richtwerte, an Hefe und Bier anpassen; das Ende der Gärung zeigt 
 // beerandbrewing.com "Ferment hot, fast and clean"); warm pressure fermentation
 // of a lager at about 1 bar, raised towards the end (byo.com "Pressurized
 // fermentations", brewersfriend.com forum "Spunding valves and diacetyl") —
-// TODO(verify) against a brewing textbook (Narziß, Kunze).
+// TODO(verify) against a brewing textbook (Narziß/Back/Gastl/Zarnkow, "Applied
+// Malting and Brewing Science", or Kunze); neither is available online.
 export const BUILTIN_FERMENTATION_PROFILES: FermentationProfile[] = [
   {
     id: 'std-lager', name: 'Untergärig klassisch', updatedAt: 0,
@@ -78,7 +79,8 @@ export const BUILTIN_FERMENTATION_PROFILES: FermentationProfile[] = [
 
 // Phases the "+ Phase" menu offers, with the values of the shipped profiles
 // (sources above; pitching cool and letting it rise a day is common practice,
-// TODO(verify)). The label tells top- from bottom-fermenting, the name not.
+// TODO(verify): no source found for the pitching temperatures 8 and 17 °C).
+// The label tells top- from bottom-fermenting, the name not.
 export const PHASE_PRESETS: { label: string; phase: ProfilePhase }[] = [
   { label: 'Anstellen (untergärig)', phase: phase('Anstellen', 8, 1) },
   { label: 'Anstellen (obergärig)', phase: phase('Anstellen', 17, 1) },

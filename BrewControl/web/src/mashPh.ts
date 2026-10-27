@@ -15,7 +15,9 @@
 // - The wort keeps that buffer per kg of grist: mixing and boiling off change
 //   acid and buffer alike. What goes in after mashing (sparge water, additions)
 //   counts with its residual alkalinity, bicarbonate fully, since the CO₂ boils
-//   off. TODO(verify): Troester measured the mash only.
+//   off. TODO(verify): Troester titrated the mash only; a titration of wort
+//   (buffer per kg of grist after lautering and boiling) is missing, online
+//   there are only forum figures (~35 mEq/(kg·pH)).
 // Model "kolbach": the residual alkalinity only, against Palmer's range for the
 // beer colour; no pH figure, as RA is classically used.
 import { EBC_PER_SRM } from './brewMath';
@@ -111,10 +113,10 @@ export function mashPh(diPh: number, ratio: number, w: WaterState): number {
   return diPh + alkalinitySlope(ratio) * (Math.max(alk, 0) - hardness) + (Math.min(alk, 0) * ratio) / MALT_BUFFER;
 }
 
-// Palmer (How to Brew): RA as CaCO₃ over the beer colour in SRM, from 12.2·SRM −
-// 122.4 (colour from base and caramel malts) to 12.2·(SRM − 5.2) (from roasted
-// malts); in mEq/l. TODO(verify): taken from a forum post quoting the book.
+// Palmer, "Brewing Water Adjustment V5.0" (2025, howtobrew.com, chapter 15): an
+// RA (ppm as CaCO₃) suits beers from SRM = e^((RA + 75)/57) to e^((RA + 125)/60),
+// solved here for the RA; in mEq/l. Below 1 SRM his sheet predicts nothing.
 export function raRangeForColor(ebc: number): [number, number] {
-  const srm = ebc / EBC_PER_SRM;
-  return [(12.2 * srm - 122.4) / 50, (12.2 * (srm - 5.2)) / 50];
+  const ln = Math.log(Math.max(ebc / EBC_PER_SRM, 1));
+  return [(60 * ln - 125) / 50, (57 * ln - 75) / 50];
 }

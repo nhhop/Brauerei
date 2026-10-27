@@ -401,9 +401,10 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     senkt um 0,15 (Troester, braukaiser.com, „How pH affects brewing“: 0,1–0,2). Ob Troesters
     Maische-Pufferung so auf die Würze übertragbar ist, ist nicht belegt (TODO(verify)).
   - **Kolbach:** nur die Restalkalität, ohne pH-Zahl, wie man klassisch mit RA arbeitet. Die Maische-Spalte
-    zeigt den Zielbereich nach Bierfarbe von Palmer (How to Brew): RA in ppm CaCO₃ von 12,2·SRM − 122,4
-    (Farbe aus Basis- und Karamellmalz) bis 12,2·(SRM − 5,2) (Farbe aus Röstmalz); TODO(verify), aus einem
-    Forenzitat des Buchs. Säure- und Basenhilfe gibt es dann nur für die Wasserspalten.
+    zeigt den Zielbereich nach Bierfarbe aus Palmers Tabelle „Brewing Water Adjustment V5.0“ (2025,
+    howtobrew.com, Kapitel 15): eine RA in ppm CaCO₃ passt zu SRM e^((RA + 75)/57) bis e^((RA + 125)/60),
+    nach der RA aufgelöst (bis 2026-10-27 die älteren Geraden 12,2·SRM − 122,4 bis 12,2·(SRM − 5,2)).
+    Säure- und Basenhilfe gibt es dann nur für die Wasserspalten.
   - Säuren zählen in RA und Schätzung weiter mit ihrem Anteil bei pH 5,4. Mit dem geschätzten Maische-pH
     statt 5,4 änderte sich der Anteil zwischen pH 5,2 und 5,8 um höchstens etwa 2 % (Milch- und
     Phosphorsäure), bei 8 ml Milchsäure weniger als 0,01 pH; deshalb bleibt es.
@@ -637,14 +638,14 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
     Suds. „Wasser vorlegen“ und das erste „Einmaischen“ lassen sich weder löschen noch verschieben.
   - **Alte Rezepte** (Rasten ohne Art) verlieren ihren Plan beim Laden, eine Migration gibt es nicht
     (Entscheidung 2026-10-08). Der Plan beginnt dann mit Wasser vorlegen und Einmaischen (67 °C, 60 min).
-  - **Wärmeäquivalent:** M = Wasser [kg] + 0,41 × Malz [kg]; die 0,41 teilt sich die Rechnung mit der
-    Einmaischtemperatur (`GRAIN_HEAT_RATIO`). Die Wärmekapazität des Behälters bleibt wie bei Palmer
+  - **Wärmeäquivalent:** M = Wasser [kg] + 0,4 × Malz [kg] (Palmer, How to Brew, Kapitel 16; bis
+    2026-10-27 0,41); die 0,4 teilt sich die Rechnung mit der Einmaischtemperatur (`GRAIN_HEAT_RATIO`). Die Wärmekapazität des Behälters bleibt wie bei Palmer
     unberücksichtigt.
   - **Wasser vorlegen:** Menge = Hauptguss − alle Zubrühmengen. Zubrühmengen, die nach Temperatur
     geführt werden, wachsen mit der Maische; die Menge wird deshalb per Bisektion gelöst. Sind die
     Zubrühmengen größer als der Hauptguss, gibt es einen Hinweis und das Zubrühwasser kommt hinzu.
     Temperatur über die Einmaischformel mit der ersten Schüttung, Heizzeit ab Leitungswasser.
-  - **Weitere Schüttung:** Mischtemperatur (M·T + 0,41·kg·T_Malz) / (M + 0,41·kg), nur lesbar.
+  - **Weitere Schüttung:** Mischtemperatur (M·T + 0,4·kg·T_Malz) / (M + 0,4·kg), nur lesbar.
   - **Zubrühen:** (M·T_alt + V·T_w) / (M + V) = T_ziel. Was zuletzt geändert wurde, führt (Menge oder
     Wassertemperatur); ohne Wassertemperatur gilt der Siedepunkt. Eis zählt als Wasser von
     −334/4,186 ≈ −79,8 °C. Liegt die nötige Wassertemperatur außerhalb von Leitungswasser bis Siedepunkt,
