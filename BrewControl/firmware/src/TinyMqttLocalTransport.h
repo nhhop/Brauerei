@@ -39,22 +39,16 @@ class TinyMqttLocalTransport : public SensActCtrl::ITransport {
     return client_.publish(topic, payload, retained) == MqttOk;
   }
 
-  bool subscribe(const char* topic, MessageCallback callback) override {
-    subs_.emplace_back(std::string(topic), std::move(callback));
+  bool subscribe(const char* topic, MessageCallback callback,
+                 const void* owner = nullptr) override {
+    subs_.push_back({topic, std::move(callback), owner});
     return client_.subscribe(topic) == MqttOk;
   }
 
-  bool unsubscribe(const char* topic) override {
-    bool found = false;
-    for (auto it = subs_.begin(); it != subs_.end();) {
-      if (it->first == topic) {
-        it = subs_.erase(it);
-        found = true;
-      } else {
-        ++it;
-      }
-    }
-    client_.unsubscribe(topic);
+  bool unsubscribe(const char* topic, const void* owner = nullptr) override {
+    bool stillUsed = false;
+    const bool found = eraseSubscriptions(subs_, topic, owner, &stillUsed);
+    if (found && !stillUsed) client_.unsubscribe(topic);
     return found;
   }
 
@@ -72,13 +66,13 @@ class TinyMqttLocalTransport : public SensActCtrl::ITransport {
     if (!active_) return;
     const std::string t(topic.c_str());
     for (auto& sub : active_->subs_) {
-      if (sub.first == t) sub.second(t.c_str(), payload, len);
+      if (sub.topic == t) sub.callback(t.c_str(), payload, len);
     }
   }
 
   static inline TinyMqttLocalTransport* active_ = nullptr;
   MqttClient client_;
-  std::vector<std::pair<std::string, MessageCallback>> subs_;
+  std::vector<Subscription> subs_;
 };
 
 }  // namespace BrewControl

@@ -126,9 +126,15 @@ bool EspNowTransport::sendDataPacket_(const char* topic, const char* payload,
     return false;
   }
   if (2 + tlen + plen > maxPacket_) {
-    lastErrorMsg_ = "Paket zu groß (" + std::to_string(2 + tlen + plen) +
-                     " Byte, max " + std::to_string(maxPacket_) + ") — verworfen";
+    oversizeTopic_ = topic;
+    oversizeErrorMsg_ = "Paket zu groß (" + std::to_string(2 + tlen + plen) +
+                        " Byte, max " + std::to_string(maxPacket_) + ") — verworfen: " +
+                        topic;
     return false;
+  }
+  if (oversizeTopic_ == topic) {
+    oversizeTopic_.clear();
+    oversizeErrorMsg_.clear();
   }
 
   // Heap, not stack: with v2 a packet is up to 1470 B, and publish() also
@@ -166,9 +172,10 @@ void EspNowTransport::sendRetainedRequest_() {
 }
 
 void EspNowTransport::handleRetainedRequest_() {
-  for (const auto& kv : retained_) {
-    sendDataPacket_(kv.first.c_str(), kv.second.c_str(), kBroadcastMac);
-  }
+  // Sent from tick(), see the class comment. A request mid-replay restarts
+  // it — the new requester needs every topic.
+  replayPending_ = true;
+  replayAfter_.clear();
 }
 
 bool EspNowTransport::publish(const char* topic, const char* payload, bool retained) {
@@ -188,10 +195,15 @@ bool EspNowTransport::publish(const char* topic, const char* payload, bool retai
   return sendDataPacket_(topic, payload, kBroadcastMac);
 }
 
-bool EspNowTransport::subscribe(const char* topic, MessageCallback callback) {
-  subs_.emplace_back(std::string(topic), std::move(callback));
+bool EspNowTransport::subscribe(const char* topic, MessageCallback callback,
+                                const void* owner) {
+  subs_.push_back({topic, std::move(callback), owner});
   requestRetained_();
   return true;
+}
+
+bool EspNowTransport::unsubscribe(const char* topic, const void* owner) {
+  return eraseSubscriptions(subs_, topic, owner);
 }
 
 void EspNowTransport::requestRetained_() {
@@ -228,6 +240,17 @@ void EspNowTransport::tick() {
     lastRetainedRequestMs_ = millis();
     retainedRequestPending_ = false;
     sendRetainedRequest_();
+  }
+
+  if (replayPending_ && (millis() - lastReplayMs_) >= kReplayIntervalMs) {
+    auto it = retained_.upper_bound(replayAfter_);  // topics are never empty
+    if (it == retained_.end()) {
+      replayPending_ = false;
+    } else {
+      lastReplayMs_ = millis();
+      replayAfter_ = it->first;
+      sendDataPacket_(it->first.c_str(), it->second.c_str(), kBroadcastMac);
+    }
   }
 
   for (;;) {
@@ -273,7 +296,7 @@ void EspNowTransport::processIncoming_(const uint8_t* mac, const uint8_t* data,
                           length - 2 - tlen);
       bool learned = false;
       for (auto& sub : subs_) {
-        if (sub.first == topic) {
+        if (sub.topic == topic) {
           // Only subscribed topics are learned — bounds the table to what
           // this node actually consumes.
           if (!learned && mac) {
@@ -281,7 +304,7 @@ void EspNowTransport::processIncoming_(const uint8_t* mac, const uint8_t* data,
             peers_.learn(topic, mac);
             learned = true;
           }
-          sub.second(topic.c_str(), payload.c_str(), payload.size());
+          sub.callback(topic.c_str(), payload.c_str(), payload.size());
         }
       }
       return;
@@ -293,6 +316,7 @@ void EspNowTransport::processIncoming_(const uint8_t* mac, const uint8_t* data,
 
 const char* EspNowTransport::lastErrorMessage() const {
   if (!lastErrorMsg_.empty()) return lastErrorMsg_.c_str();
+  if (!oversizeErrorMsg_.empty()) return oversizeErrorMsg_.c_str();
   std::lock_guard<std::mutex> lock(deliveryMutex_);
   return deliveryErrorMsg_.c_str();
 }
@@ -306,7 +330,8 @@ namespace SensActCtrl {
 EspNowTransport::EspNowTransport(uint8_t channel) : channel_(channel) {}
 EspNowTransport::~EspNowTransport() = default;
 bool EspNowTransport::publish(const char*, const char*, bool) { return false; }
-bool EspNowTransport::subscribe(const char*, MessageCallback) { return false; }
+bool EspNowTransport::subscribe(const char*, MessageCallback, const void*) { return false; }
+bool EspNowTransport::unsubscribe(const char*, const void*) { return false; }
 void EspNowTransport::tick() {}
 const char* EspNowTransport::lastErrorMessage() const { return ""; }
 void EspNowTransport::dispatchIncoming(const uint8_t*, const uint8_t*, int) {}

@@ -47,25 +47,19 @@ bool MqttTransport::publish(const char* topic, const char* payload, bool retaine
   return client_->publish(topic, payload, retained);
 }
 
-bool MqttTransport::subscribe(const char* topic, MessageCallback callback) {
-  subs_.emplace_back(std::string(topic), std::move(callback));
+bool MqttTransport::subscribe(const char* topic, MessageCallback callback,
+                              const void* owner) {
+  subs_.push_back({topic, std::move(callback), owner});
   if (usable_()) {
     client_->subscribe(topic);
   }
   return true;
 }
 
-bool MqttTransport::unsubscribe(const char* topic) {
-  bool found = false;
-  for (auto it = subs_.begin(); it != subs_.end();) {
-    if (it->first == topic) {
-      it = subs_.erase(it);
-      found = true;
-    } else {
-      ++it;
-    }
-  }
-  if (usable_()) {
+bool MqttTransport::unsubscribe(const char* topic, const void* owner) {
+  bool stillUsed = false;
+  const bool found = eraseSubscriptions(subs_, topic, owner, &stillUsed);
+  if (found && !stillUsed && usable_()) {
     client_->unsubscribe(topic);
   }
   return found;
@@ -116,7 +110,7 @@ void MqttTransport::startConnect_() {
 void MqttTransport::finishConnect_() {
   if (connectOk_) {
     for (auto& sub : subs_) {
-      client_->subscribe(sub.first.c_str());
+      client_->subscribe(sub.topic.c_str());
     }
     reconnectBackoffMs_ = 1000;
   } else {
@@ -144,8 +138,8 @@ void MqttTransport::dispatchIncoming(const char* topic, const uint8_t* payload,
                                      uint32_t length) {
   std::string buf(reinterpret_cast<const char*>(payload), length);
   for (auto& sub : subs_) {
-    if (sub.first == topic) {
-      sub.second(topic, buf.c_str(), buf.size());
+    if (sub.topic == topic) {
+      sub.callback(topic, buf.c_str(), buf.size());
     }
   }
 }
@@ -162,8 +156,8 @@ MqttTransport::MqttTransport(Client&, const char*, uint16_t port, const char* cl
       username_(username ? username : ""), password_(password ? password : "") {}
 MqttTransport::~MqttTransport() = default;
 bool MqttTransport::publish(const char*, const char*, bool) { return false; }
-bool MqttTransport::subscribe(const char*, MessageCallback) { return false; }
-bool MqttTransport::unsubscribe(const char*) { return false; }
+bool MqttTransport::subscribe(const char*, MessageCallback, const void*) { return false; }
+bool MqttTransport::unsubscribe(const char*, const void*) { return false; }
 void MqttTransport::tick() {}
 bool MqttTransport::connected() const { return false; }
 const char* MqttTransport::lastErrorMessage() const { return ""; }

@@ -208,13 +208,19 @@ einen anderen Kanal eines Mehrkanal-Sensors, und `paramsJson` meldet ihn als
 `sensor: "<id>.<key>"` (bei Einkanal-Sensoren wie bisher die nackte ID).
 
 **Transport** (`src/transport/`): `ITransport`-Interface
-(`publish`/`subscribe`/`tick`/`connected`/`lastErrorMessage`), Implementierungen
+(`publish`/`subscribe`/`unsubscribe`/`tick`/`connected`/`lastErrorMessage`;
+`subscribe` nimmt optional einen Besitzer-Zeiger, `unsubscribe(topic, owner)`
+entfernt dann nur dessen Abos — wer in seinem Callback `this` fängt, meldet
+sich so im Destruktor ab, wie `RemoteSensor`, `RemoteActuator` und
+`MqttGenericSensor` es tun), Implementierungen
 `MqttTransport` (PubSubClient-Wrapper, Reconnect-Backoff; der Verbindungsaufbau
 läuft in einem kurzlebigen FreeRTOS-Task, `tick()` blockiert also auch bei
 unerreichbarem Broker nicht; `connected()`/`lastErrorMessage()` sind aus jedem
 Task lesbar, alle übrigen Methoden gehören in den Task, der `tick()` ruft), `EspNowTransport`
-(Broadcast für Meta/State, Retain-Emulation via Retained-Request,
-250-Byte-Paketlimit; nicht-retained Befehle wie `/set` gehen unicast mit
+(Broadcast für Meta/State, Retain-Emulation via Retained-Request — die Antwort
+geht gestaffelt aus `tick()` raus, ein Topic alle 20 ms; Paketlimit 250 Byte,
+mit ESP-NOW v2 (ESP-IDF ≥ 5.4) 1470 Byte, ein zu großes Paket bleibt in
+`lastErrorMessage()` stehen, bis das Topic wieder passt; nicht-retained Befehle wie `/set` gehen unicast mit
 ESP-NOW-ACK an den Knoten, der das Eltern-Topic zuletzt gesendet hat — die
 MAC wird aus empfangenen Paketen gelernt, nichts wird gespeichert; Ziel
 unbekannt → Broadcast; Zustellfehler erscheinen in `lastErrorMessage()`),

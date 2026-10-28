@@ -47,7 +47,9 @@ class WebhookTransport : public ITransport {
   ~WebhookTransport() override;
 
   bool publish(const char* topic, const char* payload, bool retained) override;
-  bool subscribe(const char* topic, MessageCallback callback) override;
+  bool subscribe(const char* topic, MessageCallback callback,
+                 const void* owner = nullptr) override;
+  bool unsubscribe(const char* topic, const void* owner = nullptr) override;
   void tick() override;
   bool connected() const override;
   // Unlike MqttTransport (only non-empty when !connected()), this reports
@@ -80,7 +82,7 @@ class WebhookTransport : public ITransport {
   std::string peerBaseUrl_;
   WebServer* server_ = nullptr;
   bool serverStarted_ = false;
-  std::vector<std::pair<std::string, MessageCallback>> subs_;
+  std::vector<Subscription> subs_;
   std::map<std::string, std::string> retained_;
   std::vector<std::string> pendingRetainedPulls_;
   bool hasFailure_ = false;

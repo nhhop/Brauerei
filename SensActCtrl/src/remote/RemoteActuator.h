@@ -15,6 +15,8 @@ namespace SensActCtrl {
 class RemoteActuator : public Actuator {
  public:
   RemoteActuator(ITransport& transport, const char* deviceId, const char* actuatorId);
+  // Unsubscribes meta + state — see ~RemoteSensor().
+  ~RemoteActuator() override;
 
   // Defaults to actuatorId (the remote's own id) so standalone/example usage
   // — where the local proxy is naturally named after the remote actuator —
