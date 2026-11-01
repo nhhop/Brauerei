@@ -3080,3 +3080,14 @@ Verifikation am LilyGo (OTA): `brewcontrol/brewcontrol/controller/#` liefert die
 - **„Paket zu groß“ verschwand** mit der nächsten erfolgreichen Sendung. Jetzt eigener Fehlertext mit Topic in `lastErrorMessage()`, gelöscht erst, wenn dieses Topic wieder passt (am Gerät nicht auslösbar: Topic ≤ 255 B plus größte Meta bleibt unter 1470 B).
 
 Verifikation: SensActCtrl 403 native Tests (neu: Abmelden im Destruktor, Zwilling auf demselben Topic, `MqttGenericSensor` mit zwei Feldern), Firmware 215; LilyGo und Waveshare per OTA. 18 Lösch-/Anlege-Zyklen am Waveshare unter laufendem ESP-NOW-Verkehr ohne Neustart (vorher Absturz bei jedem), Meta in 17 davon; MQTT am LilyGo weiter mit Regler-Meta und den 18 Topics des esp32dev (Core 2, externer Client). Testaufbau wieder abgebaut (Remote-Sensoren gelöscht, ESP-NOW am LilyGo aus). Nach dem Panic hing der Waveshare im WLAN (neu in PLAN.md).
+
+## 2026-11-01 — Deep-Sleep: Uhr nach dem Aufwachen nachgemessen
+
+Punkt aus PLAN.md: Am 2026-10-27 trug die erste Log-Zeile nach dem ersten Einschlafen eine ~20 s vorgehende Uhr. Der Datenlog `b7d721` am LilyGo zeigt es eindeutig: Zeile 350 `22:52:31` ohne HLT wurde vor Zeile 351 `22:52:11` geschrieben — der erste Kurz-Wach schrieb vor der NTP-Synchronisation mit falscher Uhr (Sensoren noch nicht gelesen, nach der 3-s-Grenze von `ShortWake`), danach mit der richtigen.
+
+Nachmessung am LilyGo mit temporärer Diagnose in `main.cpp` (nicht committet): je Aufwachen `gettimeofday()` und `esp_clk_rtc_time()` beim Boot, beim Einschlafen und im SNTP-Callback (`sntp_set_time_sync_notification_cb`), Zeile nach `/clockdiag.txt` auf SD — daraus die Abweichung der Uhr vor NTP und die des RTC-Zählers über den Schlaf. Einstellungen wie damals (Intervall und Wach-Timeout 60 s, Wach-Pin GPIO 8, WLAN im Kurz-Wach), Rückweg per Reset durch den Nutzer, Deep-Sleep danach per Skript sofort aus.
+- Lauf 1 (nach OTA, 94 s wach): 9 Kurz-Wach. Uhr beim ersten Aufwachen +0,68 s, danach +0,38–0,45 s; RTC-Zähler +0,27–0,58 s über ~57–73 s (RC-Takt, `cal` 3,71–3,78 M ≈ 7,2 µs/Takt, ~0,5 % schnell).
+- Lauf 2 (nach Power-on, 23,6 min wach — Verdacht: der Abgleich RTC/XTAL fehlt beim Einschlafen und der Fehler wächst mit der Wachzeit): erstes Aufwachen +0,69 s, wie in Lauf 1. Verdacht widerlegt.
+- Datenlog beider Läufe sauber: eine Zeile je Kurz-Wach mit HLT, 62–63 s Abstand, monoton.
+
+Ergebnis: Die IDF-Zeitführung über den Deep-Sleep hält die Uhr auf unter 1 s je Zyklus; der Sprung vom 27.10. ließ sich nicht nachstellen (damals vier Boots in 12 min durch Flashen vor dem Test). PLAN-Eintrag mit den Messwerten neu gefasst, auf „nur bei erneutem Auftreten“. Nebenbei: Ein Kurz-Wach dauert 16,8 s, NTP synchronisiert nach 11–14 s, in 2 von 15 Zyklen innerhalb des Kurz-Wach gar nicht. LilyGo danach mit sauberem Build (`723e47d`), Energie-Einstellungen wie vorher (Deep-Sleep aus), `/clockdiag.txt` gelöscht.
