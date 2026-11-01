@@ -81,23 +81,15 @@ bool WebSocketTransport::publish(const char* topic, const char* payload, bool re
   return send_(to, wire);
 }
 
-bool WebSocketTransport::subscribe(const char* topic, MessageCallback callback) {
-  subs_.emplace_back(std::string(topic), std::move(callback));
+bool WebSocketTransport::subscribe(const char* topic, MessageCallback callback,
+                                   const void* owner) {
+  subs_.push_back({topic, std::move(callback), owner});
   retainedRequestPending_ = true;
   return true;
 }
 
-bool WebSocketTransport::unsubscribe(const char* topic) {
-  bool found = false;
-  for (auto it = subs_.begin(); it != subs_.end();) {
-    if (it->first == topic) {
-      it = subs_.erase(it);
-      found = true;
-    } else {
-      ++it;
-    }
-  }
-  return found;
+bool WebSocketTransport::unsubscribe(const char* topic, const void* owner) {
+  return eraseSubscriptions(subs_, topic, owner);
 }
 
 void WebSocketTransport::tick() {
@@ -160,8 +152,8 @@ void WebSocketTransport::onText(uint8_t peer, const char* data, size_t length) {
         if (!device.empty()) devicePeer_[device] = peer;
       }
       for (auto& sub : subs_) {
-        if (sub.first == f.topic) {
-          sub.second(f.topic.c_str(), f.payload.c_str(), f.payload.size());
+        if (sub.topic == f.topic) {
+          sub.callback(f.topic.c_str(), f.payload.c_str(), f.payload.size());
         }
       }
       return;
@@ -201,8 +193,8 @@ WebSocketTransport::WebSocketTransport(uint16_t) {}
 WebSocketTransport::WebSocketTransport(const char*) {}
 WebSocketTransport::~WebSocketTransport() = default;
 bool WebSocketTransport::publish(const char*, const char*, bool) { return false; }
-bool WebSocketTransport::subscribe(const char*, MessageCallback) { return false; }
-bool WebSocketTransport::unsubscribe(const char*) { return false; }
+bool WebSocketTransport::subscribe(const char*, MessageCallback, const void*) { return false; }
+bool WebSocketTransport::unsubscribe(const char*, const void*) { return false; }
 void WebSocketTransport::tick() {}
 bool WebSocketTransport::connected() const { return false; }
 const char* WebSocketTransport::lastErrorMessage() const { return ""; }

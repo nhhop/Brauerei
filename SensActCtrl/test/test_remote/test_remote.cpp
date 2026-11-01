@@ -465,6 +465,50 @@ void test_reattach_after_detach_republishes_meta() {
   TEST_ASSERT_TRUE(state.find("12.5") != std::string::npos);
 }
 
+// A deleted proxy must not leave its callbacks behind: they capture `this`,
+// and the next message on its topic would write into freed memory (heap
+// corruption on a board after deleting a remote item, 2026-10-28).
+void test_destroyed_remote_sensor_unsubscribes() {
+  MockTransport tx;
+  {
+    RemoteSensor rs(tx, "node-w", "probe");
+    rs.begin();
+    TEST_ASSERT_EQUAL(2u, tx.subscriptionCount());
+  }
+  TEST_ASSERT_EQUAL(0u, tx.subscriptionCount());
+}
+
+void test_destroyed_remote_actuator_unsubscribes() {
+  MockTransport tx;
+  {
+    RemoteActuator ra(tx, "node-w", "pump");
+    ra.begin();
+    TEST_ASSERT_EQUAL(2u, tx.subscriptionCount());
+  }
+  TEST_ASSERT_EQUAL(0u, tx.subscriptionCount());
+}
+
+void test_destroyed_proxy_keeps_twin_on_same_topic() {
+  MockTransport tx;
+  RemoteSensor keep(tx, "node-w", "probe");
+  keep.begin();
+  {
+    RemoteSensor gone(tx, "node-w", "probe");
+    gone.begin();
+  }
+  TEST_ASSERT_EQUAL(2u, tx.subscriptionCount());
+
+  tx.publish("sensactctrl/node-w/sensor/probe", "{\"v\":21.5,\"t\":1,\"ok\":true}", true);
+  TEST_ASSERT_EQUAL_FLOAT(21.5f, keep.channel(0).reading.value);
+}
+
+void test_destroyed_proxy_before_begin_is_harmless() {
+  MockTransport tx;
+  { RemoteSensor rs(tx, "node-w", "probe"); }
+  { RemoteActuator ra(tx, "node-w", "pump"); }
+  TEST_ASSERT_EQUAL(0u, tx.subscriptionCount());
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -490,5 +534,9 @@ int main(int, char**) {
   RUN_TEST(test_detach_actuator_removes_subscription);
   RUN_TEST(test_detach_controller_removes_subscription);
   RUN_TEST(test_reattach_after_detach_republishes_meta);
+  RUN_TEST(test_destroyed_remote_sensor_unsubscribes);
+  RUN_TEST(test_destroyed_remote_actuator_unsubscribes);
+  RUN_TEST(test_destroyed_proxy_keeps_twin_on_same_topic);
+  RUN_TEST(test_destroyed_proxy_before_begin_is_harmless);
   return UNITY_END();
 }

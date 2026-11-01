@@ -747,7 +747,8 @@ export interface UpdateStatus {
   lastCheckedAt: number;  // epoch (s), 0 = never checked
   progress: number;
   error: string;
-  available: { version: string; notes: string } | null;
+  // older: installing it is a downgrade (e.g. back to the stable channel)
+  available: { version: string; notes: string; older: boolean } | null;
 }
 
 // Wire format of GET /api/diag/heap.

@@ -20,6 +20,9 @@ class RemoteSensor : public Sensor {
  public:
   RemoteSensor(ITransport& transport, const char* deviceId, const char* sensorId,
                const char* channelKey = "");
+  // Unsubscribes its own callbacks (they capture `this`); a second proxy on
+  // the same remote sensor keeps listening.
+  ~RemoteSensor() override;
 
   // Defaults to sensorId (the remote's own id) so standalone/example usage —
   // where the local proxy is naturally named after the remote sensor — needs

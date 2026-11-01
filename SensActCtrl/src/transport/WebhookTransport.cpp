@@ -102,12 +102,17 @@ bool WebhookTransport::publish(const char* topic, const char* payload, bool reta
   return ok;
 }
 
-bool WebhookTransport::subscribe(const char* topic, MessageCallback callback) {
-  subs_.emplace_back(std::string(topic), std::move(callback));
+bool WebhookTransport::subscribe(const char* topic, MessageCallback callback,
+                                 const void* owner) {
+  subs_.push_back({topic, std::move(callback), owner});
   if (!peerBaseUrl_.empty()) {
     pendingRetainedPulls_.emplace_back(topic);
   }
   return true;
+}
+
+bool WebhookTransport::unsubscribe(const char* topic, const void* owner) {
+  return eraseSubscriptions(subs_, topic, owner);
 }
 
 void WebhookTransport::pullRetained_(const std::string& topic) {
@@ -175,8 +180,8 @@ void WebhookTransport::handleIncomingPost(const char* topic, const char* payload
                                           size_t length) {
   std::string buf(payload ? payload : "", length);
   for (auto& sub : subs_) {
-    if (sub.first == topic) {
-      sub.second(topic, buf.c_str(), buf.size());
+    if (sub.topic == topic) {
+      sub.callback(topic, buf.c_str(), buf.size());
     }
   }
 }
@@ -199,7 +204,8 @@ WebhookTransport::WebhookTransport(uint16_t listenPort, const char* peerBaseUrl)
       peerBaseUrl_(peerBaseUrl ? peerBaseUrl : "") {}
 WebhookTransport::~WebhookTransport() = default;
 bool WebhookTransport::publish(const char*, const char*, bool) { return false; }
-bool WebhookTransport::subscribe(const char*, MessageCallback) { return false; }
+bool WebhookTransport::subscribe(const char*, MessageCallback, const void*) { return false; }
+bool WebhookTransport::unsubscribe(const char*, const void*) { return false; }
 void WebhookTransport::tick() {}
 bool WebhookTransport::connected() const { return false; }
 const char* WebhookTransport::lastErrorMessage() const { return ""; }

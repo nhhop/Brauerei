@@ -2,6 +2,8 @@
 
 #include <stddef.h>
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace SensActCtrl {
 
@@ -13,9 +15,10 @@ namespace SensActCtrl {
 //     "broker should hand this to late subscribers"; transports without a
 //     retain concept may ignore the flag. Returns false on transport error
 //     (e.g. not connected, send buffer full).
-//   - subscribe(topic, cb) registers a persistent subscription. The transport
-//     is responsible for re-subscribing on reconnect — callers register once
-//     and forget. Returns false if the subscription couldn't be queued.
+//   - subscribe(topic, cb, owner) registers a persistent subscription. The
+//     transport is responsible for re-subscribing on reconnect — callers
+//     register once and forget. Returns false if the subscription couldn't
+//     be queued. `owner` only tags it for unsubscribe().
 //   - tick() is called from Registry-adjacent loop code; drives reconnect
 //     backoff, polls incoming messages, etc.
 //   - connected() reflects link state. RemotePublisher consults it to know
@@ -25,15 +28,29 @@ class ITransport {
   using MessageCallback =
       std::function<void(const char* topic, const char* payload, size_t length)>;
 
+  // One entry of a transport's subscriber list.
+  struct Subscription {
+    std::string topic;
+    MessageCallback callback;
+    const void* owner;
+  };
+
   virtual ~ITransport() = default;
 
   virtual bool publish(const char* topic, const char* payload, bool retained) = 0;
-  virtual bool subscribe(const char* topic, MessageCallback callback) = 0;
-  // Removes a subscription registered via subscribe(). Default no-op — not
-  // all transports need it; RemotePublisher::detach() calls it to drop stale
-  // callbacks (e.g. one capturing a since-deleted Actuator*) before they can
-  // fire again. Returns false if no matching subscription existed.
-  virtual bool unsubscribe(const char* topic) { (void)topic; return false; }
+  virtual bool subscribe(const char* topic, MessageCallback callback,
+                         const void* owner = nullptr) = 0;
+  // Removes subscriptions registered via subscribe(): those of `owner` on
+  // `topic`, or every one on `topic` when owner is nullptr. Anything whose
+  // callback captures `this` must call it before it dies — the next message
+  // would otherwise run into freed memory. Pass the owner when another
+  // object may listen on the same topic (two proxies of one remote sensor,
+  // two fields of one zigbee2mqtt topic). Default no-op for transports that
+  // never dispatch. Returns false if no matching subscription existed.
+  virtual bool unsubscribe(const char* topic, const void* owner = nullptr) {
+    (void)topic; (void)owner;
+    return false;
+  }
   virtual void tick() = 0;
   virtual bool connected() const = 0;
 
@@ -43,6 +60,28 @@ class ITransport {
   // meaningful failure reason (e.g. MqttTransport translating PubSubClient's
   // numeric state) need to override this.
   virtual const char* lastErrorMessage() const { return ""; }
+
+ protected:
+  // unsubscribe() for the transports' subscriber lists. `stillUsed` tells a
+  // broker-backed transport whether to keep the broker-side subscription.
+  static bool eraseSubscriptions(std::vector<Subscription>& subs, const char* topic,
+                                 const void* owner, bool* stillUsed = nullptr) {
+    bool found = false;
+    bool used = false;
+    for (auto it = subs.begin(); it != subs.end();) {
+      if (it->topic != topic) {
+        ++it;
+      } else if (owner == nullptr || it->owner == owner) {
+        it = subs.erase(it);
+        found = true;
+      } else {
+        used = true;
+        ++it;
+      }
+    }
+    if (stillUsed) *stillUsed = used;
+    return found;
+  }
 };
 
 }  // namespace SensActCtrl

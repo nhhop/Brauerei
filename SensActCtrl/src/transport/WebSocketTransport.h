@@ -60,8 +60,9 @@ class WebSocketTransport : public ITransport {
   ~WebSocketTransport() override;
 
   bool publish(const char* topic, const char* payload, bool retained) override;
-  bool subscribe(const char* topic, MessageCallback callback) override;
-  bool unsubscribe(const char* topic) override;
+  bool subscribe(const char* topic, MessageCallback callback,
+                 const void* owner = nullptr) override;
+  bool unsubscribe(const char* topic, const void* owner = nullptr) override;
   void tick() override;
   bool connected() const override;
   // Client only; empty while connected. A server has nothing to report.
@@ -99,7 +100,7 @@ class WebSocketTransport : public ITransport {
   bool serverStarted_ = false;
   bool clientConnected_ = false;
   bool retainedRequestPending_ = false;
-  std::vector<std::pair<std::string, MessageCallback>> subs_;
+  std::vector<Subscription> subs_;
   std::map<std::string, std::string> retained_;
   // Server: which client slot last delivered a frame for a <device>.
   std::map<std::string, uint8_t> devicePeer_;

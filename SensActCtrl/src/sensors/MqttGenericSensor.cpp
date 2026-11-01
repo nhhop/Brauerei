@@ -44,9 +44,13 @@ MqttGenericSensor::MqttGenericSensor(const char* id, ITransport& transport,
                      min, max, resolution};
 }
 
+MqttGenericSensor::~MqttGenericSensor() {
+  transport_->unsubscribe(topic_.c_str(), this);
+}
+
 void MqttGenericSensor::begin() {
   transport_->subscribe(topic_.c_str(),
-      [this](const char*, const char* p, size_t n) { onMessage(p, n); });
+      [this](const char*, const char* p, size_t n) { onMessage(p, n); }, this);
 }
 
 void MqttGenericSensor::onMessage(const char* payload, size_t /*length*/) {

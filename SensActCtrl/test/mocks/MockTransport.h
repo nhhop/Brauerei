@@ -28,15 +28,16 @@ class MockTransport : public ITransport {
     published.push_back(s);
     if (retained) retained_[s.topic] = s.payload;
     for (auto& sub : subs_) {
-      if (sub.first == s.topic) {
-        sub.second(s.topic.c_str(), s.payload.c_str(), s.payload.size());
+      if (sub.topic == s.topic) {
+        sub.callback(s.topic.c_str(), s.payload.c_str(), s.payload.size());
       }
     }
     return true;
   }
 
-  bool subscribe(const char* topic, MessageCallback callback) override {
-    subs_.emplace_back(std::string(topic), callback);
+  bool subscribe(const char* topic, MessageCallback callback,
+                 const void* owner = nullptr) override {
+    subs_.push_back({topic, callback, owner});
     auto it = retained_.find(topic);
     if (it != retained_.end()) {
       callback(it->first.c_str(), it->second.c_str(), it->second.size());
@@ -44,17 +45,8 @@ class MockTransport : public ITransport {
     return true;
   }
 
-  bool unsubscribe(const char* topic) override {
-    bool found = false;
-    for (auto it = subs_.begin(); it != subs_.end();) {
-      if (it->first == topic) {
-        it = subs_.erase(it);
-        found = true;
-      } else {
-        ++it;
-      }
-    }
-    return found;
+  bool unsubscribe(const char* topic, const void* owner = nullptr) override {
+    return eraseSubscriptions(subs_, topic, owner);
   }
 
   void tick() override {}
@@ -68,6 +60,8 @@ class MockTransport : public ITransport {
 
   void clear() { published.clear(); }
 
+  size_t subscriptionCount() const { return subs_.size(); }
+
   // Last payload published to `topic`, or empty string if none.
   std::string lastPayload(const char* topic) const {
     for (auto it = published.rbegin(); it != published.rend(); ++it) {
@@ -79,7 +73,7 @@ class MockTransport : public ITransport {
   std::vector<Sent> published;
 
  private:
-  std::vector<std::pair<std::string, MessageCallback>> subs_;
+  std::vector<Subscription> subs_;
   std::map<std::string, std::string> retained_;
   bool connected_ = true;
   std::string errorMessage_;

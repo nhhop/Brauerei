@@ -6777,10 +6777,18 @@ components:
           type: ["object", "null"]
           description: |
             Non-null only in the `updateAvailable` and `noUpdate` states.
-          required: [version, notes]
+          required: [version, notes, older]
           properties:
             version: { type: string }
             notes: { type: string, description: Release notes. }
+            older:
+              type: boolean
+              description: |
+                The release sorts before `currentVersion` (semver with
+                pre-release, `git describe` builds count as past their tag).
+                Installing it is a downgrade, e.g. back from the preview to
+                the stable channel; `state` stays `updateAvailable`. False
+                when either version cannot be parsed.
 
     # ── Backup ───────────────────────────────────────────────────────────────
     BackupBundle:
