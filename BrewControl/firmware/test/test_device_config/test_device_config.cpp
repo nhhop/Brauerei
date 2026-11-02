@@ -74,6 +74,24 @@ void test_tca9554_is_onboard_only() {
   TEST_ASSERT_FALSE(findDeviceType("pcf8575")->fixedOnly);
 }
 
+void test_ch422g_is_onboard_only() {
+  const DeviceType* t = findDeviceType("ch422g");
+  TEST_ASSERT_NOT_NULL(t);
+  TEST_ASSERT_TRUE(t->fixedOnly);
+  TEST_ASSERT_EQUAL(10, t->provides.count);
+  TEST_ASSERT_EQUAL_STRING("EXIO0", t->provides.channelNames[0]);
+  TEST_ASSERT_EQUAL_STRING("EXIO7", t->provides.channelNames[7]);
+  TEST_ASSERT_EQUAL_STRING("OD0", t->provides.channelNames[8]);
+  TEST_ASSERT_EQUAL_STRING("OD1", t->provides.channelNames[9]);
+  JsonDocument doc;
+  TEST_ASSERT_TRUE(deserializeJson(doc, R"({"type":"ch422g","bus":"i2c-board"})") ==
+                   DeserializationError::Ok);
+  DeviceDef d;
+  std::string err;
+  TEST_ASSERT_FALSE(parseDeviceDef(doc.as<JsonObjectConst>(), d, err));
+  TEST_ASSERT_EQUAL_STRING("device type exists only onboard", err.c_str());
+}
+
 void test_pcf8575_type_table() {
   const DeviceType* t = findDeviceType("pcf8575");
   TEST_ASSERT_NOT_NULL(t);
@@ -174,6 +192,7 @@ int main(int, char**) {
   RUN_TEST(test_mcp4728_type_table);
   RUN_TEST(test_pcf8575_type_table);
   RUN_TEST(test_tca9554_is_onboard_only);
+  RUN_TEST(test_ch422g_is_onboard_only);
   RUN_TEST(test_parse_derives_id_from_type_bus_and_address);
   RUN_TEST(test_given_id_is_ignored);
   RUN_TEST(test_address_defaults_to_factory_address);

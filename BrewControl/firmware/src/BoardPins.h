@@ -268,8 +268,115 @@ static_assert(BREWCTL_I2C_SDA == 47 && BREWCTL_I2C_SCL == 48,
               "update kM5StopWatchSpecial and kM5StopWatchBuses to the new I2C pins");
 #endif
 
+// ── waveshare_s3_lcd_5b (ESP32-S3-WROOM-1-N16R8, ESP32-S3-Touch-LCD-5B) ─────
+// Wiring from docs.waveshare.com/ESP32-S3-Touch-LCD-5. 1024x600 parallel-RGB
+// panel on 16 GPIOs plus DE/VSYNC/HSYNC/PCLK; the panel and touch reset, the
+// backlight and the SD chip select sit behind the CH422G (BoardInit.cpp). Free
+// for items: only GPIO 6 - and that one is the SD library's dummy chip select.
+inline constexpr PinDef kWaveshareLcd5bSpecial[] = {
+    {0, PinClass::Reserved, "BOOT-Taste, Display (RGB G3)"},
+    {1, PinClass::Reserved, "Display (RGB R3)"},
+    {2, PinClass::Reserved, "Display (RGB R4)"},
+    {3, PinClass::Reserved, "Display (VSYNC)"},
+    {4, PinClass::Reserved, "Touch-Interrupt"},
+    {5, PinClass::Reserved, "Display (DE)"},
+    {6, PinClass::Reserved, "SD-Bibliothek: Attrappe fuer den Chip-Select (liegt am CH422G)"},
+    {7, PinClass::Reserved, "Display (PCLK)"},
+    {8, PinClass::Reserved, "I2C SDA (Touch, RTC, CH422G)"},
+    {9, PinClass::Reserved, "I2C SCL (Touch, RTC, CH422G)"},
+    {10, PinClass::Reserved, "Display (RGB B7)"},
+    {11, PinClass::Reserved, "SD-Karte MOSI"},
+    {12, PinClass::Reserved, "SD-Karte SCK"},
+    {13, PinClass::Reserved, "SD-Karte MISO"},
+    {14, PinClass::Reserved, "Display (RGB B3)"},
+    {15, PinClass::Reserved, "CAN TX"},
+    {16, PinClass::Reserved, "CAN RX"},
+    {17, PinClass::Reserved, "Display (RGB B6)"},
+    {18, PinClass::Reserved, "Display (RGB B5)"},
+    {19, PinClass::Risky, "USB D- (Seriell + Upload)"},
+    {20, PinClass::Risky, "USB D+ (Seriell + Upload)"},
+    {21, PinClass::Reserved, "Display (RGB G7)"},
+    {26, PinClass::Forbidden, "Flash"},
+    {27, PinClass::Forbidden, "Flash"},
+    {28, PinClass::Forbidden, "Flash"},
+    {29, PinClass::Forbidden, "Flash"},
+    {30, PinClass::Forbidden, "Flash"},
+    {31, PinClass::Forbidden, "Flash"},
+    {32, PinClass::Forbidden, "Flash"},
+    {33, PinClass::Forbidden, "Octal-PSRAM"},
+    {34, PinClass::Forbidden, "Octal-PSRAM"},
+    {35, PinClass::Forbidden, "Octal-PSRAM"},
+    {36, PinClass::Forbidden, "Octal-PSRAM"},
+    {37, PinClass::Forbidden, "Octal-PSRAM"},
+    {38, PinClass::Reserved, "Display (RGB B4)"},
+    {39, PinClass::Reserved, "Display (RGB G2)"},
+    {40, PinClass::Reserved, "Display (RGB R7)"},
+    {41, PinClass::Reserved, "Display (RGB R6)"},
+    {42, PinClass::Reserved, "Display (RGB R5)"},
+    {43, PinClass::Reserved, "RS485 TXD"},
+    {44, PinClass::Reserved, "RS485 RXD"},
+    {45, PinClass::Reserved, "Display (RGB G4)"},
+    {46, PinClass::Reserved, "Display (HSYNC)"},
+    {47, PinClass::Reserved, "Display (RGB G6)"},
+    {48, PinClass::Reserved, "Display (RGB G5)"},
+};
+inline constexpr Board kWaveshareLcd5b = {
+    pinRange(0, 21) | pinRange(26, 48),
+    0,
+    0,
+    kWaveshareLcd5bSpecial, sizeof(kWaveshareLcd5bSpecial) / sizeof(PinDef),
+    4,
+    pinRange(1, 10),
+    pinRange(11, 20),
+    0,
+    0,
+    pinRange(0, 21),
+    false,  // ADC2 arbitrated with Wi-Fi
+    8, 9,   // BREWCTL_I2C_SDA/SCL — see static_assert below
+    // No battery divider and no PMU: the board has a charger, but nothing to read.
+};
+// Onboard devices sharing this board's I2C bus. The CH422G answers on four
+// addresses at once (one per function); Waveshare asks to keep the whole
+// 0x20..0x27 and 0x30..0x3F ranges free, but only these four are taken.
+inline constexpr AddrDef kWaveshareLcd5bI2cReserved[] = {
+    {0x23, "Port-Expander (CH422G, OC-Ausgaenge)"},
+    {0x24, "Port-Expander (CH422G, Einstellung)"},
+    {0x26, "Port-Expander (CH422G, Eingaenge)"},
+    {0x38, "Port-Expander (CH422G, IO-Ausgaenge)"},
+    {0x51, "RTC (PCF85063)"},
+    {0x5D, "Touch (GT911)"},
+};
+inline constexpr FixedBus kWaveshareLcd5bBuses[] = {
+    {"i2c-board", "i2c", {8, 9, -1},
+     "Fest verdrahtet mit Touch, RTC und Port-Expander",
+     kWaveshareLcd5bI2cReserved, sizeof(kWaveshareLcd5bI2cReserved) / sizeof(AddrDef)},
+};
+// EXIO0 and EXIO5 are the optically isolated inputs DI0 and DI1, EXIO1..4 are
+// the touch reset, backlight, panel reset and SD chip select, EXIO6/7 are not
+// wired. OD0/OD1 are the outputs DO0/DO1 and free. Measured on the device with
+// a pull-up to 3.3 V: 0 sinks the terminal to ground, 1 reads 3.3 V; without
+// the pull-up it floats (0 V). Open-drain, so a load that switches to ground
+// is "on" at 0.
+inline constexpr ChannelNote kWaveshareLcd5bExpanderNotes[] = {
+    {0, true, "DI0 (Optokoppler-Eingang)"},
+    {1, false, "Touch-Reset"},
+    {2, false, "Display-Hintergrundbeleuchtung"},
+    {3, false, "Display-Reset"},
+    {4, false, "SD-Karte CS"},
+    {5, true, "DI1 (Optokoppler-Eingang)"},
+};
+
+#if defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
+static_assert(BREWCTL_I2C_SDA == 8 && BREWCTL_I2C_SCL == 9,
+              "update kWaveshareLcd5bSpecial and kWaveshareLcd5bBuses to the new I2C pins");
+static_assert(BREWCTL_SD_CS == 6 && BREWCTL_SD_MOSI == 11 && BREWCTL_SD_MISO == 13 &&
+                  BREWCTL_SD_SCK == 12,
+              "update kWaveshareLcd5bSpecial to the new SD pins");
+#endif
+
 #if defined(ARDUINO) && !defined(BREWCTL_BOARD_LILYGO_AMOLED) && \
-    !defined(BREWCTL_BOARD_WAVESHARE_AMOLED175) && !defined(BREWCTL_BOARD_M5_STOPWATCH)
+    !defined(BREWCTL_BOARD_WAVESHARE_AMOLED175) && !defined(BREWCTL_BOARD_M5_STOPWATCH) && \
+    !defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
 #error "Build without a BREWCTL_BOARD_* flag: only the S3 boards in platformio.ini are supported"
 #endif
 
@@ -277,6 +384,8 @@ static_assert(BREWCTL_I2C_SDA == 47 && BREWCTL_I2C_SCL == 48,
 inline const Board& currentBoard() {
 #if defined(BREWCTL_BOARD_M5_STOPWATCH)
   return kM5StopWatch;
+#elif defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
+  return kWaveshareLcd5b;
 #elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
   return kWaveshareAmoled175;
 #else
@@ -291,6 +400,8 @@ inline std::vector<BusDef> currentFixedBuses() {
   std::vector<BusDef> out;
 #if defined(BREWCTL_BOARD_M5_STOPWATCH)
   for (const FixedBus& f : kM5StopWatchBuses) out.push_back(busFromFixed(f));
+#elif defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
+  for (const FixedBus& f : kWaveshareLcd5bBuses) out.push_back(busFromFixed(f));
 #elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
   for (const FixedBus& f : kWaveshareAmoled175Buses) out.push_back(busFromFixed(f));
 #elif defined(BREWCTL_BOARD_LILYGO_AMOLED)
@@ -299,20 +410,28 @@ inline std::vector<BusDef> currentFixedBuses() {
   return out;
 }
 
-// The peripheral devices the current board wires itself (only the Waveshare
-// has one: its TCA9554), analogous to currentFixedBuses().
+// The peripheral devices the current board wires itself (the two Waveshare
+// boards have one each: the TCA9554 / the CH422G), analogous to
+// currentFixedBuses().
 inline std::vector<DeviceDef> currentFixedDevices() {
   std::vector<DeviceDef> out;
-#if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
+#if defined(BREWCTL_BOARD_WAVESHARE_AMOLED175) || defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
   DeviceDef d;
+#if defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
+  d.type = findDeviceType("ch422g");
+  d.address = 0x24;
+  d.notes = kWaveshareLcd5bExpanderNotes;
+  d.noteCount = sizeof(kWaveshareLcd5bExpanderNotes) / sizeof(ChannelNote);
+#else
   d.type = findDeviceType("tca9554");
-  d.bus = "i2c-board";
   d.address = 0x20;
+  d.notes = kWaveshareAmoled175ExpanderNotes;
+  d.noteCount = sizeof(kWaveshareAmoled175ExpanderNotes) / sizeof(ChannelNote);
+#endif
+  d.bus = "i2c-board";
   d.id = deviceIdFor(*d.type, d.bus, d.address);
   d.label = "Onboard-Expander";
   d.fixed = true;
-  d.notes = kWaveshareAmoled175ExpanderNotes;
-  d.noteCount = sizeof(kWaveshareAmoled175ExpanderNotes) / sizeof(ChannelNote);
   out.push_back(d);
 #endif
   return out;

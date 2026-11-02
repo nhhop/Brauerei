@@ -4846,7 +4846,7 @@ components:
               users: { type: array, items: { $ref: "#/components/schemas/PinUser" } }
         virtual:
           type: array
-          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728, sixteen per PCF8575, eight per TCA9554.
+          description: Channels of the peripheral devices (`/api/peripherals`), four per MCP4728, sixteen per PCF8575, eight per TCA9554, ten per CH422G.
           items:
             type: object
             required: [ref, device, index, label, users]
@@ -4855,7 +4855,7 @@ components:
               device: { type: string, description: Device id. }
               deviceLabel: { type: string, description: The device's label; absent when it has none. }
               index: { type: integer, description: Channel number from 0. }
-              label: { type: string, description: 'Channel name: `A`..`D` (MCP4728), `P00`..`P07`, `P10`..`P17` (PCF8575), `EXIO0`..`EXIO7` (TCA9554).' }
+              label: { type: string, description: 'Channel name: `A`..`D` (MCP4728), `P00`..`P07`, `P10`..`P17` (PCF8575), `EXIO0`..`EXIO7` (TCA9554), `EXIO0`..`EXIO7`, `OD0`, `OD1` (CH422G).' }
               dac: { type: boolean, description: The channel is a DAC output. }
               gpio: { type: boolean, description: The channel is a digital pin of a port expander. }
               reserved: { type: boolean, description: 'The board itself uses the channel (onboard device only): an item on it is refused with 409.' }
@@ -5014,7 +5014,7 @@ components:
                 required: [cap, channels]
                 properties:
                   cap: { type: string, enum: [dac, gpio], description: What the channels offer. }
-                  fixed: { type: boolean, description: 'Wired by the board (the Waveshare''s TCA9554): never stored, `PUT` and `DELETE` are refused with 409, `type` `tca9554` cannot be created (400 `device type exists only onboard`).' }
+                  fixed: { type: boolean, description: 'Wired by the board (the Waveshare''s TCA9554 or CH422G): never stored, `PUT` and `DELETE` are refused with 409, `type` `tca9554` and `ch422g` cannot be created (400 `device type exists only onboard`).' }
                   channels:
                     type: array
                     items:

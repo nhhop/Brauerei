@@ -26,6 +26,7 @@ constexpr uint32_t kLevelMs = 80;  // the bubble moves faster than the numbers c
 constexpr size_t kMaxPages = 16;  // ~1.5 kB LVGL pool each, see rebuild_()
 constexpr int16_t kArcSize = 420;  // leaves a 23 px rim on the 466 px glass
 constexpr int16_t kArcWidth = 22;
+constexpr int16_t kStage = 466;   // edge of the square the pages are drawn for
 constexpr int16_t kCentre = 233;  // tile coordinates, panel is 466 x 466
 constexpr float kRingRadius = kArcSize / 2 - kArcWidth / 2;
 constexpr int16_t kKnobSize = 48;
@@ -395,7 +396,17 @@ void DisplayPages::rebuild_(bool keepPage) {
   // the same again on the next boot. Better a truncated dashboard.
   if (pages_.size() > kMaxPages) pages_.resize(kMaxPages);
 
-  tileview_ = lv_tileview_create(lv_scr_act());
+  lv_obj_t* parent = lv_scr_act();
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+  // The pages are laid out for a 466 x 466 glass (kCentre, kArcSize ...): on the
+  // 1024 x 600 panel they get a square of that size in the middle.
+  parent = lv_obj_create(lv_scr_act());
+  lv_obj_remove_style_all(parent);
+  lv_obj_set_size(parent, kStage, kStage);
+  lv_obj_center(parent);
+  lv_obj_clear_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
+#endif
+  tileview_ = lv_tileview_create(parent);
   lv_obj_set_style_bg_color(tileview_, lv_color_black(), 0);
   lv_obj_set_scrollbar_mode(tileview_, LV_SCROLLBAR_MODE_OFF);
   lv_obj_add_event_cb(tileview_, onTileChanged_, LV_EVENT_VALUE_CHANGED, this);

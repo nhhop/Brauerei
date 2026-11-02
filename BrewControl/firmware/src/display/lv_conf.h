@@ -26,8 +26,13 @@
 /*Color depth: 1 (1 byte per pixel), 8 (RGB332), 16 (RGB565), 32 (ARGB8888)*/
 #define LV_COLOR_DEPTH 16
 
-/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI)*/
+/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI).
+ *The parallel-RGB panel (Waveshare LCD-5B) takes native order.*/
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+#define LV_COLOR_16_SWAP 0
+#else
 #define LV_COLOR_16_SWAP 1
+#endif
 
 /*Enable features to draw on transparent background.
  *It's required if opa, and transform_* style properties are used.

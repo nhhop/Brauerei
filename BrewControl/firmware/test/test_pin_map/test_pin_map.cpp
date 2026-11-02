@@ -166,6 +166,16 @@ void test_m5_stopwatch_board_pins() {
   TEST_ASSERT_EQUAL(-1, kM5StopWatch.batteryPin);
 }
 
+void test_waveshare_lcd5b_board_pins() {
+  // Board I2C (8/9) and the SD pins are taken, so are the display's.
+  TEST_ASSERT_EQUAL(409, checkBus(kWaveshareLcd5b, {}, R"({"type":"i2c","sda":8,"scl":9})").status);
+  for (int pin : {0, 5, 6, 11, 12, 13, 15, 43, 46}) {
+    const std::string cfg = R"({"type":"DigitalOutput","id":"a","pin":)" + std::to_string(pin) + "}";
+    TEST_ASSERT_EQUAL(409, check(kWaveshareLcd5b, {}, cfg.c_str()).status);
+  }
+  TEST_ASSERT_EQUAL(-1, kWaveshareLcd5b.batteryPin);
+}
+
 void test_forbidden_and_missing_pins_are_400() {
   auto r = check(kEsp32Dev, {}, R"({"type":"DigitalOutput","id":"a","pin":6})");
   TEST_ASSERT_EQUAL(400, r.status);
@@ -744,6 +754,7 @@ int main(int, char**) {
   RUN_TEST(test_wake_pin);
   RUN_TEST(test_waveshare_board_pins);
   RUN_TEST(test_m5_stopwatch_board_pins);
+  RUN_TEST(test_waveshare_lcd5b_board_pins);
   RUN_TEST(test_parse_pin_ref);
   RUN_TEST(test_collect_device_channel);
   RUN_TEST(test_device_channel_checks);

@@ -107,6 +107,16 @@ void test_reserved_address_is_409() {
   TEST_ASSERT_TRUE(check(ws.reserved, ws.reservedCount, {},
                          R"({"type":"QMI8658","id":"q","bus":"i2c-board"})").ok);
 
+  // Waveshare LCD-5B: the CH422G's four addresses, the touch and the RTC are
+  // taken (0x38, 0x5D); the rest of the range stays free.
+  const BusDef l5 = busFromFixed(kWaveshareLcd5bBuses[0]);
+  TEST_ASSERT_EQUAL(409, check(l5.reserved, l5.reservedCount, {},
+                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":56})").status);  // 0x38
+  TEST_ASSERT_EQUAL(409, check(l5.reserved, l5.reservedCount, {},
+                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":93})").status);  // 0x5D
+  TEST_ASSERT_TRUE(check(l5.reserved, l5.reservedCount, {},
+                         R"({"type":"BME280","id":"b","bus":"i2c-board","address":118})").ok);  // 0x76
+
   // StopWatch: the expander's 0x4F is taken, the onboard BMI270 (0x68) free.
   const BusDef m5 = busFromFixed(kM5StopWatchBuses[0]);
   TEST_ASSERT_EQUAL(409, check(m5.reserved, m5.reservedCount, {},

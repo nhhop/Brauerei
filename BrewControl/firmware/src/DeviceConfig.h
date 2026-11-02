@@ -46,14 +46,20 @@ inline constexpr const char* kPcf8575Channels[] = {
 inline constexpr const char* kTca9554Channels[] = {
     "EXIO0", "EXIO1", "EXIO2", "EXIO3", "EXIO4", "EXIO5", "EXIO6", "EXIO7"};
 
+inline constexpr const char* kCh422gChannels[] = {
+    "EXIO0", "EXIO1", "EXIO2", "EXIO3", "EXIO4", "EXIO5", "EXIO6", "EXIO7", "OD0", "OD1"};
+
 // PCF8575: quasi-bidirectional pins (0 sinks hard, 1 is a weak pull-up that
 // doubles as input), so its inputs always have a pull-up. TCA9554: real
 // direction registers, no pull-up; only the Waveshare board has one (onboard,
-// 0x20), so it is not creatable (fixedOnly).
+// 0x20), so it is not creatable (fixedOnly). CH422G: a fixed set of addresses
+// (0x23/0x24/0x26/0x38), named by the system-parameter one; only the
+// Waveshare ESP32-S3-Touch-LCD-5B has one (onboard), also fixedOnly.
 inline constexpr DeviceType kDeviceTypes[] = {
     {"mcp4728", "i2c", 0x60, 0x67, 0x60, {"dac", 4, 4095, kMcp4728Channels}},
     {"pcf8575", "i2c", 0x20, 0x27, 0x20, {"gpio", 16, 1, kPcf8575Channels, true}},
     {"tca9554", "i2c", 0x20, 0x27, 0x20, {"gpio", 8, 1, kTca9554Channels, false}, true},
+    {"ch422g", "i2c", 0x24, 0x24, 0x24, {"gpio", 10, 1, kCh422gChannels, false}, true},
 };
 
 inline const DeviceType* findDeviceType(const char* type) {

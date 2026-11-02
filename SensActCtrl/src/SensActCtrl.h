@@ -30,6 +30,7 @@
 #include "actuators/IdsActuator.h"
 #endif
 
+#include "devices/CH422G.h"
 #include "devices/MCP4728.h"
 #include "devices/PCF8575.h"
 #include "devices/TCA9554.h"

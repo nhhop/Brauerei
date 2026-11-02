@@ -87,8 +87,23 @@ pnpm typecheck
   -Versorgung und Touch-Reset hängen am Expander **M5IOE1** (0x4F), Watchdog und 3,3-V-Rails am
   **M5PM1** (0x6E) — beides in `src/BoardInit.cpp`, vor dem Display. Touch CST820 (0x15,
   `TouchDrvCST816`) mit halber Auflösung. I²C SDA 47 / SCL 48, BMI270 0x68 als normales Item.
+- **Waveshare ESP32-S3-Touch-LCD-5B** (`waveshare_s3_lcd_5b`, seit 2026-11-01, am Gerät seit
+  2026-11-02 mit Display): 1024×600-RGB-Panel, GT911 (0x5D), I²C SDA 8 / SCL 9. Das Panel läuft
+  über den IDF-RGB-Treiber (`esp_lcd_new_rgb_panel`, **kein** Arduino_GFX) in `DisplayUI.cpp`
+  hinter `BREWCTL_DISPLAY_RGB`; LVGL rendert in einen 37-kB-Puffer im internen RAM und
+  `flush()` kopiert per `esp_lcd_panel_draw_bitmap` ins PSRAM-Framebuffer (`LV_COLOR_16_SWAP=0`
+  nur für dieses Board). **Nicht wiederholen:** ein Doppelframebuffer in LVGL-Direct-Modus mit
+  30 MHz Pixeltakt flackerte und ruckelte, ein Renderpuffer im PSRAM war spürbar langsamer.
+  Kein `Serial.print` in der Display-Schleife: ein blockierter USB-CDC verzögert die
+  Touch-Anzeige um Sekunden. Der GT911-Reset (INT low, Adresse 0x5D) und der Panel-Reset laufen
+  in `BoardInit.cpp`. Die Seiten sind für 466×466 gebaut und sitzen in einer zentrierten Fläche
+  (`DisplayPages.cpp` `kStage`). Touch- und
+  Panel-Reset, Backlight und SD-CS hängen am **CH422G** (SensActCtrl `CH422G`, `BoardInit.cpp`),
+  SD per SPI (MOSI 11, SCK 12, MISO 13) mit CS dauerhaft low über den Expander; die SD-Bibliothek
+  bekommt GPIO 6 als Attrappe. Der Chip ist schreibgeschützt und hat eine gemeinsame Richtung
+  für `EXIO0`–`EXIO7`; sein Schatten liegt prozessweit im Treiber. Quelle: docs.waveshare.com.
 - **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED`,
-  `BREWCTL_BOARD_WAVESHARE_AMOLED175` bzw. `BREWCTL_BOARD_M5_STOPWATCH` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
+  `BREWCTL_BOARD_WAVESHARE_AMOLED175`, `BREWCTL_BOARD_WAVESHARE_LCD5B` bzw. `BREWCTL_BOARD_M5_STOPWATCH` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
   Display-Pins (`DisplayUI.cpp`). Ein Target-Build ohne Flag bricht mit `#error` ab; seit Arduino
   Core 3 gibt es nur noch S3-Boards. Die Tabellen von esp32dev und lolin_s2_mini liegen als
   Test-Fixture in `firmware/test/TestBoards.h` (sie decken DAC, Input-only-Pins, ADC2 und Errata ab).

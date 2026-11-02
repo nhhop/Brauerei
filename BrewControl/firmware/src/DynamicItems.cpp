@@ -115,6 +115,22 @@ class Tca9554Device : public Peripheral {
   TCA9554 port_;
 };
 
+// The CH422G (DeviceConfig.h) is write-only; its latches live in the driver's
+// shared shadow, so this object and boardInit() see the same state. begin()
+// only probes the chip.
+class Ch422gDevice : public Peripheral {
+ public:
+  explicit Ch422gDevice(PeripheralRegistry::Ref bus)
+      : bus_(std::move(bus)), port_(bus_.as<I2cBus>().wire) {}
+  const char* type() const override { return "ch422g"; }
+  void begin() override { port_.begin(); }
+  GpioPort* gpio() override { return &port_; }
+
+ private:
+  PeripheralRegistry::Ref bus_;  // before port_: constructed first, destroyed last
+  CH422G port_;
+};
+
 }  // namespace
 
 DynamicItems::DynamicItems()
@@ -319,6 +335,8 @@ PeripheralRegistry::Ref DynamicItems::acquireDevice(const DeviceDef& d) {
     return peripherals_.acquire<Pcf8575Device>(d.id, acquireBus(*bus), d.address);
   if (strcmp(d.type->type, "tca9554") == 0)
     return peripherals_.acquire<Tca9554Device>(d.id, acquireBus(*bus), d.address);
+  if (strcmp(d.type->type, "ch422g") == 0)
+    return peripherals_.acquire<Ch422gDevice>(d.id, acquireBus(*bus));
   return peripherals_.acquire<Mcp4728Device>(d.id, acquireBus(*bus), d.address);
 }
 

@@ -83,7 +83,8 @@ Browser einen vollständigen Snapshot.
 
 **Hardware:**
 - ESP32-S3-Board mit PSRAM und 16 MB Flash (eines der drei Envs unten)
-- SD-Karten-Slot — onboard bei `lilygo_t_display_s3_amoled` (SPI) und
+- SD-Karten-Slot — onboard bei `lilygo_t_display_s3_amoled` (SPI),
+  `waveshare_s3_lcd_5b` (SPI, Chip-Select am CH422G) und
   `waveshare_s3_amoled_175` (SDMMC 1-Bit). `m5stack_stopwatch` braucht **keine**
   SD-Karte — UI und Config liegen dort auf einer internen LittleFS-Partition, siehe
   „Web-UI bauen + auf LittleFS deployen" unten.
@@ -160,6 +161,46 @@ reserviert: Sie wird als normaler Sensor `QMI8658` auf `i2c-board` angelegt.
 Audio (I2S) belegt GPIO 8–10, 42, 45, 46. Für eigene Items frei bleiben nur
 GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101,
 gelesen über einen Sensor vom Typ `AXP2101` (siehe Energiemanagement).
+
+**Waveshare ESP32-S3-Touch-LCD-5B (`waveshare_s3_lcd_5b`)**
+
+ESP32-S3-WROOM-1-N16R8 (16 MB Flash, 8 MB OPI-PSRAM) mit 1024×600-RGB-Panel (ST7262, 16 Bit,
+Pixeltakt 16 MHz wie in Waveshares Demo, ein Framebuffer im PSRAM mit Bounce-Buffer) und
+GT911-Touch auf 0x5D. **Stand:** Display und Touch laufen am Gerät (2026-11-02) mit den
+Seiten der runden Boards, die als 466×466-Fläche in der Mitte des Bildschirms stehen
+(ein Layout über die ganze Breite fehlt noch). Das Backlight (`EXIO2`) schaltet nur an und
+aus, Dimmen gibt es nicht (Dunkel = Backlight aus), Drehung und Bewegungssensor-Wecken
+entfallen. Beim Wischen kann ein Block kurz zerrissen erscheinen (Tearing). Quelle:
+docs.waveshare.com/ESP32-S3-Touch-LCD-5.
+
+| Pin            | Funktion                                   | Build-Flag / Quelle         |
+|----------------|--------------------------------------------|-----------------------------|
+| GPIO 11 / 12 / 13 | SD-Karte MOSI / SCK / MISO (SPI)        | `BREWCTL_SD_MOSI/SCK/MISO`  |
+| GPIO 6         | Attrappe für den SD-Chip-Select            | `BREWCTL_SD_CS=6`           |
+| GPIO 8 / 9     | I²C SDA / SCL (Touch, RTC, CH422G)         | `BREWCTL_I2C_SDA/SCL`       |
+| GPIO 43 / 44   | RS485 TXD / RXD                            | —                           |
+| GPIO 15 / 16   | CAN TX / RX                                | —                           |
+
+Der **CH422G** (I²C 0x23/0x24/0x26/0x38, Typ `ch422g`, Gerät `ch422g-i2c-board-24`)
+hält Touch-Reset (`EXIO1`), Hintergrundbeleuchtung (`EXIO2`), Panel-Reset (`EXIO3`) und
+den **SD-Chip-Select** (`EXIO4`); `BoardInit.cpp` setzt das beim Start. Der Chip-Select
+bleibt dauerhaft low, weil die Arduino-SD-Bibliothek nur einen echten GPIO schalten
+kann — sie bekommt GPIO 6 als Attrappe (am SPI-Bus hängt nur die Karte). `EXIO0` und
+`EXIO5` sind die potenzialfreien Eingänge DI0/DI1 (lesbar, nicht schaltbar), `OD0`/`OD1`
+die Ausgänge DO0/DO1 und frei; sie starten bei `1`. Gemessen (2026-11-02, Pull-up nach 3,3 V
+an `DO0`): bei `0` liegt die Klemme auf 0 V, sie zieht also nach Masse („Last an“), bei `1`
+auf 3,3 V; ohne Pull-up liegt sie bei `1` auf 0 V (schwebt). Der Ausgang ist also ein
+Open-Drain-Schalter nach Masse: eine Last braucht eine eigene Versorgung und wird zwischen deren
+Plus und `DO0` geschaltet. Ein `DigitalOutput` braucht für „an = Last an“ `invert: true`. Der
+Chip hat nur eine Richtung für alle acht `EXIO`-Pins: sobald einer Ausgang ist, sind es alle,
+und ein Ausgangspin liest nur zurück, was er treibt. Deshalb schaltet jedes Lesen der
+`EXIO`-Pins sie für eine I²C-Übertragung (etwa eine Millisekunde, höchstens alle 20 ms) auf
+Eingang und danach zurück (der Chip braucht dafür 2 ms Wartezeit); Reset, Backlight und
+SD-CS schweben in dieser Zeit. Die DI-Eingänge sind am Gerät bestätigt (2026-11-02), aber
+**invertiert**: ohne Signal liest ein `DigitalInput` `1`, mit Spannung `0`. Sie brauchen den
+Rückweg `DI_COM` (bei Plus am Eingang: `DI_COM` an GND, +5 V an `DI0`); ohne `DI_COM` schaltet
+der Optokoppler nicht. Reserviert sind
+außerdem 0x51 (PCF85063) und 0x5D (GT911). Für eigene Items frei bleibt kein GPIO.
 
 **M5Stack StopWatch (`m5stack_stopwatch`)**
 
@@ -311,6 +352,11 @@ als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den
   Treiber übernimmt beim Start Ausgangs- und Richtungsregister des Chips und schreibt danach
   nur das eine Register, das sich ändert — Kanäle, die kein Item anfasst, bleiben, wie das
   Board sie hinterlassen hat.
+
+- **CH422G** (8 `EXIO`-Pins plus `OD0`/`OD1`): nur als fest verdrahtetes Onboard-Gerät des
+  Waveshare LCD-5B (`ch422g-i2c-board-24`, `fixed: true`, als Typ nicht anlegbar). Der Chip
+  ist nicht lesbar; der Treiber führt die Ausgangswerte in einem Schatten, den `boardInit()`
+  und das Gerät teilen. Belegung siehe Board-Abschnitt oben.
 
 - **Id** aus Typ, Bus und Adresse, z. B. `mcp4728-i2c-board-60`; optional ein `label`.
 - **Kanal-Referenz im `pin`-Feld**: `AnalogOutput` mit `mode: "dac"` nimmt statt einer
@@ -1109,7 +1155,7 @@ in `public/` liegt. Ein so gebautes Tar nicht verteilen und nicht in ein Release
 Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:
 
 ```powershell
-pio run -e lilygo_t_display_s3_amoled      # oder waveshare_s3_amoled_175 / m5stack_stopwatch
+pio run -e lilygo_t_display_s3_amoled      # oder waveshare_s3_amoled_175 / waveshare_s3_lcd_5b / m5stack_stopwatch
 # Ergebnis: .pio\build\<env>\firmware.bin
 ```
 

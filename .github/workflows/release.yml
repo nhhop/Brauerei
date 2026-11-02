@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [lilygo_t_display_s3_amoled, waveshare_s3_amoled_175, m5stack_stopwatch]
+        env: [lilygo_t_display_s3_amoled, waveshare_s3_amoled_175, waveshare_s3_lcd_5b, m5stack_stopwatch]
     steps:
       - uses: actions/checkout@v4
         with:
