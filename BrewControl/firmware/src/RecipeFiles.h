@@ -64,8 +64,8 @@ inline std::string summaryLineOf(JsonVariantConst doc, const char* id,
 }
 
 inline std::string recipeSummaryLine(JsonVariantConst recipe, const char* id) {
-  return summaryLineOf(recipe, id, {"name", "style", "volumeL", "status", "rootId", "version", "updatedAt",
-                                    "ogPlato", "abvPct", "ibu", "ebc"});
+  return summaryLineOf(recipe, id, {"name", "style", "volumeL", "volumeBasis", "status", "rootId", "version",
+                                    "updatedAt", "ogPlato", "abvPct", "ibu", "ebc"});
 }
 
 // Brews (/brews) use the same index. Their line also carries the fermenter and

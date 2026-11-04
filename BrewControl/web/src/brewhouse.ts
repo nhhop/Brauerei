@@ -119,6 +119,7 @@ export interface StepConfig {
   condenserId?: string;   // boil
   powerPct?: number;      // boil: heating power while boiling (below 100 with a condenser)
   heatRateKPerMin?: number;
+  setpointOffsetK?: number; // mash: added to the mash program's setpoints when the controller measures elsewhere (HERMS: in the HLT)
 }
 
 export interface Transfer {
@@ -518,6 +519,7 @@ export function assignStep(bh: Brewhouse, vesselId: string, step: StepKey, on: b
   steps[step] = dropUndefined({
     vesselId,
     heatRateKPerMin: old?.heatRateKPerMin, coolMinutes: old?.coolMinutes, powerPct: old?.powerPct,
+    setpointOffsetK: old?.setpointOffsetK,
     heaterId: STEPS.find((s) => s.key === step)!.heated ? here('heater') : undefined,
     agitatorId: step === 'mash' ? here('agitator') : undefined,
     condenserId: step === 'boil' ? here('condenser') : undefined,

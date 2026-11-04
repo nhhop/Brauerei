@@ -504,6 +504,11 @@ function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heat
             <OptNum unit="K/min" value={cfg.heatRateKPerMin} onChange={(heatRateKPerMin) => patch({ heatRateKPerMin })} />
           </Field>
         )}
+        {step === 'mash' && h.heater && !h.direct && h.via !== 'infusion' && (
+          <Field label="Sollwert-Aufschlag">
+            <OptNum unit="K" value={cfg.setpointOffsetK} onChange={(setpointOffsetK) => patch({ setpointOffsetK })} />
+          </Field>
+        )}
         {step === 'boil' && (
           <>
             {(of('condenser', true).length > 0 || cfg.condenserId) && (
@@ -530,6 +535,11 @@ function StepRow({ bh, set, step, heated }: SectionProps & { step: StepKey; heat
           </>
         )}
       </div>
+      {step === 'mash' && h.heater && !h.direct && h.via !== 'infusion' && (
+        <p class="mt-1 text-xs text-muted">
+          Sollwert-Aufschlag: Misst der Regler nicht in der Maische (z. B. im HLT), stellt ihm das Maischprogramm die Rasttemperatur plus diesen Wert.
+        </p>
+      )}
       {valves.length > 0 && (
         <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span class="text-xs text-muted">Wasserzulauf</span>

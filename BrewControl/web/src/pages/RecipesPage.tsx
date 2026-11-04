@@ -13,7 +13,10 @@ import { Fab } from '../components/Fab';
 import { badge, badgeAccent, btnPrimary, inp } from '../ui';
 import { formatIsoDate } from './brew/format';
 
-const COLS = 'md:grid-cols-[minmax(0,2.4fr)_72px_92px_68px_48px_64px_44px_108px_112px]';
+// The recipe's volume is the knock-out (hot, also when unset) or the pitched wort (cold).
+const basisOf = (r: Pick<RecipeSummary, 'volumeBasis'>) => (r.volumeBasis === 'cold' ? 'kalt' : 'heiß');
+
+const COLS = 'md:grid-cols-[minmax(0,2.4fr)_92px_92px_68px_48px_64px_44px_108px_112px]';
 const num = (n: number | undefined, unit = '', digits = 1) =>
   n === undefined ? '–' : `${n.toFixed(digits).replace('.', ',')}${unit}`;
 
@@ -135,11 +138,13 @@ export function RecipesPage(_: { path?: string }) {
                     <span class="text-xs text-muted">{r.style || 'Kein Stil'}</span>
                   </span>
                   <span class="text-sm tabular-nums text-muted md:hidden">
-                    {[`${num(r.volumeL, ' l', 0)}`, r.ogPlato !== undefined && num(r.ogPlato, ' °P'),
+                    {[`${num(r.volumeL, ' l', 0)} ${basisOf(r)}`, r.ogPlato !== undefined && num(r.ogPlato, ' °P'),
                       r.abvPct !== undefined && num(r.abvPct, ' %'), r.ibu !== undefined && `${num(r.ibu, '', 0)} IBU`,
                       `${brewCount} ${brewCount === 1 ? 'Sud' : 'Sude'}`].filter(Boolean).join(' · ')}
                   </span>
-                  <span class="hidden text-right text-sm tabular-nums md:block">{num(r.volumeL, ' l', 0)}</span>
+                  <span class="hidden text-right text-sm tabular-nums md:block">
+                    {num(r.volumeL, ' l', 0)} <span class="text-xs text-muted">{basisOf(r)}</span>
+                  </span>
                   <span class="hidden text-right text-sm tabular-nums md:block">{num(r.ogPlato, ' °P')}</span>
                   <span class="hidden text-right text-sm tabular-nums md:block">{num(r.abvPct, ' %')}</span>
                   <span class="hidden text-right text-sm tabular-nums md:block">{num(r.ibu, '', 0)}</span>

@@ -523,6 +523,9 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
       Original. Die Kettenfunktionen selbst lesen `volumeL` dieser Kopie, sie sind ja das, was gelöst wird.
     - **Umschalten** rechnet die Menge um (auf 0,1 l gerundet), das Bier bleibt gleich (Nutzer). Bei
       „kalt“ steht unter dem Feld der Ausschlag.
+    - **Rezeptliste** (seit 2026-11-05): „20 l heiß“ bzw. „20 l kalt“; `volumeBasis` steht in der Index-Zeile
+      der Firmware (`recipeSummaryLine`). Die Firmware baut den Index nicht neu auf: Ein kaltes Rezept, das
+      vor dem Update gespeichert wurde, steht als „heiß“ in der Liste, bis es einmal gespeichert wird.
     - **Nicht erreichbar** ist eine Anstellwürze, wenn der Verschnitt im Gärbehälter schon mehr ist. Dann
       gibt es einen Hinweis, und gerechnet wird mit dem nächsten Ausschlag (Nutzer). Ein Verschnitt im
       Gärbehälter nach °P legt mit der Schüttung die Anstellwürze schon fast fest; der Ausschlag kann dann
@@ -1409,7 +1412,12 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   „Hauptgusstemperatur“). Ist keiner verknüpft oder fehlt er in der Registry, am Fühler, auf den der Regler
   regelt (`params.sensor`, bei mehreren Kanälen der erste). Weichen beide ab, sagt das ein Hinweis; ohne
   jeden Fühler wartet der Schritt auf „Weiter“. Erreicht die Maische die Temperatur nicht (HERMS mit Regler
-  am HLT), hilft „Weiter“; ein Sollwert-Aufschlag ist offen (PLAN.md).
+  am HLT), hilft „Weiter“ oder der **Sollwert-Aufschlag** des Sudhauses (seit 2026-11-05,
+  `steps.mash.setpointOffsetK`, Feld im Schritt Maischen bei indirekter Heizung außer Aufguss). Das Programm
+  stellt dem Maisch-Regler dann Rasttemperatur plus Aufschlag. Das gilt beim Aufheizen und Abkühlen, nach dem
+  Hauptguss, bei Rasten mit Rampe und nach einer Dekoktion; nicht für den Hauptguss, den der Fühler im HLT direkt
+  misst, und nicht für das Dekoktionsgefäß. Die Endbedingung am Maischefühler und die Schrittnamen bleiben bei
+  der Rasttemperatur.
 - **Hauptguss:** im Programm, wenn seine Heizquelle am Regler der Maische hängt (Ein-Topf, HERMS-HLT). Der
   Schritt setzt die Hauptguss-Temperatur, endet am Fühler und **wartet dann auf „Weiter“**, der Regler hält
   so lange. „Einmaischen“ setzt danach die Einmaischtemperatur. Hängt der Hauptguss an einer anderen

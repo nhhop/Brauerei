@@ -353,7 +353,7 @@ export function replaceDecoctions(mash: MashStep[], resultC?: (s: MashStep) => n
 
 // What the list shows; GET /api/recipes returns only these fields.
 export type ListFigures = Pick<Recipe, 'ogPlato' | 'abvPct' | 'ibu' | 'ebc'>;
-export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'status' | 'rootId' | 'version' | 'updatedAt'> & ListFigures;
+export type RecipeSummary = Pick<Recipe, 'id' | 'name' | 'style' | 'volumeL' | 'volumeBasis' | 'status' | 'rootId' | 'version' | 'updatedAt'> & ListFigures;
 
 // ── Versions ─────────────────────────────────────────────────────────────────────
 // Every version is a recipe file of its own, linked by `rootId` (the id of

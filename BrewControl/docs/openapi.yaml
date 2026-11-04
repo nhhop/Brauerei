@@ -5822,6 +5822,13 @@ components:
         name: { type: string }
         style: { type: string }
         volumeL: { type: number }
+        volumeBasis:
+          type: string
+          enum: [hot, cold]
+          description: |
+            What `volumeL` is: the knock-out (`hot`, also when unset) or the
+            pitched wort (`cold`). Lines written before this field existed lack it
+            until the recipe is saved again.
         status: { type: string, enum: [draft, final] }
         rootId:
           type: string
