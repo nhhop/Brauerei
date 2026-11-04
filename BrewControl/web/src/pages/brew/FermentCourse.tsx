@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { getLogData, getLogSessions, getLogs, type LogData } from '../../api';
+import { createLog, getLogs, type LogData } from '../../api';
 import type { BrewReadings } from '../../brewReadings';
 import type { Brew } from '../../brews';
 import type { Fermenter } from '../../cellar';
 import {
   DAY_SEC, handCols, logCols, logRows, LONG_LOG_ROWS, platoOf, sollCol, type Col,
 } from '../../fermentCourse';
+import { brewLogConfig, loadLogWindow } from '../../logWindow';
 import type { Phase } from '../../recipes';
 import { unitOf } from '../../refs';
 import type { LogConfig, Snapshot } from '../../types';
 import { Card } from '../recipe/fields';
 import { inp } from '../../ui';
-import { pickLog, sessionFor } from './MashCourse';
+import { LogButton, pickLog } from './MashCourse';
 import type { Patch } from './PrepTab';
 
 // The log is read from a little before the pitching to two days after the plan.
@@ -23,6 +24,12 @@ const TAIL_DAYS = 2;
 function cssVar(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
+
+// "a, b und c"
+const listing = (parts: (string | false | undefined)[]) => {
+  const p = parts.filter((x): x is string => !!x);
+  return p.length < 2 ? p.join('') : `${p.slice(0, -1).join(', ')} und ${p[p.length - 1]}`;
+};
 
 const fmt = (v: number | null, unit: string) => (v == null ? '–' : `${v.toFixed(1).replace('.', ',')} ${unit}`);
 
@@ -113,31 +120,51 @@ export function FermentCourse({ brew, fermenter, phases, snap, editable, patch, 
   const soll = sollCol(phases);
   const endDay = soll ? soll.xs[soll.xs.length - 1] : 0;
   const pitchedSec = pitchedAt === undefined ? 0 : Math.round(pitchedAt / 1000);
-  const planEndSec = pitchedSec + (endDay + TAIL_DAYS) * DAY_SEC;
+  const hand = readings && pitchedAt !== undefined ? handCols(readings.readings, pitchedAt, og) : [];
+  const lastDay = Math.max(endDay, ...hand.flatMap((c) => c.xs));
+  const fromSec = pitchedSec - LEAD_SEC;
+  const toSec = pitchedSec + (lastDay + TAIL_DAYS) * DAY_SEC;
 
-  // The session that holds the course: the latest one begun before its end.
+  // The window of the course, across every session that holds part of it.
   const logId = log?.id;
   useEffect(() => {
     setData(null);
     if (!logId || pitchedAt === undefined) return;
     let alive = true;
-    getLogSessions(logId).catch(() => []).then((sessions) => {
-      const s = sessionFor(sessions, planEndSec);
-      if (sessions.length > 0 && !s) return { refs: [], data: [[]] } as LogData;
-      return getLogData(logId, s && !s.active ? s.start : undefined);
-    }).then((d) => alive && setData(d)).catch(() => alive && setData({ refs: [], data: [[]] }));
+    loadLogWindow(logId, fromSec, toSec)
+      .then((d) => alive && setData(d)).catch(() => alive && setData({ refs: [], data: [[]] } as LogData));
     return () => { alive = false; };
-  }, [logId, pitchedAt, planEndSec]);
+  }, [logId, pitchedAt, toSec]);
 
-  const hand = readings && pitchedAt !== undefined ? handCols(readings.readings, pitchedAt, og) : [];
-  const lastDay = Math.max(endDay, ...hand.flatMap((c) => c.xs));
-  const ist = data && pitchedAt !== undefined
-    ? logCols(data, refs, densityUnit, pitchedSec, pitchedSec - LEAD_SEC, pitchedSec + (lastDay + TAIL_DAYS) * DAY_SEC) : [];
+  const ist = data && pitchedAt !== undefined ? logCols(data, refs, densityUnit, pitchedSec, fromSec, toSec) : [];
+
+  // One log per fermenter, so the next brew on it finds it again.
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const controller = fermenter && !fermenter.manual ? fermenter.controller : undefined;
+  const fermenterName = fermenter?.name || fermenter?.id || '';
+  const addLog = async () => {
+    setCreating(true);
+    setCreateError('');
+    try {
+      const cfg = brewLogConfig({
+        name: `Gärplatz ${fermenterName}`, intervalSec: 60, sensors: [sensorId, fermenter?.densitySensor],
+        others: [controller && `controller/${controller}`], controller,
+      });
+      const id = await createLog(cfg);
+      setLogs((l) => [...(l ?? []), { id, ...cfg }]);
+      await patch((b) => ({ ...b, fermentLogId: id }));
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const hint = !fermenter ? 'Ohne Gärplatz zeigt der Verlauf nur den Plan und deine Messungen.'
     : !sensorId ? 'Der Gärplatz hat keinen Temperaturfühler; der Verlauf zeigt nur den Plan und deine Messungen.'
     : logs === null ? undefined
-    : !log ? 'Kein Log zeichnet den Fühler des Gärplatzes auf. Lege im Dashboard ein Diagramm mit dem Fühler an.'
+    : !log ? 'Kein Log zeichnet den Fühler des Gärplatzes auf.'
     : !has(`sensor/${sensorId}`) ? `Das Log „${log.name}“ zeichnet den Fühler des Gärplatzes nicht auf.`
     : refs.setpoint && !has(refs.setpoint) ? `Das Log zeichnet den Regler „${fermenter.controller}“ nicht auf; sein Sollwert fehlt im Verlauf.`
     : refs.density && !has(refs.density) ? `Das Log zeichnet den Dichtesensor „${fermenter.densitySensor}“ nicht auf.`
@@ -165,13 +192,17 @@ export function FermentCourse({ brew, fermenter, phases, snap, editable, patch, 
           {logId && data && ist.length === 0 && <p class="mt-2 text-xs text-muted">Das Log hat für diesen Zeitraum keine Werte.</p>}
           {rows > LONG_LOG_ROWS && (
             <p class="mt-2 text-xs text-muted">
-              Das Log „{log!.name}“ schreibt alle {log!.intervalSec} s. Für den Verlauf wird die ganze Session geladen, bei Wochen sind das
-              etwa {Math.round(rows / 1000)} 000 Zeilen; ein längeres Intervall macht das Laden schneller.
+              Das Log „{log!.name}“ schreibt alle {log!.intervalSec} s. Für den Verlauf sind das etwa {Math.round(rows / 1000)} 000 Zeilen;
+              ein längeres Intervall macht das Laden schneller.
             </p>
           )}
         </>
       )}
       {hint && <p class="mt-2 text-xs text-muted">{hint}</p>}
+      {fermenter && sensorId && logs !== null && !log && (
+        <LogButton busy={creating} disabled={!editable} error={createError} onClick={() => void addLog()}
+          what={`„Gärplatz ${fermenterName}“ zeichnet ${listing(['den Fühler', controller && 'den Sollwert des Reglers', fermenter.densitySensor && 'den Dichtesensor'])} jede Minute auf${controller ? ', solange der Regler an ist' : ''}.`} />
+      )}
     </Card>
   );
 }

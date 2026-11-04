@@ -362,8 +362,14 @@ export interface LogData {
   data: (number | null)[][];
 }
 
-export async function getLogData(id: string, session?: number): Promise<LogData> {
-  const url = `/api/logs/${encodeURIComponent(id)}/data${session ? `?session=${session}` : ''}`;
+// `win` asks only for the rows from `from` to `to` (epoch s); a firmware
+// without the window sends the whole session, so callers still cut it.
+export async function getLogData(id: string, session?: number, win?: { from: number; to: number }): Promise<LogData> {
+  const q = new URLSearchParams();
+  if (session) q.set('session', String(session));
+  if (win) { q.set('from', String(win.from)); q.set('to', String(win.to)); }
+  const qs = q.toString();
+  const url = `/api/logs/${encodeURIComponent(id)}/data${qs ? `?${qs}` : ''}`;
   const r = await fetch(url);
   if (r.status === 404) return { refs: [], data: [[]] };
   if (!r.ok) await failed(r);

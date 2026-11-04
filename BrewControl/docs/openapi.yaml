@@ -1770,6 +1770,8 @@ paths:
     parameters:
       - { $ref: "#/components/parameters/HexId" }
       - { $ref: "#/components/parameters/SessionQuery" }
+      - { $ref: "#/components/parameters/WindowFrom" }
+      - { $ref: "#/components/parameters/WindowTo" }
     get:
       tags: [Data Logs]
       operationId: getLogData
@@ -1789,6 +1791,8 @@ paths:
     parameters:
       - { $ref: "#/components/parameters/HexId" }
       - { $ref: "#/components/parameters/SessionQuery" }
+      - { $ref: "#/components/parameters/WindowFrom" }
+      - { $ref: "#/components/parameters/WindowTo" }
     get:
       tags: [Data Logs]
       operationId: downloadLogData
@@ -4164,6 +4168,25 @@ components:
       description: |
         Session start as Unix epoch seconds. Omit or pass `0` for the currently
         running session.
+
+    WindowFrom:
+      name: from
+      in: query
+      required: false
+      schema: { type: integer, format: int64 }
+      description: |
+        Only rows with `ts >= from` (Unix epoch seconds). With `from` or `to`
+        the response is the header line plus the rows in the window, found by
+        a binary search over the file (rows are sorted by `ts`), without gzip
+        and without the rows the active session appends meanwhile. Older
+        firmware ignores the parameter and sends the whole session.
+
+    WindowTo:
+      name: to
+      in: query
+      required: false
+      schema: { type: integer, format: int64 }
+      description: Only rows with `ts <= to` (Unix epoch seconds); see `from`.
 
     PathQuery:
       name: path

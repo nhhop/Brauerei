@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { TEMPLATES } from '../../brewhouse';
-import { calcMash } from '../../mashPlan';
+import { calcMash, type MashRow } from '../../mashPlan';
 import { calcWater } from '../../recipeWater';
 import { newRecipe, type Recipe } from '../../recipes';
 import type { Actuator, LogConfig, Snapshot } from '../../types';
-import { fillLinear, heatActuatorOf, istCourse, pickLog, sessionFor, sollCourse } from './MashCourse';
+import { fillLinear, heatActuatorOf, istCourse, pickLog, restActuals, sollCourse } from './MashCourse';
 
 const AT = Date.UTC(2026, 9, 13, 8, 12);  // mashed in, epoch ms
 const AT_SEC = AT / 1000;
@@ -51,7 +51,7 @@ describe('fillLinear', () => {
   });
 });
 
-describe('pickLog and sessionFor', () => {
+describe('pickLog', () => {
   const log = (id: string, refs: string[]): LogConfig => ({
     id, name: id, intervalSec: 5, series: refs.map((ref) => ({ ref, tol: 0 })), algo: 'none', maxGapSec: 60, enabled: true,
   });
@@ -62,12 +62,61 @@ describe('pickLog and sessionFor', () => {
     expect(pickLog(logs, 'other')).toBeUndefined();
     expect(pickLog(logs, undefined)).toBeUndefined();
   });
+});
 
-  it('takes the latest session begun before the end of the course', () => {
-    const sessions = [{ start: 100, size: 1, active: false }, { start: 500, size: 1, active: false }, { start: 900, size: 1, active: true }];
-    expect(sessionFor(sessions, 700)?.start).toBe(500);
-    expect(sessionFor(sessions, 2000)?.active).toBe(true);
-    expect(sessionFor(sessions, 50)).toBeUndefined();
+describe('restActuals', () => {
+  // Mashing in at minute 10 (62 °C, 20 min), a rest at 72 °C from minute 40 for 30 min.
+  const row = (kind: string, name: string, tempC: number, startMin: number, holdMin: number) =>
+    ({ step: { kind, name }, tempC, startMin, holdMin, fromC: 0, transition: { kind: 'none', min: 0, text: '' } }) as unknown as MashRow;
+  const rows = [row('strike', 'Hauptguss', 70, 0, 0), row('doughIn', 'Einmaischen', 62, 10, 20), row('rest', 'Verzuckerung', 72, 40, 30)];
+  const t0 = AT_SEC;   // mashing in
+  // The log as [minutes after mashing in, temperature] points.
+  const course = (pieces: [number, number][]) => {
+    const xs: number[] = [];
+    const ys: (number | null)[] = [];
+    pieces.forEach(([min, c]) => { xs.push(t0 + min * 60); ys.push(c); });
+    return { xs, ys };
+  };
+  const line = (from: number, to: number, a: number, b: number): [number, number][] =>
+    Array.from({ length: to - from + 1 }, (_, i) => [from + i, a + ((b - a) * i) / Math.max(to - from, 1)]);
+
+  it('a rest on time: its mean and how long the mash stayed in the band', () => {
+    const { xs, ys } = course([...line(-10, -1, 50, 70), ...line(0, 20, 62, 62), ...line(21, 30, 63.5, 71.5), ...line(31, 60, 72, 72), ...line(61, 70, 74, 78)]);
+    const [a, b] = restActuals(rows, AT, xs, ys);
+    expect(a.row.step.name).toBe('Einmaischen');
+    expect(a.meanC).toBeCloseTo(62, 5);
+    expect(a.durationMin).toBe(20);                  // heating the strike water through 62 °C does not count
+    expect(b.meanC).toBeCloseTo(72, 1);
+    expect(b.durationMin).toBe(30);                  // 71.5 at minute 30 is in the band already
+  });
+
+  it('a rest reached late is found and counted from when it was reached', () => {
+    const { xs, ys } = course([...line(0, 20, 62, 62), ...line(21, 60, 64, 66), ...line(61, 80, 72, 72)]);
+    const [, b] = restActuals(rows, AT, xs, ys);
+    expect(b.durationMin).toBe(19);
+  });
+
+  it('a rest never reached stays empty', () => {
+    const { xs, ys } = course(line(0, 60, 62, 62));
+    const [a, b] = restActuals(rows, AT, xs, ys);
+    expect(a.durationMin).toBe(60);
+    expect(b).toMatchObject({ meanC: null, durationMin: null });
+  });
+
+  it('rests close together end where the next band begins', () => {
+    const close = [row('doughIn', 'A', 62, 0, 10), row('rest', 'B', 63.5, 10, 10)];
+    const { xs, ys } = course([...line(0, 10, 62, 62), ...line(11, 20, 63.5, 63.5)]);
+    const [a, b] = restActuals(close, AT, xs, ys);
+    expect(a.durationMin).toBe(10);   // 63.5 °C at minute 11 is out of A's band and in B's
+    expect(b.durationMin).toBe(9);
+  });
+
+  it('a gap in the log counts by the clock, empty cells do not', () => {
+    const { xs, ys } = course([...line(0, 5, 62, 62), [10, 62], [15, 62], [16, 62], [17, 62], [18, 62], [19, 62], [20, 62]]);
+    ys[2] = null;
+    const [a] = restActuals(rows, AT, xs, ys);
+    expect(a.durationMin).toBe(20);
+    expect(a.meanC).toBe(62);
   });
 });
 
