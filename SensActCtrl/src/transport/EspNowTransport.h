@@ -56,6 +56,8 @@ class EspNowTransport : public ITransport {
   bool subscribe(const char* topic, MessageCallback callback,
                  const void* owner = nullptr) override;
   bool unsubscribe(const char* topic, const void* owner = nullptr) override;
+  // Same Retained-Request as a subscribe() sends, with the same throttle.
+  void requestRetained() override { requestRetained_(); }
   void tick() override;
   bool connected() const override { return initialized_; }
   // Covers init failure (connected() == false), the last send-level failure
