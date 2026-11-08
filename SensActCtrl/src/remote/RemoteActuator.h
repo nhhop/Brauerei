@@ -61,6 +61,9 @@ class RemoteActuator : public Actuator {
   ActuatorMeta meta_{};
   float state_ = 0.0f;
   float target_ = 0.0f;
+  // A missed meta is asked for again while state keeps coming (MetaRetry.h).
+  bool metaReceived_ = false;
+  uint32_t statesWithoutMeta_ = 0;
 };
 
 }  // namespace SensActCtrl

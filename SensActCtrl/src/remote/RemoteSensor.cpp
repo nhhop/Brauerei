@@ -1,6 +1,7 @@
 #include "RemoteSensor.h"
 
 #include "MetaJson.h"
+#include "MetaRetry.h"
 #include "Topics.h"
 
 namespace SensActCtrl {
@@ -37,10 +38,12 @@ void RemoteSensor::begin() {
 
 void RemoteSensor::onState(const char* payload, size_t /*length*/) {
   remote::parseState(payload, last_.value, last_.timestampMs, last_.valid);
+  if (!metaReceived_ && remote::shouldRequestMeta(++statesWithoutMeta_))
+    transport_->requestRetained();
 }
 
 void RemoteSensor::onMeta(const char* payload, size_t /*length*/) {
-  remote::parseSensorMeta(payload, meta_, unitStorage_);
+  if (remote::parseSensorMeta(payload, meta_, unitStorage_)) metaReceived_ = true;
 }
 
 }  // namespace SensActCtrl

@@ -57,6 +57,9 @@ class RemoteSensor : public Sensor {
   std::string prefix_ = "sensactctrl";
   SensorMeta meta_{};
   Reading last_{};
+  // A missed meta is asked for again while state keeps coming (MetaRetry.h).
+  bool metaReceived_ = false;
+  uint32_t statesWithoutMeta_ = 0;
 };
 
 }  // namespace SensActCtrl

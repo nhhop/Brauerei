@@ -49,6 +49,7 @@ class MockTransport : public ITransport {
     return eraseSubscriptions(subs_, topic, owner);
   }
 
+  void requestRetained() override { ++retainedRequests; }
   void tick() override {}
   bool connected() const override { return connected_; }
   const char* lastErrorMessage() const override { return errorMessage_.c_str(); }
@@ -71,6 +72,7 @@ class MockTransport : public ITransport {
   }
 
   std::vector<Sent> published;
+  int retainedRequests = 0;
 
  private:
   std::vector<Subscription> subs_;

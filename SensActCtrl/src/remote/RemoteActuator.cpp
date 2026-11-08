@@ -1,6 +1,7 @@
 #include "RemoteActuator.h"
 
 #include "MetaJson.h"
+#include "MetaRetry.h"
 #include "Topics.h"
 
 namespace SensActCtrl {
@@ -58,10 +59,12 @@ void RemoteActuator::onState(const char* payload, size_t /*length*/) {
   if (remote::parseState(payload, v, t, ok) && ok) {
     state_ = v;
   }
+  if (!metaReceived_ && remote::shouldRequestMeta(++statesWithoutMeta_))
+    transport_->requestRetained();
 }
 
 void RemoteActuator::onMeta(const char* payload, size_t /*length*/) {
-  remote::parseActuatorMeta(payload, meta_, unitStorage_);
+  if (remote::parseActuatorMeta(payload, meta_, unitStorage_)) metaReceived_ = true;
 }
 
 }  // namespace SensActCtrl

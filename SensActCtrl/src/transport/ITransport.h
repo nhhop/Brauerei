@@ -51,6 +51,12 @@ class ITransport {
     (void)topic; (void)owner;
     return false;
   }
+  // Asks the publishers to send their retained messages again, for a
+  // subscriber that knows it missed one (RemoteSensor/RemoteActuator: state
+  // arrives, meta never did). Only a lossy transport needs it — ESP-NOW
+  // broadcasts have no retry, while a broker keeps retained messages and TCP
+  // loses none. Default no-op.
+  virtual void requestRetained() {}
   virtual void tick() = 0;
   virtual bool connected() const = 0;
 
