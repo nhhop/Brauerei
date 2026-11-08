@@ -1,0 +1,24 @@
+name: SensActCtrl Core 2
+
+# The library keeps code paths for Arduino Core 2 (ESP-IDF 4.4) so it stays
+# usable standalone; BrewControl only builds Core 3. This compiles the library
+# against Core 2 whenever it changes (env esp32dev_core2 in
+# SensActCtrl/platformio.ini).
+on:
+  pull_request:
+    paths: ['SensActCtrl/**', '.github/workflows/sensactctrl-core2.yml']
+  push:
+    branches: [dev, main]
+    paths: ['SensActCtrl/**', '.github/workflows/sensactctrl-core2.yml']
+
+jobs:
+  core2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install platformio
+      - name: Build esp32dev_core2
+        working-directory: SensActCtrl
+        run: pio run -e esp32dev_core2

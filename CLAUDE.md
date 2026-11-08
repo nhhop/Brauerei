@@ -22,6 +22,7 @@ Brauerei/
 # SensActCtrl — Unit-Tests (native, kein Hardware nötig)
 cd SensActCtrl
 pio test -e native               # 358 Tests
+pio run -e esp32dev_core2         # Compile-Check gegen Arduino Core 2 (globales Core-Dir, nicht .pc3)
 
 # BrewControl — Firmware
 cd BrewControl/firmware
