@@ -237,7 +237,10 @@ Der Client-Connect blockiert bei unerreichbarem Server bis zu
 `-DWEBSOCKETS_TCP_TIMEOUT=1000` in `build_flags` empfohlen.
 
 **Remote** (`src/remote/`): `RemoteSensor`/`RemoteActuator` (proxyen einen
-Sensor/Aktor eines anderen Knotens transparent über einen `ITransport&`),
+Sensor/Aktor eines anderen Knotens transparent über einen `ITransport&`;
+kommt State, aber keine Meta, fragen sie per `ITransport::requestRetained()` nach —
+beim 1., 2., 4. … 64. State ohne Meta, danach bei jedem 64. —, weil ein verlorener
+ESP-NOW-Broadcast sonst nie wiederholt wird),
 `RemotePublisher` (veröffentlicht lokale Items automatisch: Meta retained
 bei `attach()`, State zyklisch, Controller-Tuning eingehend über `/tune`).
 Alle drei sind komplett transport-agnostisch. Topic-Schema
