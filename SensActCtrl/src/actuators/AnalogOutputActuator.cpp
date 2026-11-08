@@ -24,6 +24,28 @@
   #define SENSACTCTRL_HAS_DAC 1  // stubs cover it in native builds
 #endif
 
+namespace {
+// Arduino core 3 dropped LEDC channels from the API: the pin is the handle and
+// the core picks a free channel itself. Core 2 (and the native stubs) still
+// take an explicit channel.
+#if defined(ARDUINO) && ESP_ARDUINO_VERSION_MAJOR >= 3
+void pwmAttach(int pin, uint8_t /*channel*/, uint32_t freq, uint8_t bits) {
+    ledcAttach(static_cast<uint8_t>(pin), freq, bits);
+}
+void pwmWrite(int pin, uint8_t /*channel*/, uint32_t raw) {
+    ledcWrite(static_cast<uint8_t>(pin), raw);
+}
+void pwmDetach(int pin) { ledcDetach(static_cast<uint8_t>(pin)); }
+#else
+void pwmAttach(int pin, uint8_t channel, uint32_t freq, uint8_t bits) {
+    ledcSetup(channel, static_cast<double>(freq), bits);
+    ledcAttachPin(static_cast<uint8_t>(pin), channel);
+}
+void pwmWrite(int /*pin*/, uint8_t channel, uint32_t raw) { ledcWrite(channel, raw); }
+void pwmDetach(int pin) { ledcDetachPin(static_cast<uint8_t>(pin)); }
+#endif
+}  // namespace
+
 namespace SensActCtrl {
 
 uint8_t AnalogOutputActuator::nextChannel_ = 0;
@@ -90,10 +112,10 @@ void AnalogOutputActuator::applyOutput() {
 #if defined(SENSACTCTRL_HAS_DAC)
         dacWrite(static_cast<uint8_t>(pin_), static_cast<uint8_t>(raw));
 #else
-        ledcWrite(channel_, raw);
+        pwmWrite(pin_, channel_, raw);
 #endif
     } else {
-        ledcWrite(channel_, raw);
+        pwmWrite(pin_, channel_, raw);
     }
 }
 
@@ -111,8 +133,7 @@ void AnalogOutputActuator::begin() {
 #endif
     if (mode_ == Mode::Pwm) {
         channel_ = nextChannel_++;
-        ledcSetup(channel_, static_cast<double>(freq_), resBits_);
-        ledcAttachPin(static_cast<uint8_t>(pin_), channel_);
+        pwmAttach(pin_, channel_, freq_, resBits_);
     }
     write(valueMin_);
 }
@@ -123,7 +144,7 @@ void AnalogOutputActuator::end() {
     // Dac mode drives the pin via the DAC peripheral directly (no GPIO
     // matrix routing), so there's nothing to detach there.
     if (mode_ == Mode::Pwm) {
-        ledcDetachPin(static_cast<uint8_t>(pin_));
+        pwmDetach(pin_);
     }
 }
 

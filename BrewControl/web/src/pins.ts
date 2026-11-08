@@ -132,7 +132,9 @@ export interface ChannelOption {
   taken?: string; // why it cannot be picked
 }
 
-function channelTaken(v: VirtualPin, selfId?: string): string | undefined {
+function channelTaken(v: VirtualPin, selfId?: string, output = false): string | undefined {
+  if (v.reserved) return `vom Board belegt (${v.note})`;
+  if (v.inputOnly && output) return `nur als Eingang nutzbar (${v.note})`;
   const others = v.users.filter((u) => u.id !== selfId);
   return others.length ? `belegt von ${others.map(pinUserText).join(', ')}` : undefined;
 }
@@ -144,17 +146,17 @@ export function channelLabel(v: VirtualPin): string {
 
 // Port-expander pins for a DigitalOutput/DigitalInput, in device and channel
 // order. selfId: the edited item, whose own channel counts as free.
-export function gpioChannels(info: PinsInfo | null, selfId?: string): ChannelOption[] {
+export function gpioChannels(info: PinsInfo | null, selfId?: string, output = false): ChannelOption[] {
   return (info?.virtual ?? [])
     .filter((v) => v.gpio)
-    .map((v) => ({ value: v.ref, label: channelLabel(v), taken: channelTaken(v, selfId) }));
+    .map((v) => ({ value: v.ref, label: channelLabel(v), taken: channelTaken(v, selfId, output) }));
 }
 
 // Status of a channel ref in a pin field (the GPIO counterpart is pinStatus).
-export function channelStatus(info: PinsInfo, ref: string, selfId?: string): PinStatus {
+export function channelStatus(info: PinsInfo, ref: string, selfId?: string, output = false): PinStatus {
   const v = info.virtual?.find((x) => x.ref === ref);
   if (!v) return { level: 'error', text: `Gerätekanal ${ref} gibt es nicht` };
-  const taken = channelTaken(v, selfId);
+  const taken = channelTaken(v, selfId, output);
   if (taken) return { level: 'error', text: taken };
   return { level: 'ok', text: `frei – ${channelLabel(v)}` };
 }

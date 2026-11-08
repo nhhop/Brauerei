@@ -13,7 +13,7 @@ import { SettingsGroup } from '../components/SettingsCard';
 import { Fab } from '../components/Fab';
 import { Spinner } from '../components/Spinner';
 import {
-  btnPrimary, btnSecondary, badge, badgeCritical, badgeSuccess, dialogFrame, dialogFooter, dialogBtnRow,
+  btnPrimary, btnSecondary, badge, badgeAccent, badgeCritical, badgeSuccess, dialogFrame, dialogFooter, dialogBtnRow,
   inp as inpBase,
 } from '../ui';
 import { Microchip, Pencil, Plus, Search, Trash2 } from 'lucide-preact';
@@ -147,8 +147,8 @@ export function PeripheralsPage(_: { path?: string }) {
             <DeviceCard key={d.id} device={d} busName={busName(d.bus)}
               checking={checking === d.id} check={checks[d.id]}
               onCheck={() => void runCheck(d)}
-              onEdit={() => openEdit(d)}
-              onDelete={() => { setDeleteErr(null); setDeleteTarget(d); }} />
+              onEdit={d.fixed ? undefined : () => openEdit(d)}
+              onDelete={d.fixed ? undefined : () => { setDeleteErr(null); setDeleteTarget(d); }} />
           ))}
         </SettingsGroup>
       )}
@@ -180,8 +180,8 @@ function DeviceCard({ device, busName, checking, check, onCheck, onEdit, onDelet
   checking: boolean;
   check?: Check;
   onCheck: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const users = device.channels.flatMap((c) => c.users);
   const inUse = users.length > 0;
@@ -196,6 +196,7 @@ function DeviceCard({ device, busName, checking, check, onCheck, onEdit, onDelet
             <span class="truncate text-sm font-medium text-fg">{device.label || device.id}</span>
             {device.label && <span class="font-mono text-xs text-faint">{device.id}</span>}
             <span class={`${badge} bg-fg/10 text-muted`}>{DEVICE_TYPE_LABEL[device.type] ?? device.type}</span>
+            {device.fixed && <span class={badgeAccent}>fest verdrahtet</span>}
             {check === 'ok' && <span class={badgeSuccess}>antwortet</span>}
             {check === 'none' && <span class={badgeCritical}>keine Antwort</span>}
           </div>
@@ -207,7 +208,10 @@ function DeviceCard({ device, busName, checking, check, onCheck, onEdit, onDelet
               <li key={c.index} class="flex gap-2">
                 <span class="w-16 shrink-0 text-faint">{device.cap === 'dac' ? `Kanal ${c.name}` : c.name}</span>
                 <span class={c.users.length ? 'truncate text-fg' : 'text-faint'}>
-                  {c.users.length ? c.users.join(', ') : 'frei'}
+                  {c.users.length ? c.users.join(', ')
+                    : c.reserved ? `Board: ${c.note}`
+                    : c.inputOnly ? `nur Eingang: ${c.note}`
+                    : 'frei'}
                 </span>
               </li>
             ))}
@@ -218,13 +222,17 @@ function DeviceCard({ device, busName, checking, check, onCheck, onEdit, onDelet
             class={`${iconBtn} text-muted`}>
             {checking ? <Spinner size={14} /> : <Search size={14} />}
           </button>
-          <button type="button" title="Bearbeiten" onClick={onEdit} class={`${iconBtn} text-muted`}>
-            <Pencil size={14} />
-          </button>
-          <button type="button" title={inUse ? 'Wird noch genutzt' : 'Löschen'} onClick={onDelete}
-            disabled={inUse} class={`${iconBtn} text-critical`}>
-            <Trash2 size={14} />
-          </button>
+          {onEdit && (
+            <button type="button" title="Bearbeiten" onClick={onEdit} class={`${iconBtn} text-muted`}>
+              <Pencil size={14} />
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" title={inUse ? 'Wird noch genutzt' : 'Löschen'} onClick={onDelete}
+              disabled={inUse} class={`${iconBtn} text-critical`}>
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       </div>
       {check === 'none' && (

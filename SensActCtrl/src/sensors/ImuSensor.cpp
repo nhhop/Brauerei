@@ -95,8 +95,8 @@ void ImuSensor::tick() {
     return;
   }
   for (int i = 0; i < 3; ++i) {
-    accel_[i] = Reading{a[i], now, true};
-    gyro_[i]  = Reading{g[i], now, true};
+    accel_[i] = Reading{a[i] * sign_[i], now, true};
+    gyro_[i]  = Reading{g[i] * sign_[i], now, true};
   }
   temp_ = Reading{t, now, t == t};  // NaN: the driver could not read it
 }

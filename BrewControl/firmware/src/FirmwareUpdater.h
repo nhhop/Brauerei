@@ -80,6 +80,7 @@ class FirmwareUpdater {
   String variant_;
   String availVersion_;
   String availNotes_;
+  bool availOlder_ = false;  // availVersion_ sorts before currentVersion_
   String error_;
   String netError_;
   uint8_t progress_ = 0;

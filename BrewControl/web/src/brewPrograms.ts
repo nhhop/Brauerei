@@ -33,6 +33,7 @@ export interface MashControl {
   sensor?: string;          // the sensor it regulates on
   strike: boolean;          // the strike water's heater hangs on the same controller
   boilC: number;            // the decoction vessel's setpoint while it boils
+  offsetK: number;          // added to the mash's setpoints (Brewhouse steps.mash.setpointOffsetK), not to the strike water's
   decoction?: { controller: string; sensor?: string };  // the decoction vessel's heater has its own
 }
 
@@ -50,7 +51,7 @@ export function mashControlOf(bh: Brewhouse | undefined, snap: Snapshot | null, 
   if (!mash) return undefined;
   const kettle = controllerOf(decoctionVesselOf(bh)?.heater);
   return {
-    controller: mash.id, sensor: sensorOf(mash), boilC,
+    controller: mash.id, sensor: sensorOf(mash), boilC, offsetK: bh.steps.mash?.setpointOffsetK ?? 0,
     // Without a step of its own the strike water is heated where the mash is.
     strike: controllerOf(heatingOf(bh, bh.steps.strike ? 'strike' : 'mash').heater)?.id === mash.id,
     ...(kettle && kettle.id !== mash.id && { decoction: { controller: kettle.id, sensor: sensorOf(kettle) } }),
@@ -156,6 +157,8 @@ export function mashTimerProgram(
   const steps: ProgramStep[] = [];
   const charges = rows.filter((r) => r.step.kind === 'doughIn').length;
   let pending: Targets | undefined;  // regulated: what the next step sets
+  // The mash's setpoint at its controller, with the brewhouse's offset.
+  const mashOn = (c: MashControl, tempC: number) => on(c.controller, tempC + c.offsetK);
   const push = (step: ProgramStep) => {
     steps.push(pending ? { ...step, targets: { ...pending, ...step.targets } } : step);
     pending = undefined;
@@ -167,21 +170,22 @@ export function mashTimerProgram(
     let move = ramped ? undefined : moveTo(row, sensors, charges);
     if (control && row.decoction) {
       decoctionSteps(row, control).forEach(push);
-      pending = { ...on(control.controller, row.tempC), ...(control.decoction && { [control.decoction.controller]: { enabled: false } }) };
+      pending = { ...mashOn(control, row.tempC), ...(control.decoction && { [control.decoction.controller]: { enabled: false } }) };
       move = undefined;
     } else if (control && move) {
       const strike = row.step.kind === 'strike';
       if (byHeater(row) && (!strike || control.strike)) {
         // The strike water is held until the brewer is there to mash in.
-        move = { ...quiet(move), targets: on(control.controller, row.tempC), ...(strike && { confirm: true }) };
+        // The strike water is measured where it is heated: no offset.
+        move = { ...quiet(move), targets: strike ? on(control.controller, row.tempC) : mashOn(control, row.tempC), ...(strike && { confirm: true }) };
         push(move);
       } else if (control.strike && rows[i - 1]?.step.kind === 'strike') {
         // Follows the "Weiter" of the strike water: the mash's temperature from here on.
-        push({ ...move, targets: on(control.controller, row.tempC) });
+        push({ ...move, targets: mashOn(control, row.tempC) });
       } else {
         push(move);
         // Strike water heated by hand: the controller only comes on with the mash.
-        if (!strike) pending = on(control.controller, row.tempC);
+        if (!strike) pending = mashOn(control, row.tempC);
       }
     } else if (move) {
       push(move);
@@ -190,7 +194,7 @@ export function mashTimerProgram(
     if (restMin > 0) {
       push({
         name: `Rast ${fmtC(row.tempC)} · ${fmt(restMin)} min`, holdSec: Math.round(restMin * 60),
-        targets: ramped && control ? on(control.controller, row.tempC) : {},
+        targets: ramped && control ? mashOn(control, row.tempC) : {},
         // Reached by a sensor: the brewer learns the rest has begun.
         ...((ramped ? !control : move?.end === 'sensor') && { notify: true }),
       });

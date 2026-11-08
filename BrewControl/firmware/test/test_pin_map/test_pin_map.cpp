@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "BoardPins.h"
+#include "../TestBoards.h"
 #include "PinMap.h"
 
 using namespace BrewControl;
@@ -152,17 +153,14 @@ void test_waveshare_board_pins() {
   TEST_ASSERT_EQUAL(-1, kWaveshareAmoled175.batteryPin);
 }
 
-void test_m5_stopwatch_board_pins() {
-  // Board I2C (47/48), buttons (1, 2), audio (15) and display (38-42, 45, 46)
-  // are taken by the board.
-  TEST_ASSERT_EQUAL(409, checkBus(kM5StopWatch, {}, R"({"type":"i2c","sda":47,"scl":48})").status);
-  for (int pin : {1, 2, 15, 38, 39, 45, 46}) {
-    const std::string cfg = R"({"type":"DigitalInput","id":"a","pin":)" + std::to_string(pin) + "}";
-    TEST_ASSERT_EQUAL(409, check(kM5StopWatch, {}, cfg.c_str()).status);
+void test_waveshare_lcd5b_board_pins() {
+  // Board I2C (8/9) and the SD pins are taken, so are the display's.
+  TEST_ASSERT_EQUAL(409, checkBus(kWaveshareLcd5b, {}, R"({"type":"i2c","sda":8,"scl":9})").status);
+  for (int pin : {0, 5, 6, 11, 12, 13, 15, 43, 46}) {
+    const std::string cfg = R"({"type":"DigitalOutput","id":"a","pin":)" + std::to_string(pin) + "}";
+    TEST_ASSERT_EQUAL(409, check(kWaveshareLcd5b, {}, cfg.c_str()).status);
   }
-  // The Grove port's pins are free for a user I2C bus.
-  TEST_ASSERT_TRUE(checkBus(kM5StopWatch, {}, R"({"type":"i2c","sda":10,"scl":11})").ok);
-  TEST_ASSERT_EQUAL(-1, kM5StopWatch.batteryPin);
+  TEST_ASSERT_EQUAL(-1, kWaveshareLcd5b.batteryPin);
 }
 
 void test_forbidden_and_missing_pins_are_400() {
@@ -346,6 +344,7 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_TRUE(pin(27)["rtc"].as<bool>());
   TEST_ASSERT_TRUE(pin(16)["rtc"].isNull());
   TEST_ASSERT_TRUE(doc["battery"].isNull());  // no onboard divider
+  TEST_ASSERT_TRUE(doc["pmu"].isNull());      // no charger IC
 
   JsonDocument s3;
   writePinsJson(kLilyGoAmoled, "lilygo", {}, s3.to<JsonObject>());
@@ -353,6 +352,16 @@ void test_pins_json_capabilities() {
   TEST_ASSERT_EQUAL(4, s3["battery"]["gpio"].as<int>());
   TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r1"].as<float>());
   TEST_ASSERT_EQUAL_FLOAT(100.0f, s3["battery"]["r2"].as<float>());
+  TEST_ASSERT_EQUAL_STRING("SY6970", s3["pmu"]["type"]);
+  TEST_ASSERT_EQUAL_STRING("i2c-board", s3["pmu"]["bus"]);
+  TEST_ASSERT_EQUAL(0x6A, s3["pmu"]["address"].as<int>());
+
+  // Waveshare: the PMU only, no divider.
+  JsonDocument ws;
+  writePinsJson(kWaveshareAmoled175, "waveshare", {}, ws.to<JsonObject>());
+  TEST_ASSERT_TRUE(ws["battery"].isNull());
+  TEST_ASSERT_EQUAL_STRING("AXP2101", ws["pmu"]["type"]);
+  TEST_ASSERT_EQUAL(0x34, ws["pmu"]["address"].as<int>());
 }
 
 void test_wake_pin() {
@@ -606,6 +615,68 @@ void test_legacy_dac_number_unchanged() {
   TEST_ASSERT_EQUAL_STRING("this board has no DAC", r.error.c_str());
 }
 
+// The Waveshare board's TCA9554: free EXIO0..2, board inputs EXIO3..6, EXIO7
+// reserved.
+std::vector<DeviceDef> onboardExpander() {
+  DeviceDef d;
+  d.type = findDeviceType("tca9554");
+  d.bus = "i2c-board";
+  d.address = 0x20;
+  d.id = deviceIdFor(*d.type, d.bus, d.address);
+  d.fixed = true;
+  d.notes = kWaveshareAmoled175ExpanderNotes;
+  d.noteCount = sizeof(kWaveshareAmoled175ExpanderNotes) / sizeof(ChannelNote);
+  return {d};
+}
+
+void test_onboard_expander_channels() {
+  const std::vector<DeviceDef> dev = onboardExpander();
+  auto checkOb = [&](const char* cfg) {
+    JsonDocument d = parse(cfg);
+    return checkItemPins(kLilyGoAmoled, {}, d.as<JsonObjectConst>(), "", dev);
+  };
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20", dev[0].id.c_str());
+  // EXIO0 is free, as an output and as an input.
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalOutput","id":"d","pin":"tca9554-i2c-board-20:0"})").ok);
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalInput","id":"i","pin":"tca9554-i2c-board-20:2"})").ok);
+  // No pull-up on the chip, but that is not an error (unlike the PCF8575).
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalInput","id":"i","pin":"tca9554-i2c-board-20:1","pullup":true})").ok);
+  // EXIO4 (power button) may be read ...
+  TEST_ASSERT_TRUE(checkOb(
+      R"({"type":"DigitalInput","id":"btn","pin":"tca9554-i2c-board-20:4"})").ok);
+  // ... but not driven.
+  auto r = checkOb(
+      R"({"type":"DigitalOutput","id":"d","pin":"tca9554-i2c-board-20:4"})");
+  TEST_ASSERT_FALSE(r.ok);
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20:4 is input-only (PWR-Taste)", r.error.c_str());
+  // EXIO7 belongs to the board: neither reading nor driving.
+  r = checkOb(
+      R"({"type":"DigitalInput","id":"i","pin":"tca9554-i2c-board-20:7"})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20:7 is reserved by the board (GNSS-Reset (LC76G))",
+                           r.error.c_str());
+  r = checkOb(
+      R"({"type":"DigitalOutput","id":"d","pin":"tca9554-i2c-board-20:8"})");
+  TEST_ASSERT_EQUAL(400, r.status);
+  TEST_ASSERT_EQUAL_STRING("tca9554-i2c-board-20:8 does not exist", r.error.c_str());
+
+  JsonDocument doc;
+  writePinsJson(kLilyGoAmoled, "waveshare", {}, doc.to<JsonObject>(), dev);
+  JsonArrayConst v = doc["virtual"];
+  TEST_ASSERT_EQUAL(8, v.size());
+  TEST_ASSERT_TRUE(v[0]["gpio"].as<bool>());
+  TEST_ASSERT_FALSE(v[0]["reserved"].as<bool>());
+  TEST_ASSERT_FALSE(v[0]["inputOnly"].as<bool>());
+  TEST_ASSERT_TRUE(v[4]["inputOnly"].as<bool>());
+  TEST_ASSERT_EQUAL_STRING("PWR-Taste", v[4]["note"]);
+  TEST_ASSERT_TRUE(v[7]["reserved"].as<bool>());
+  TEST_ASSERT_EQUAL_STRING("EXIO7", v[7]["label"]);
+}
+
 void test_pins_json_virtual_channels() {
   auto uses = usesOf({R"({"type":"AnalogOutput","id":"boil","pin":"mcp4728-i2c-board-60:1","mode":"dac"})"});
   JsonDocument doc;
@@ -669,7 +740,7 @@ int main(int, char**) {
   RUN_TEST(test_pins_json_capabilities);
   RUN_TEST(test_wake_pin);
   RUN_TEST(test_waveshare_board_pins);
-  RUN_TEST(test_m5_stopwatch_board_pins);
+  RUN_TEST(test_waveshare_lcd5b_board_pins);
   RUN_TEST(test_parse_pin_ref);
   RUN_TEST(test_collect_device_channel);
   RUN_TEST(test_device_channel_checks);
@@ -680,5 +751,6 @@ int main(int, char**) {
   RUN_TEST(test_gpio_numbers_unchanged);
   RUN_TEST(test_legacy_dac_number_unchanged);
   RUN_TEST(test_pins_json_virtual_channels);
+  RUN_TEST(test_onboard_expander_channels);
   return UNITY_END();
 }

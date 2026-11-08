@@ -130,6 +130,15 @@ void test_summary_line_carries_the_figures() {
   TEST_ASSERT_TRUE(back["mash"].isNull());
 }
 
+// A recipe whose volume is the pitched wort says so; without the field it is the knock-out.
+void test_summary_line_carries_the_volume_basis() {
+  JsonDocument doc;
+  deserializeJson(doc, "{\"id\":\"abc\",\"volumeL\":19,\"volumeBasis\":\"cold\"}");
+  TEST_ASSERT_EQUAL_STRING("{\"id\":\"abc\",\"volumeL\":19,\"volumeBasis\":\"cold\"}", recipeSummaryLine(doc, "abc").c_str());
+  deserializeJson(doc, "{\"id\":\"abc\",\"volumeL\":20}");
+  TEST_ASSERT_EQUAL_STRING("{\"id\":\"abc\",\"volumeL\":20}", recipeSummaryLine(doc, "abc").c_str());
+}
+
 void test_brew_summary_line_keeps_the_occupancy_fields() {
   JsonDocument doc;
   deserializeJson(doc,
@@ -223,6 +232,7 @@ int main(int, char**) {
   RUN_TEST(test_summary_line_leaves_out_fields_the_recipe_lacks);
   RUN_TEST(test_summary_line_carries_the_version_fields);
   RUN_TEST(test_summary_line_carries_the_figures);
+  RUN_TEST(test_summary_line_carries_the_volume_basis);
   RUN_TEST(test_brew_summary_line_keeps_the_occupancy_fields);
   RUN_TEST(test_brew_summary_line_carries_the_results);
   RUN_TEST(test_brew_summary_line_leaves_out_fields_the_brew_lacks);

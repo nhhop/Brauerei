@@ -107,8 +107,17 @@ Registertreiber); `ImuTiltSensor` (Winkel aus einem eigenen `ImuSensor`,
 gelerntem Kreisel-Nullpunkt, `tilt` als Neigung der Z-Achse gegen die
 Senkrechte, `dir` als Richtung der Neigung — Peilung der oberen Seite in
 der X/Y-Ebene, `atan2(roll, pitch)`, 0…360° (0 = −X-Seite oben, 90 = +Y,
-180 = +X, 270 = −Y), unter 0,5° Neigung ungültig; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 11;
-kein Gierwinkel, der braucht ein Magnetometer), `HX711LoadCellSensor`
+180 = +X, 270 = −Y), unter 0,5° Neigung ungültig; per `setChannelMask()` zusätzlich die Rohkanäle, bis zu 12;
+`motion` ist ein Binärkanal „Gerät wird angehoben, gekippt oder bewegt“: Drehrate
+oder Abweichung des Betrags der Beschleunigung von 1 g über `setMotionThreshold()`
+(°/s, Default 20; 0,004 g je °/s), zusammen mindestens 100 ms lang, danach 3 s Nachlauf —
+Zittern auf dem Tisch und einzelne Stöße lösen nicht aus;
+kein Gierwinkel, der braucht ein Magnetometer), Lade-ICs (PMU) über I2C mit
+gemeinsamer Basis `PmuSensor` (Akkuspannung `vbat` und USB-Spannung `vbus` in V,
+Binärkanal `charging` beim Vor- und Schnellladen, höchstens ein Lesevorgang pro
+Sekunde, Retry und Hot-Plug wie bei den IMUs): `SY6970Sensor` (SensorLib, dazu
+Ladestrom `ichg` in A; `begin()` setzt den Chip auf seine Lade-Defaults zurück)
+und `AXP2101Sensor` (SensorLib, dazu Fuel-Gauge `soc` in %), `HX711LoadCellSensor`
 (Wägezelle, eigener Bit-Bang-Treiber), `MqttGenericSensor` (frei
 konfigurierbarer Topic, roh oder JSON-Feld-Extraktion, für Fremdgeräte),
 `CalibratedSensor` (Decorator: umhüllt einen beliebigen Sensor und rechnet
@@ -199,13 +208,19 @@ einen anderen Kanal eines Mehrkanal-Sensors, und `paramsJson` meldet ihn als
 `sensor: "<id>.<key>"` (bei Einkanal-Sensoren wie bisher die nackte ID).
 
 **Transport** (`src/transport/`): `ITransport`-Interface
-(`publish`/`subscribe`/`tick`/`connected`/`lastErrorMessage`), Implementierungen
+(`publish`/`subscribe`/`unsubscribe`/`tick`/`connected`/`lastErrorMessage`;
+`subscribe` nimmt optional einen Besitzer-Zeiger, `unsubscribe(topic, owner)`
+entfernt dann nur dessen Abos — wer in seinem Callback `this` fängt, meldet
+sich so im Destruktor ab, wie `RemoteSensor`, `RemoteActuator` und
+`MqttGenericSensor` es tun), Implementierungen
 `MqttTransport` (PubSubClient-Wrapper, Reconnect-Backoff; der Verbindungsaufbau
 läuft in einem kurzlebigen FreeRTOS-Task, `tick()` blockiert also auch bei
 unerreichbarem Broker nicht; `connected()`/`lastErrorMessage()` sind aus jedem
 Task lesbar, alle übrigen Methoden gehören in den Task, der `tick()` ruft), `EspNowTransport`
-(Broadcast für Meta/State, Retain-Emulation via Retained-Request,
-250-Byte-Paketlimit; nicht-retained Befehle wie `/set` gehen unicast mit
+(Broadcast für Meta/State, Retain-Emulation via Retained-Request — die Antwort
+geht gestaffelt aus `tick()` raus, ein Topic alle 20 ms; Paketlimit 250 Byte,
+mit ESP-NOW v2 (ESP-IDF ≥ 5.4) 1470 Byte, ein zu großes Paket bleibt in
+`lastErrorMessage()` stehen, bis das Topic wieder passt; nicht-retained Befehle wie `/set` gehen unicast mit
 ESP-NOW-ACK an den Knoten, der das Eltern-Topic zuletzt gesendet hat — die
 MAC wird aus empfangenen Paketen gelernt, nichts wird gespeichert; Ziel
 unbekannt → Broadcast; Zustellfehler erscheinen in `lastErrorMessage()`),
@@ -222,7 +237,10 @@ Der Client-Connect blockiert bei unerreichbarem Server bis zu
 `-DWEBSOCKETS_TCP_TIMEOUT=1000` in `build_flags` empfohlen.
 
 **Remote** (`src/remote/`): `RemoteSensor`/`RemoteActuator` (proxyen einen
-Sensor/Aktor eines anderen Knotens transparent über einen `ITransport&`),
+Sensor/Aktor eines anderen Knotens transparent über einen `ITransport&`;
+kommt State, aber keine Meta, fragen sie per `ITransport::requestRetained()` nach —
+beim 1., 2., 4. … 64. State ohne Meta, danach bei jedem 64. —, weil ein verlorener
+ESP-NOW-Broadcast sonst nie wiederholt wird),
 `RemotePublisher` (veröffentlicht lokale Items automatisch: Meta retained
 bei `attach()`, State zyklisch, Controller-Tuning eingehend über `/tune`).
 Alle drei sind komplett transport-agnostisch. Topic-Schema

@@ -32,8 +32,8 @@ Fixiert in [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1, Single Source 
 
 ```powershell
 # Firmware (in firmware/)
-pio run -e esp32dev              # compile-smoke
-pio run -e esp32dev -t upload    # flash
+pio run -e lilygo_t_display_s3_amoled              # compile-smoke
+pio run -e lilygo_t_display_s3_amoled -t upload    # flash
 pio device monitor               # serial @ 115200
 
 # Web (in web/)
@@ -75,22 +75,35 @@ pnpm typecheck
   Variant per Default auf SDA 18 / SCL 17, und GPIO 17 ist der Panel-Reset. Deshalb startet
   `main.cpp` `Wire` als Allererstes auf `BREWCTL_I2C_SDA/SCL`.
 - **Waveshare ESP32-S3-Touch-AMOLED-1.75** (`waveshare_s3_amoled_175`, seit 2026-10-07, am
-  Gerät noch nicht geprüft): gleicher Chip und gleiches Panel wie das LilyGo, andere Pins —
+  Gerät seit 2026-10-19 geprüft): gleicher Chip und gleiches Panel wie das LilyGo, andere Pins —
   QSPI CS 12, SCLK 38, D0–D3 4–7, RST 39, **kein** EN-Pin; Touch CST9217 0x5A (INT 11, RST 40);
   I²C SDA 15 / SCL 14 mit QMI8658 0x6B (normales Item), PCF85063 0x51, AXP2101 0x34, ES8311
   0x18, ES7210 0x40, TCA9554 0x20; SD per **SDMMC 1-Bit** (CLK 2, CMD 1, D0 3,
   `BREWCTL_SD_MMC_*`). Quelle: Waveshares `pin_config.h`/`HARDWARE_REFERENCE.md`.
-- **M5Stack StopWatch** (`m5stack_stopwatch`, seit 2026-10-07, am Gerät noch nicht geprüft):
-  gleicher Chip und gleiches Panel, **kein SD** (LittleFS, 3,4 MB). Maßgeblich ist der
-  StopWatch-Code in **M5GFX** (`src/M5GFX.cpp`) und M5Unified, **nicht** docs.m5stack.com — die
-  Doku nennt GPIO 38 (TE) als D0. QSPI CS 39, SCLK 40, D0–D3 41/42/46/45; Panel-Reset,
-  -Versorgung und Touch-Reset hängen am Expander **M5IOE1** (0x4F), Watchdog und 3,3-V-Rails am
-  **M5PM1** (0x6E) — beides in `src/BoardInit.cpp`, vor dem Display. Touch CST820 (0x15,
-  `TouchDrvCST816`) mit halber Auflösung. I²C SDA 47 / SCL 48, BMI270 0x68 als normales Item.
+- **Waveshare ESP32-S3-Touch-LCD-5B** (`waveshare_s3_lcd_5b`, seit 2026-11-01, am Gerät seit
+  2026-11-02 mit Display): 1024×600-RGB-Panel, GT911 (0x5D), I²C SDA 8 / SCL 9. Das Panel läuft
+  über den IDF-RGB-Treiber (`esp_lcd_new_rgb_panel`, **kein** Arduino_GFX) in `DisplayUI.cpp`
+  hinter `BREWCTL_DISPLAY_RGB`; LVGL rendert in einen 37-kB-Puffer im internen RAM und
+  `flush()` kopiert per `esp_lcd_panel_draw_bitmap` ins PSRAM-Framebuffer (`LV_COLOR_16_SWAP=0`
+  nur für dieses Board). **Nicht wiederholen:** ein Doppelframebuffer in LVGL-Direct-Modus mit
+  30 MHz Pixeltakt flackerte und ruckelte, ein Renderpuffer im PSRAM war spürbar langsamer.
+  Kein `Serial.print` in der Display-Schleife: ein blockierter USB-CDC verzögert die
+  Touch-Anzeige um Sekunden. Der GT911-Reset (INT low, Adresse 0x5D) und der Panel-Reset laufen
+  in `BoardInit.cpp`. Statt der runden Seiten baut `DisplayWide.cpp` ein eigenes breites Layout
+  (Tabs, Kachelübersicht, Detailblatt mit Leiste, Not-Aus-Bildschirm, WLAN-Dialog mit
+  `lv_qrcode`); gemeinsame Helfer stehen in `DisplayCommon.h`. `LV_MEM_SIZE` ist hier 96 KB, der
+  Zeichenpuffer bleibt 466×40. Touch- und
+  Panel-Reset, Backlight und SD-CS hängen am **CH422G** (SensActCtrl `CH422G`, `BoardInit.cpp`),
+  SD per SPI (MOSI 11, SCK 12, MISO 13) mit CS dauerhaft low über den Expander; die SD-Bibliothek
+  bekommt GPIO 6 als Attrappe. Der Chip ist schreibgeschützt und hat eine gemeinsame Richtung
+  für `EXIO0`–`EXIO7`; sein Schatten liegt prozessweit im Treiber. Quelle: docs.waveshare.com.
 - **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED`,
-  `BREWCTL_BOARD_WAVESHARE_AMOLED175` bzw. `BREWCTL_BOARD_M5_STOPWATCH` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
-  Display-Pins (`DisplayUI.cpp`). Ein S3-Build ohne Flag bricht mit `#error` ab — vorher galt
-  jedes S3-Board als LilyGo.
+  `BREWCTL_BOARD_WAVESHARE_AMOLED175` bzw. `BREWCTL_BOARD_WAVESHARE_LCD5B` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
+  Display-Pins (`DisplayUI.cpp`). Ein Target-Build ohne Flag bricht mit `#error` ab; seit Arduino
+  Core 3 gibt es nur noch S3-Boards (die M5Stack StopWatch ist seit 2026-11-08 entfernt, die
+  Hardware ist zurück). Die Tabellen von esp32dev und lolin_s2_mini liegen als
+  Test-Fixture in `firmware/test/TestBoards.h` (sie decken DAC, Input-only-Pins, ADC2 und Errata ab).
+  `BREWCTL_ASSETS_IN_PLACE` samt Notfall-Upload-Seite bleibt bewusst im Code, ohne Env.
 - Das Display wird seit 2026-09-24 angesteuert, Code in `src/display/`: `DisplayUI` übernimmt
   Panel, Touch und LVGL, `DisplayPages` die Inhalte. Alles steht hinter `BREWCTL_HAS_DISPLAY`.
   Einen Überblick gibt `README.md` → „Rundes Touch-Display“. Regeln:
@@ -106,11 +119,15 @@ pnpm typecheck
     identischer Init-Sequenz kein Bild.
   - Umlaute gibt es nur mit den eigenen Fonts in `src/display/fonts/`; die eingebauten
     `lv_font_montserrat_*` haben keine. Wie man die Fonts neu erzeugt, steht im README dort.
-  - Jede Seite belegt LVGL-Pool (`LV_MEM_SIZE` 32 KB, etwa 1,5 KB pro Seite). Ist der Pool
+  - Jede Seite belegt LVGL-Pool (`LV_MEM_SIZE` 32 KB im PSRAM über `LV_MEM_POOL_ALLOC`, etwa 1,5 KB pro Seite). Ist der Pool
     voll, endet das im Watchdog-Reboot. Deshalb gilt die Grenze `kMaxPages`.
   - Ist das Display schwarz (Burn-in-Schutz), läuft `lv_timer_handler()` nicht. Auch die
     Timer von `DisplayPages` stehen dann still und laufen erst nach dem Aufwecken nach.
     Nichts, was ohne Display weiterlaufen muss, gehört in einen LVGL-Timer.
+  - **Wecken bei Bewegung** (`DisplayUI::motionWake_()`) liest den Kanal `motion` des
+    `orientationSensor`-Items alle 250 ms direkt aus der Registry — nicht aus einem
+    LVGL-Timer, weil der bei schwarzem Display steht. Der Kanal muss im Item gewählt sein
+    (kein eingebauter Zwang, damit die Kanalwahl die einzige Quelle bleibt).
   - Den Touch nur über `readTouch()` bzw. `noteTouch()` in `DisplayUI.cpp` lesen. Jeder
     `getTouchPoints()`-Aufruf quittiert den Frame, ein zweiter Leser sieht leere Frames.
   - **Drehung** (`display.rotation`/`orientationSensor`, seit 2026-10-07) passiert nur in
@@ -118,22 +135,15 @@ pnpm typecheck
     `readTouch()` dreht zurück (`DisplayOrientation.h`). Seiten-Code muss nichts davon wissen.
     Der `rounder()` bleibt gültig, weil 465 ungerade ist — bei einem Panel mit gerader
     Kantenlänge nicht mehr.
-- esp32dev/lolin_s2_mini nutzen LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
-  Partitionstabelle `partitions_4mb_littlefs.csv` (256 KB Datenpartition, siehe PLAN.md/README.md).
-  `firmware/data/www/` enthält nur die gzippten UI-Assets (nicht die unkomprimierten Originale —
-  ESPAsyncWebServer serviert .gz transparent), und **ohne `modules/`**: `pnpm build:lfs` (in `web/`)
-  baut und legt das so ab. Deploy über `pio run -t uploadfs` (USB) oder,
-  wenn kein serieller Zugriff möglich ist, über `POST /api/update/assets` oder „Installieren“
-  mit dem normalen `webui.tar`. Das enthält seit 2026-09-26 **nur `.gz`-Dateien** (~160 KB,
-  `pnpm build:sd` ersetzt die Originale); roh + gzip (~610 KB) passte nicht in die 256-KB-
-  Partition. Optionale UI-Pakete (`dist/modules/`, derzeit Rezepte und Rechner) sind für diese Boards nicht
-  vorgesehen: `webui.tar` kommt ohne sie, `webui-full.tar` (mit Paketen) bekommen die SD-Boards
-  (Auswahl in `FirmwareUpdater::fetchReleaseMeta`). Beide Envs setzen `BREWCTL_ASSETS_IN_PLACE`:
-  `/www` wird vor dem Entpacken geleert (altes + neues Bundle passen nicht gleichzeitig), bei Fehlschlag liefert die
-  Firmware eine eingebettete Notfall-Upload-Seite. Upload und „Installieren“ teilen sich
-  diese Logik in `src/AssetInstall.h` — dort ändern, nicht in einem der beiden Aufrufer.
-  Das Flag gehört zur **kleinen Partition, nicht zu LittleFS** — ein neues Board ohne SD, aber mit größerer Datenpartition lässt es weg
-  und behält den atomaren `/www.new`-Tausch.
+- **LittleFS statt SD** (`BREWCTL_USE_LITTLEFS`) steht im Code, setzt aber seit der StopWatch
+  (2026-11-08 entfernt) kein Env mehr. **Bleibt bewusst** für künftige S3-Boards ohne SD-Slot
+  (Nutzer, 2026-11-08) — nicht als toten Code entfernen. Dafür gedacht: `firmware/data/www/` nur mit den gzippten
+  UI-Assets, **ohne `modules/`** (`pnpm build:lfs` in `web/`), Deploy per `pio run -t uploadfs`,
+  `POST /api/update/assets` oder „Installieren“ mit dem schlanken `webui.tar` (Auswahl in
+  `FirmwareUpdater::fetchReleaseMeta`). Upload und „Installieren“ teilen sich die Logik in
+  `src/AssetInstall.h` — dort ändern, nicht in einem der beiden Aufrufer. Ebenso ohne Env:
+  `BREWCTL_ASSETS_IN_PLACE` (`/www` vor dem Entpacken leeren, für die frühere 256-KB-Partition
+  von esp32dev/lolin_s2_mini, 2026-10-27 entfernt).
 - Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md`/`SESSION-archive.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).
 - Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum Root-SESSION.md-Eintrag im Root-`PLAN.md` → „Bugs & bekannte Einschränkungen" eintragen, statt nur im Session-Log zu vergraben.
 - Wird ein solcher Eintrag später gefixt: den Punkt **ersatzlos aus `PLAN.md` entfernen** (kein durchgestrichener „erledigt"-Eintrag, keine Pointer-Zeile) und stattdessen einen SESSION.md-Eintrag mit Root Cause / Umsetzung / Verifikation anlegen. `PLAN.md` führt nur Offenes.

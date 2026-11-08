@@ -101,6 +101,27 @@ void test_malformed_message_keeps_previous_reading() {
   TEST_ASSERT_EQUAL_FLOAT(18.75f, r.value);
 }
 
+// Deleting one of two sensors on a shared topic must drop only its own
+// callback (it captures `this`), not the other sensor's.
+void test_destroyed_sensor_unsubscribes_only_itself() {
+  MockTransport t;
+  MqttGenericSensor hum("hum", t, "zigbee2mqtt/aussensensor",
+                        Quantity::Humidity, "%", 0.0f, 100.0f, 1.0f, "humidity");
+  hum.begin();
+  {
+    MqttGenericSensor temp("temp", t, "zigbee2mqtt/aussensensor",
+                           Quantity::Temperature, "\xc2\xb0""C", -40.0f, 80.0f, 0.1f,
+                           "temperature");
+    temp.begin();
+    TEST_ASSERT_EQUAL(2u, t.subscriptionCount());
+  }
+  TEST_ASSERT_EQUAL(1u, t.subscriptionCount());
+
+  t.publish("zigbee2mqtt/aussensensor",
+            "{\"temperature\":18.75,\"humidity\":55.2}", false);
+  TEST_ASSERT_EQUAL_FLOAT(55.2f, hum.channel(0).reading.value);
+}
+
 void test_meta_reflects_constructor_args() {
   MockTransport t;
   MqttGenericSensor s("aussentemp", t, "topic", Quantity::Pressure, "bar",
@@ -162,6 +183,7 @@ int main(int, char**) {
   RUN_TEST(test_raw_message_updates_reading);
   RUN_TEST(test_json_field_message_updates_reading);
   RUN_TEST(test_malformed_message_keeps_previous_reading);
+  RUN_TEST(test_destroyed_sensor_unsubscribes_only_itself);
   RUN_TEST(test_meta_reflects_constructor_args);
   RUN_TEST(test_channel_count_is_one);
 

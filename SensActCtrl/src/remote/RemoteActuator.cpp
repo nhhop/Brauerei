@@ -1,6 +1,7 @@
 #include "RemoteActuator.h"
 
 #include "MetaJson.h"
+#include "MetaRetry.h"
 #include "Topics.h"
 
 namespace SensActCtrl {
@@ -12,6 +13,11 @@ RemoteActuator::RemoteActuator(ITransport& transport, const char* deviceId,
       actuatorId_(actuatorId),
       localId_(actuatorId) {}
 
+RemoteActuator::~RemoteActuator() {
+  if (!metaTopic_.empty())  transport_->unsubscribe(metaTopic_.c_str(), this);
+  if (!stateTopic_.empty()) transport_->unsubscribe(stateTopic_.c_str(), this);
+}
+
 void RemoteActuator::begin() {
   const char* pfx = prefix_.c_str();
   const char* d   = deviceId_.c_str();
@@ -21,9 +27,9 @@ void RemoteActuator::begin() {
   setTopic_   = remote::actuatorSet(d, id, pfx);
 
   transport_->subscribe(metaTopic_.c_str(),
-                        [this](const char*, const char* p, size_t n) { onMeta(p, n); });
+                        [this](const char*, const char* p, size_t n) { onMeta(p, n); }, this);
   transport_->subscribe(stateTopic_.c_str(),
-                        [this](const char*, const char* p, size_t n) { onState(p, n); });
+                        [this](const char*, const char* p, size_t n) { onState(p, n); }, this);
 }
 
 void RemoteActuator::write(float value) {
@@ -53,10 +59,12 @@ void RemoteActuator::onState(const char* payload, size_t /*length*/) {
   if (remote::parseState(payload, v, t, ok) && ok) {
     state_ = v;
   }
+  if (!metaReceived_ && remote::shouldRequestMeta(++statesWithoutMeta_))
+    transport_->requestRetained();
 }
 
 void RemoteActuator::onMeta(const char* payload, size_t /*length*/) {
-  remote::parseActuatorMeta(payload, meta_, unitStorage_);
+  if (remote::parseActuatorMeta(payload, meta_, unitStorage_)) metaReceived_ = true;
 }
 
 }  // namespace SensActCtrl

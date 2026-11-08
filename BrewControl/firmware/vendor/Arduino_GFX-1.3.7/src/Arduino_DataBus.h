@@ -143,6 +143,7 @@ typedef volatile ARDUINOGFX_PORT_t *PORTreg_t;
 #include <soc/gpio_sig_map.h>
 #include <soc/lcd_cam_reg.h>
 #include <soc/lcd_cam_struct.h>
+#include <sys/queue.h> // BrewControl: LIST_HEAD/LIST_ENTRY, no longer pulled in transitively on IDF 5
 
 typedef struct esp_lcd_i80_bus_t esp_lcd_i80_bus_t;
 typedef struct lcd_panel_io_i80_t lcd_panel_io_i80_t;

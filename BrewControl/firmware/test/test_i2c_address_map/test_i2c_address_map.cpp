@@ -107,12 +107,42 @@ void test_reserved_address_is_409() {
   TEST_ASSERT_TRUE(check(ws.reserved, ws.reservedCount, {},
                          R"({"type":"QMI8658","id":"q","bus":"i2c-board"})").ok);
 
-  // StopWatch: the expander's 0x4F is taken, the onboard BMI270 (0x68) free.
-  const BusDef m5 = busFromFixed(kM5StopWatchBuses[0]);
-  TEST_ASSERT_EQUAL(409, check(m5.reserved, m5.reservedCount, {},
-                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":79})").status);
-  TEST_ASSERT_TRUE(check(m5.reserved, m5.reservedCount, {},
-                         R"({"type":"BMI270","id":"i","bus":"i2c-board"})").ok);
+  // Waveshare LCD-5B: the CH422G's four addresses, the touch and the RTC are
+  // taken (0x38, 0x5D); the rest of the range stays free.
+  const BusDef l5 = busFromFixed(kWaveshareLcd5bBuses[0]);
+  TEST_ASSERT_EQUAL(409, check(l5.reserved, l5.reservedCount, {},
+                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":56})").status);  // 0x38
+  TEST_ASSERT_EQUAL(409, check(l5.reserved, l5.reservedCount, {},
+                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":93})").status);  // 0x5D
+  TEST_ASSERT_TRUE(check(l5.reserved, l5.reservedCount, {},
+                         R"({"type":"BME280","id":"b","bus":"i2c-board","address":118})").ok);  // 0x76
+}
+
+void test_pmu_item_may_use_its_reserved_address() {
+  auto u = usesOf({R"({"type":"SY6970","id":"p"})", R"({"type":"AXP2101","id":"a"})"});
+  TEST_ASSERT_EQUAL(2, u.size());
+  TEST_ASSERT_EQUAL(0x6A, u[0].addr);
+  TEST_ASSERT_EQUAL(0x34, u[1].addr);
+
+  // LilyGo: 0x6A is open for the SY6970 item, still closed for anything else.
+  const BusDef lg = busFromFixed(kLilyGoAmoledBuses[0]);
+  TEST_ASSERT_TRUE(check(lg.reserved, lg.reservedCount, {},
+                         R"({"type":"SY6970","id":"pmu","bus":"i2c-board"})").ok);
+  TEST_ASSERT_EQUAL(409, check(lg.reserved, lg.reservedCount, {},
+                               R"({"type":"BME280","id":"b","bus":"i2c-board","address":106})").status);
+  TEST_ASSERT_EQUAL(409, check(lg.reserved, lg.reservedCount, {},
+                               R"({"type":"AXP2101","id":"a","bus":"i2c-board","address":106})").status);
+
+  // A second PMU item on the same chip is an ordinary address conflict.
+  auto uses = usesOf({R"({"type":"SY6970","id":"pmu","bus":"i2c-board"})"});
+  auto r = check(lg.reserved, lg.reservedCount, uses,
+                 R"({"type":"SY6970","id":"pmu2","bus":"i2c-board"})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_TRUE(r.error.find("pmu") != std::string::npos);
+
+  const BusDef ws = busFromFixed(kWaveshareAmoled175Buses[0]);
+  TEST_ASSERT_TRUE(check(ws.reserved, ws.reservedCount, {},
+                         R"({"type":"AXP2101","id":"pmu","bus":"i2c-board"})").ok);
 }
 
 void test_replace_ignores_own_address() {
@@ -201,6 +231,7 @@ int main(int, char**) {
   RUN_TEST(test_address_taken_is_409_naming_owner);
   RUN_TEST(test_same_address_on_two_buses_ok);
   RUN_TEST(test_reserved_address_is_409);
+  RUN_TEST(test_pmu_item_may_use_its_reserved_address);
   RUN_TEST(test_replace_ignores_own_address);
   RUN_TEST(test_device_addresses_are_collected);
   RUN_TEST(test_device_and_sensor_share_one_address_space);

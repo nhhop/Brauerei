@@ -5,8 +5,14 @@
 #include <Arduino.h>
 #include <TouchDrv.hpp>
 #include <Wire.h>
+#if defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
+#define BREWCTL_DISPLAY_RGB 1
+#include <esp_lcd_panel_ops.h>
+#include <esp_lcd_panel_rgb.h>
+#else
 #include <databus/Arduino_ESP32QSPI.h>
 #include <display/Arduino_CO5300.h>
+#endif
 #include <esp_heap_caps.h>
 #include <lvgl.h>
 #include <SensActCtrl.h>
@@ -19,24 +25,17 @@
 namespace BrewControl {
 namespace {
 
-#if defined(BREWCTL_BOARD_M5_STOPWATCH)
-// From M5GFX's StopWatch setup (the M5 docs page lists the data lines wrong).
-// Panel reset and supply are M5IOE1 pins, handled by BoardInit.cpp, so the
-// driver falls back to a software reset.
-constexpr int8_t kLcdCs = 39;
-constexpr int8_t kLcdSck = 40;
-constexpr int8_t kLcdD0 = 41;
-constexpr int8_t kLcdD1 = 42;
-constexpr int8_t kLcdD2 = 46;
-constexpr int8_t kLcdD3 = 45;
-constexpr int8_t kLcdRst = -1;
-constexpr int8_t kLcdEn = -1;
-constexpr int8_t kTouchRst = -1;  // M5IOE1 IO4, reset in BoardInit.cpp
-// CST820 (CST816 register set): reports 0..233, half the panel resolution, in
-// the panel's own orientation (M5GFX: x/y_max 233, offset_rotation 0).
-using TouchChip = TouchDrvCST816;
-constexpr uint8_t kTouchAddr = 0x15;
-constexpr int16_t kTouchScale = 2;
+#if defined(BREWCTL_DISPLAY_RGB)
+// Waveshare ESP32-S3-Touch-LCD-5B: 1024x600 parallel RGB (ST7262, no init
+// commands), pins and timings from Waveshare's 05_IO_Test demo, checked on the
+// device with a spike (2026-11-02). Panel reset, backlight and touch reset are
+// CH422G pins, set by BoardInit.cpp; the backlight (EXIO2) only switches, so
+// there is no dimming.
+constexpr int16_t kLcdW = 1024;
+constexpr int16_t kLcdH = 600;
+constexpr uint8_t kBacklightPin = 2;  // CH422G EXIO2
+using TouchChip = TouchDrvGT911;
+constexpr uint8_t kTouchAddr = 0x5D;
 constexpr bool kTouchMirror = false;
 #elif defined(BREWCTL_BOARD_WAVESHARE_AMOLED175)
 // Waveshare's examples/arduino/libraries/Mylibrary/pin_config.h. No enable
@@ -52,7 +51,6 @@ constexpr int8_t kLcdEn = -1;
 constexpr int8_t kTouchRst = 40;
 using TouchChip = TouchDrvCST92xx;
 constexpr uint8_t kTouchAddr = 0x5A;
-constexpr int16_t kTouchScale = 1;
 // The touch layer sits rotated 180 deg against the panel (Waveshare's example
 // mirrors both axes, as found on the LilyGo).
 constexpr bool kTouchMirror = true;
@@ -70,11 +68,11 @@ constexpr int8_t kLcdEn = 16;  // panel power
 constexpr int8_t kTouchRst = -1;
 using TouchChip = TouchDrvCST92xx;
 constexpr uint8_t kTouchAddr = 0x5A;
-constexpr int16_t kTouchScale = 1;
 // The touch layer sits rotated 180 deg against the panel (checked on the
 // device: a tap at the top edge reported the bottom, left reported right).
 constexpr bool kTouchMirror = true;
 #endif
+#ifndef BREWCTL_DISPLAY_RGB
 constexpr int16_t kLcdW = 466;
 constexpr int16_t kLcdH = 466;
 constexpr uint8_t kColOffset = 6;  // RAM is 480 wide, glass is 466, centred
@@ -82,6 +80,7 @@ constexpr uint8_t kColOffset = 6;  // RAM is 480 wide, glass is 466, centred
 // The library defaults to 8 MHz, which makes a full-screen redraw (424 KiB)
 // cost ~110 ms of loopTask time. Everything else on this bus is ours alone.
 constexpr int32_t kSpiHz = 40000000;
+#endif
 
 // Panel brightness (register 0x51) is 0..255; the settings hold percentages.
 // Never 0 while lit - that is the dark state.
@@ -99,7 +98,14 @@ constexpr uint32_t kDarkPollMs = 30;
 // Even line count, see rounder() - and the whole buffer must be DMA-capable,
 // because Arduino_ESP32QSPI::writeBytes() hands it to the SPI driver as is.
 constexpr uint16_t kBufLines = 40;
+#ifdef BREWCTL_DISPLAY_RGB
+// 37 kB like the round boards, kept after the move to the wide layout
+// (DisplayWide.cpp): LVGL renders in strips - 18 lines of the 1024 px panel -
+// and flush() copies each into the PSRAM framebuffer. Re-measure before widening.
+constexpr uint32_t kBufPx = 466u * kBufLines;
+#else
 constexpr uint32_t kBufPx = static_cast<uint32_t>(kLcdW) * kBufLines;
+#endif
 
 // Touch (TouchChip above) on the board's shared I2C bus, which main.cpp has
 // already started on BREWCTL_I2C_SDA/SCL. Polled from LVGL; the interrupt line
@@ -115,7 +121,11 @@ constexpr uint32_t kRotBufPx = 4096;
 uint16_t* g_rotBuf = nullptr;
 uint16_t g_rotation = 0;  // clockwise, 0/90/180/270
 
+#ifdef BREWCTL_DISPLAY_RGB
+esp_lcd_panel_handle_t g_panel = nullptr;
+#else
 Arduino_CO5300* g_gfx = nullptr;
+#endif
 lv_disp_draw_buf_t g_drawBuf;
 lv_disp_drv_t g_dispDrv;
 TouchChip g_touch;
@@ -150,6 +160,7 @@ void noteTouch(bool touched) {
   }
 }
 
+#ifndef BREWCTL_DISPLAY_RGB
 // The CO5300 ignores address windows narrower or shorter than 2 px, so every
 // invalidated area is widened to start on an even and end on an odd pixel.
 void rounder(lv_disp_drv_t*, lv_area_t* a) {
@@ -196,22 +207,44 @@ void flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
   }
   lv_disp_flush_ready(drv);
 }
+#else
+// Native-order RGB565 (LV_COLOR_16_SWAP=0, lv_conf.h). draw_bitmap copies the
+// block into the PSRAM framebuffer and writes the cache back before it returns.
+// The panel reads that buffer while it is being written, so a block can show
+// up torn for a frame during a swipe (PLAN.md).
+void flush(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
+  esp_lcd_panel_draw_bitmap(g_panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
+  lv_disp_flush_ready(drv);
+}
+#endif
+
+// Panel brightness for the AMOLEDs; the RGB panel's backlight only switches.
+void setLight(uint8_t level) {
+#ifdef BREWCTL_DISPLAY_RGB
+  SensActCtrl::CH422G io(Wire);
+  io.write(kBacklightPin, level > 0);
+#else
+  g_gfx->Display_Brightness(level);
+#endif
+}
 
 void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
   const TouchPoints& pts = g_touch.getTouchPoints();
   noteTouch(pts.hasPoints());
   if (pts.hasPoints() && !g_swallow) {
     const TouchPoint& p = pts.getPoint(0);
-    int16_t x = static_cast<int16_t>(p.x * kTouchScale);
-    int16_t y = static_cast<int16_t>(p.y * kTouchScale);
+    int16_t x = static_cast<int16_t>(p.x);
+    int16_t y = static_cast<int16_t>(p.y);
     if (x > kLcdW - 1) x = kLcdW - 1;
     if (y > kLcdH - 1) y = kLcdH - 1;
     if (kTouchMirror) {
       x = kLcdW - 1 - x;
       y = kLcdH - 1 - y;
     }
-    int16_t lx, ly;
+    int16_t lx = x, ly = y;
+#ifndef BREWCTL_DISPLAY_RGB  // the rectangular panel is not rotated
     unrotatePoint(g_rotation, kLcdW, x, y, lx, ly);
+#endif
     data->point.x = lx;
     data->point.y = ly;
     data->state = LV_INDEV_STATE_PRESSED;
@@ -225,6 +258,52 @@ void readTouch(lv_indev_drv_t*, lv_indev_data_t* data) {
 void DisplayUI::begin(const SettingsStore& settings, SensActCtrl::Registry& registry) {
   settings_ = &settings;
   registry_ = &registry;
+#ifdef BREWCTL_DISPLAY_RGB
+  esp_lcd_rgb_panel_config_t cfg = {};
+  cfg.clk_src = LCD_CLK_SRC_DEFAULT;
+  // Waveshare's demo clock: 18 Hz for this 1369 x 637 frame. 30 MHz with two
+  // framebuffers flickered on the device.
+  cfg.timings.pclk_hz = 16 * 1000 * 1000;
+  cfg.timings.h_res = kLcdW;
+  cfg.timings.v_res = kLcdH;
+  cfg.timings.hsync_pulse_width = 30;
+  cfg.timings.hsync_back_porch = 145;
+  cfg.timings.hsync_front_porch = 170;
+  cfg.timings.vsync_pulse_width = 2;
+  cfg.timings.vsync_back_porch = 23;
+  cfg.timings.vsync_front_porch = 12;
+  cfg.data_width = 16;
+  cfg.bits_per_pixel = 16;
+  cfg.num_fbs = 1;
+  // Bounce buffers keep the refresh off the PSRAM bus while Wi-Fi uses it.
+  cfg.bounce_buffer_size_px = kLcdW * 10;
+  cfg.hsync_gpio_num = 46;
+  cfg.vsync_gpio_num = 3;
+  cfg.de_gpio_num = 5;
+  cfg.pclk_gpio_num = 7;
+  cfg.disp_gpio_num = -1;
+  // B3..B7, G2..G7, R3..R7.
+  const int data[16] = {14, 38, 18, 17, 10, 39, 0, 45, 48, 47, 21, 1, 2, 42, 41, 40};
+  for (int i = 0; i < 16; ++i) cfg.data_gpio_nums[i] = data[i];
+  cfg.flags.fb_in_psram = 1;
+  if (esp_lcd_new_rgb_panel(&cfg, &g_panel) != ESP_OK || esp_lcd_panel_init(g_panel) != ESP_OK) {
+    Serial.println(F("Display: panel init failed"));
+    return;
+  }
+  // The framebuffer starts with whatever the PSRAM held: black before the
+  // backlight comes on.
+  {
+    static uint16_t blackLine[kLcdW];
+    for (int16_t y = 0; y < kLcdH; ++y)
+      esp_lcd_panel_draw_bitmap(g_panel, 0, y, kLcdW, y + 1, blackLine);
+  }
+  brightness_ = percentOf(255, settings.displayBrightness());
+  setLight(brightness_);
+
+  // Internal RAM: rendering into PSRAM was visibly slow, and flush() copies out.
+  auto* buf = static_cast<lv_color_t*>(heap_caps_malloc(
+      kBufPx * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+#else
   if (kLcdEn >= 0) {
     pinMode(kLcdEn, OUTPUT);
     digitalWrite(kLcdEn, HIGH);
@@ -241,10 +320,11 @@ void DisplayUI::begin(const SettingsStore& settings, SensActCtrl::Registry& regi
   g_gfx->fillScreen(0x0000);
   // The init sequence leaves it at 0.
   brightness_ = percentOf(255, settings.displayBrightness());
-  g_gfx->Display_Brightness(brightness_);
+  setLight(brightness_);
 
   auto* buf = static_cast<lv_color_t*>(heap_caps_malloc(
       kBufPx * sizeof(lv_color_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+#endif
   if (!buf) {
     Serial.println(F("Display: draw buffer alloc failed"));
     return;
@@ -256,13 +336,17 @@ void DisplayUI::begin(const SettingsStore& settings, SensActCtrl::Registry& regi
   g_dispDrv.hor_res = kLcdW;
   g_dispDrv.ver_res = kLcdH;
   g_dispDrv.flush_cb = flush;
+#ifndef BREWCTL_DISPLAY_RGB
   g_dispDrv.rounder_cb = rounder;
+#endif
   g_dispDrv.draw_buf = &g_drawBuf;
   lv_disp_drv_register(&g_dispDrv);
   lv_disp_trig_activity(nullptr);  // idle time counts from here, not from boot
 
   // A missing touch leaves a read-only display, not a dead one.
+#ifndef BREWCTL_DISPLAY_RGB  // the RGB board's touch reset is an expander pin, see BoardInit.cpp
   if (kTouchRst >= 0) g_touch.setPins(kTouchRst, -1);  // begin() pulses it
+#endif
   g_touchUp = g_touch.begin(Wire, kTouchAddr);
   if (g_touchUp) {
     lv_indev_drv_init(&g_indevDrv);
@@ -284,10 +368,18 @@ uint32_t DisplayUI::lastTouchMs() const {
 }
 
 void DisplayUI::off() {
-  if (ready_) g_gfx->displayOff();
+  if (!ready_) return;
+#ifdef BREWCTL_DISPLAY_RGB
+  setLight(0);
+#else
+  g_gfx->displayOff();
+#endif
 }
 
 void DisplayUI::updateRotation_() {
+#ifdef BREWCTL_DISPLAY_RGB
+  return;  // DisplayOrientation.h turns a square panel; this one stays upright
+#endif
   if (millis() - lastOrientMs_ < kOrientPollMs) return;
   lastOrientMs_ = millis();
   uint16_t want = settings_->displayRotation();
@@ -330,9 +422,28 @@ void DisplayUI::updateRotation_() {
   lv_obj_invalidate(lv_scr_act());  // the whole picture, turned
 }
 
+bool DisplayUI::motionWake_() {
+  if (millis() - lastMotionMs_ < kOrientPollMs) return moving_;
+  lastMotionMs_ = millis();
+  moving_ = false;
+  const String& id = settings_->displayOrientationSensor();
+  if (!settings_->displayWakeOnMotion() || !id.length()) return false;
+  if (SensActCtrl::Sensor* s = registry_->findSensor(id.c_str())) {
+    for (size_t i = 0; i < s->channelCount(); ++i) {
+      const SensActCtrl::Channel c = s->channel(i);
+      if (strcmp(c.key, "motion") == 0) {
+        moving_ = c.reading.valid && c.reading.value > 0.5f;
+        break;
+      }
+    }
+  }
+  return moving_;
+}
+
 void DisplayUI::tick(bool holdAwake) {
   if (!ready_) return;
   updateRotation_();
+  holdAwake = motionWake_() || holdAwake;
   if (power_ != Power::Off) {
     lv_timer_handler();
   } else if (g_touchUp && millis() - lastPollMs_ >= kDarkPollMs) {
@@ -369,7 +480,7 @@ void DisplayUI::tick(bool holdAwake) {
   else if (next == Power::Dimmed)
     level = percentOf(level, settings_->displayDimPercent());
   if (level != brightness_) {
-    g_gfx->Display_Brightness(level);
+    setLight(level);
     brightness_ = level;
   }
 }

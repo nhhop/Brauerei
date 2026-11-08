@@ -36,8 +36,9 @@ class MqttTransport : public ITransport {
   ~MqttTransport() override;
 
   bool publish(const char* topic, const char* payload, bool retained) override;
-  bool subscribe(const char* topic, MessageCallback callback) override;
-  bool unsubscribe(const char* topic) override;
+  bool subscribe(const char* topic, MessageCallback callback,
+                 const void* owner = nullptr) override;
+  bool unsubscribe(const char* topic, const void* owner = nullptr) override;
   void tick() override;
   bool connected() const override;
   const char* lastErrorMessage() const override;
@@ -60,7 +61,7 @@ class MqttTransport : public ITransport {
   std::string clientId_;
   std::string username_;
   std::string password_;
-  std::vector<std::pair<std::string, MessageCallback>> subs_;
+  std::vector<Subscription> subs_;
   uint32_t lastConnectAttemptMs_ = 0;
   uint32_t reconnectBackoffMs_ = 1000;
 

@@ -191,6 +191,9 @@ class WebUI {
   // an ETag and 304 answers. Returns false (nothing sent) if there is no file.
   bool sendFile_(AsyncWebServerRequest* req, const String& path, const char* contentType,
                  bool download, const char* cacheControl = nullptr);
+  // GET /api/logs/:id/data?from=&to=: only the rows in the window.
+  bool sendCsvWindow_(AsyncWebServerRequest* req, const String& path, bool hasFrom, long from,
+                      bool hasTo, long to, bool download);
   // Runs a pending POST /api/remote/pair from tick(), i.e. from loopTask:
   // HTTPClient is synchronous, and the async_tcp task must not be blocked for
   // the length of a network round trip (it serves every request and the SSE

@@ -30,8 +30,10 @@
 #include "actuators/IdsActuator.h"
 #endif
 
+#include "devices/CH422G.h"
 #include "devices/MCP4728.h"
 #include "devices/PCF8575.h"
+#include "devices/TCA9554.h"
 
 #include "sensors/DigitalInputSensor.h"
 #include "sensors/AnalogInputSensor.h"
@@ -46,6 +48,9 @@
 #include "sensors/BMI160Sensor.h"
 #include "sensors/ImuTiltSensor.h"
 #include "sensors/GY521TiltSensor.h"
+#include "sensors/PmuSensor.h"
+#include "sensors/SY6970Sensor.h"
+#include "sensors/AXP2101Sensor.h"
 #include "sensors/MAX31865Sensor.h"
 #include "sensors/YF_S201Sensor.h"
 #include "sensors/HCSR04Sensor.h"

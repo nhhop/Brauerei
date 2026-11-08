@@ -28,6 +28,9 @@ class MqttGenericSensor : public Sensor {
   MqttGenericSensor(const char* id, ITransport& transport, const char* topic,
                     Quantity quantity, const char* unit, float min, float max,
                     float resolution, const char* jsonField = "");
+  // Unsubscribes its own callback (it captures `this`); other sensors on the
+  // same topic (another jsonField) keep listening.
+  ~MqttGenericSensor() override;
 
   const char* id() const override { return id_; }
   size_t channelCount() const override { return 1; }

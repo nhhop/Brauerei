@@ -15,6 +15,8 @@ namespace SensActCtrl {
 class RemoteActuator : public Actuator {
  public:
   RemoteActuator(ITransport& transport, const char* deviceId, const char* actuatorId);
+  // Unsubscribes meta + state — see ~RemoteSensor().
+  ~RemoteActuator() override;
 
   // Defaults to actuatorId (the remote's own id) so standalone/example usage
   // — where the local proxy is naturally named after the remote actuator —
@@ -59,6 +61,9 @@ class RemoteActuator : public Actuator {
   ActuatorMeta meta_{};
   float state_ = 0.0f;
   float target_ = 0.0f;
+  // A missed meta is asked for again while state keeps coming (MetaRetry.h).
+  bool metaReceived_ = false;
+  uint32_t statesWithoutMeta_ = 0;
 };
 
 }  // namespace SensActCtrl

@@ -7,8 +7,9 @@ Tuning zur Laufzeit über eine HTTP+SSE-API.
 
 > **Status:** MVP + Laufzeit-Item-Add/Remove + Bus-Discovery + Datenlogging +
 > Sollwert-Programme + MQTT/Webhook/ESP-NOW (lokal + Remote-Node) +
-> WinUI-3-Fluent-Redesign + rundes Touch-Display (AMOLED-1.75), alle drei Boards (esp32dev, LOLIN S2 Mini,
-> LilyGo T-Display-S3-AMOLED-1.75) hardware-verifiziert. Aktueller
+> WinUI-3-Fluent-Redesign + rundes Touch-Display (AMOLED-1.75). Unterstützt nur noch
+> ESP32-S3-Boards (seit Arduino Core 3): LilyGo T-Display-S3-AMOLED-1.75 und Waveshare
+> ESP32-S3-Touch-AMOLED-1.75 hardware-verifiziert, Waveshare ESP32-S3-Touch-LCD-5B teilweise. Aktueller
 > Gesamtstand/Roadmap: [`../PLAN.md`](../PLAN.md); Session-Historie:
 > [`../SESSION.md`](../SESSION.md).
 
@@ -48,9 +49,7 @@ Browser einen vollständigen Snapshot.
   Dieser Task (Priorität 10) ist per `CONFIG_ASYNC_TCP_RUNNING_CORE=0`
   auf Core 0 gebunden, damit Core 1 dem loopTask (Priorität 1) bleibt —
   ungebunden hungerte er ihn beim Streamen von Dateien aus
-  (`loop()`-p99 bis 190 ms, siehe `SESSION.md` 2026-09-26). Der S2 hat
-  nur einen Core; dort läuft AsyncTCP stattdessen mit Priorität 1, gleich
-  dem loopTask (`CONFIG_ASYNC_TCP_PRIORITY` in `[env:lolin_s2_mini]`).
+  (`loop()`-p99 bis 190 ms, siehe `SESSION.md` 2026-09-26).
 - **Watchdog auf dem loopTask** (30 s): Die Web-API läuft auf dem
   AsyncTCP-Task und antwortet auch dann weiter, wenn `loop()` hängt — ohne
   Watchdog wirkte das Gerät gesund, während Regler und Programme standen.
@@ -63,12 +62,10 @@ Browser einen vollständigen Snapshot.
   Library-Stil ("Simplicity First"), gleiche API, kleineres Bundle.
 - **Tailwind CSS 4**: utility-first, kein `tailwind.config.ts`/
   `postcss.config.js`/`autoprefixer` mehr nötig (Lightning CSS eingebaut).
-- **SD-Karte** (LilyGo S3) statt LittleFS: das UI-Bundle ändert sich oft
-  beim Iterieren — SD ist hot-swappable, kein Reflash nötig.
-  **esp32dev/lolin_s2_mini** haben keinen SD-Slot und laufen stattdessen
-  auf einer internen LittleFS-Partition (`BREWCTL_USE_LITTLEFS`,
-  `partitions_4mb_littlefs.csv`) — Hot-Swap-Vorteil entfällt dort, Deploy
-  per `uploadfs` über USB (s. unten).
+- **SD-Karte** (LilyGo, Waveshare) statt LittleFS: das UI-Bundle ändert sich oft
+  beim Iterieren — SD ist hot-swappable, kein Reflash nötig. Für Boards ohne
+  SD-Slot steht der LittleFS-Pfad (`BREWCTL_USE_LITTLEFS`) weiter im Code, derzeit
+  setzt ihn kein Env (s. „Web-UI auf LittleFS“ unten).
 - **Concurrency:** `serializeRegistry()` läuft im AsyncTCP-Task,
   `Registry::tick()` im loopTask — `Reading`-Werte (float+timestamp+ok)
   sind auf ESP32 nicht atomar gegen torn reads, für den Dashboard-Use
@@ -83,11 +80,10 @@ Browser einen vollständigen Snapshot.
 ## Voraussetzungen
 
 **Hardware:**
-- ESP32 Dev-Board
-- SD-Karten-Slot — nur für `lilygo_t_display_s3_amoled` (onboard, SPI) und
-  `waveshare_s3_amoled_175` (onboard, SDMMC 1-Bit). `esp32dev`
-  und `lolin_s2_mini` brauchen **keine** SD-Karte mehr — UI und Config liegen bei denen
-  auf einer internen LittleFS-Partition, siehe „Web-UI bauen + auf LittleFS deployen" unten.
+- ESP32-S3-Board mit PSRAM und 16 MB Flash (eines der Envs unten)
+- SD-Karten-Slot — onboard bei `lilygo_t_display_s3_amoled` (SPI),
+  `waveshare_s3_lcd_5b` (SPI, Chip-Select am CH422G) und
+  `waveshare_s3_amoled_175` (SDMMC 1-Bit).
 - Optional: DS18B20 (1-Wire-Temp), SSR auf GPIO 16 für das Demo-Setup
 - BOOT-Button auf GPIO 0 (auf allen Standard-Dev-Boards vorhanden)
 
@@ -107,31 +103,15 @@ Browser einen vollständigen Snapshot.
 
 ```powershell
 cd firmware
-pio run -e esp32dev               # compile-smoke (~30 s nach erstem Toolchain-DL)
-pio run -e esp32dev -t upload     # flash über USB
+pio run -e lilygo_t_display_s3_amoled  # compile-smoke
+pio run -e lilygo_t_display_s3_amoled -t upload # flash über USB
 pio device monitor                # serial @ 115200, mit exception_decoder
 ```
 
 Board-Pins (SD, I²C) werden per `-DBREWCTL_*`-Build-Flags in `platformio.ini`
-pro Board gesetzt; `main.cpp` hat `#ifndef`-Defaults für `esp32dev`. Die Pins
+pro Board gesetzt. Die Pins
 der Sensoren und Aktoren legt nicht die Firmware fest, sondern die Nutzer-Config
 (siehe „Pin-Prüfung“ unten).
-
-**`esp32dev` (Defaults)**
-
-| Pin     | Funktion                | Konstante           |
-|---------|-------------------------|---------------------|
-| GPIO 0  | BOOT/Reset-Trigger      | `kBootButtonPin`    |
-
-Kein SD-Pin mehr im Standard-Build (`BREWCTL_USE_LITTLEFS=1`, s.u.) — `kSdCsPin`
-(GPIO 5, ⚠ Strapping-Pin/MTDI) existiert im Code weiter, wird aber nur noch im
-SD-Zweig verwendet, falls jemand `platformio.ini` lokal auf SD zurückstellt.
-
-**LOLIN S2 Mini (`lolin_s2_mini`)**
-
-Kein onboard-SD-Slot — läuft standardmäßig auf LittleFS (internes Flash), kein externer
-SPI-Breakout nötig. Flash über DFU: ersten Flash BOOT + RST halten, danach enumeriert
-die Firmware als neuer COM-Port (TinyUSB-CDC).
 
 **LilyGo T-Display-S3-AMOLED-1.75 (`lilygo_t_display_s3_amoled`)**
 
@@ -175,33 +155,52 @@ PCF85063 (0x51), AXP2101 (0x34), ES8311 (0x18), ES7210 (0x40) und TCA9554 (0x20)
 — diese Adressen sind reserviert. Die IMU **QMI8658 (0x6B)** ist bewusst nicht
 reserviert: Sie wird als normaler Sensor `QMI8658` auf `i2c-board` angelegt.
 Audio (I2S) belegt GPIO 8–10, 42, 45, 46. Für eigene Items frei bleiben nur
-GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101
-(PLAN.md).
+GPIO 13, 17, 18, 47 und 48. Keinen Batterie-ADC: Den Akku misst der AXP2101,
+gelesen über einen Sensor vom Typ `AXP2101` (siehe Energiemanagement).
 
-**M5Stack StopWatch (`m5stack_stopwatch`)**
+**Waveshare ESP32-S3-Touch-LCD-5B (`waveshare_s3_lcd_5b`)**
 
-Gleicher Chip (ESP32-S3R8, 16 MB Flash, 8 MB OPI-PSRAM) und gleiches Panel
-(CO5300, 466×466), aber **ohne SD-Slot**: UI und Config liegen auf LittleFS in
-der 3,4-MB-Datenpartition von `default_16MB.csv` (UI per
-`pio run -e m5stack_stopwatch -t uploadfs`, „Installieren“ nimmt `webui.tar`).
-Quelle ist der StopWatch-Code von M5GFX und M5Unified — die Pin-Tabelle auf
-docs.m5stack.com nennt die Display-Datenleitungen falsch.
+ESP32-S3-WROOM-1-N16R8 (16 MB Flash, 8 MB OPI-PSRAM) mit 1024×600-RGB-Panel (ST7262, 16 Bit,
+Pixeltakt 16 MHz wie in Waveshares Demo, ein Framebuffer im PSRAM mit Bounce-Buffer) und
+GT911-Touch auf 0x5D. **Stand:** Display und Touch laufen am Gerät (2026-11-02) mit den
+breitem Layout (`DisplayWide.cpp`): Tabs mit den Dashboards und ein WLAN-Feld oben, darunter
+Kacheln (4×2 je Seite, Wischen blättert) für Regler, Sensoren und Aktoren. Ein Tipp öffnet das
+Detailblatt mit großem Ring bzw. Wert, −/+ und einer Leiste aller Elemente links. Das WLAN-Feld
+öffnet einen Dialog mit QR-Code auf die Web-UI, Name, Adresse (`<host>.local`), IP und Signal.
+Ein eingerasteter Not-Aus deckt alles rot ab. Programme, Timer und Verläufe gibt es auf diesem
+Display noch nicht. Das Backlight (`EXIO2`) schaltet nur an und
+aus, Dimmen gibt es nicht (Dunkel = Backlight aus), Drehung und Bewegungssensor-Wecken
+entfallen. Beim Wischen kann ein Block kurz zerrissen erscheinen (Tearing). Quelle:
+docs.waveshare.com/ESP32-S3-Touch-LCD-5.
 
-| Pin        | Funktion                                                   | Build-Flag           |
-|------------|------------------------------------------------------------|----------------------|
-| GPIO 47    | I²C SDA (Touch, IMU, RTC, PMU, Port-Expander, Audio)       | `BREWCTL_I2C_SDA=47` |
-| GPIO 48    | I²C SCL                                                    | `BREWCTL_I2C_SCL=48` |
-| GPIO 2 / 1 | Taste A / B                                                | —                    |
+| Pin            | Funktion                                   | Build-Flag / Quelle         |
+|----------------|--------------------------------------------|-----------------------------|
+| GPIO 11 / 12 / 13 | SD-Karte MOSI / SCK / MISO (SPI)        | `BREWCTL_SD_MOSI/SCK/MISO`  |
+| GPIO 6         | Attrappe für den SD-Chip-Select            | `BREWCTL_SD_CS=6`           |
+| GPIO 8 / 9     | I²C SDA / SCL (Touch, RTC, CH422G)         | `BREWCTL_I2C_SDA/SCL`       |
+| GPIO 43 / 44   | RS485 TXD / RXD                            | —                           |
+| GPIO 15 / 16   | CAN TX / RX                                | —                           |
 
-Display: QSPI CS 39, SCLK 40, D0 41, D1 42, D2 46, D3 45, TE 38. Panel-Reset,
-Panel-Versorgung und Touch-Reset sind Pins des Port-Expanders **M5IOE1** (0x4F);
-der Power-Manager **M5PM1** (0x6E) hat einen Watchdog und schaltet die
-3,3-V-Schienen. Beides richtet `src/BoardInit.cpp` direkt nach dem Start des
-Board-Busses ein, vor dem Display. Touch CST820 auf 0x15 (INT 13) meldet halbe
-Auflösung (0…233) und wird verdoppelt. Reserviert auf `i2c-board`: 0x15, 0x18
-(ES8311), 0x32 (RX8130), 0x4F, 0x6E — **nicht** 0x68: Der BMI270 wird als normaler
-Sensor `BMI270` angelegt. Audio (I2S) belegt GPIO 15–18 und 21, der
-Grove-Port liegt auf GPIO 10/11 (frei, z. B. für einen eigenen I²C-Bus).
+Der **CH422G** (I²C 0x23/0x24/0x26/0x38, Typ `ch422g`, Gerät `ch422g-i2c-board-24`)
+hält Touch-Reset (`EXIO1`), Hintergrundbeleuchtung (`EXIO2`), Panel-Reset (`EXIO3`) und
+den **SD-Chip-Select** (`EXIO4`); `BoardInit.cpp` setzt das beim Start. Der Chip-Select
+bleibt dauerhaft low, weil die Arduino-SD-Bibliothek nur einen echten GPIO schalten
+kann — sie bekommt GPIO 6 als Attrappe (am SPI-Bus hängt nur die Karte). `EXIO0` und
+`EXIO5` sind die potenzialfreien Eingänge DI0/DI1 (lesbar, nicht schaltbar), `OD0`/`OD1`
+die Ausgänge DO0/DO1 und frei; sie starten bei `1`. Gemessen (2026-11-02, Pull-up nach 3,3 V
+an `DO0`): bei `0` liegt die Klemme auf 0 V, sie zieht also nach Masse („Last an“), bei `1`
+auf 3,3 V; ohne Pull-up liegt sie bei `1` auf 0 V (schwebt). Der Ausgang ist also ein
+Open-Drain-Schalter nach Masse: eine Last braucht eine eigene Versorgung und wird zwischen deren
+Plus und `DO0` geschaltet. Ein `DigitalOutput` braucht für „an = Last an“ `invert: true`. Der
+Chip hat nur eine Richtung für alle acht `EXIO`-Pins: sobald einer Ausgang ist, sind es alle,
+und ein Ausgangspin liest nur zurück, was er treibt. Deshalb schaltet jedes Lesen der
+`EXIO`-Pins sie für eine I²C-Übertragung (etwa eine Millisekunde, höchstens alle 20 ms) auf
+Eingang und danach zurück (der Chip braucht dafür 2 ms Wartezeit); Reset, Backlight und
+SD-CS schweben in dieser Zeit. Die DI-Eingänge sind am Gerät bestätigt (2026-11-02), aber
+**invertiert**: ohne Signal liest ein `DigitalInput` `1`, mit Spannung `0`. Sie brauchen den
+Rückweg `DI_COM` (bei Plus am Eingang: `DI_COM` an GND, +5 V an `DI0`); ohne `DI_COM` schaltet
+der Optokoppler nicht. Reserviert sind
+außerdem 0x51 (PCF85063) und 0x5D (GT911). Für eigene Items frei bleibt kein GPIO.
 
 ### Pin-Prüfung
 
@@ -273,7 +272,7 @@ Die Id ergibt sich aus Typ und Pins:
   `main.cpp` claimt ihn beim Boot über `DynamicItems::acquireBoardI2cBus()` und hält ihn für
   immer. Seine Pins schützt die `Reserved`-Klasse der Pin-Tabelle; ein zweiter, frei
   wählbarer I2C-Bus (`Wire1`) steht daneben zur Verfügung, etwa wenn ein Sensor eine Adresse
-  braucht, die am Board-Bus schon belegt ist. esp32dev/lolin_s2_mini haben keine festen Busse.
+  braucht, die am Board-Bus schon belegt ist.
 
 Bus-Pins gehören exklusiv dem Bus: `GET /api/pins` führt den Bus als Nutzer (`bus: true`),
 ein Item oder zweiter Bus auf derselben Leitung ist ein **409**. Ein Bus lässt sich nur
@@ -312,11 +311,27 @@ gepflegt unter **Einstellungen → Peripheriegeräte** bzw. `/api/peripherals` u
 als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den Items). Typen:
 
 - **MCP4728** (4 × 12-Bit-DAC, I²C 0x60–0x67, ab Werk 0x60, Kanäle A–D): Boards ohne
-  eigenen DAC (LilyGo, Waveshare, StopWatch) bekommen einen echten Analogausgang.
+  eigenen DAC (alle S3-Boards) bekommen einen echten Analogausgang.
 - **PCF8575** (16 digitale Pins, I²C 0x20–0x27 über die Lötbrücken A0–A2, ab Werk 0x20,
   Kanäle P00–P07 und P10–P17): zusätzliche Schaltausgänge und Eingänge, siehe unten.
   Auf dem Waveshare liegt der Onboard-Expander TCA9554 auf 0x20 (reservierte Adresse des
   Board-Busses) — dort den PCF8575 auf 0x21–0x27 jumpern.
+- **TCA9554** (8 digitale Pins, Kanäle `EXIO0`–`EXIO7`): nur als **fest verdrahtetes
+  Onboard-Gerät** des Waveshare (`tca9554-i2c-board-20`, in `GET /api/peripherals` mit
+  `fixed: true`, nie gespeichert, nicht änderbar oder löschbar, als Typ nicht anlegbar). Belegung
+  laut Waveshares `HARDWARE_REFERENCE.md`: `EXIO0`–`EXIO2` frei (nur an Testpunkten
+  herausgeführt), `EXIO3` RTC-Interrupt, `EXIO4` PWR-Taste (High = gedrückt), `EXIO5`
+  PMU-Interrupt, `EXIO6` IMU-Interrupt — diese vier sind Board-Eingänge, ein `DigitalInput`
+  darf sie lesen, ein `DigitalOutput` ist 400 —, `EXIO7` GNSS-Reset, ganz gesperrt (409). Der
+  Chip hat echte Richtungsregister und **keinen** Pull-up; `pullup` wird still ignoriert. Der
+  Treiber übernimmt beim Start Ausgangs- und Richtungsregister des Chips und schreibt danach
+  nur das eine Register, das sich ändert — Kanäle, die kein Item anfasst, bleiben, wie das
+  Board sie hinterlassen hat.
+
+- **CH422G** (8 `EXIO`-Pins plus `OD0`/`OD1`): nur als fest verdrahtetes Onboard-Gerät des
+  Waveshare LCD-5B (`ch422g-i2c-board-24`, `fixed: true`, als Typ nicht anlegbar). Der Chip
+  ist nicht lesbar; der Treiber führt die Ausgangswerte in einem Schatten, den `boardInit()`
+  und das Gerät teilen. Belegung siehe Board-Abschnitt oben.
 
 - **Id** aus Typ, Bus und Adresse, z. B. `mcp4728-i2c-board-60`; optional ein `label`.
 - **Kanal-Referenz im `pin`-Feld**: `AnalogOutput` mit `mode: "dac"` nimmt statt einer
@@ -419,38 +434,17 @@ derselben Sicherung unter `readings`, die Verkostungen (`/brewtasting/<id>.json`
 `/api/brews/<id>/tasting`) unter `tasting`; eine ältere Sicherung ohne diese Schlüssel lässt sich weiter
 einspielen.
 
-## Web-UI bauen + auf LittleFS deployen (`esp32dev`, `lolin_s2_mini`)
+## Web-UI auf LittleFS (derzeit ohne Env)
 
-Diese beiden Boards haben keinen SD-Slot — die UI landet stattdessen per USB auf einer
-internen LittleFS-Partition (`pio run -t uploadfs`, s. „Partition-Layout" unten). Nur die
-**gzippten** Assets werden geshippt (die Firmware serviert `.gz` transparent, auch
-ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ihre `.gz`
-(~150 KB), roh + gzip passte nicht in die 256-KB-Partition:
+Das einzige Board ohne SD-Slot, die M5Stack StopWatch, ist am 2026-11-08 samt Env
+entfernt. Der LittleFS-Pfad bleibt im Code (`BREWCTL_USE_LITTLEFS`, `pnpm build:lfs`
+legt `dist/` ohne `modules/` nach `firmware/data/www`, ein Env mit
+`board_build.filesystem = littlefs` flasht es per `pio run -t uploadfs`). Die optionalen
+UI-Pakete (Rezepte) gehören dort nicht hin: ohne SD keine Rezept-API.
 
-```powershell
-cd web
-pnpm install                      # einmalig
-pnpm build:lfs                    # build:sd + dist/ (ohne modules/) nach ../firmware/data/www
+### UI über das Netzwerk aufspielen
 
-cd ..\firmware
-pio run -e esp32dev -t buildfs        # optional: Größen-Check ohne Hardware
-pio run -e esp32dev -t uploadfs       # LittleFS-Image per USB flashen
-pio run -e lolin_s2_mini -t uploadfs  # gleiches data/, zweites Board
-```
-
-`pnpm build:lfs` lässt `dist/modules/` bewusst weg: Die optionalen UI-Pakete (Rezepte) sind
-für diese Boards nicht vorgesehen, und ein späteres „Installieren“ mit dem schlanken
-`webui.tar` würde sie ohnehin wieder löschen. Ein Ordner `data/www/modules` von Hand
-bringt das Paket trotzdem aufs Board, das ist dann deine Entscheidung.
-
-`data/` ist projektweit geteilt zwischen allen Envs — **nicht** gegen
-`lilygo_t_display_s3_amoled` ausführen (kein `littlefs`-Filesystem dort).
-
-### Ohne USB: UI über das Netzwerk aufspielen
-
-`uploadfs` braucht die serielle Verbindung — beim esp32dev-Testboard heißt das,
-den BOOT-Button von Hand zu halten (kein zuverlässiger Auto-Reset). Ohne USB geht
-es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
+Ohne USB geht es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
 „webui.tar und webui-full.tar manuell bauen“ unten, ~150 KB, nur `.gz`) oder über „Installieren“
 aus einem Release, das dasselbe Tar mitbringt:
 
@@ -458,26 +452,13 @@ aus einem Release, das dasselbe Tar mitbringt:
 curl -F "f=@webui.tar" http://<ip>/api/update/assets
 ```
 
-Beide Boards entpacken das Tar **in-place**, gesteuert über das Build-Flag
-`BREWCTL_ASSETS_IN_PLACE` in `platformio.ini` — beim Upload wie beim
-„Installieren“ (gemeinsame Logik in `src/AssetInstall.h`). Die 256-KB-Partition fasst altes
-und neues Bundle nicht gleichzeitig, also wird `/www` vor dem Entpacken geleert,
-statt erst nach `/www.new` zu entpacken und dann zu tauschen. Die UI ist während
-des Uploads weg. Die API bleibt erreichbar. Schlägt der Upload fehl, zum Beispiel
-bei `not enough space` oder einem Verbindungsabbruch, liefert jede Nicht-API-Seite
-eine eingebaute Notfall-Seite, über die sich das Tar erneut hochladen lässt. Das
-geht auch auf einem frisch geflashten Board mit leerem Dateisystem. `index.html`
-wird erst nach vollständigem Entpacken freigeschaltet. Vor jeder Datei prüft die
-Firmware den freien Platz, denn LittleFS crasht bei vollem Dateisystem mitten im
-Schreiben (Panic in `lfs_alloc`), statt einen Fehler zurückzugeben.
-
-Das Flag hängt **an der Partitionsgröße, nicht an LittleFS**. Ein Board ohne
-SD-Slot, aber mit größerer Datenpartition (z. B. ein S3 mit 8/16 MB Flash) lässt
-es weg und behält den atomaren `/www.new`-Tausch. Dort bleibt die alte UI bei
-einem Fehlschlag erhalten.
-
-Auf beiden Boards verifiziert (2026-09-16). Die Firmware selbst geht ohnehin per
-OTA über `POST /api/update/firmware`.
+Die Firmware entpackt das Tar nach `/www.new` und tauscht erst nach vollständigem
+Entpacken; bei einem Fehlschlag bleibt die alte UI erhalten. Upload und
+„Installieren“ teilen sich diese Logik in `src/AssetInstall.h`. Das frühere
+In-place-Entpacken für die 256-KB-Partition von esp32dev/S2 (Build-Flag
+`BREWCTL_ASSETS_IN_PLACE`, mit eingebauter Notfall-Upload-Seite) steht noch im Code,
+setzt aber kein Env mehr. Die Firmware selbst geht per OTA über
+`POST /api/update/firmware`.
 
 ## Erstboot — WiFi-Setup-Portal
 
@@ -520,10 +501,10 @@ pnpm dev
 `.env.local` ist gitignored — jeder Entwickler trägt seine ESP32-IP
 selbst ein, kein Branch-Drift.
 
-## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`, `m5stack_stopwatch`)
+## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`)
 
 Das 466×466-AMOLED des LilyGo T-Display-S3-AMOLED-1.75 (und des Waveshare
-ESP32-S3-Touch-AMOLED-1.75 und der M5Stack StopWatch, gleiches Panel) zeigt die Items eines
+ESP32-S3-Touch-AMOLED-1.75, gleiches Panel) zeigt die Items eines
 Dashboards als Seiten: zuerst Regler, dann Sensoren, dann Aktoren, maximal 16.
 Links/rechts wischen blättert die Seiten, hoch/runter wechselt das Dashboard.
 Das Grid-Layout der Web-UI wird nicht nachgebildet. Ids, zu denen es kein Item
@@ -570,11 +551,18 @@ Neustart):
 | Helligkeit gedimmt | 20 % | Anteil der eingestellten Helligkeit |
 | Ausschalten nach | 10 min | Zeit ohne Berührung; „Nie“ = 0 |
 | Pixel-Shift | aus | verschiebt das Bild jede Minute um 3 px, im Kreis über 8 Positionen |
+| Bei Bewegung wecken | an | nur mit Ausrichtungs-Sensor: geht dessen Kanal `motion` auf 1, wacht das Display wie bei einer Berührung |
 
 - **Aufwecken:** Ein Tipp weckt das Display. Dieser erste Druck erreicht LVGL
   nie, er löst also weder Power-Knopf noch Tippzone, Griff oder Wischen aus.
   Erst der nächste Druck zählt. Das gilt aus dem gedimmten wie aus dem
   schwarzen Zustand.
+- **Bewegung** (`display.wakeOnMotion`): Das IMU-Item aus `orientationSensor` braucht
+  dafür den Kanal „Bewegung“ (`motion`, im Item-Formular wählbar). Anheben oder Kippen
+  weckt das Display und hält es wach, solange die Bewegung anhält; Zittern auf dem
+  Tisch nicht. Die Empfindlichkeit ist pro Item einstellbar (`motionThreshold` in °/s,
+  Default 20, Formularfeld „Bewegungs-Schwelle“); das Item selbst wird weiterhin
+  jeden `loop()`-Durchlauf gelesen, auch bei schwarzem Display.
 - **Not-Aus** hält das Display voll hell, solange er eingerastet ist. Nach dem
   Aufheben läuft die Wartezeit von vorn.
 - **Jede neue Meldung** der Alarm-Zentrale weckt das Display, auch
@@ -666,8 +654,24 @@ Einstellungen → Energiemanagement (`/settings/energy`, Abschnitt `energy` in
   „Batterie“). Boards mit eigenem Batterie-Messeingang liefern Pin und
   Widerstände in `GET /api/pins` → `battery` (Tabelle in `BoardPins.h`, bisher
   nur LilyGo: GPIO 4, 100/100 kΩ für das Verhältnis 1:2).
+- **PMU-Sensor:** Boards mit Lade-IC am festen Bus lesen ihn über einen Sensor
+  vom Typ `SY6970` (LilyGo, 0x6A) bzw. `AXP2101` (Waveshare, 0x34),
+  `SensActCtrl::SY6970Sensor`/`AXP2101Sensor` über SensorLib. Kanäle: `vbat`
+  und `vbus` in V, `charging` (1 beim Vor- und Schnellladen), dazu `ichg`
+  (Ladestrom in A, SY6970) bzw. `soc` (Ladezustand in % aus dem Fuel-Gauge,
+  AXP2101). Gelesen wird höchstens einmal pro Sekunde. Die Adresse des Chips
+  ist am Bus reserviert, für genau diesen Typ aber frei. `GET /api/pins` →
+  `pmu` liefert Typ, Bus und Adresse; damit bietet die Seite „PMU-Sensor
+  anlegen“ an (vor dem Teiler-Knopf), als Batteriesensor gilt dann
+  `<id>.vbat`. Die Treiber werden nur auf Boards mit festem I²C-Bus gebaut
+  (`BREWCTL_I2C_SDA`).
+  ⚠ SensorLibs `begin()` setzt den SY6970 zurück: Danach gelten die
+  Lade-Defaults des Chips, sein Watchdog ist aus. Beim AXP2101 schaltet es die
+  NTC-Messung (TS) ab.
 - Die Prozentangabe ist eine grobe LiPo-Kennlinie in der UI (`web/src/energy.ts`),
-  gilt nur für eine Zelle ohne Last und nicht beim Laden.
+  gilt nur für eine Zelle ohne Last und nicht beim Laden. Liefert der
+  Batteriesensor einen `soc`-Kanal (AXP2101), zeigt die Seite stattdessen
+  diesen.
 
 ### Deep-Sleep
 
@@ -707,11 +711,10 @@ zurück (siehe „Zustand nach Neustart“).
   Luft. Beim Aufwachen bleiben sie geklemmt, bis die Aktoren sie in
   `registry.begin()` übernehmen — kein Zucken beim Aufwachen.
 - **Wach-Pin** (`wakePin`, Pflicht bei Deep-Sleep): ein RTC-GPIO (`rtc` in
-  `GET /api/pins`; esp32dev 2, 4, 12–15, 25–27, 32–39, S2/S3 1–21), gegen GND
+  `GET /api/pins`; am S3 GPIO 1–21), gegen GND
   mit internem Pull-up oder gegen 3,3 V mit Pull-down. GPIO 0 ist gesperrt
   (Jumper beim Einschalten = Download-Modus, 5 s Halten = Werksreset), andere
-  Strapping-Pins werden als bedenklich angezeigt, GPIO 34–39 haben keinen
-  internen Pull-up. Er ist für Items belegt wie ein Item-Pin. Ein Jumper hält
+  Strapping-Pins werden als bedenklich angezeigt. Er ist für Items belegt wie ein Item-Pin. Ein Jumper hält
   das Gerät dauerhaft wach. Der Werksreset über GPIO 0 greift nach einem
   Aufwachen nicht, nur nach Einschalten/Reset.
 - Die Uhr läuft im Schlaf auf dem RTC-Timer weiter (Drift des internen
@@ -1024,13 +1027,13 @@ Vier Wege:
   „Installieren“ startet das Gerät zuerst neu in einen **Update-Modus**: Die
   Downloads laufen früh im Boot, direkt nach dem WLAN und bevor Webserver, MQTT
   und die übrigen Dienste Heap belegen (`FirmwareUpdater::runPendingInstall()`).
-  Grund ist der S2: Jeder TLS-Handshake braucht dort ~50 KB mit zwei
-  zusammenhängenden ~17-KB-Blöcken (feste 16-KB-mbedTLS-Puffer im vorkompilierten
-  Core), im laufenden Betrieb sind nur 58–65 KB frei und zerstückelt. Während der
+  Grund war der inzwischen entfernte S2: Jeder TLS-Handshake braucht ~50 KB mit
+  zwei zusammenhängenden ~17-KB-Blöcken (feste 16-KB-mbedTLS-Puffer im vorkompilierten
+  Core), dort waren im Betrieb nur 58–65 KB frei und zerstückelt. Während der
   Installation ist das Gerät 30–60 s nicht erreichbar. Scheitert sie, bootet es
   normal, und die Firmware-Seite zeigt den Grund. Seit 2026-09-27 legt die Firmware
-  die TLS-Puffer auf Boards mit PSRAM (S2, S3) ins PSRAM (`tlsAllocToPsram()` in
-  `main.cpp`); damit kommt auch die reine Prüfung im Betrieb auf dem S2 durch. Der
+  die TLS-Puffer ins PSRAM (`tlsAllocToPsram()` in `main.cpp`), seit 2026-10-27 auch
+  LVGL-Pool, Alarm-Ring und den Push-Worker. Der
   Update-Modus bleibt als Reserve für den großen Download. Heap-Stand abfragen:
   `GET /api/diag/heap`.
 - **Browser-Upload:** dieselbe Seite — `.bin` (Firmware) bzw. `.tar` (UI-Paket).
@@ -1039,9 +1042,8 @@ Vier Wege:
   das Gerät rebootet. Funktioniert vor der WiFi-Verbindung, also auch ohne Netz /
   bei fehlenden WiFi-Creds. Keine Versions-/Varianten-Prüfung — passende `.bin` für
   das Board selbst wählen. **Nur SD-Boards (`lilygo_t_display_s3_amoled`,
-  `waveshare_s3_amoled_175`):** auf `esp32dev`/
-  `lolin_s2_mini` passt eine reguläre `firmware.bin` (>1,3 MB) nicht auf die 256-KB-
-  LittleFS-Partition — dort bleibt nur Netzwerk-OTA oder USB als Recovery-Weg.
+  `waveshare_s3_amoled_175`)** — ohne SD-Slot bleibt Netzwerk-OTA oder USB als
+  Recovery-Weg.
 - **USB (Brick-Rettung):** Bootet das Gerät nach einem fehlerhaften Flash nicht mehr,
   ist die WebUI weg → per Kabel `pio run -e <env> -t upload` neu flashen.
 
@@ -1054,8 +1056,8 @@ verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an
 Es gibt zwei UI-Pakete, beide das gebaute, **gzippte** `dist/` als Tar, nur `.gz`-Dateien,
 Pfade relativ zur dist-Wurzel (nicht unter `dist/`):
 
-- `webui.tar` (~150 KB) ohne `modules/` für die Boards mit der 256-KB-Partition
-  (`esp32dev`, `lolin_s2_mini`, Build-Flag `BREWCTL_ASSETS_IN_PLACE`).
+- `webui.tar` (~150 KB) ohne `modules/` für Boards ohne SD-Karte (LittleFS; derzeit
+  baut kein Env so ein Board).
 - `webui-full.tar` (~170 KB) mit `modules/` (optionale Pakete, derzeit Rezepte und Rechner) für die
   Boards mit SD-Karte. Ein „Installieren“ ersetzt das ganze `/www`; deshalb nimmt die
   Firmware auf diesen Boards das volle Tar, sonst wäre das Paket danach weg. Ältere
@@ -1109,7 +1111,7 @@ in `public/` liegt. Ein so gebautes Tar nicht verteilen und nicht in ein Release
 Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:
 
 ```powershell
-pio run -e esp32dev      # oder lolin_s2_mini / lilygo_t_display_s3_amoled
+pio run -e lilygo_t_display_s3_amoled      # oder waveshare_s3_amoled_175 / waveshare_s3_lcd_5b
 # Ergebnis: .pio\build\<env>\firmware.bin
 ```
 
@@ -1117,8 +1119,7 @@ Release-Benennung (wie die CI): `Copy-Item .pio\build\<env>\firmware.bin firmwar
 Aufspielen: `/settings/firmware` → „Firmware (.bin)",
 `curl -F "f=@.pio/build/<env>/firmware.bin" http://<ip>/api/update/firmware`,
 als `firmware.bin` in den SD-Root kopieren (Boot-Flash, s.o.), oder
-USB via `pio run -e <env> -t upload`. ⚠ Bei den 4-MB-Boards muss der **erste** Flash
-mit dem `min_spiffs`-Layout per USB laufen (s. Partition-Layout unten).
+USB via `pio run -e <env> -t upload`.
 
 Der Multipart-Feldname (`f` in den `curl`-Beispielen oben) ist beliebig — die
 Firmware wertet ihn nicht aus und nimmt den ersten File-Part.
@@ -1126,22 +1127,15 @@ Firmware wertet ihn nicht aus und nimmt den ersten File-Part.
 ### Release erstellen
 `git tag vX.Y.Z && git push origin vX.Y.Z` → die GitHub-Action baut alle Board-
 Varianten und hängt `firmware-<env>.bin` + `webui.tar` + `webui-full.tar` ans Release. Stable = normales
-Release, Preview = als „Pre-release" markieren.
+Release; Tags mit Suffix (`v0.9.0-rc.1`) markiert die Action selbst als „Pre-release“, die nur
+der Preview-Kanal sieht.
 
-### Partition-Layout (partitions_4mb_littlefs)
-OTA braucht zwei App-Slots. Der TLS-Pull-Pfad füllt den Default-OTA-App-Slot der
-4-MB-Boards (esp32dev, lolin_s2_mini) auf >90 %; deshalb verwenden diese Envs
-`board_build.partitions = partitions_4mb_littlefs.csv` (~1,81 MB App-Slots, ~72,7 % belegt;
-256-KB-Datenpartition, gemountet als LittleFS unter `BREWCTL_USE_LITTLEFS` — trägt UI +
-Settings/Registry/Dashboards/Programme/Logs-Index). Herleitung von `min_spiffs.csv`
-(dessen 128-KB-Datenpartition unbenutzt blieb, weil Assets damals auf SD lagen): je
-64 KB von beiden App-Slots abgezwackt, komplett in die Datenpartition gesteckt.
-**Wichtig:** Der Wechsel auf dieses Layout muss **einmalig per USB** geflasht werden —
-OTA kann die Partitionstabelle nicht ändern. Danach laufen OTA-Updates normal (der
-UI-Teil über `uploadfs`/USB oder ein gz-only-Tar per `POST /api/update/assets`, s. oben —
-ein leeres Board zeigt dafür die eingebaute Notfall-Seite). Der LilyGo-S3 (16 MB) behält die Default-Tabelle + SD (genug Platz).
-`LogStore` hat keine eingebaute Log-Rotation — auf diesen beiden Boards mit der
-256-KB-Partition nicht unbegrenzt loggen.
+### Partition-Layout
+Alle Boards haben 16 MB Flash: LilyGo mit der Default-Tabelle des Boards,
+die beiden Waveshare mit `default_16MB.csv` (je zwei App-Slots à 6,25 MB für OTA,
+3,4 MB Datenpartition).
+Die früheren 4-MB-Boards (esp32dev, lolin_s2_mini) mit `partitions_4mb_littlefs.csv`
+werden seit Arduino Core 3 nicht mehr gebaut.
 
 ## Weiteres
 

@@ -152,7 +152,9 @@ class AlarmStore {
 
   std::vector<Rule>      rules_;
   std::vector<EdgeState> edges_;
-  Alert    ring_[kRing];
+  // kRing alerts, ~8 KB: allocated once in PSRAM by the constructor instead of
+  // living as a static array in internal RAM. Never freed (global object).
+  Alert*   ring_ = nullptr;
   size_t   ringCount_ = 0;
   size_t   ringHead_  = 0;   // next write slot
   uint32_t nextSeq_   = 1;

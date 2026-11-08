@@ -56,6 +56,7 @@
 #include "WiFiSetupPortal.h"
 #include "display/DisplayPages.h"
 #include "display/DisplayUI.h"
+#include "display/DisplayWide.h"
 
 using namespace SensActCtrl;
 using BrewControl::WebUI;
@@ -65,7 +66,7 @@ using BrewControl::WiFiSetupPortal;
 #ifndef BREWCTL_SD_CS
 #define BREWCTL_SD_CS 5
 #endif
-constexpr int kSdCsPin = BREWCTL_SD_CS;  // ⚠ on esp32dev: strapping pin (MTDI) — see README
+constexpr int kSdCsPin = BREWCTL_SD_CS;
 constexpr int kBootButtonPin = 0;
 constexpr uint32_t kResetHoldMs = 5000;
 constexpr uint32_t kWiFiConnectTimeoutMs = 30000;
@@ -106,7 +107,11 @@ BrewControl::EnergyManager energy;
 WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
 #ifdef BREWCTL_HAS_DISPLAY
 BrewControl::DisplayUI displayUI;
-BrewControl::DisplayPages displayPages;
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+BrewControl::DisplayWide displayPages;  // 1024 x 600: tabs, overview, detail sheets
+#else
+BrewControl::DisplayPages displayPages;  // round glass: one page per item
+#endif
 #endif
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
@@ -454,11 +459,16 @@ void setup() {
   // Watchdog on loopTask. The web API runs on the AsyncTCP task and keeps
   // answering while loopTask hangs, so a stuck loop() (no control, no program
   // steps) would otherwise look healthy. 30 s is far above any legitimate
-  // pass; the arduino core feeds the WDT before every loop(). Re-initialising
+  // pass; the arduino core feeds the WDT before every loop(). Reconfiguring
   // only changes timeout/panic of the TWDT the core already started (5 s, it
   // watches IDLE0), so idle starvation is now also reported after 30 s.
   // Programs and timers resume after the reboot from their persisted state.
-  esp_task_wdt_init(kLoopWdtTimeoutS, /*panic=*/true);
+  const esp_task_wdt_config_t wdtConfig = {
+      .timeout_ms = kLoopWdtTimeoutS * 1000,
+      .idle_core_mask = 1U << 0,  // IDLE0, as the core set it up
+      .trigger_panic = true,
+  };
+  esp_task_wdt_reconfigure(&wdtConfig);
   enableLoopWDT();
   loopStartMs = millis();
   Serial.println(F("BrewControl ready"));

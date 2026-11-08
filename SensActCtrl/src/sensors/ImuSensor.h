@@ -38,6 +38,13 @@ class ImuSensor : public Sensor {
   void begin() override;
   void tick()  override;
 
+  // Mounting correction for a chip soldered in a different frame than the
+  // one the tilt maths assumes (+Z up when the board lies face up). Each
+  // factor is +1 or -1 and applies to accel and gyro of that axis alike.
+  void setAxisSigns(float x, float y, float z) {
+    sign_[0] = x; sign_[1] = y; sign_[2] = z;
+  }
+
  protected:
   // bus == nullptr: the default Wire. A caller-owned bus must outlive this
   // sensor.
@@ -74,6 +81,7 @@ class ImuSensor : public Sensor {
   bool        begun_       = false;
   bool        initialized_ = false;
   uint32_t    nextRetryMs_ = 0;
+  float       sign_[3]     = {1.0f, 1.0f, 1.0f};
 
   Reading accel_[3]{};
   Reading gyro_[3]{};

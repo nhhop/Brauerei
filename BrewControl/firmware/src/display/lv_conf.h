@@ -26,8 +26,13 @@
 /*Color depth: 1 (1 byte per pixel), 8 (RGB332), 16 (RGB565), 32 (ARGB8888)*/
 #define LV_COLOR_DEPTH 16
 
-/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI)*/
+/*Swap the 2 bytes of RGB565 color. Useful if the display has an 8-bit interface (e.g. SPI).
+ *The parallel-RGB panel (Waveshare LCD-5B) takes native order.*/
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+#define LV_COLOR_16_SWAP 0
+#else
 #define LV_COLOR_16_SWAP 1
+#endif
 
 /*Enable features to draw on transparent background.
  *It's required if opa, and transform_* style properties are used.
@@ -50,16 +55,26 @@
 #if LV_MEM_CUSTOM == 0
     /*Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB)*/
     /*Measured 2026-09-24: 7.7 kB peak with 5 pages while swiping, ~1.5 kB per
-     *page - 32 kB leaves room for ~20. The pool is static internal RAM.*/
+     *page - 32 kB leaves room for ~20.*/
+    #ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+    /*The wide layout (DisplayWide.cpp) keeps up to 32 overview tiles plus one
+     *detail sheet alive; the pool sits in PSRAM, so the size costs nothing internal.*/
+    #define LV_MEM_SIZE (96U * 1024U)          /*[bytes]*/
+    #else
     #define LV_MEM_SIZE (32U * 1024U)          /*[bytes]*/
+    #endif
 
     /*Set an address for the memory pool instead of allocating it as a normal array. Can be in external SRAM too.*/
     #define LV_MEM_ADR 0     /*0: unused*/
     /*Instead of an address give a memory allocator that will be called to get a memory pool for LVGL. E.g. my_malloc*/
-    #if LV_MEM_ADR == 0
-        #undef LV_MEM_POOL_INCLUDE
-        #undef LV_MEM_POOL_ALLOC
-    #endif
+    /*The pool goes to PSRAM once at lv_init(): only the CPU touches it (objects,
+     *styles), never DMA or an ISR - the draw buffer, which DMA reads, stays
+     *internal (DisplayUI.cpp). As a static array it cost 32 kB of internal RAM,
+     *which Arduino core 3 no longer has to spare. Same size, same page limit.*/
+    #define LV_MEM_POOL_INCLUDE <esp_heap_caps.h>
+    #define LV_MEM_POOL_ALLOC(size) \
+        heap_caps_malloc_prefer((size), 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, \
+                                MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
 
 #else       /*LV_MEM_CUSTOM*/
     #define LV_MEM_CUSTOM_INCLUDE <stdlib.h>   /*Header for the dynamic memory function*/
@@ -398,7 +413,7 @@
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(brew_font_20) LV_FONT_DECLARE(brew_font_28) LV_FONT_DECLARE(brew_font_64)
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(brew_font_20) LV_FONT_DECLARE(brew_font_28) LV_FONT_DECLARE(brew_font_64) LV_FONT_DECLARE(brew_font_96) LV_FONT_DECLARE(brew_font_56)
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &brew_font_20
@@ -662,7 +677,11 @@
 #define LV_USE_GIF 0
 
 /*QR code library*/
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+#define LV_USE_QRCODE 1  /*connection dialog of the wide layout (DisplayWide.cpp)*/
+#else
 #define LV_USE_QRCODE 0
+#endif
 
 /*FreeType library*/
 #define LV_USE_FREETYPE 0

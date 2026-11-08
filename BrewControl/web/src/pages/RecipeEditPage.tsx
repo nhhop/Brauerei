@@ -36,8 +36,8 @@ const TABS: { id: string; label: string; view: (p: TabProps) => JSX.Element }[] 
   { id: 'brews', label: 'Sude', view: () => <></> },  // rendered by the page, it needs the brews
 ];
 
-const summaryOf = ({ id, name, style, volumeL, status, rootId, version, updatedAt, ogPlato, abvPct, ibu, ebc }: Recipe): RecipeSummary =>
-  ({ id, name, style, volumeL, status, rootId, version, updatedAt, ogPlato, abvPct, ibu, ebc });
+const summaryOf = ({ id, name, style, volumeL, volumeBasis, status, rootId, version, updatedAt, ogPlato, abvPct, ibu, ebc }: Recipe): RecipeSummary =>
+  ({ id, name, style, volumeL, volumeBasis, status, rootId, version, updatedAt, ogPlato, abvPct, ibu, ebc });
 
 // Recipe editor. Changes stay in a local draft until "Speichern" — no autosave.
 export function RecipeEditPage({ id }: { path?: string; id?: string }) {

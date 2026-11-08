@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "BoardPins.h"
+#include "../TestBoards.h"
 #include "BusConfig.h"
 
 using namespace BrewControl;
@@ -179,6 +180,8 @@ void test_item_bus_types() {
   TEST_ASSERT_EQUAL_STRING("i2c", itemBusType("QMI8658"));
   TEST_ASSERT_EQUAL_STRING("i2c", itemBusType("BMI270"));
   TEST_ASSERT_EQUAL_STRING("i2c", itemBusType("BMI160"));
+  TEST_ASSERT_EQUAL_STRING("i2c", itemBusType("SY6970"));
+  TEST_ASSERT_EQUAL_STRING("i2c", itemBusType("AXP2101"));
   TEST_ASSERT_NULL(itemBusType("DigitalOutput"));
 }
 

@@ -31,6 +31,13 @@ namespace SensActCtrl {
 //                pitch and roll) is below kDirMinTiltDeg. The direction a
 //                spirit level's bubble moves in, seen with -X pointing up and
 //                Y to the right.
+//   "motion" 0/1 the device is being lifted, tilted or moved (binary): the
+//                rotation rate |gyro| or the deviation of |accel| from 1 g
+//                exceeds the threshold (setMotionThreshold()) for a total of
+//                kMotionOnMs, and it stays 1 for kMotionHoldMs after the last
+//                time it did. A tremor on a table or a single knock stays
+//                below that. Needs no device-specific wake logic: it only
+//                looks at the raw readout, whatever the mask.
 // A rotation about Z (yaw) is not among them: gravity does not change with
 // it, so without a magnetometer only the drifting gyro integral could tell.
 //
@@ -68,10 +75,19 @@ class ImuTiltSensor : public Sensor {
   static constexpr uint16_t kChannelGy    = 0x100;
   static constexpr uint16_t kChannelGz    = 0x200;
   static constexpr uint16_t kChannelDir   = 0x400;  // after gz: keeps the bits above stable
-  static constexpr uint16_t kChannelAll   = 0x7FF;
+  static constexpr uint16_t kChannelMotion = 0x800;  // after dir, likewise
+  static constexpr uint16_t kChannelAll   = 0xFFF;
   // Default: pitch only. A mask without any valid bit is ignored.
   void setChannelMask(uint16_t mask) {
     if (mask & kChannelAll) channelMask_ = mask & kChannelAll;
+  }
+
+  // Rotation rate in °/s above which the device counts as moving; a
+  // deviation of |accel| from 1 g of threshold x kGPerDps counts likewise
+  // (20 °/s <-> 0.08 g; a resting chip is typically a few percent off 1 g). A value <= 0 is ignored.
+  static constexpr float kDefaultMotionThresholdDps = 20.0f;
+  void setMotionThreshold(float dps) {
+    if (dps > 0.0f) motionThresholdDps_ = dps;
   }
 
   const char* id()                const override { return id_; }
@@ -100,7 +116,17 @@ class ImuTiltSensor : public Sensor {
   static constexpr float kBiasGain = 0.1f;
   // Below this tilt the direction is noise: "dir" is invalid.
   static constexpr float kDirMinTiltDeg = 0.5f;
+  // Motion: the threshold must be exceeded for this long in total (a leaky
+  // sum, so the zero crossings of a hand's swing don't reset it) ...
+  static constexpr uint32_t kMotionOnMs   = 100;
+  // ... and "motion" falls back this long after the last exceedance.
+  static constexpr uint32_t kMotionHoldMs = 3000;
+  // g of accel deviation that count like one °/s of rotation.
+  static constexpr float    kGPerDps      = 0.004f;
 
+  void updateMotion(const Reading& ax, const Reading& ay, const Reading& az,
+                    const Reading& gx, const Reading& gy, const Reading& gz,
+                    uint32_t now, float dt);
   void filter(Reading& angle, float& bias, float angleAccelDeg,
               float gyroRateDegPerS, float dt, uint32_t now);
 
@@ -110,6 +136,11 @@ class ImuTiltSensor : public Sensor {
   Reading     roll_{};
   Reading     tilt_{};
   Reading     dir_{};
+  Reading     motion_{};
+  float       motionThresholdDps_ = kDefaultMotionThresholdDps;
+  float       motionOverMs_ = 0.0f;   // leaky sum of time above the threshold
+  uint32_t    motionLastOverMs_ = 0;
+  bool        moving_ = false;
   float      pitchBias_   = 0.0f;   // learned gyro offsets, °/s
   float       rollBias_    = 0.0f;
   uint16_t    channelMask_ = kChannelPitch;

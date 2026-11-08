@@ -36,9 +36,16 @@ void MqttService::begin(const String& fallbackClientId) {
     // retain_size=0 (the MqttBroker default) disables retained messages
     // entirely — RemotePublisher relies on them for meta (published once,
     // never repeated), so a new subscriber would never learn a sensor's
-    // kind/unit/min/max. 64 topics covers registry growth well beyond
-    // today's item count (2 topics per sensor/actuator, 1 per controller).
-    broker_ = std::make_unique<MqttBroker>(port, /*retain_size=*/64);
+    // kind/unit/min/max. When the cap is hit TinyMqtt evicts the entry
+    // written longest ago — always a meta topic, since state topics are
+    // rewritten every interval. Other boards publishing here count too:
+    // LilyGo 43 + esp32dev 20 topics sat right at the old cap of 64
+    // (2026-10-28). Not more than 128: every live topic string, retained or
+    // subscribed, takes one of TinyMqtt's 255 string indexes (StringIndexer,
+    // see tinymqtt_patch.py), and a full table breaks topic matching.
+    // Entries only cost heap for topics that actually exist (2 per sensor
+    // channel/actuator, 1 per controller, per publishing board).
+    broker_ = std::make_unique<MqttBroker>(port, /*retain_size=*/128);
     if (!settings_.mqttUsername().isEmpty()) {
       broker_->setAuth(settings_.mqttUsername().c_str(), settings_.mqttPassword().c_str());
     }

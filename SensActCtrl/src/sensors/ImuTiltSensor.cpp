@@ -15,6 +15,7 @@ const SensorMeta kTiltMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
                            0.0f, 180.0f, 0.1f};
 const SensorMeta kDirMeta{ValueKind::Continuous, Quantity::Custom, "\xc2\xb0",
                           0.0f, 360.0f, 0.1f};
+const SensorMeta kMotionMeta{ValueKind::Binary, Quantity::None, "", 0.0f, 1.0f, 1.0f};
 }  // namespace
 
 ImuTiltSensor::ImuTiltSensor(const char* id, std::unique_ptr<ImuSensor> raw)
@@ -29,9 +30,9 @@ size_t ImuTiltSensor::channelCount() const {
 Channel ImuTiltSensor::channel(size_t idx) const {
   // The idx-th set bit of the mask: bits 0..2 are the angles, bit 3 the raw
   // sensor's temperature (its channel 6), bits 4..9 its axes (channels 0..5),
-  // bit 10 the direction.
+  // bit 10 the direction, bit 11 the motion flag.
   size_t bit = 0;
-  for (; bit < 10; ++bit) {
+  for (; bit < 11; ++bit) {
     if (!(channelMask_ & (1u << bit))) continue;
     if (idx == 0) break;
     --idx;
@@ -42,6 +43,7 @@ Channel ImuTiltSensor::channel(size_t idx) const {
     case 2:  return {"tilt",  kTiltMeta,  tilt_};
     case 3:  return raw_->channel(6);
     case 10: return {"dir",   kDirMeta,   dir_};
+    case 11: return {"motion", kMotionMeta, motion_};
     default: return raw_->channel(bit - 4);
   }
 }
@@ -57,6 +59,31 @@ void ImuTiltSensor::filter(Reading& angle, float& bias, float angleAccelDeg,
   angle = Reading{next, now, true};
 }
 
+void ImuTiltSensor::updateMotion(const Reading& ax, const Reading& ay, const Reading& az,
+                                 const Reading& gx, const Reading& gy, const Reading& gz,
+                                 uint32_t now, float dt) {
+  const float accelDev = fabsf(sqrtf(ax.value * ax.value + ay.value * ay.value +
+                                     az.value * az.value) - 1.0f);
+  const float gyroMag  = sqrtf(gx.value * gx.value + gy.value * gy.value + gz.value * gz.value);
+  const bool  over = gyroMag > motionThresholdDps_ ||
+                     accelDev > motionThresholdDps_ * kGPerDps;
+
+  // A long gap between ticks (bus hiccup) must not count as sustained motion.
+  const float dtMs = fminf(dt * 1000.0f, 250.0f);
+  if (over) {
+    motionLastOverMs_ = now;
+    motionOverMs_ = fminf(motionOverMs_ + dtMs, 2.0f * kMotionOnMs);
+  } else {
+    motionOverMs_ = fmaxf(motionOverMs_ - dtMs, 0.0f);
+  }
+  if (motionOverMs_ >= kMotionOnMs) {
+    moving_ = true;
+  } else if (moving_ && static_cast<uint32_t>(now - motionLastOverMs_) >= kMotionHoldMs) {
+    moving_ = false;
+  }
+  motion_ = Reading{moving_ ? 1.0f : 0.0f, now, true};
+}
+
 void ImuTiltSensor::tick() {
   raw_->tick();
 
@@ -65,12 +92,15 @@ void ImuTiltSensor::tick() {
   const Reading az = raw_->channel(2).reading;
   const Reading gx = raw_->channel(3).reading;
   const Reading gy = raw_->channel(4).reading;
+  const Reading gz = raw_->channel(5).reading;
   if (!ax.valid) {
     // Raw sensor lost (module pulled): drop the angles and restart the
     // filters from the accelerometer when it comes back -- maybe a different
     // module, so its offsets are learned anew.
-    pitch_ = roll_ = tilt_ = dir_ = Reading{};
+    pitch_ = roll_ = tilt_ = dir_ = motion_ = Reading{};
     pitchBias_ = rollBias_ = 0.0f;
+    motionOverMs_ = 0.0f;
+    moving_ = false;
     hasLastTick_ = false;
     return;
   }
@@ -97,6 +127,8 @@ void ImuTiltSensor::tick() {
     if (dir < 0.0f) dir += 360.0f;
     dir_ = Reading{dir, now, true};
   }
+
+  updateMotion(ax, ay, az, gx, gy, gz, now, dt);
 
   lastTickMs_  = now;
   hasLastTick_ = true;

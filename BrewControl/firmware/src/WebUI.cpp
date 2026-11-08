@@ -15,6 +15,7 @@
 
 #include "AssetInstall.h"
 #include "BoardPins.h"
+#include "CsvWindow.h"
 #include "DisplayOrientation.h"
 #include "EnergyManager.h"
 #include "HeapDiag.h"
@@ -1399,7 +1400,8 @@ void WebUI::begin(bool serve) {
       }));
 
   // ── Data logs ───────────────────────────────────────────────────────────────
-  // GET /api/logs/:id/data|download[?session=<start>] — session CSV
+  // GET /api/logs/:id/data|download[?session=<start>][&from=&to=] — session CSV,
+  //                                                   optionally only a time window
   // GET /api/logs/:id/sessions                        — session list (JSON)
   // Registered BEFORE the bare "/api/logs" GET: AsyncCallbackWebHandler matches
   // "/api/logs" as a prefix of "/api/logs/…", so it would otherwise swallow
@@ -1421,7 +1423,14 @@ void WebUI::begin(bool serve) {
         if (req->hasParam("session"))
           start = (time_t)atol(req->getParam("session")->value().c_str());
         String path = logs_.sessionPath(id.c_str(), start);
-        if (path.isEmpty() || !sendFile_(req, path, "text/csv", download))
+        const bool hasFrom = req->hasParam("from");
+        const bool hasTo = req->hasParam("to");
+        const long from = hasFrom ? atol(req->getParam("from")->value().c_str()) : 0;
+        const long to = hasTo ? atol(req->getParam("to")->value().c_str()) : 0;
+        const bool sent = !path.isEmpty() && (hasFrom || hasTo
+            ? sendCsvWindow_(req, path, hasFrom, from, hasTo, to, download)
+            : sendFile_(req, path, "text/csv", download));
+        if (!sent)
           req->send(404, "text/plain", "no data");
       }));
 
@@ -3066,6 +3075,45 @@ bool WebUI::sendFile_(AsyncWebServerRequest* req, const String& path, const char
   if (cacheControl) {
     res->addHeader("Cache-Control", cacheControl);
     res->addHeader("ETag", etag);
+  }
+  req->send(res);
+  return true;
+}
+
+// A log CSV cut to the rows from `from` to `to` (CsvWindow.h): the header, then
+// the rows in the window. The size is taken when the file opens, so a row the
+// active session appends meanwhile is not sent.
+bool WebUI::sendCsvWindow_(AsyncWebServerRequest* req, const String& path, bool hasFrom, long from,
+                           bool hasTo, long to, bool download) {
+  auto file = std::make_shared<LockedFile>();
+  CsvSpan span{};
+  {
+    SdLock lock;
+    if (!fs_.exists(path)) return false;
+    file->f = fs_.open(path, "r");
+    if (!file->f || file->f.isDirectory()) return false;
+    File& f = file->f;
+    auto read = [&f](size_t off, char* buf, size_t n) -> size_t {
+      if (!f.seek(off)) return 0;
+      return f.read(reinterpret_cast<uint8_t*>(buf), n);
+    };
+    span = csvWindow(read, f.size(), hasFrom, from, hasTo, to);
+  }
+  const size_t total = span.headerLen + (span.end - span.begin);
+  AsyncWebServerResponse* res = req->beginResponse(
+      "text/csv", total,
+      [file, span](uint8_t* buf, size_t maxLen, size_t index) -> size_t {
+        SdLock lock;
+        // The header part, then the window; a chunk does not cross the seam.
+        const bool header = index < span.headerLen;
+        const size_t off = header ? index : span.begin + (index - span.headerLen);
+        const size_t left = header ? span.headerLen - index : span.end - off;
+        if (!file->f.seek(off)) return 0;
+        return file->f.read(buf, maxLen < left ? maxLen : left);
+      });
+  if (download) {
+    res->addHeader("Content-Disposition",
+                   "attachment; filename=\"" + path.substring(path.lastIndexOf('/') + 1) + "\"");
   }
   req->send(res);
   return true;

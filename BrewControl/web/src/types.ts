@@ -208,6 +208,9 @@ export interface VirtualPin {
   label: string; // channel name: "A".."D" (DAC), "P00".."P17" (PCF8575)
   dac?: boolean; // a DAC channel
   gpio?: boolean; // a digital pin of a port expander
+  reserved?: boolean; // the board itself uses it: no item may take it
+  inputOnly?: boolean; // the board drives it: items may read, not drive it
+  note?: string; // what the board uses it for
   users: PinUser[];
 }
 
@@ -222,6 +225,8 @@ export interface PinsInfo {
   // Onboard battery voltage divider (LilyGo), absent on boards without one.
   // r1 (battery → pin) and r2 (pin → GND) in kΩ.
   battery?: { gpio: number; r1: number; r2: number };
+  // Onboard charger IC: preset for a PMU sensor item.
+  pmu?: { type: string; bus: string; address: number };
 }
 
 // Per-widget dashboard display variant. 'normal' entries are never stored —
@@ -542,12 +547,16 @@ export interface DeviceStored {
 
 export interface DeviceChannel {
   index: number;
-  name: string; // "A".."D", "P00".."P17"
+  name: string; // "A".."D", "P00".."P17", "EXIO0".."EXIO7"
   users: string[]; // ids of the items on this channel
+  reserved?: boolean;
+  inputOnly?: boolean;
+  note?: string;
 }
 
 export interface DeviceInfo extends DeviceStored {
   cap: string; // capability the channels offer: "dac", "gpio"
+  fixed?: boolean; // wired by the board, read-only
   channels: DeviceChannel[];
 }
 
@@ -692,6 +701,7 @@ export interface DisplaySettings {
   rotation: number;
   orientationSensor: string;  // tilt sensor id (pitch + roll channels), "" = fixed
   orientationMirror: boolean; // reverse the sense of rotation (IMU seen from behind)
+  wakeOnMotion: boolean;      // orientationSensor's "motion" channel wakes a dimmed/dark display
   supported: boolean;    // read-only, server-computed: this build drives a display
 }
 
@@ -737,7 +747,8 @@ export interface UpdateStatus {
   lastCheckedAt: number;  // epoch (s), 0 = never checked
   progress: number;
   error: string;
-  available: { version: string; notes: string } | null;
+  // older: installing it is a downgrade (e.g. back to the stable channel)
+  available: { version: string; notes: string; older: boolean } | null;
 }
 
 // Wire format of GET /api/diag/heap.

@@ -64,6 +64,11 @@ struct Board {
   int batteryPin = -1;
   float batteryR1 = 0;
   float batteryR2 = 0;
+  // Onboard charger IC on the board's fixed I2C bus ("i2c-board"), nullptr =
+  // none. Only a preset for the PMU sensor (PmuTypes.h) the energy settings
+  // page offers to create.
+  const char* pmuType = nullptr;
+  uint8_t pmuAddress = 0;
 };
 
 struct PinUse {
@@ -252,6 +257,10 @@ inline PinCheck checkPinUses(const Board& b, const std::vector<PinUse>& uses,
       if (strcmp(d->type->provides.cap, u.cap) != 0)
         return fail(400, d->id + " has no " + u.cap + " channels");
       if (u.gpio >= d->type->provides.count) return fail(400, ref + " does not exist");
+      if (const ChannelNote* n = findChannelNote(*d, u.gpio)) {
+        if (!n->inputOnly) return fail(409, ref + " is reserved by the board (" + n->note + ")");
+        if (u.output) return fail(400, ref + " is input-only (" + n->note + ")");
+      }
       if (!u.output && !u.pullup && d->type->provides.inputsPullup)
         return fail(400, ref + ": inputs of " + d->type->type +
                              " always have a pull-up (set pullup)");
@@ -409,6 +418,12 @@ inline void writePinsJson(const Board& b, const char* boardName,
     bat["r1"] = b.batteryR1;
     bat["r2"] = b.batteryR2;
   }
+  if (b.pmuType) {
+    JsonObject pmu = out["pmu"].to<JsonObject>();
+    pmu["type"] = b.pmuType;
+    pmu["bus"] = "i2c-board";
+    pmu["address"] = b.pmuAddress;
+  }
 
   auto writeUsers = [](JsonArray arr, const PinUse& u) {
     JsonObject o = arr.add<JsonObject>();
@@ -449,6 +464,10 @@ inline void writePinsJson(const Board& b, const char* boardName,
       v["index"] = i;
       v["label"] = c.channelNames[i];
       v[c.cap] = true;
+      if (const ChannelNote* n = findChannelNote(d, i)) {
+        v[n->inputOnly ? "inputOnly" : "reserved"] = true;
+        v["note"] = n->note;
+      }
       JsonArray users = v["users"].to<JsonArray>();
       for (const PinUse& u : uses)
         if (u.device == d.id && u.gpio == i) writeUsers(users, u);

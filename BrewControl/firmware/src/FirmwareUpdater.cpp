@@ -13,6 +13,7 @@
 #include "SdLock.h"
 #include "SdTarSink.h"
 #include "TarExtractor.h"
+#include "VersionCompare.h"
 #include "version.h"
 
 namespace BrewControl {
@@ -198,7 +199,7 @@ bool FirmwareUpdater::streamBody_(HTTPClient& http,
                                   std::function<bool(const uint8_t*, size_t)>& sink) {
   int total = http.getSize();
   int got = 0;
-  WiFiClient* stream = http.getStreamPtr();
+  NetworkClient* stream = http.getStreamPtr();
   uint8_t buf[1024];
   while (http.connected() && (total < 0 || got < total)) {
     feedLoopWDT();  // runs on loopTask; a full image takes longer than its WDT
@@ -243,11 +244,20 @@ bool FirmwareUpdater::fetchReleaseMeta(const String& channel, String& tag,
   // Filter to keep only the fields we need (releases JSON is large).
   JsonDocument filter;
   makeReleaseFilter(filter, channel != "stable");
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(
-      doc, http.getStream(), DeserializationOption::Filter(filter));
+  // Read the body completely before parsing: under Arduino core 3 parsing
+  // straight from getStream() ended with IncompleteInput after ~2 s. getString()
+  // reads up to Content-Length; the String lands in PSRAM on boards that have it.
+  const int expected = http.getSize();
+  const String body = http.getString();
   http.end();
-  if (err) { netError_ = String("release JSON: ") + err.c_str(); return false; }
+  JsonDocument doc;
+  DeserializationError err =
+      deserializeJson(doc, body, DeserializationOption::Filter(filter));
+  if (err) {
+    netError_ = String("release JSON: ") + err.c_str() + " (" + body.length() +
+                " of " + expected + " bytes)";
+    return false;
+  }
 
   JsonObject rel;
   if (channel == "stable") {
@@ -300,6 +310,9 @@ void FirmwareUpdater::doCheck(const String& channel) {
     state_ = State::Error;
     return;
   }
+  // An older release stays installable — it is the way back from the preview
+  // to the stable channel — but is flagged so the UI offers it as a downgrade.
+  availOlder_ = isOlderVersion(tag.c_str(), currentVersion_.c_str());
   if (fwUrl.length() == 0) {
     availVersion_ = tag;
     availNotes_ = String("Kein Image für Variante ") + variant_;
@@ -447,6 +460,7 @@ String FirmwareUpdater::statusJson() const {
     JsonObject av = doc["available"].to<JsonObject>();
     av["version"] = availVersion_;
     av["notes"] = availNotes_;
+    av["older"] = availOlder_;
   } else {
     doc["available"] = nullptr;
   }

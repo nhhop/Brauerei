@@ -9,7 +9,7 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { Slider } from '../components/Slider';
 import { inp } from '../ui';
-import { Sun, Moon, SunDim, PowerOff, Move, RotateCw, Compass, FlipHorizontal } from 'lucide-preact';
+import { Sun, Moon, SunDim, PowerOff, Move, RotateCw, Compass, FlipHorizontal, Vibrate } from 'lucide-preact';
 
 const DIM_AFTER = [0, 30, 60, 120, 300, 600];
 const DIM_PERCENT = [5, 10, 20, 30, 50];
@@ -31,6 +31,7 @@ const DEFAULT: DisplaySettings = {
   rotation: 0,
   orientationSensor: '',
   orientationMirror: false,
+  wakeOnMotion: true,
   supported: false,
 };
 
@@ -178,6 +179,17 @@ export function DisplayPage({ snap }: { path?: string; snap?: Snapshot | null })
               <ChoiceSelect value={settings.offAfterSec} choices={OFF_AFTER} format={formatSec}
                 onChange={(v) => update({ offAfterSec: v })} />
             } />
+
+          {settings.orientationSensor && (
+            <SettingsCard title="Bei Bewegung wecken" icon={Vibrate}
+              desc={snap?.sensors.some((s) => s.id === `${settings.orientationSensor}.motion`)
+                ? 'Anheben oder Kippen des Geräts weckt das Display wie eine Berührung'
+                : `Braucht den Kanal „Bewegung“ am Sensor ${settings.orientationSensor}`}
+              control={
+                <ToggleSwitch checked={settings.wakeOnMotion}
+                  onChange={(v) => update({ wakeOnMotion: v })} />
+              } />
+          )}
 
           <SettingsCard title="Pixel-Shift" icon={Move} desc="Verschiebt das Bild jede Minute um wenige Pixel"
             control={

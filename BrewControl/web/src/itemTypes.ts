@@ -1,6 +1,6 @@
 import {
   Gauge, Zap, SlidersHorizontal, Thermometer, Droplets, Waves, Ruler, Scale,
-  ToggleLeft, ToggleRight, Radio, Cpu, CircuitBoard, Flame, Activity, Compass,
+  ToggleLeft, ToggleRight, Radio, Cpu, CircuitBoard, Flame, Activity, Compass, BatteryMedium,
   type LucideIcon,
 } from 'lucide-preact';
 
@@ -45,6 +45,12 @@ export const ITEM_TYPES: ItemTypeEntry[] = [
   { role: 'sensor', type: 'BMI160', group: 'Beschleunigung / Tilt',
     label: 'BMI160 (Neigung, Beschleunigung, Drehrate, I²C)',
     hint: '6-Achsen-IMU-Breakout über I²C — dieselben Kanäle wie der GY-521.' },
+  { role: 'sensor', type: 'SY6970', group: 'Energie',
+    label: 'SY6970 (Lade-IC des Boards, I²C)',
+    hint: 'Lade-IC auf dem LilyGo T-Display-S3-AMOLED — Akkuspannung, USB-Spannung, Ladestatus und Ladestrom.' },
+  { role: 'sensor', type: 'AXP2101', group: 'Energie',
+    label: 'AXP2101 (Lade-IC des Boards, I²C)',
+    hint: 'Power-Management-IC auf dem Waveshare ESP32-S3-AMOLED-1.75 — Akkuspannung, USB-Spannung, Ladestatus und Ladezustand in %.' },
   { role: 'sensor', type: 'YF-S201', group: 'Durchfluss',
     label: 'YF-S201 (Durchfluss)',
     hint: 'Impuls-Durchflusssensor — liefert Rate und Volumen.' },
@@ -129,6 +135,7 @@ export const CATEGORY_ICON: Record<string, LucideIcon> = {
   'Temperatur': Thermometer,
   'Feuchte / Druck': Droplets,
   'Beschleunigung / Tilt': Compass,
+  'Energie': BatteryMedium,
   'Durchfluss': Waves,
   'Distanz': Ruler,
   'Gewicht': Scale,

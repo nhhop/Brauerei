@@ -91,7 +91,8 @@ void MdnsBrowser::tick(uint32_t nowMs) {
   if (search_ == nullptr) return;
   // timeout 0: never blocks, just asks whether the search has finished.
   mdns_result_t* results = nullptr;
-  if (!mdns_query_async_get_results(search_, 0, &results)) return;
+  uint8_t count = 0;  // unused; the list is walked via r->next
+  if (!mdns_query_async_get_results(search_, 0, &results, &count)) return;
 
   for (const mdns_result_t* r = results; r != nullptr; r = r->next) {
     if (r->hostname == nullptr) continue;

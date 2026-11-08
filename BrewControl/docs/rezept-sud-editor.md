@@ -523,6 +523,9 @@ Lieferanten als eigene Liste oder Freitext, Mobile.
       Original. Die Kettenfunktionen selbst lesen `volumeL` dieser Kopie, sie sind ja das, was gelöst wird.
     - **Umschalten** rechnet die Menge um (auf 0,1 l gerundet), das Bier bleibt gleich (Nutzer). Bei
       „kalt“ steht unter dem Feld der Ausschlag.
+    - **Rezeptliste** (seit 2026-11-05): „20 l heiß“ bzw. „20 l kalt“; `volumeBasis` steht in der Index-Zeile
+      der Firmware (`recipeSummaryLine`). Die Firmware baut den Index nicht neu auf: Ein kaltes Rezept, das
+      vor dem Update gespeichert wurde, steht als „heiß“ in der Liste, bis es einmal gespeichert wird.
     - **Nicht erreichbar** ist eine Anstellwürze, wenn der Verschnitt im Gärbehälter schon mehr ist. Dann
       gibt es einen Hinweis, und gerechnet wird mit dem nächsten Ausschlag (Nutzer). Ein Verschnitt im
       Gärbehälter nach °P legt mit der Schüttung die Anstellwürze schon fast fest; der Ausschlag kann dann
@@ -1329,10 +1332,12 @@ Web, Firmware unverändert):**
     Hauptgusses links davon (`sollCourse`). Ohne Anker gibt es kein Diagramm.
   - **Log:** vorgeschlagen ist das erste Log, das den Maischefühler aufzeichnet (Messung
     „Maischetemperatur“ des Sudhauses, `pickLog`); der Sud merkt sich die Wahl in `logId`, spätestens mit
-    dem Anker. Enthält kein Log den Fühler, steht ein Hinweis (kein Anlegen aus dem Sud heraus).
-  - **Ist:** die Spalte des Fühlers aus der Log-Session, die vor dem Ende des Verlaufs begann
-    (`sessionFor`: die laufende am Brautag, eine archivierte bei einem alten Sud), von 15 min vor dem Plan
-    bis 30 min danach. Solange der Sud läuft, kommt alle 5 s ein Punkt aus dem Live-Snapshot dazu.
+    dem Anker. Enthält kein Log den Fühler, steht ein Hinweis mit „Log anlegen“ (seit 2026-11-04, siehe
+    unten).
+  - **Ist:** die Spalte des Fühlers von 15 min vor dem Plan bis 30 min danach, aus **allen** Log-Sessions,
+    die in dieses Fenster fallen (seit 2026-11-04, `web/src/logWindow.ts`; vorher nur die jüngste). Jede
+    wird mit `?from=&to=` geholt, die Firmware schickt nur diese Zeilen (`firmware/src/CsvWindow.h`,
+    Binärsuche über die Datei). Solange der Sud läuft, kommt alle 5 s ein Punkt aus dem Live-Snapshot dazu.
   - **Heizleistung:** der Aktor des Reglers der Maisch-Heizquelle (`params.actuator` bzw. `heatActuator`),
     ohne Regler der Aktor der Heizquelle, in Prozent seines Bereichs (`outputPct`). Sie kommt aus dem Log,
     wenn es den Aktor aufzeichnet; sonst nur live bei offener Seite, mit Hinweis.
@@ -1357,7 +1362,21 @@ Web, Firmware unverändert):**
   - **Laufzeit und Menge** hält der Sud nicht fest (Entscheidung 2026-10-13): Die Mengen stehen als
     Messwerte im Sud, und Durchfluss × Laufzeit wäre nur eine grobe Schätzung. `transfers` aus dem Plan gibt
     es deshalb nicht.
-- **Nicht gebaut:** die Tabelle „Maischeplan“ aus dem Canvas mit Ist-Mittelwert und Ist-Dauer je Rast.
+- **Tabelle „Maischeplan“** (seit 2026-11-04, unter dem Diagramm, nur mit Ist-Werten): je Rast (Zeile
+  des Plans ab dem Einmaischen mit Haltezeit) Soll, Soll-Dauer, Ist-Mittel und Ist-Dauer (`restActuals`).
+  Regel (Entscheidung 2026-11-04): Eine Rast beginnt mit dem ersten Wert innerhalb ±1 K der
+  Rasttemperatur, gesucht ab dem Ende der vorigen Rast (gesehen, sonst geplant; die erste ab dem
+  Einmaischen, damit das Aufheizen des Hauptgusses nicht zählt). Sie endet mit dem letzten Wert im Band,
+  bevor die Maische das Band der nächsten Rast erreicht oder deren geplantes Ende vorbei ist; die letzte
+  läuft bis zum Ende des Logs. Ist-Mittel ist das Mittel über diese Spanne, Lücken im Log zählen nach der
+  Uhr. Eine nie erreichte Rast bleibt leer.
+- **Log anlegen** (seit 2026-11-04, Entscheidung: ein Log **je Sudhaus bzw. Gärplatz**, nicht je Sud, damit
+  der nächste Sud es über `pickLog` wiederfindet und keine Logs liegen bleiben): Maischen „Sudhaus
+  *Name*“ mit Maischefühler und Heizaktor alle 10 s, Gärung „Gärplatz *Name*“ mit Fühler, Regler und
+  Dichtesensor jede Minute; Swinging Door, Fühler mit 0,1 Toleranz; mit Regler an dessen Freigabe gekoppelt
+  (`bindEnableTo`), sonst immer an. Der Sud merkt sich das neue Log (`logId` bzw. `fermentLogId`). Fehlt einem
+  vorhandenen Log nur eine Serie, bleibt es beim Hinweis: Ergänzen startet eine neue Session, das bleibt
+  beim Dashboard.
 - **Größe:** `logId` und `phaseStartedAt` kosten zusammen etwa 60 Byte (Mock-Sud 4,5 KB).
 - **Am Gerät geprüft (LilyGo, 2026-10-14):** 5b-1 bis 5b-4 mit einem Prüfrezept, dessen Timer in Minuten
   laufen (SESSION.md). Die Testdaten liegen auf dem Board: Rezept „Gerätetest“, Sudhäuser „Gerätetest von
@@ -1393,7 +1412,12 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
   „Hauptgusstemperatur“). Ist keiner verknüpft oder fehlt er in der Registry, am Fühler, auf den der Regler
   regelt (`params.sensor`, bei mehreren Kanälen der erste). Weichen beide ab, sagt das ein Hinweis; ohne
   jeden Fühler wartet der Schritt auf „Weiter“. Erreicht die Maische die Temperatur nicht (HERMS mit Regler
-  am HLT), hilft „Weiter“; ein Sollwert-Aufschlag ist offen (PLAN.md).
+  am HLT), hilft „Weiter“ oder der **Sollwert-Aufschlag** des Sudhauses (seit 2026-11-05,
+  `steps.mash.setpointOffsetK`, Feld im Schritt Maischen bei indirekter Heizung außer Aufguss). Das Programm
+  stellt dem Maisch-Regler dann Rasttemperatur plus Aufschlag. Das gilt beim Aufheizen und Abkühlen, nach dem
+  Hauptguss, bei Rasten mit Rampe und nach einer Dekoktion; nicht für den Hauptguss, den der Fühler im HLT direkt
+  misst, und nicht für das Dekoktionsgefäß. Die Endbedingung am Maischefühler und die Schrittnamen bleiben bei
+  der Rasttemperatur.
 - **Hauptguss:** im Programm, wenn seine Heizquelle am Regler der Maische hängt (Ein-Topf, HERMS-HLT). Der
   Schritt setzt die Hauptguss-Temperatur, endet am Fühler und **wartet dann auf „Weiter“**, der Regler hält
   so lange. „Einmaischen“ setzt danach die Einmaischtemperatur. Hängt der Hauptguss an einer anderen
@@ -1539,9 +1563,10 @@ sind Entscheidungen des Nutzers vom 2026-10-14, wo nicht anders vermerkt.
 - **Gärverlauf** (Karte in Gärung, uPlot, x = Tage ab Anstellen, °C links, °P rechts): Soll aus Phasen und Rampen
   (`fermentSollCourse`, dieselbe Linie wie der Programm-Generator), Ist-Temperatur, Regler-Sollwert und Dichte aus
   dem Log, Handmessungen als Punkte. Das Log ist `fermentLogId`, sonst das erste, das den Fühler des Gärplatzes
-  aufzeichnet. Fehlende Spalten im Log erklärt ein Hinweis; bei mehr als 20 000 Zeilen steht ein Hinweis zum
-  Intervall, weil die ganze Session geladen wird. Bei mehreren Sessions zeigt der Verlauf nur die jüngste, die vor
-  dem Planende begann.
+  aufzeichnet. Fehlende Spalten im Log erklärt ein Hinweis; bei mehr als 20 000 Zeilen im Zeitraum steht ein
+  Hinweis zum Intervall. Seit 2026-11-04 kommt der Zeitraum (1 h vor dem Anstellen bis 2 Tage nach Plan bzw.
+  letzter Messung) aus allen Sessions, die hineinfallen, je mit `?from=&to=` (wie beim Maischverlauf, 5b-4);
+  ohne Log mit dem Fühler gibt es „Log anlegen“.
 - **Im Mock geprüft** (Wegwerf-Mock mit Log, Regler, Spindel): Verlauf mit zwei Skalen und Punkt, Eintragen und
   Löschen, Karte in der Reifung, 375 px ohne Querscrollen. Am Gerät nicht geprüft.
 
@@ -1915,8 +1940,8 @@ Gärung ist kaum gebaut, der Sud braucht aber ihre Sollwerte. Deshalb kommt das 
   War das Gerät aus, endet der überfällige Schritt beim nächsten Tick, die folgenden laufen ab dann voll.
   Ohne WLAN nach einem Stromausfall steht das Programm, bis NTP die Zeit liefert. Push kennt keine
   Ruhezeiten.
-- **Logs** liefern immer die ganze Session als CSV, ohne Zeitfenster und ohne Ausdünnen beim Lesen.
-  Wochenlange Logs gehen, wenn das Intervall lang genug ist.
+- **Logs** liefern eine Session als CSV, seit 2026-11-04 wahlweise nur ein Zeitfenster (`?from=&to=`), aber
+  ohne Ausdünnen beim Lesen. Wochenlange Verläufe gehen, wenn das Intervall lang genug ist.
 - **Dokument-Routen:** `serveJsonDocDir_` kennt kein GET eines einzelnen Dokuments, die Liste liefert alle
   Dokumente vollständig.
 
@@ -2064,7 +2089,7 @@ Nur Web.
   - Dichte aus dem Log (Dichtesensor);
   - Messungen von Hand als Punkte;
   - zwei Skalen, °C und °P.
-- Hinweis bei kurzem Log-Intervall, weil die ganze Session geladen wird (PLAN.md).
+- Hinweis bei kurzem Log-Intervall, weil der ganze Zeitraum ungekürzt geladen wird (PLAN.md).
 
 ##### 5c-5 Reifung und Abfüllung, Bilanz, Index
 - **Messwerte:**

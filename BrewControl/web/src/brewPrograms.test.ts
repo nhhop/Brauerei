@@ -81,7 +81,7 @@ describe('mashTimerProgram', () => {
 });
 
 describe('regulated mash program', () => {
-  const control: MashControl = { controller: 'mash', sensor: 'pot', strike: true, boilC: 100 };
+  const control: MashControl = { controller: 'mash', sensor: 'pot', strike: true, boilC: 100, offsetK: 0 };
   const sensors = { strike: 'pot', mash: 'pot' };
   const set = (v: number) => ({ mash: { v, enabled: true } });
   const targets = (steps: ProgramStep[]) => steps.map((s) => s.targets);
@@ -109,6 +109,18 @@ describe('regulated mash program', () => {
     // Only the rests report themselves: there is nothing to do while the controller heats.
     expect(p.steps.map((s) => !!s.notify)).toEqual([false, false, false, false, true, false, false, false]);
     expect(rest72.notify).toBe(true);
+  });
+
+  it('adds the brewhouse offset to the mash setpoints, not to the strike water or the sensor ends', () => {
+    const p = mashTimerProgram(7, rows, sensors, { ...control, offsetK: 3 });
+    expect(targets(p.steps)).toEqual([set(70.5), set(66), {}, set(75), {}, set(81), {}, { mash: { enabled: false } }]);
+    expect(p.steps[3]).toMatchObject({ name: 'Aufheizen auf 72 °C', cond: { value: 72 - REACHED_MARGIN_K } });
+    // Strike water heated by hand: the setpoint after mashing in carries the offset.
+    expect(targets(mashTimerProgram(7, rows, { mash: 'pot' }, { ...control, strike: false, offsetK: 3 }).steps).slice(0, 4))
+      .toEqual([{}, {}, set(66), set(75)]);
+    // A rest that counts its heating, and the mash after a decoction.
+    const ramped = mashRow('rest', 72, 14, { rampInRest: true, step: { id: 'r', kind: 'rest', name: '', tempC: 72, durationMin: 20 } });
+    expect(mashTimerProgram(1, [rows[1], ramped], sensors, { ...control, offsetK: 2.5 }).steps[2].targets).toEqual(set(74.5));
   });
 
   it('leaves strike water heated by hand alone and switches on after mashing in', () => {
@@ -191,6 +203,10 @@ describe('regulated mash program', () => {
       expect(p.steps[1]).toMatchObject({ end: 'sensor', cond: { ref: 'sensor/kettle.temp', op: 'gt', value: 71.5 } });
       expect(p.steps.map((s) => !!s.notify)).toEqual([false, false, true, false, false, false, false, false, false]);
       expect(p.steps.map((s) => s.holdSec)).toEqual([0, 0, 600, 0, 900, 0, 1200, 0, 0]);
+      // The offset is the mash's: the decoction vessel's own controller gets none.
+      const off = mashTimerProgram(1, [decoction], sensors, { ...control, offsetK: 3, decoction: { controller: 'kettle', sensor: 'kettle.temp' } });
+      expect(off.steps[1].targets).toEqual({ mash: { enabled: false }, ...kettle(72) });
+      expect(off.steps[6].targets).toEqual({ ...set(67), kettle: { enabled: false } });
     });
 
     it('asks for every move in a decoction vessel heated by hand', () => {
@@ -245,7 +261,7 @@ describe('mashControlOf', () => {
 
   it('takes the controller of the mash heater with the sensor it regulates on', () => {
     const pot = link(template('pot'), 'Heizung', 'mash');
-    expect(mashControlOf(pot, snap([['mash', 'pot']], ['pot']), 99)).toEqual({ controller: 'mash', sensor: 'pot', strike: true, boilC: 99 });
+    expect(mashControlOf(pot, snap([['mash', 'pot']], ['pot']), 99)).toEqual({ controller: 'mash', sensor: 'pot', strike: true, boilC: 99, offsetK: 0 });
     // A controller names the channel it regulates on; an older bare id meant the first.
     expect(mashControlOf(pot, snap([['mash', 'bme.hum']], ['bme.temp', 'bme.hum']), 99)?.sensor).toBe('bme.hum');
     expect(mashControlOf(pot, snap([['mash', 'bme']], ['bme.temp', 'bme.hum']), 99)?.sensor).toBe('bme.temp');
@@ -268,6 +284,9 @@ describe('mashControlOf', () => {
     const other = { ...herms, steps: { ...herms.steps, strike: { ...herms.steps.strike!, heaterId: herms.devices[1].id } } };
     expect(mashControlOf(other, s, 99)?.strike).toBe(false);
     expect(mashControlOf(link(other, 'Heizstab Würzepfanne', 'boil'), s, 99)?.strike).toBe(false);
+    // The offset for a controller that measures in the HLT, not in the mash.
+    const offset = { ...herms, steps: { ...herms.steps, mash: { ...herms.steps.mash!, setpointOffsetK: 3 } } };
+    expect(mashControlOf(offset, s, 99)?.offsetK).toBe(3);
   });
 
   it('takes the decoction vessel\'s own controller', () => {

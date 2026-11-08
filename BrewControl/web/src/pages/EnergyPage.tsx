@@ -9,7 +9,7 @@ import { SettingsGroup, SettingsCard } from '../components/SettingsCard';
 import { PinHint } from '../components/PinHint';
 import { ToggleSwitch } from '../components/ToggleSwitch';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { lipoPercent, freeBatteryId } from '../energy';
+import { batteryStatus, freeBatteryId } from '../energy';
 import { inp, btnPrimary, btnSecondary, unitInput } from '../ui';
 import { UnitBox } from '../components/UnitBox';
 import { AlarmClock, BatteryMedium, Info, Moon, Plus, Timer, Wifi } from 'lucide-preact';
@@ -55,6 +55,7 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
   const [r2, setR2] = useState('100');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [pmuErr, setPmuErr] = useState('');
   const [draft, setDraft] = useState<SleepSettings>(sleepPart(DEFAULT));
   const [wakePinText, setWakePinText] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -133,6 +134,24 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
     }
   }
 
+  // The board's charger IC as a sensor item; its battery channel becomes the
+  // battery sensor.
+  async function createPmuSensor() {
+    if (!pins?.pmu) return;
+    const id = freeBatteryId((snap?.sensors ?? []).map((s) => s.id), 'pmu');
+    setBusy(true);
+    setPmuErr('');
+    try {
+      await createSensor({ type: pins.pmu.type, id, bus: pins.pmu.bus, address: pins.pmu.address });
+      await setSensorLabel(id, 'Akku').catch(() => {});
+      update({ batterySensor: `${id}.vbat` });
+    } catch (e) {
+      setPmuErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const header = (
     <header class="mb-6">
       <Breadcrumb trail={[{ label: 'Einstellungen', href: '/settings' }, { label: 'Energiemanagement' }]} />
@@ -145,15 +164,19 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
   // Voltage sensors only, plus whatever is selected so the choice stays visible.
   const candidates = sensors.filter((s) =>
     s.meta.unit === 'V' || s.meta.quantity === 'Voltage' || s.id === settings.batterySensor);
-  const battery = sensors.find((s) => s.id === settings.batterySensor);
-  const volts = battery?.state.ok && battery.state.v != null ? battery.state.v : null;
+  const bat = batteryStatus(sensors, settings.batterySensor);
 
   let status: string;
   if (!settings.batterySensor) status = 'Keine Batteriemessung ausgewählt';
   else if (!snap) status = 'Lade …';
-  else if (!battery) status = `Sensor „${settings.batterySensor}“ nicht gefunden`;
-  else if (volts == null) status = 'Noch kein Messwert';
-  else status = `${volts.toFixed(2)} V · ca. ${lipoPercent(volts)} % (LiPo, ohne Last)`;
+  else if (!bat) status = `Sensor „${settings.batterySensor}“ nicht gefunden`;
+  else if (bat.volts == null) status = bat.usb ? 'Kein Akku erkannt · USB' : 'Noch kein Messwert';
+  else {
+    status = `${bat.volts.toFixed(2)} V · ` +
+      (bat.gauge ? `${bat.percent} %` : `ca. ${bat.percent} % (LiPo, ohne Last)`);
+    if (bat.charging) status += ' · lädt';
+    else if (bat.usb) status += ' · USB';
+  }
 
   const sleepChanged = JSON.stringify(draft) !== JSON.stringify(sleepPart(settings));
   const wakeText = settings.wakeCause === 'pin' ? 'Zuletzt über den Wach-Pin aufgewacht'
@@ -172,10 +195,20 @@ export function EnergyPage({ snap }: { path?: string; snap: Snapshot | null }) {
                 onChange={(e) => update({ batterySensor: (e.target as HTMLSelectElement).value })}>
                 <option value="">Keine</option>
                 {candidates.map((s) => (
-                  <option key={s.id} value={s.id}>{s.label || s.id}</option>
+                  // A labelled multi-channel item (PMU: vbat and vbus) names the channel too.
+                  <option key={s.id} value={s.id}>
+                    {s.label && s.id.includes('.') ? `${s.label} · ${s.id.split('.').pop()}` : s.label || s.id}
+                  </option>
                 ))}
               </select>
             } />
+
+          {pins?.pmu && (
+            <SettingsCard title="PMU-Sensor anlegen" icon={Plus}
+              desc={pmuErr || (busy && !creating ? 'Lege an …'
+                : `Liest den Lade-IC des Boards (${pins.pmu.type}): Akku, USB und Ladestatus – und wählt ihn aus`)}
+              onClick={busy ? undefined : createPmuSensor} />
+          )}
 
           {!creating ? (
             <SettingsCard title="Batteriesensor anlegen" icon={Plus}

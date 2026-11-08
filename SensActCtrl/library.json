@@ -60,7 +60,7 @@
     },
     {
       "name": "AutoTunePID",
-      "version": "https://github.com/lily-osp/AutoTunePID.git#34c6f39"
+      "version": "https://github.com/lily-osp/AutoTunePID.git#34c6f39ef06c5cee4e86c02a4cecee4d3c3056e3"
     },
     {
       "name": "PubSubClient",
@@ -79,7 +79,7 @@
     },
     {
       "name": "IdsInductionCooker",
-      "version": "https://github.com/nhhop/IdsInductionCooker.git#e4dbe90"
+      "version": "https://github.com/nhhop/IdsInductionCooker.git#1030e7556c367106ce87cf3b95e34b5571306784"
     }
   ],
   "build": {

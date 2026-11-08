@@ -2,9 +2,11 @@
 
 #include <cstring>
 
+#include "controllers/PIDController.h"
 #include "controllers/TwoPointController.h"
 #include "remote/RemoteActuator.h"
 #include "remote/RemotePublisher.h"
+#include "remote/MetaRetry.h"
 #include "remote/RemoteSensor.h"
 #include "remote/Topics.h"
 
@@ -23,6 +25,7 @@ using SensActCtrl::ValueKind;
 using SensActCtrl::test::MockActuator;
 using SensActCtrl::test::MockSensor;
 using SensActCtrl::test::MockTransport;
+using SensActCtrl::remote::shouldRequestMeta;
 
 // Two-channel sensor for multi-channel tests. Keys "a" (Temperature) and
 // "b" (Humidity). Values set via valueA / valueB before tick().
@@ -169,6 +172,24 @@ void test_controller_tune_round_trip() {
   const std::string meta = tx.lastPayload(
       "sensactctrl/node-e/controller/mash_ctrl/meta");
   TEST_ASSERT_TRUE(meta.find("75") != std::string::npos);
+}
+
+// A PID's params JSON (ten %.4f fields plus refs) is ~330 B — the publisher
+// used to render it into 256 B, got 0 back and never published the meta.
+void test_pid_controller_meta_published() {
+  MockTransport tx;
+  MockSensor s("t", tempMeta());
+  MockActuator a("o", switchMeta());
+  SensActCtrl::PIDController pid("Maischen", s, a, 0.0f, 1.0f);
+
+  RemotePublisher pub(tx, "node-p");
+  pub.attach(pid);
+  pub.begin();
+
+  const std::string meta =
+      tx.lastPayload("sensactctrl/node-p/controller/Maischen/meta");
+  TEST_ASSERT_TRUE(meta.size() > 256);
+  TEST_ASSERT_TRUE(meta.find("\"autotuneCyclesTotal\"") != std::string::npos);
 }
 
 void test_multichannel_both_channels_published() {
@@ -446,6 +467,103 @@ void test_reattach_after_detach_republishes_meta() {
   TEST_ASSERT_TRUE(state.find("12.5") != std::string::npos);
 }
 
+// A deleted proxy must not leave its callbacks behind: they capture `this`,
+// and the next message on its topic would write into freed memory (heap
+// corruption on a board after deleting a remote item, 2026-10-28).
+void test_destroyed_remote_sensor_unsubscribes() {
+  MockTransport tx;
+  {
+    RemoteSensor rs(tx, "node-w", "probe");
+    rs.begin();
+    TEST_ASSERT_EQUAL(2u, tx.subscriptionCount());
+  }
+  TEST_ASSERT_EQUAL(0u, tx.subscriptionCount());
+}
+
+void test_destroyed_remote_actuator_unsubscribes() {
+  MockTransport tx;
+  {
+    RemoteActuator ra(tx, "node-w", "pump");
+    ra.begin();
+    TEST_ASSERT_EQUAL(2u, tx.subscriptionCount());
+  }
+  TEST_ASSERT_EQUAL(0u, tx.subscriptionCount());
+}
+
+void test_destroyed_proxy_keeps_twin_on_same_topic() {
+  MockTransport tx;
+  RemoteSensor keep(tx, "node-w", "probe");
+  keep.begin();
+  {
+    RemoteSensor gone(tx, "node-w", "probe");
+    gone.begin();
+  }
+  TEST_ASSERT_EQUAL(2u, tx.subscriptionCount());
+
+  tx.publish("sensactctrl/node-w/sensor/probe", "{\"v\":21.5,\"t\":1,\"ok\":true}", true);
+  TEST_ASSERT_EQUAL_FLOAT(21.5f, keep.channel(0).reading.value);
+}
+
+void test_destroyed_proxy_before_begin_is_harmless() {
+  MockTransport tx;
+  { RemoteSensor rs(tx, "node-w", "probe"); }
+  { RemoteActuator ra(tx, "node-w", "pump"); }
+  TEST_ASSERT_EQUAL(0u, tx.subscriptionCount());
+}
+
+// A lost ESP-NOW meta broadcast is never repeated; a proxy that gets state
+// without meta asks for the retained messages again, backing off.
+void test_meta_retry_schedule() {
+  TEST_ASSERT_FALSE(shouldRequestMeta(0));
+  for (uint32_t n : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 192u})
+    TEST_ASSERT_TRUE(shouldRequestMeta(n));
+  for (uint32_t n : {3u, 5u, 6u, 7u, 33u, 63u, 65u, 96u, 127u, 256u + 1u})
+    TEST_ASSERT_FALSE(shouldRequestMeta(n));
+}
+
+void test_remote_sensor_requests_missing_meta() {
+  MockTransport tx;
+  RemoteSensor rs(tx, "node-x", "probe");
+  rs.begin();
+  for (int i = 0; i < 5; ++i)
+    tx.publish("sensactctrl/node-x/sensor/probe", "{\"v\":20.0,\"t\":1,\"ok\":true}", false);
+  TEST_ASSERT_EQUAL(3, tx.retainedRequests);  // states 1, 2, 4
+
+  tx.publish("sensactctrl/node-x/sensor/probe/meta",
+             "{\"kind\":\"Continuous\",\"quantity\":\"Temperature\",\"unit\":\"C\","
+             "\"min\":0,\"max\":100,\"res\":0.1}", true);
+  for (int i = 0; i < 10; ++i)
+    tx.publish("sensactctrl/node-x/sensor/probe", "{\"v\":20.0,\"t\":1,\"ok\":true}", false);
+  TEST_ASSERT_EQUAL(3, tx.retainedRequests);  // meta is there, no more asking
+}
+
+void test_remote_sensor_with_meta_never_requests() {
+  MockTransport tx;
+  tx.publish("sensactctrl/node-x/sensor/probe/meta",
+             "{\"kind\":\"Continuous\",\"quantity\":\"Temperature\",\"unit\":\"C\","
+             "\"min\":0,\"max\":100,\"res\":0.1}", true);
+  RemoteSensor rs(tx, "node-x", "probe");
+  rs.begin();  // the mock replays the retained meta here
+  tx.publish("sensactctrl/node-x/sensor/probe", "{\"v\":20.0,\"t\":1,\"ok\":true}", false);
+  TEST_ASSERT_EQUAL(0, tx.retainedRequests);
+}
+
+void test_remote_actuator_requests_missing_meta() {
+  MockTransport tx;
+  RemoteActuator ra(tx, "node-x", "pump");
+  ra.begin();
+  for (int i = 0; i < 2; ++i)
+    tx.publish("sensactctrl/node-x/actuator/pump", "{\"v\":1.0,\"t\":1,\"ok\":true}", false);
+  TEST_ASSERT_EQUAL(2, tx.retainedRequests);
+
+  tx.publish("sensactctrl/node-x/actuator/pump/meta",
+             "{\"kind\":\"Binary\",\"quantity\":\"None\",\"unit\":\"\","
+             "\"min\":0,\"max\":1,\"res\":1}", true);
+  for (int i = 0; i < 4; ++i)
+    tx.publish("sensactctrl/node-x/actuator/pump", "{\"v\":1.0,\"t\":1,\"ok\":true}", false);
+  TEST_ASSERT_EQUAL(2, tx.retainedRequests);
+}
+
 void setUp() {}
 void tearDown() {}
 
@@ -456,6 +574,7 @@ int main(int, char**) {
   RUN_TEST(test_actuator_state_round_trip);
   RUN_TEST(test_meta_retained_replay_for_late_subscriber);
   RUN_TEST(test_controller_tune_round_trip);
+  RUN_TEST(test_pid_controller_meta_published);
   RUN_TEST(test_multichannel_both_channels_published);
   RUN_TEST(test_multichannel_channel_values_correct);
   RUN_TEST(test_single_channel_flat_topic_unchanged);
@@ -470,5 +589,13 @@ int main(int, char**) {
   RUN_TEST(test_detach_actuator_removes_subscription);
   RUN_TEST(test_detach_controller_removes_subscription);
   RUN_TEST(test_reattach_after_detach_republishes_meta);
+  RUN_TEST(test_destroyed_remote_sensor_unsubscribes);
+  RUN_TEST(test_destroyed_remote_actuator_unsubscribes);
+  RUN_TEST(test_destroyed_proxy_keeps_twin_on_same_topic);
+  RUN_TEST(test_destroyed_proxy_before_begin_is_harmless);
+  RUN_TEST(test_meta_retry_schedule);
+  RUN_TEST(test_remote_sensor_requests_missing_meta);
+  RUN_TEST(test_remote_sensor_with_meta_never_requests);
+  RUN_TEST(test_remote_actuator_requests_missing_meta);
   return UNITY_END();
 }

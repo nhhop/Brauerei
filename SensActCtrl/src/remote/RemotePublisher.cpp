@@ -131,7 +131,9 @@ void RemotePublisher::publishActuatorState(ActuatorEntry& e) {
 }
 
 void RemotePublisher::publishControllerMeta(ControllerEntry& e) {
-  char buf[256];
+  // Same budget as RegistrySnapshot: a PID's params alone run ~330 B, and
+  // paramsJson() returns 0 (nothing published) when they don't fit.
+  char buf[512];
   size_t n = e.controller->paramsJson(buf, sizeof(buf));
   if (n == 0) return;
   if (transport_->publish(e.metaTopic.c_str(), buf, /*retained=*/true)) {

@@ -60,7 +60,7 @@ export function SettingsIndex(_: { path?: string }) {
   const hasRecipes = useModule('recipes') === true;
 
   useEffect(() => {
-    getUpdateStatus().then((s) => setUpdateAvail(s.state === 'updateAvailable')).catch(() => {});
+    getUpdateStatus().then((s) => setUpdateAvail(s.state === 'updateAvailable' && !s.available?.older)).catch(() => {});
     getSettings().then((s) => setHasDisplay(!!s.display?.supported)).catch(() => {});
   }, []);
 

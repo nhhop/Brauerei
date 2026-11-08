@@ -4,6 +4,7 @@
 
 #if defined(ESP32)
 #include <driver/spi_master.h>
+#include <soc/gpio_struct.h> // BrewControl: GPIO, no longer pulled in transitively on IDF 5
 
 #define SPI_MAX_PIXELS_AT_ONCE 4096//1024
 #define QSPI_FREQUENCY 8000000

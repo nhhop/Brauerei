@@ -18,7 +18,9 @@ namespace SensActCtrl {
 // + JSON payloads) so payloads can be inspected uniformly across both
 // transports.
 //
-// Wire framing (one ESP-Now packet, max 250 B total):
+// Wire framing (one ESP-Now packet, max 250 B total with ESP-NOW v1, 1470 B
+// with v2 — ESP-IDF >= 5.4, Arduino core 3; a v1 receiver drops anything
+// longer than 250 B):
 //   Data:             [0x01][u8 topic_len][topic chars][payload chars]
 //   Retained-Request: [0x02]
 //
@@ -30,7 +32,10 @@ namespace SensActCtrl {
 // waiting for the next periodic publish. A subscribe() that lands inside
 // the throttle window is not dropped — it's deferred and sent from tick()
 // once the window elapses, so a burst of subscribe() calls (e.g. at boot)
-// never permanently loses a subscriber's chance at retained data.
+// never permanently loses a subscriber's chance at retained data. The
+// answer is paced from tick() (one cached topic per kReplayIntervalMs), not
+// sent as one burst: a board with ~40 retained topics overran the
+// receiver's incoming queue, and the topics sorted last never arrived.
 //
 // Peer model: broadcast (FF:FF:FF:FF:FF:FF) for everything retained — meta,
 // state, Retained-Requests — so any number of consumers on the same WiFi
@@ -48,13 +53,18 @@ class EspNowTransport : public ITransport {
   ~EspNowTransport() override;
 
   bool publish(const char* topic, const char* payload, bool retained) override;
-  bool subscribe(const char* topic, MessageCallback callback) override;
+  bool subscribe(const char* topic, MessageCallback callback,
+                 const void* owner = nullptr) override;
+  bool unsubscribe(const char* topic, const void* owner = nullptr) override;
+  // Same Retained-Request as a subscribe() sends, with the same throttle.
+  void requestRetained() override { requestRetained_(); }
   void tick() override;
   bool connected() const override { return initialized_; }
-  // Covers both init failure (connected() == false) and the last send-level
-  // failure while initialized (e.g. a packet silently dropped for exceeding
-  // the 250-byte ESP-NOW limit) — the latter doesn't affect connected(), but
-  // is otherwise invisible to callers. Empty once a send succeeds again.
+  // Covers init failure (connected() == false), the last send-level failure
+  // while initialized (empty once a send succeeds again), a packet dropped
+  // for exceeding the ESP-NOW size limit (kept until that topic fits again)
+  // and a failed unicast delivery (kept until one succeeds) — none of the
+  // latter affect connected(), but are otherwise invisible to callers.
   const char* lastErrorMessage() const override;
 
   // Called from the static ESP-Now receive / send callbacks. Public so the
@@ -80,14 +90,18 @@ class EspNowTransport : public ITransport {
   void requestRetained_();
 
   static constexpr uint32_t kRetainedRequestThrottleMs = 1000;
+  // A receiver's loop stalls up to ~130 ms while a REST call holds the
+  // registry lock (measured on the Waveshare) — 20 ms keeps the replay well
+  // inside kIncomingQueueSize next to a board's periodic state traffic.
+  static constexpr uint32_t kReplayIntervalMs = 20;
 
   // Packets received on the WiFi task wait here until tick() delivers them, so
   // subscriber callbacks (e.g. an actuator's /set) run on the loop task like
   // MQTT's — under the host's registry lock. A full queue drops the newest.
+  // Sized to the packet: a fixed v2-sized buffer would cost 16 x 1470 B.
   struct Incoming {
     uint8_t mac[6];
-    uint8_t len;
-    uint8_t data[250];
+    std::vector<uint8_t> data;
   };
   static constexpr size_t kIncomingQueueSize = 16;
   std::mutex incomingMutex_;
@@ -95,11 +109,22 @@ class EspNowTransport : public ITransport {
 
   uint8_t channel_;
   bool initialized_ = false;
+  size_t maxPacket_ = 250;  // raised to the v2 limit in initEspNow_() when available
   uint32_t lastRetainedRequestMs_ = 0;
   bool retainedRequestPending_ = false;
-  std::vector<std::pair<std::string, MessageCallback>> subs_;
+  std::vector<Subscription> subs_;
   std::map<std::string, std::string> retained_;
+  // Retained-Request answer in progress: tick() sends the first cached topic
+  // after replayAfter_ (empty = from the start). A key, not an iterator, so
+  // publish() may change retained_ in between.
+  bool replayPending_ = false;
+  std::string replayAfter_;
+  uint32_t lastReplayMs_ = 0;
   std::string lastErrorMsg_;
+  // Kept apart from lastErrorMsg_: an oversized meta is sent once, and the
+  // next periodic state publish would clear the message within a second.
+  std::string oversizeTopic_;
+  std::string oversizeErrorMsg_;
 
   uint8_t peerChannel_ = 0;  // 0 = ride the STA channel
   std::mutex peersMutex_;    // learn() runs on the WiFi task, publish() on loop

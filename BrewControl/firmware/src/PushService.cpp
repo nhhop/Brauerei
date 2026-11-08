@@ -109,34 +109,36 @@ void PushService::persist_() const {
 void PushService::applyConfig_() {
   ScopedLock lk(mutex_);
   if (initialized_) {
-    push_.deinit();
+    push_.end();
     initialized_ = false;
   }
   if (vapidPub_.empty() || subs_.empty()) return;
 
-  WebPushVapidConfig vapid;
-  vapid.subject          = kVapidSubject;
-  vapid.publicKeyBase64  = vapidPub_;
-  vapid.privateKeyBase64 = vapidPriv_;
+  CurierConfig cfg;
+  cfg.vapidConfig.subject          = kVapidSubject;
+  cfg.vapidConfig.publicKeyBase64  = vapidPub_;
+  cfg.vapidConfig.privateKeyBase64 = vapidPriv_;
+  // Queue, jobs and the worker's stack in PSRAM (internal RAM as fallback):
+  // under Arduino core 3 the internal heap is ~38 KB smaller than before. A
+  // PSRAM stack only rules out code that itself disables the flash cache
+  // (flash/NVS writes); the worker does TLS and HTTP, and the send callback
+  // below only sets lastError_. TLS buffers already go to PSRAM
+  // (tlsAllocToPsram() in main.cpp).
+  cfg.memory.allocation = Strata::Placement::PreferExternal;
+  cfg.memory.taskStack  = Strata::Placement::PreferExternal;
+  cfg.queueSize = 8;  // 4 alerts per WebUI::tick, times a couple of subscriptions
+  // 4096 (the library default) does not survive a TLS handshake; 12 KB was
+  // enough with esp-webPush and leaves the heap alone.
+  cfg.stackSize = 12288;
+  cfg.priority  = 1;  // below AsyncTCP and the Arduino loop
+  // An alert is a snapshot of "now"; one that arrives a minute late after
+  // five back-offs is noise. One retry covers a dropped connection.
+  cfg.retry.maxRetries = 1;
 
-  WebPushConfig cfg;
-  // The library defaults to PSRAM, which esp32dev does not have (lolin_s2_mini
-  // does: 2 MB, see GET /api/diag/heap). Not `Internal` though: that maps to MALLOC_CAP_INTERNAL, which means
-  // "not PSRAM" and therefore includes IRAM — and IRAM only allows 32-bit
-  // accesses. Once DRAM got tight on the esp32dev the queue item landed there,
-  // and constructing the std::string members of PushMessage byte-wise panicked
-  // with a LoadStoreError. `Any` is MALLOC_CAP_DEFAULT, which is
-  // byte-addressable and on a board without PSRAM is internal memory anyway.
-  cfg.queueMemory = WebPushQueueMemory::Any;
-  cfg.queueLength = 8;  // 4 alerts per WebUI::tick, times a couple of subscriptions
-  // 4096 (the library default) does not survive a TLS handshake; upstream's own
-  // example uses 16 KB. 12 KB is enough here and leaves the heap alone.
-  cfg.worker.stackSizeBytes = 12288;
-  cfg.worker.priority = 1;  // below AsyncTCP and the Arduino loop
-  cfg.networkValidator = []() { return WiFi.status() == WL_CONNECTED; };
-
-  initialized_ = push_.init(vapid, cfg);
-  if (!initialized_) lastError_ = "Push-Dienst konnte nicht starten";
+  const CurierResult r = push_.init(cfg);
+  initialized_ = static_cast<bool>(r);
+  if (!initialized_)
+    lastError_ = String("Push-Dienst konnte nicht starten: ") + r.message;
 }
 
 void PushService::tick() {
@@ -200,12 +202,12 @@ void PushService::send(const AlarmStore::Alert& a) {
 
 void PushService::sendTo_(const Sub& s, const String& title, const String& body,
                           const String& tag) {
-  WebPushSubscription sub;
+  CurierSubscription sub;
   sub.endpoint = s.endpoint;
   sub.p256dh   = s.p256dh;
   sub.auth     = s.auth;
 
-  PushPayload payload;
+  CurierPayload payload;
   payload.title = title.c_str();
   payload.body  = body.c_str();
   payload.tag   = tag.c_str();
@@ -216,8 +218,16 @@ void PushService::sendTo_(const Sub& s, const String& title, const String& body,
   payload.data["url"] = String("http://") + WiFi.localIP().toString() + "/";
   payload.hasData = true;
 
-  const WebPushEnqueueResult r = push_.send(sub, payload, nullptr);
-  if (!r.queued()) lastError_ = r.message ? r.message : "Senden fehlgeschlagen";
+  // The callback runs on the push worker once the push service answered, so
+  // unlike with esp-webPush a rejected subscription (404/410) or a broken key
+  // (403) now shows up in GET /api/push instead of vanishing.
+  const CurierResult r = push_.send(sub, payload, [this](CurierSendResult res) {
+    if (res.ok()) return;
+    ScopedLock lk(mutex_);
+    lastError_ = res.statusCode ? String("HTTP ") + res.statusCode + ": " + res.message
+                                : String(res.message);
+  });
+  if (!r) lastError_ = r.message ? r.message : "Senden fehlgeschlagen";
 }
 
 String PushService::serialize() const {
