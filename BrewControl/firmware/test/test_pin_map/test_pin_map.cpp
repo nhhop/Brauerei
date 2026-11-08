@@ -153,19 +153,6 @@ void test_waveshare_board_pins() {
   TEST_ASSERT_EQUAL(-1, kWaveshareAmoled175.batteryPin);
 }
 
-void test_m5_stopwatch_board_pins() {
-  // Board I2C (47/48), buttons (1, 2), audio (15) and display (38-42, 45, 46)
-  // are taken by the board.
-  TEST_ASSERT_EQUAL(409, checkBus(kM5StopWatch, {}, R"({"type":"i2c","sda":47,"scl":48})").status);
-  for (int pin : {1, 2, 15, 38, 39, 45, 46}) {
-    const std::string cfg = R"({"type":"DigitalInput","id":"a","pin":)" + std::to_string(pin) + "}";
-    TEST_ASSERT_EQUAL(409, check(kM5StopWatch, {}, cfg.c_str()).status);
-  }
-  // The Grove port's pins are free for a user I2C bus.
-  TEST_ASSERT_TRUE(checkBus(kM5StopWatch, {}, R"({"type":"i2c","sda":10,"scl":11})").ok);
-  TEST_ASSERT_EQUAL(-1, kM5StopWatch.batteryPin);
-}
-
 void test_waveshare_lcd5b_board_pins() {
   // Board I2C (8/9) and the SD pins are taken, so are the display's.
   TEST_ASSERT_EQUAL(409, checkBus(kWaveshareLcd5b, {}, R"({"type":"i2c","sda":8,"scl":9})").status);
@@ -753,7 +740,6 @@ int main(int, char**) {
   RUN_TEST(test_pins_json_capabilities);
   RUN_TEST(test_wake_pin);
   RUN_TEST(test_waveshare_board_pins);
-  RUN_TEST(test_m5_stopwatch_board_pins);
   RUN_TEST(test_waveshare_lcd5b_board_pins);
   RUN_TEST(test_parse_pin_ref);
   RUN_TEST(test_collect_device_channel);

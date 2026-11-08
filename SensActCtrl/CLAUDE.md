@@ -28,8 +28,10 @@ src/
 ```powershell
 cd SensActCtrl
 pio test -e native          # Unit-Tests (kein Hardware nötig)
-pio run -e esp32dev         # Compile-Check gegen esp32dev-Target
 ```
+
+Ein Compile-Check gegen ein ESP32-Target läuft nur noch über die BrewControl-Envs (Arduino Core 3).
+Die Zweige für Core 2 baut derzeit nichts (PLAN.md › „SensActCtrl: Core-2-Zweige ungeprüft“).
 
 ## Arbeitsregeln
 

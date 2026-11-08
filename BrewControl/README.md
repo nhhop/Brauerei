@@ -9,7 +9,7 @@ Tuning zur Laufzeit über eine HTTP+SSE-API.
 > Sollwert-Programme + MQTT/Webhook/ESP-NOW (lokal + Remote-Node) +
 > WinUI-3-Fluent-Redesign + rundes Touch-Display (AMOLED-1.75). Unterstützt nur noch
 > ESP32-S3-Boards (seit Arduino Core 3): LilyGo T-Display-S3-AMOLED-1.75 und Waveshare
-> ESP32-S3-Touch-AMOLED-1.75 hardware-verifiziert, M5Stack StopWatch nur gebaut. Aktueller
+> ESP32-S3-Touch-AMOLED-1.75 hardware-verifiziert, Waveshare ESP32-S3-Touch-LCD-5B teilweise. Aktueller
 > Gesamtstand/Roadmap: [`../PLAN.md`](../PLAN.md); Session-Historie:
 > [`../SESSION.md`](../SESSION.md).
 
@@ -63,11 +63,9 @@ Browser einen vollständigen Snapshot.
 - **Tailwind CSS 4**: utility-first, kein `tailwind.config.ts`/
   `postcss.config.js`/`autoprefixer` mehr nötig (Lightning CSS eingebaut).
 - **SD-Karte** (LilyGo, Waveshare) statt LittleFS: das UI-Bundle ändert sich oft
-  beim Iterieren — SD ist hot-swappable, kein Reflash nötig.
-  **`m5stack_stopwatch`** hat keinen SD-Slot und läuft stattdessen
-  auf einer internen LittleFS-Partition (`BREWCTL_USE_LITTLEFS`, 3,4 MB aus
-  `default_16MB.csv`) — Hot-Swap-Vorteil entfällt dort, Deploy
-  per `uploadfs` über USB (s. unten).
+  beim Iterieren — SD ist hot-swappable, kein Reflash nötig. Für Boards ohne
+  SD-Slot steht der LittleFS-Pfad (`BREWCTL_USE_LITTLEFS`) weiter im Code, derzeit
+  setzt ihn kein Env (s. „Web-UI auf LittleFS“ unten).
 - **Concurrency:** `serializeRegistry()` läuft im AsyncTCP-Task,
   `Registry::tick()` im loopTask — `Reading`-Werte (float+timestamp+ok)
   sind auf ESP32 nicht atomar gegen torn reads, für den Dashboard-Use
@@ -82,12 +80,10 @@ Browser einen vollständigen Snapshot.
 ## Voraussetzungen
 
 **Hardware:**
-- ESP32-S3-Board mit PSRAM und 16 MB Flash (eines der drei Envs unten)
+- ESP32-S3-Board mit PSRAM und 16 MB Flash (eines der Envs unten)
 - SD-Karten-Slot — onboard bei `lilygo_t_display_s3_amoled` (SPI),
   `waveshare_s3_lcd_5b` (SPI, Chip-Select am CH422G) und
-  `waveshare_s3_amoled_175` (SDMMC 1-Bit). `m5stack_stopwatch` braucht **keine**
-  SD-Karte — UI und Config liegen dort auf einer internen LittleFS-Partition, siehe
-  „Web-UI bauen + auf LittleFS deployen" unten.
+  `waveshare_s3_amoled_175` (SDMMC 1-Bit).
 - Optional: DS18B20 (1-Wire-Temp), SSR auf GPIO 16 für das Demo-Setup
 - BOOT-Button auf GPIO 0 (auf allen Standard-Dev-Boards vorhanden)
 
@@ -202,31 +198,6 @@ Rückweg `DI_COM` (bei Plus am Eingang: `DI_COM` an GND, +5 V an `DI0`); ohne `D
 der Optokoppler nicht. Reserviert sind
 außerdem 0x51 (PCF85063) und 0x5D (GT911). Für eigene Items frei bleibt kein GPIO.
 
-**M5Stack StopWatch (`m5stack_stopwatch`)**
-
-Gleicher Chip (ESP32-S3R8, 16 MB Flash, 8 MB OPI-PSRAM) und gleiches Panel
-(CO5300, 466×466), aber **ohne SD-Slot**: UI und Config liegen auf LittleFS in
-der 3,4-MB-Datenpartition von `default_16MB.csv` (UI per
-`pio run -e m5stack_stopwatch -t uploadfs`, „Installieren“ nimmt `webui.tar`).
-Quelle ist der StopWatch-Code von M5GFX und M5Unified — die Pin-Tabelle auf
-docs.m5stack.com nennt die Display-Datenleitungen falsch.
-
-| Pin        | Funktion                                                   | Build-Flag           |
-|------------|------------------------------------------------------------|----------------------|
-| GPIO 47    | I²C SDA (Touch, IMU, RTC, PMU, Port-Expander, Audio)       | `BREWCTL_I2C_SDA=47` |
-| GPIO 48    | I²C SCL                                                    | `BREWCTL_I2C_SCL=48` |
-| GPIO 2 / 1 | Taste A / B                                                | —                    |
-
-Display: QSPI CS 39, SCLK 40, D0 41, D1 42, D2 46, D3 45, TE 38. Panel-Reset,
-Panel-Versorgung und Touch-Reset sind Pins des Port-Expanders **M5IOE1** (0x4F);
-der Power-Manager **M5PM1** (0x6E) hat einen Watchdog und schaltet die
-3,3-V-Schienen. Beides richtet `src/BoardInit.cpp` direkt nach dem Start des
-Board-Busses ein, vor dem Display. Touch CST820 auf 0x15 (INT 13) meldet halbe
-Auflösung (0…233) und wird verdoppelt. Reserviert auf `i2c-board`: 0x15, 0x18
-(ES8311), 0x32 (RX8130), 0x4F, 0x6E — **nicht** 0x68: Der BMI270 wird als normaler
-Sensor `BMI270` angelegt. Audio (I2S) belegt GPIO 15–18 und 21, der
-Grove-Port liegt auf GPIO 10/11 (frei, z. B. für einen eigenen I²C-Bus).
-
 ### Pin-Prüfung
 
 `src/BoardPins.h` beschreibt je Board jeden GPIO: **frei**, **bedenklich**
@@ -336,7 +307,7 @@ gepflegt unter **Einstellungen → Peripheriegeräte** bzw. `/api/peripherals` u
 als Array `devices` in `/config/registry.json` (geladen nach den Bussen, vor den Items). Typen:
 
 - **MCP4728** (4 × 12-Bit-DAC, I²C 0x60–0x67, ab Werk 0x60, Kanäle A–D): Boards ohne
-  eigenen DAC (LilyGo, Waveshare, StopWatch) bekommen einen echten Analogausgang.
+  eigenen DAC (alle S3-Boards) bekommen einen echten Analogausgang.
 - **PCF8575** (16 digitale Pins, I²C 0x20–0x27 über die Lötbrücken A0–A2, ab Werk 0x20,
   Kanäle P00–P07 und P10–P17): zusätzliche Schaltausgänge und Eingänge, siehe unten.
   Auf dem Waveshare liegt der Onboard-Expander TCA9554 auf 0x20 (reservierte Adresse des
@@ -459,36 +430,17 @@ derselben Sicherung unter `readings`, die Verkostungen (`/brewtasting/<id>.json`
 `/api/brews/<id>/tasting`) unter `tasting`; eine ältere Sicherung ohne diese Schlüssel lässt sich weiter
 einspielen.
 
-## Web-UI bauen + auf LittleFS deployen (`m5stack_stopwatch`)
+## Web-UI auf LittleFS (derzeit ohne Env)
 
-Dieses Board hat keinen SD-Slot — die UI landet stattdessen per USB auf einer
-internen LittleFS-Partition (`pio run -t uploadfs`, s. „Partition-Layout" unten). Nur die
-**gzippten** Assets werden geshippt (die Firmware serviert `.gz` transparent, auch
-ohne die unkomprimierten Originale). `pnpm build:sd` ersetzt jede Datei durch ihre `.gz`
-(~150 KB):
+Das einzige Board ohne SD-Slot, die M5Stack StopWatch, ist am 2026-11-08 samt Env
+entfernt. Der LittleFS-Pfad bleibt im Code (`BREWCTL_USE_LITTLEFS`, `pnpm build:lfs`
+legt `dist/` ohne `modules/` nach `firmware/data/www`, ein Env mit
+`board_build.filesystem = littlefs` flasht es per `pio run -t uploadfs`). Die optionalen
+UI-Pakete (Rezepte) gehören dort nicht hin: ohne SD keine Rezept-API.
 
-```powershell
-cd web
-pnpm install                      # einmalig
-pnpm build:lfs                    # build:sd + dist/ (ohne modules/) nach ../firmware/data/www
+### UI über das Netzwerk aufspielen
 
-cd ..\firmware
-pio run -e m5stack_stopwatch -t buildfs        # optional: Größen-Check ohne Hardware
-pio run -e m5stack_stopwatch -t uploadfs       # LittleFS-Image per USB flashen
-```
-
-`pnpm build:lfs` lässt `dist/modules/` bewusst weg: Die optionalen UI-Pakete (Rezepte) sind
-für dieses Board nicht vorgesehen (ohne SD keine Rezept-API), und ein späteres „Installieren“ mit dem schlanken
-`webui.tar` würde sie ohnehin wieder löschen. Ein Ordner `data/www/modules` von Hand
-bringt das Paket trotzdem aufs Board, das ist dann deine Entscheidung.
-
-`data/` ist projektweit geteilt zwischen allen Envs — **nicht** gegen
-`lilygo_t_display_s3_amoled` ausführen (kein `littlefs`-Filesystem dort).
-
-### Ohne USB: UI über das Netzwerk aufspielen
-
-`uploadfs` braucht die serielle Verbindung. Ohne USB geht
-es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
+Ohne USB geht es über `POST /api/update/assets` mit dem normalen `webui.tar` (siehe
 „webui.tar und webui-full.tar manuell bauen“ unten, ~150 KB, nur `.gz`) oder über „Installieren“
 aus einem Release, das dasselbe Tar mitbringt:
 
@@ -545,10 +497,10 @@ pnpm dev
 `.env.local` ist gitignored — jeder Entwickler trägt seine ESP32-IP
 selbst ein, kein Branch-Drift.
 
-## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`, `m5stack_stopwatch`)
+## Rundes Touch-Display (`lilygo_t_display_s3_amoled`, `waveshare_s3_amoled_175`)
 
 Das 466×466-AMOLED des LilyGo T-Display-S3-AMOLED-1.75 (und des Waveshare
-ESP32-S3-Touch-AMOLED-1.75 und der M5Stack StopWatch, gleiches Panel) zeigt die Items eines
+ESP32-S3-Touch-AMOLED-1.75, gleiches Panel) zeigt die Items eines
 Dashboards als Seiten: zuerst Regler, dann Sensoren, dann Aktoren, maximal 16.
 Links/rechts wischen blättert die Seiten, hoch/runter wechselt das Dashboard.
 Das Grid-Layout der Web-UI wird nicht nachgebildet. Ids, zu denen es kein Item
@@ -1100,8 +1052,8 @@ verschieben, oder einmal ein `webui.tar` über die UI einspielen (legt `/www` an
 Es gibt zwei UI-Pakete, beide das gebaute, **gzippte** `dist/` als Tar, nur `.gz`-Dateien,
 Pfade relativ zur dist-Wurzel (nicht unter `dist/`):
 
-- `webui.tar` (~150 KB) ohne `modules/` für die Boards ohne SD-Karte
-  (`m5stack_stopwatch`, LittleFS).
+- `webui.tar` (~150 KB) ohne `modules/` für Boards ohne SD-Karte (LittleFS; derzeit
+  baut kein Env so ein Board).
 - `webui-full.tar` (~170 KB) mit `modules/` (optionale Pakete, derzeit Rezepte und Rechner) für die
   Boards mit SD-Karte. Ein „Installieren“ ersetzt das ganze `/www`; deshalb nimmt die
   Firmware auf diesen Boards das volle Tar, sonst wäre das Paket danach weg. Ältere
@@ -1155,7 +1107,7 @@ in `public/` liegt. Ein so gebautes Tar nicht verteilen und nicht in ein Release
 Die `firmware.bin` fällt bei jedem `pio run` ab. Aus `firmware/`:
 
 ```powershell
-pio run -e lilygo_t_display_s3_amoled      # oder waveshare_s3_amoled_175 / waveshare_s3_lcd_5b / m5stack_stopwatch
+pio run -e lilygo_t_display_s3_amoled      # oder waveshare_s3_amoled_175 / waveshare_s3_lcd_5b
 # Ergebnis: .pio\build\<env>\firmware.bin
 ```
 
@@ -1176,9 +1128,8 @@ der Preview-Kanal sieht.
 
 ### Partition-Layout
 Alle Boards haben 16 MB Flash: LilyGo mit der Default-Tabelle des Boards,
-Waveshare und StopWatch mit `default_16MB.csv` (je zwei App-Slots à 6,25 MB für OTA,
-3,4 MB Datenpartition). Die StopWatch nutzt die Datenpartition als LittleFS für UI und
-Config. `LogStore` hat keine eingebaute Log-Rotation — dort nicht unbegrenzt loggen.
+die beiden Waveshare mit `default_16MB.csv` (je zwei App-Slots à 6,25 MB für OTA,
+3,4 MB Datenpartition).
 Die früheren 4-MB-Boards (esp32dev, lolin_s2_mini) mit `partitions_4mb_littlefs.csv`
 werden seit Arduino Core 3 nicht mehr gebaut.
 
