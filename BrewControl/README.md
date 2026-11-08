@@ -167,8 +167,12 @@ gelesen über einen Sensor vom Typ `AXP2101` (siehe Energiemanagement).
 ESP32-S3-WROOM-1-N16R8 (16 MB Flash, 8 MB OPI-PSRAM) mit 1024×600-RGB-Panel (ST7262, 16 Bit,
 Pixeltakt 16 MHz wie in Waveshares Demo, ein Framebuffer im PSRAM mit Bounce-Buffer) und
 GT911-Touch auf 0x5D. **Stand:** Display und Touch laufen am Gerät (2026-11-02) mit den
-Seiten der runden Boards, die als 466×466-Fläche in der Mitte des Bildschirms stehen
-(ein Layout über die ganze Breite fehlt noch). Das Backlight (`EXIO2`) schaltet nur an und
+breitem Layout (`DisplayWide.cpp`): Tabs mit den Dashboards und ein WLAN-Feld oben, darunter
+Kacheln (4×2 je Seite, Wischen blättert) für Regler, Sensoren und Aktoren. Ein Tipp öffnet das
+Detailblatt mit großem Ring bzw. Wert, −/+ und einer Leiste aller Elemente links. Das WLAN-Feld
+öffnet einen Dialog mit QR-Code auf die Web-UI, Name, Adresse (`<host>.local`), IP und Signal.
+Ein eingerasteter Not-Aus deckt alles rot ab. Programme, Timer und Verläufe gibt es auf diesem
+Display noch nicht. Das Backlight (`EXIO2`) schaltet nur an und
 aus, Dimmen gibt es nicht (Dunkel = Backlight aus), Drehung und Bewegungssensor-Wecken
 entfallen. Beim Wischen kann ein Block kurz zerrissen erscheinen (Tearing). Quelle:
 docs.waveshare.com/ESP32-S3-Touch-LCD-5.

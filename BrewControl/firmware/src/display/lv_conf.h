@@ -56,7 +56,13 @@
     /*Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB)*/
     /*Measured 2026-09-24: 7.7 kB peak with 5 pages while swiping, ~1.5 kB per
      *page - 32 kB leaves room for ~20.*/
+    #ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+    /*The wide layout (DisplayWide.cpp) keeps up to 32 overview tiles plus one
+     *detail sheet alive; the pool sits in PSRAM, so the size costs nothing internal.*/
+    #define LV_MEM_SIZE (96U * 1024U)          /*[bytes]*/
+    #else
     #define LV_MEM_SIZE (32U * 1024U)          /*[bytes]*/
+    #endif
 
     /*Set an address for the memory pool instead of allocating it as a normal array. Can be in external SRAM too.*/
     #define LV_MEM_ADR 0     /*0: unused*/
@@ -407,7 +413,7 @@
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(brew_font_20) LV_FONT_DECLARE(brew_font_28) LV_FONT_DECLARE(brew_font_64)
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(brew_font_20) LV_FONT_DECLARE(brew_font_28) LV_FONT_DECLARE(brew_font_64) LV_FONT_DECLARE(brew_font_96) LV_FONT_DECLARE(brew_font_56)
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &brew_font_20
@@ -671,7 +677,11 @@
 #define LV_USE_GIF 0
 
 /*QR code library*/
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+#define LV_USE_QRCODE 1  /*connection dialog of the wide layout (DisplayWide.cpp)*/
+#else
 #define LV_USE_QRCODE 0
+#endif
 
 /*FreeType library*/
 #define LV_USE_FREETYPE 0

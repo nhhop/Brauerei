@@ -121,8 +121,9 @@ constexpr uint32_t kDarkPollMs = 30;
 // because Arduino_ESP32QSPI::writeBytes() hands it to the SPI driver as is.
 constexpr uint16_t kBufLines = 40;
 #ifdef BREWCTL_DISPLAY_RGB
-// The pages are 466 px wide (DisplayPages.cpp kStage), so 40 of their lines fit
-// in the same 37 kB as on the round boards; a full-screen redraw goes in strips.
+// 37 kB like the round boards, kept after the move to the wide layout
+// (DisplayWide.cpp): LVGL renders in strips - 18 lines of the 1024 px panel -
+// and flush() copies each into the PSRAM framebuffer. Re-measure before widening.
 constexpr uint32_t kBufPx = 466u * kBufLines;
 #else
 constexpr uint32_t kBufPx = static_cast<uint32_t>(kLcdW) * kBufLines;

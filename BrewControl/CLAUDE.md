@@ -96,8 +96,10 @@ pnpm typecheck
   30 MHz Pixeltakt flackerte und ruckelte, ein Renderpuffer im PSRAM war spürbar langsamer.
   Kein `Serial.print` in der Display-Schleife: ein blockierter USB-CDC verzögert die
   Touch-Anzeige um Sekunden. Der GT911-Reset (INT low, Adresse 0x5D) und der Panel-Reset laufen
-  in `BoardInit.cpp`. Die Seiten sind für 466×466 gebaut und sitzen in einer zentrierten Fläche
-  (`DisplayPages.cpp` `kStage`). Touch- und
+  in `BoardInit.cpp`. Statt der runden Seiten baut `DisplayWide.cpp` ein eigenes breites Layout
+  (Tabs, Kachelübersicht, Detailblatt mit Leiste, Not-Aus-Bildschirm, WLAN-Dialog mit
+  `lv_qrcode`); gemeinsame Helfer stehen in `DisplayCommon.h`. `LV_MEM_SIZE` ist hier 96 KB, der
+  Zeichenpuffer bleibt 466×40. Touch- und
   Panel-Reset, Backlight und SD-CS hängen am **CH422G** (SensActCtrl `CH422G`, `BoardInit.cpp`),
   SD per SPI (MOSI 11, SCK 12, MISO 13) mit CS dauerhaft low über den Expander; die SD-Bibliothek
   bekommt GPIO 6 als Attrappe. Der Chip ist schreibgeschützt und hat eine gemeinsame Richtung

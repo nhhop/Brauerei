@@ -56,6 +56,7 @@
 #include "WiFiSetupPortal.h"
 #include "display/DisplayPages.h"
 #include "display/DisplayUI.h"
+#include "display/DisplayWide.h"
 
 using namespace SensActCtrl;
 using BrewControl::WebUI;
@@ -106,7 +107,11 @@ BrewControl::EnergyManager energy;
 WebUI webUI(registry, deviceFs, dynamicItems, dashboardStore, settingsStore, firmwareUpdater, logStore, programRunner, timerStore, alarmStore, profileStore, mqttService, webhookService, webSocketService, espNowPublishService, remoteDiscovery, mdnsBrowser, pushService);
 #ifdef BREWCTL_HAS_DISPLAY
 BrewControl::DisplayUI displayUI;
-BrewControl::DisplayPages displayPages;
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+BrewControl::DisplayWide displayPages;  // 1024 x 600: tabs, overview, detail sheets
+#else
+BrewControl::DisplayPages displayPages;  // round glass: one page per item
+#endif
 #endif
 
 // Constructed in setup() only after a successful STA connect (see initEspNow_()
