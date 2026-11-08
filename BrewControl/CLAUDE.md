@@ -134,7 +134,8 @@ pnpm typecheck
     Der `rounder()` bleibt gültig, weil 465 ungerade ist — bei einem Panel mit gerader
     Kantenlänge nicht mehr.
 - **LittleFS statt SD** (`BREWCTL_USE_LITTLEFS`) steht im Code, setzt aber seit der StopWatch
-  (2026-11-08 entfernt) kein Env mehr. Dafür gedacht: `firmware/data/www/` nur mit den gzippten
+  (2026-11-08 entfernt) kein Env mehr. **Bleibt bewusst** für künftige S3-Boards ohne SD-Slot
+  (Nutzer, 2026-11-08) — nicht als toten Code entfernen. Dafür gedacht: `firmware/data/www/` nur mit den gzippten
   UI-Assets, **ohne `modules/`** (`pnpm build:lfs` in `web/`), Deploy per `pio run -t uploadfs`,
   `POST /api/update/assets` oder „Installieren“ mit dem schlanken `webui.tar` (Auswahl in
   `FirmwareUpdater::fetchReleaseMeta`). Upload und „Installieren“ teilen sich die Logik in
