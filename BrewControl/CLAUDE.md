@@ -80,13 +80,6 @@ pnpm typecheck
   I²C SDA 15 / SCL 14 mit QMI8658 0x6B (normales Item), PCF85063 0x51, AXP2101 0x34, ES8311
   0x18, ES7210 0x40, TCA9554 0x20; SD per **SDMMC 1-Bit** (CLK 2, CMD 1, D0 3,
   `BREWCTL_SD_MMC_*`). Quelle: Waveshares `pin_config.h`/`HARDWARE_REFERENCE.md`.
-- **M5Stack StopWatch** (`m5stack_stopwatch`, seit 2026-10-07, am Gerät noch nicht geprüft):
-  gleicher Chip und gleiches Panel, **kein SD** (LittleFS, 3,4 MB). Maßgeblich ist der
-  StopWatch-Code in **M5GFX** (`src/M5GFX.cpp`) und M5Unified, **nicht** docs.m5stack.com — die
-  Doku nennt GPIO 38 (TE) als D0. QSPI CS 39, SCLK 40, D0–D3 41/42/46/45; Panel-Reset,
-  -Versorgung und Touch-Reset hängen am Expander **M5IOE1** (0x4F), Watchdog und 3,3-V-Rails am
-  **M5PM1** (0x6E) — beides in `src/BoardInit.cpp`, vor dem Display. Touch CST820 (0x15,
-  `TouchDrvCST816`) mit halber Auflösung. I²C SDA 47 / SCL 48, BMI270 0x68 als normales Item.
 - **Waveshare ESP32-S3-Touch-LCD-5B** (`waveshare_s3_lcd_5b`, seit 2026-11-01, am Gerät seit
   2026-11-02 mit Display): 1024×600-RGB-Panel, GT911 (0x5D), I²C SDA 8 / SCL 9. Das Panel läuft
   über den IDF-RGB-Treiber (`esp_lcd_new_rgb_panel`, **kein** Arduino_GFX) in `DisplayUI.cpp`
@@ -103,9 +96,10 @@ pnpm typecheck
   bekommt GPIO 6 als Attrappe. Der Chip ist schreibgeschützt und hat eine gemeinsame Richtung
   für `EXIO0`–`EXIO7`; sein Schatten liegt prozessweit im Treiber. Quelle: docs.waveshare.com.
 - **Board-Auswahl per Build-Flag**: `BREWCTL_BOARD_LILYGO_AMOLED`,
-  `BREWCTL_BOARD_WAVESHARE_AMOLED175`, `BREWCTL_BOARD_WAVESHARE_LCD5B` bzw. `BREWCTL_BOARD_M5_STOPWATCH` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
+  `BREWCTL_BOARD_WAVESHARE_AMOLED175` bzw. `BREWCTL_BOARD_WAVESHARE_LCD5B` wählen Pin-Tabelle und festen Bus (`BoardPins.h`) und die
   Display-Pins (`DisplayUI.cpp`). Ein Target-Build ohne Flag bricht mit `#error` ab; seit Arduino
-  Core 3 gibt es nur noch S3-Boards. Die Tabellen von esp32dev und lolin_s2_mini liegen als
+  Core 3 gibt es nur noch S3-Boards (die M5Stack StopWatch ist seit 2026-11-08 entfernt, die
+  Hardware ist zurück). Die Tabellen von esp32dev und lolin_s2_mini liegen als
   Test-Fixture in `firmware/test/TestBoards.h` (sie decken DAC, Input-only-Pins, ADC2 und Errata ab).
   `BREWCTL_ASSETS_IN_PLACE` samt Notfall-Upload-Seite bleibt bewusst im Code, ohne Env.
 - Das Display wird seit 2026-09-24 angesteuert, Code in `src/display/`: `DisplayUI` übernimmt
@@ -139,15 +133,14 @@ pnpm typecheck
     `readTouch()` dreht zurück (`DisplayOrientation.h`). Seiten-Code muss nichts davon wissen.
     Der `rounder()` bleibt gültig, weil 465 ungerade ist — bei einem Panel mit gerader
     Kantenlänge nicht mehr.
-- `m5stack_stopwatch` nutzt LittleFS (kein SD-Slot) statt SD: `BREWCTL_USE_LITTLEFS`-Build-Flag,
-  Datenpartition 3,4 MB aus `default_16MB.csv`. `firmware/data/www/` enthält nur die gzippten
-  UI-Assets, **ohne `modules/`**: `pnpm build:lfs` (in `web/`) baut und legt das so ab. Deploy über
-  `pio run -e m5stack_stopwatch -t uploadfs` (USB), `POST /api/update/assets` oder „Installieren“
-  mit dem schlanken `webui.tar` (Auswahl in `FirmwareUpdater::fetchReleaseMeta`). Upload und
-  „Installieren“ teilen sich die Logik in `src/AssetInstall.h` — dort ändern, nicht in einem der
-  beiden Aufrufer. Seit esp32dev und lolin_s2_mini entfernt sind (Arduino Core 3, 2026-10-27),
-  setzt kein Env mehr `BREWCTL_ASSETS_IN_PLACE` (`/www` vor dem Entpacken leeren, für die frühere
-  256-KB-Partition); der Code dafür steht noch.
+- **LittleFS statt SD** (`BREWCTL_USE_LITTLEFS`) steht im Code, setzt aber seit der StopWatch
+  (2026-11-08 entfernt) kein Env mehr. Dafür gedacht: `firmware/data/www/` nur mit den gzippten
+  UI-Assets, **ohne `modules/`** (`pnpm build:lfs` in `web/`), Deploy per `pio run -t uploadfs`,
+  `POST /api/update/assets` oder „Installieren“ mit dem schlanken `webui.tar` (Auswahl in
+  `FirmwareUpdater::fetchReleaseMeta`). Upload und „Installieren“ teilen sich die Logik in
+  `src/AssetInstall.h` — dort ändern, nicht in einem der beiden Aufrufer. Ebenso ohne Env:
+  `BREWCTL_ASSETS_IN_PLACE` (`/www` vor dem Entpacken leeren, für die frühere 256-KB-Partition
+  von esp32dev/lolin_s2_mini, 2026-10-27 entfernt).
 - Plan / Status / Entscheidungen leben im Root-`PLAN.md`/`SESSION.md`/`SESSION-archive.md` — nicht mehr lokal (siehe Root-`CLAUDE.md` → Dokumentation).
 - Gefundene, aber bewusst nicht sofort gefixte Bugs/Einschränkungen (Out-of-Scope, Library-seitig statt BrewControl-seitig, o.ä.) immer zusätzlich zum Root-SESSION.md-Eintrag im Root-`PLAN.md` → „Bugs & bekannte Einschränkungen" eintragen, statt nur im Session-Log zu vergraben.
 - Wird ein solcher Eintrag später gefixt: den Punkt **ersatzlos aus `PLAN.md` entfernen** (kein durchgestrichener „erledigt"-Eintrag, keine Pointer-Zeile) und stattdessen einen SESSION.md-Eintrag mit Root Cause / Umsetzung / Verifikation anlegen. `PLAN.md` führt nur Offenes.
