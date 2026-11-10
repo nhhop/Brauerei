@@ -1,6 +1,8 @@
 #include "DisplayWide.h"
 
-#ifdef BREWCTL_HAS_DISPLAY
+// Only the LCD-5B uses the wide layout (main.cpp), and only its lv_conf.h
+// branch turns on LV_USE_QRCODE — the round boards would not compile it.
+#if defined(BREWCTL_HAS_DISPLAY) && defined(BREWCTL_BOARD_WAVESHARE_LCD5B)
 
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -1083,4 +1085,4 @@ void DisplayWide::onDialogClose_(lv_event_t* e) {
 
 }  // namespace BrewControl
 
-#endif  // BREWCTL_HAS_DISPLAY
+#endif  // BREWCTL_HAS_DISPLAY && BREWCTL_BOARD_WAVESHARE_LCD5B
