@@ -989,8 +989,8 @@ Stil-Dialog, der die Stilquelle per Dropdown wählt. Umsetzung in vier Etappen: 
   beide Grenzen oder keine; ein leerer zählt im Vergleich als unbekannt. Tabellenspalten: Name (Familie
   darunter), die fünf Bereiche. Unter „Mitgeliefert“ stehen die BJCP-2021-Stile, nach Familie gruppiert in der
   Reihenfolge der BJCP (Zwischenzeile „1 Standard American Beer“, „2 International Lager“ …, unter dem Namen nur
-  die Nummer; Nutzer, 2026-10-18), aber nur, wenn ihre Daten da sind (`pnpm dev` oder ein Build mit `VITE_STYLE_COMPARISON=1`, bis die BJCP zustimmt); dann auch die
-  Copyright-Zeile. „Duplizieren“ übernimmt einen BJCP-Stil als eigenen (Werte auf 0,1 °P/% bzw. ganze IBU/EBC
+  die Nummer; Nutzer, 2026-10-18), aber nur, wenn ihre Daten da sind (im schlanken UI-Paket fehlen sie); dann auch der Hinweis der BJCP („used with the permission of the BJCP“)
+  samt Copyright-Zeile. „Duplizieren“ übernimmt einen BJCP-Stil als eigenen (Werte auf 0,1 °P/% bzw. ganze IBU/EBC
   gerundet, Herkunft in der Beschreibung).
   - **Gemeinsamer Typ** `BeerStyle` (`web/src/styleSource.ts`) in den Einheiten der App: `loadStyles` rechnet die
     BJCP-Datei beim Laden um (SG → °P, SRM × 1,97 → EBC), `useStyleSources()` liefert Eigene immer und BJCP 2021

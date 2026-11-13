@@ -1,4 +1,3 @@
-import { readFileSync, rmSync } from 'node:fs';
 import { defineConfig, loadEnv } from 'vite';
 import preact from '@preact/preset-vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -9,20 +8,6 @@ export default defineConfig(({ mode }) => {
     plugins: [
       preact(),
       tailwindcss(),
-      {
-        // public/ is copied into dist/ as is, also untracked files. The BJCP data
-        // must not end up in a release build by accident (see STYLE_COMPARISON).
-        name: 'drop-bjcp-data',
-        apply: 'build',
-        closeBundle() {
-          const file = 'dist/modules/recipes/bjcp-2021.json';
-          if (env.VITE_STYLE_COMPARISON !== '1') { rmSync(file, { force: true }); return; }
-          // Windows PowerShell 5.1 redirects (">") write UTF-16, which the browser cannot parse.
-          try { JSON.parse(readFileSync(file, 'utf8')); } catch (e: unknown) {
-            if ((e as { code?: string }).code !== 'ENOENT') throw new Error(`${file} is not valid UTF-8 JSON (created with PowerShell ">"? see README)`);
-          }
-        },
-      },
     ],
     // Absolute, not './' — relative asset URLs break on nested client-side
     // routes (e.g. /settings/network resolves "assets/x.js" against

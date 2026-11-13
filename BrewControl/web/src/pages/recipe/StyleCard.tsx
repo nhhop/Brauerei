@@ -70,7 +70,7 @@ export function StyleCard({ style, source, stats }: { style: BeerStyle; source: 
       </ul>
       {style.guide === 'bjcp-2021' && (
         <p class="mt-3 text-xs text-muted">
-          Stilwerte: {source.label} Style Guidelines, {source.copyright} Die aktuelle Fassung gibt es auf{' '}
+          Stilwerte: Style guidelines used with the permission of the BJCP, and are Copyright 2021, Beer Judge Certification Program, Inc. ({source.label} Style Guidelines, {source.copyright}) Die aktuelle Fassung gibt es auf{' '}
           <a href="https://www.bjcp.org" target="_blank" rel="noopener noreferrer" class="underline">www.bjcp.org</a>.
         </p>
       )}

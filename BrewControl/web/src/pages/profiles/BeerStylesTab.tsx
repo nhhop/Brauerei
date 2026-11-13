@@ -92,7 +92,7 @@ export function BeerStylesTab() {
         onEdit={setEditing} onDuplicate={duplicate} onDelete={setDeleting}
         footnote={<>
           Stammwürze und Restextrakt in °P, Alkohol in % vol, Farbe in EBC.
-          {bjcp && <> BJCP-Stilwerte: {bjcp.label} Style Guidelines, {bjcp.copyright} Die aktuelle Fassung gibt es auf{' '}
+          {bjcp && <> BJCP-Stilwerte: Style guidelines used with the permission of the BJCP, and are Copyright 2021, Beer Judge Certification Program, Inc. ({bjcp.label} Style Guidelines, {bjcp.copyright}) Die aktuelle Fassung gibt es auf{' '}
             <a href="https://www.bjcp.org" target="_blank" rel="noopener noreferrer" class="underline">www.bjcp.org</a>.</>}
         </>} />
       {editing && <StyleEditor style={editing} families={families} onSave={save} onClose={() => setEditing(null)} />}

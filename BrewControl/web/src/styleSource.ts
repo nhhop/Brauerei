@@ -1,10 +1,3 @@
-// The BJCP style data is switched off in builds until the BJCP has allowed its
-// use (PLAN.md): visible in `pnpm dev`, which needs the local, untracked
-// web/public/modules/recipes/bjcp-2021.json. For a local test build set
-// VITE_STYLE_COMPARISON=1 (shell or .env.local); vite.config.ts then keeps the
-// data file in dist/, otherwise it removes it. Own styles work without it.
-export const STYLE_COMPARISON = import.meta.env.DEV || import.meta.env.VITE_STYLE_COMPARISON === '1';
-
 // Beer styles from two sources: the BJCP 2021 guidelines (a static, versioned
 // JSON file, converted on load) and the user's own styles (one document each on
 // the SD card, /api/styles). This module is the only place that knows where
@@ -91,10 +84,8 @@ export function findStyles(all: BeerStyle[], query: string, limit = 8): BeerStyl
 
 let cached: Promise<StyleSource | null> | null = null;
 
-// The BJCP source, or null when the comparison is switched off or the file is
-// missing (it is not in the repository).
+// The BJCP source, or null when the file is missing (the slim UI package has none).
 export function loadStyles(): Promise<StyleSource | null> {
-  if (!STYLE_COMPARISON) return Promise.resolve(null);
   cached ??= fetch(STYLES_URL)
     .then((r) => (r.ok ? (r.json() as Promise<BjcpFile>) : null))
     .then((f): StyleSource | null => f && {
