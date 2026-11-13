@@ -3151,3 +3151,12 @@ Die 5B zeigte die 466×466-Seiten der runden Boards in einer zentrierten Fläche
 - **Stolperstein:** Der Upload hing 12 Minuten (schwarzer Bildschirm): PlatformIO warf bei der umgeleiteten Ausgabe einen `UnicodeEncodeError` (cp1252). Mit `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` lief er in 59 s. Danach war COM10 kurz nicht mehr da, Kabel neu stecken genügte.
 - **Verifikation:** Native-Tests 227/227, Builds für 5B und LilyGo grün, am Gerät geprüft (Nutzer: funktioniert alles). Der WLAN-Dialog wurde nach dem Test entzerrt (740×380, Adresse ohne Umbruch) und erneut geflasht; Nutzer: sieht gut aus.
 - **Offen** (PLAN.md): Hochkant, Programm/Timer/Verlauf auf dem Display, Wasserwaagen-Seiten, Pool-/Heap-Messung, SD-Mount-Fehler beim Start.
+
+## 2026-11-13 — Release v0.9.0 (Arduino Core 3)
+
+Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Core 3 mit Curier, nur noch S3-Boards, neu `waveshare_s3_lcd_5b`, die Fixes nach dem Wechsel, PMU-Sensor, IMU-Bewegungskanal, TCA9554, Core-2-Compile-Check der Library). Mit nach `main` kam `6543f1d` (breites LCD-5B-Layout, nach dem Anlegen des PRs in `dev`).
+
+- **Erster Lauf gescheitert** (Tag auf `75dcded`, Run 42879277178): `DisplayWide.cpp` wurde für alle Boards mit Display kompiliert, `LV_USE_QRCODE` schaltet `lv_conf.h` aber nur für den LCD-5B ein — `lv_qrcode_create` fehlte am LilyGo, die anderen Firmware-Jobs wurden abgebrochen. Die Action hatte trotzdem ein Release v0.9.0 nur mit `webui.tar`/`webui-full.tar` als „Latest“ angelegt; sofort zum Entwurf gemacht (stabiler Kanal sah wieder v0.8.0), später gelöscht.
+- **Fix** (PR #133): `DisplayWide.cpp` steht hinter `BREWCTL_HAS_DISPLAY && BREWCTL_BOARD_WAVESHARE_LCD5B` (einziger Nutzer laut `main.cpp`); lokal bauen alle drei Release-Envs. `dev` → `main` über PR #134.
+- **Tag neu gesetzt** (mit Freigabe des Nutzers): `v0.9.0` gelöscht und auf `1f54068` neu getaggt. Run 43500188492 in allen vier Jobs grün; Release „Latest“, kein Pre-Release, mit `firmware-lilygo_t_display_s3_amoled.bin` (2 384 880 B), `firmware-waveshare_s3_amoled_175.bin` (2 413 264 B), `firmware-waveshare_s3_lcd_5b.bin` (2 397 840 B), `webui-full.tar` (348 160 B), `webui.tar` (194 560 B).
+- **Lehre:** Vor einem Release-Tag alle Release-Envs auf genau dem Stand von `main` bauen — ein Commit, der nach dem Anlegen des Release-PRs in `dev` landet, fährt mit.
