@@ -3160,3 +3160,21 @@ Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Co
 - **Fix** (PR #133): `DisplayWide.cpp` steht hinter `BREWCTL_HAS_DISPLAY && BREWCTL_BOARD_WAVESHARE_LCD5B` (einziger Nutzer laut `main.cpp`); lokal bauen alle drei Release-Envs. `dev` → `main` über PR #134.
 - **Tag neu gesetzt** (mit Freigabe des Nutzers): `v0.9.0` gelöscht und auf `1f54068` neu getaggt. Run 43500188492 in allen vier Jobs grün; Release „Latest“, kein Pre-Release, mit `firmware-lilygo_t_display_s3_amoled.bin` (2 384 880 B), `firmware-waveshare_s3_amoled_175.bin` (2 413 264 B), `firmware-waveshare_s3_lcd_5b.bin` (2 397 840 B), `webui-full.tar` (348 160 B), `webui.tar` (194 560 B).
 - **Lehre:** Vor einem Release-Tag alle Release-Envs auf genau dem Stand von `main` bauen — ein Commit, der nach dem Anlegen des Release-PRs in `dev` landet, fährt mit.
+
+## 2026-11-13 — Gerätetests nachgeholt: JSON-Routen, Sud 5a, Hostname
+
+- **Stand:** LilyGo per OTA von `v0.7.0-rc.1-74` auf `dev` (`236425a`) gebracht, Build mit eigenem Core-Dir.
+- **Routen (Skript, vor und nach Neustart):** `/api/water-profiles`, `/api/fermentation-profiles`,
+  `/api/styles`, `/api/fermenters`, `/api/containers` — `PUT` mit `a.b` → 400, fremde Body-Id → 400,
+  `DELETE` unbekannt → 404, Anlegen 204, Eintrag in der Liste und nach dem Neustart noch da, Löschen
+  204, zweites Löschen 404. `GET /api/brews` und `/api/recipes` 200.
+- **Oberfläche (Nutzer):** Gärplatz und Gebinde überstehen den Neustart; die Zeitachse der
+  Log-Charts übersteht ihn ebenfalls, und ein Umschalten startet keine neue Log-Session. Sud #6 „Altbier“ aus dem Rezept angelegt und gestartet:
+  `/brews/<id>.json` und Index-Zeile mit Gärplatz und Zeitraum stehen auf der SD, die älteren Sude
+  sind unverändert. Die Profilseiten (Wasser, Gärung, Bierstile) hat der Nutzer in der Oberfläche
+  durchgespielt, am Gerät lagen die Wasserprofile schon als eigene Sammlung auf der SD.
+- **`ReloadRetry`:** Nach Hostnamenwechsel lädt Edge von selbst auf den neuen Namen um. Der
+  eingebettete Browser der Claude-App tat es auch nach über 3 Minuten nicht (PLAN.md). Der erste
+  Durchlauf ist nicht sauber, weil eine Namensabfrage am Rechner mitten im Test lief.
+- **Offen:** Bus-Pins live umpinnen (PR #86) am Gerät, jetzt als eigener Punkt in PLAN.md;
+  weitere Punkte stehen in PLAN.md.
