@@ -9,8 +9,8 @@ import { controllerOwnerOf, programOwnerOf } from '../ownership';
 import { btnPrimary, inp, badgeCaution, badgeCritical } from '../ui';
 import { Slider } from './Slider';
 
-export function ActuatorCard({ actuator, controllers = [], programs = [], alarm, onDelete, onEdit }: {
-  actuator: Actuator; controllers?: Controller[]; programs?: ProgramConfig[];
+export function ActuatorCard({ actuator, controllers = [], programs = [], estop = false, alarm, onDelete, onEdit }: {
+  actuator: Actuator; controllers?: Controller[]; programs?: ProgramConfig[]; estop?: boolean;
   alarm?: Severity; onDelete?: () => void; onEdit?: () => void;
 }) {
   const { id, label, meta, state, target, enabled, interval } = actuator;
@@ -73,8 +73,9 @@ export function ActuatorCard({ actuator, controllers = [], programs = [], alarm,
         <h3 class="font-medium text-fg" title={id}>{label || id}</h3>
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">{meta.kind}</span>
-          <ToggleSwitch checked={enabled} disabled={toggling} mixed={ownerActive}
-            title={ownerActive
+          <ToggleSwitch checked={enabled} disabled={toggling || (estop && !enabled)} mixed={ownerActive}
+            title={estop && !enabled ? 'Not-Aus aktiv'
+              : ownerActive
               ? `Wird von ${ctrlOwner ? `Regler „${ctrlOwner.id}“` : `Programm „${progOwner!.id}“`} gesteuert`
               : (enabled ? 'Aktor ausschalten' : 'Aktor einschalten')}
             onChange={() => toggleEnabled()} />

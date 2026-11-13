@@ -16,6 +16,7 @@ interface Props {
   sensors: Sensor[];
   actuators: Actuator[];
   programs?: ProgramConfig[];
+  estop?: boolean;
   viewMode?: WidgetMode;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -31,7 +32,7 @@ export function outputPct(a: Actuator | undefined): number | null {
   return Math.max(0, Math.min(100, ((a.state.v - min) / (max - min)) * 100));
 }
 
-export function ControllerCard({ controller, sensors, actuators, programs = [], viewMode = 'normal', onDelete, onEdit, onCycleMode }: Props) {
+export function ControllerCard({ controller, sensors, actuators, programs = [], estop = false, viewMode = 'normal', onDelete, onEdit, onCycleMode }: Props) {
   const { id, label: itemLabel, setpoint, enabled, params } = controller;
   const [sp, setSp] = useState(setpoint.toString());
   useEffect(() => { setSp(setpoint.toString()); }, [setpoint]);
@@ -190,8 +191,9 @@ export function ControllerCard({ controller, sensors, actuators, programs = [], 
       <div class="flex items-center justify-between gap-2">
         <h3 class="truncate font-medium text-fg" title={id}>{itemLabel || id}</h3>
         <div class="flex shrink-0 items-center gap-1.5">
-          <ToggleSwitch checked={enabled} disabled={toggling} mixed={!!progOwner}
-            title={progOwner ? `Wird von Programm „${progOwner.id}“ gesteuert`
+          <ToggleSwitch checked={enabled} disabled={toggling || (estop && !enabled)} mixed={!!progOwner}
+            title={estop && !enabled ? 'Not-Aus aktiv'
+              : progOwner ?`Wird von Programm „${progOwner.id}“ gesteuert`
               : (enabled ? 'Regler deaktivieren' : 'Regler aktivieren')}
             onChange={() => toggleEnabled()} />
           {onCycleMode && <CardModeButton mode={viewMode} onCycle={onCycleMode} />}

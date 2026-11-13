@@ -790,6 +790,12 @@ void WebUI::begin(bool serve) {
         bool hasV = !doc["v"].isNull();
         bool hasInterval = doc["interval"].is<JsonObject>();
         if (!hasV && !hasEnabled && !hasInterval) { req->send(400, "text/plain", "missing v"); return; }
+        // A latched stop is released deliberately (DELETE /api/estop), not by
+        // switching an actuator back on. Disabling and writing a target stay fine.
+        if (estop_ && hasEnabled && doc["enabled"].as<bool>()) {
+          req->send(409, "text/plain", "estop latched");
+          return;
+        }
         if (hasEnabled) a->setEnabled(doc["enabled"].as<bool>());
         if (hasInterval) {
           JsonObject iv = doc["interval"];

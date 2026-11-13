@@ -724,6 +724,13 @@ paths:
           content:
             text/plain: { schema: { type: string } }
         "404": { $ref: "#/components/responses/NotFoundEmpty" }
+        "409":
+          description: |
+            `estop latched` — the body sets `enabled: true` while the emergency
+            stop is latched. Release it with `DELETE /api/estop` first;
+            `enabled: false`, `v` and `interval` are still accepted.
+          content:
+            text/plain: { schema: { type: string } }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
         "503": { $ref: "#/components/responses/RegistryBusy" }
     delete:

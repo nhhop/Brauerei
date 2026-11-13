@@ -516,6 +516,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
             sensors={snap?.sensors ?? []}
             actuators={snap?.actuators ?? []}
             programs={programs}
+            estop={!!snap?.estop}
             viewMode={mode}
             onEdit={editMode ? () => startEdit('controller', id) : undefined}
             onDelete={editMode ? () => removeFromDashboard('controller', id) : undefined}
@@ -530,6 +531,7 @@ export function Dashboard({ snap, err, alarmByRef }: {
           <ActuatorCard actuator={a}
             controllers={snap?.controllers ?? []}
             programs={programs}
+            estop={!!snap?.estop}
             alarm={alarmByRef?.get(`actuator/${id}`)}
             onEdit={editMode ? () => startEdit('actuator', id) : undefined}
             onDelete={editMode ? () => removeFromDashboard('actuator', id) : undefined}

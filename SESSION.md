@@ -3178,3 +3178,9 @@ Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Co
   Durchlauf ist nicht sauber, weil eine Namensabfrage am Rechner mitten im Test lief.
 - **Offen:** Bus-Pins live umpinnen (PR #86) am Gerät, jetzt als eigener Punkt in PLAN.md;
   weitere Punkte stehen in PLAN.md.
+
+## 2026-11-13 — Eingerasteter Not-Aus lehnt Aktor-Freigaben ab
+
+- **Problem:** Bei eingerastetem Not-Aus nahm `POST /api/actuators/<id>` mit `enabled:true` an, der Aktor lief wieder. Regler lehnte die Firmware seit 2026-10-15 schon mit 409 ab.
+- **Umsetzung:** `WebUI.cpp` antwortet für `enabled:true` bei Latch mit 409 `estop latched`; Ausschalten, `v` und `interval` gehen weiter. Das gilt für jeden HTTP-Client. MQTT und die Remote-Transporte der Library rufen `setEnabled` nirgends auf, dort gab es den Weg nicht. Programme und Timer sind beim Not-Aus pausiert. Das Dashboard sperrt den Schalter von Aktor- und Reglerkarte, solange `snap.estop` gilt und das Item aus ist (`ActuatorCard`, `ControllerCard`, `Dashboard.tsx`); `openapi.yaml` kennt die 409.
+- **Verifikation:** `pnpm typecheck`, Redocly-Lint und Firmware-Compile (LilyGo) grün. Am Gerät nicht geprüft: Latch setzen, `POST {"enabled":true}` an `agitator` → 409, `{"enabled":false}` → 204, Schalter im Dashboard grau.
