@@ -433,6 +433,14 @@ unverändert. Die Messungen von Hand (`/brewreadings/<id>.json`, `/api/brews/<id
 derselben Sicherung unter `readings`, die Verkostungen (`/brewtasting/<id>.json`,
 `/api/brews/<id>/tasting`) unter `tasting`; eine ältere Sicherung ohne diese Schlüssel lässt sich weiter
 einspielen.
+Die übrigen Dokumente der Brauanlage — Sudhäuser, Brauerei (`/brewery.json`), Maisch-, Wasser-
+und Gärprofile, eigene Bierstile, Gärplätze, Gebinde, eigene Zutaten und das Lager — liegen
+außerhalb von `/config` und stehen in keinem der drei Backups oben. Dafür gibt es auf „Backup &
+Restore“ einen vierten Export/Import (`brewcontrol-library`, `web/src/libraryBackup.ts`): eine
+Datei mit je einem Array pro Sammlung und `brewery` als Objekt. Der Browser liest die
+Sammlungen roh über ihre Routen (ohne Normalisierung) und schreibt sie roh per `PUT` zurück —
+`updatedAt` bleibt erhalten, gleiche ID wird überschrieben, nichts wird gelöscht, kein Neustart.
+Das Lager kommt mit: ein Posten der Datei ersetzt den aktuellen Stand.
 
 ## Web-UI auf LittleFS (derzeit ohne Env)
 

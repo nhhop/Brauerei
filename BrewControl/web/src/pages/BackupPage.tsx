@@ -90,6 +90,10 @@ export function BackupPage(_: { path?: string }) {
               exportFile={() => import('../brews').then((m) => m.exportBrews())}
               importFile={(text, onProgress) => import('../brews').then((m) => m.importBrews(text, onProgress))}
               note="Der Lagerbestand bleibt dabei unverändert." />
+            <DocBackup what="Brauanlage-Dokumente" one="Brauanlage" file="brewcontrol-library"
+              exportFile={() => import('../libraryBackup').then((m) => m.exportLibrary())}
+              importFile={(text, onProgress) => import('../libraryBackup').then((m) => m.importLibrary(text, onProgress))}
+              note="Sie umfasst Sudhäuser, Brauerei, Maisch-, Wasser-, Gärprofile, Bierstile, Gärplätze, Gebinde, eigene Zutaten und das Lager; ein Lagerposten der Datei ersetzt den aktuellen mit gleicher ID. Rezepte und Sude sichern die Karten oben." />
           </>
         )}
       </div>
