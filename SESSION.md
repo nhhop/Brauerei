@@ -3197,6 +3197,12 @@ Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Co
 - **Umsetzung:** `display.pixelShiftSupported` (read-only wie `supported`) in `SettingsStore::serialize`: `false` mit `BREWCTL_BOARD_WAVESHARE_LCD5B`, sonst `true`. Die Karte in `DisplayPage.tsx` erscheint nur bei `!== false`, ältere Firmware ohne Feld zeigt sie also weiter. `openapi.yaml`, `types.ts` und die README-Tabelle nachgezogen; der Punkt ist aus dem LCD-5B-Eintrag in PLAN.md raus. Die gespeicherte Einstellung `pixelShift` bleibt unberührt (Backup und Restore unverändert).
 - **Verifikation:** `pnpm typecheck` und Redocly-Lint grün; in der gebauten UI gegen einen Mock: Feld `false` blendet die Karte aus (Dimmen/Ausschalten bleiben), Feld fehlt zeigt sie. Firmware-Compile für `waveshare_s3_lcd_5b` und die 226 nativen Tests grün; am Gerät nicht geprüft.
 
+## 2026-11-15 — LilyGo: GPIO 8 als nicht herausgeführt geführt
+
+- **Problem:** Die Pin-Tabelle kennt nur, was der Chip hat. GPIO 8 steht am LilyGo nicht auf der Platine, `/api/pins` meldete ihn aber als frei, Pin-Manager und Anlegen-Dialog boten ihn an.
+- **Umsetzung:** Keine neue Mechanik: ein Eintrag `{8, Reserved, "nicht herausgeführt"}` in `kLilyGoAmoledSpecial` (`BoardPins.h`). Damit erscheint der Pin als „vom Board belegt (nicht herausgeführt)“, Anlegen und Bus darauf liefert 409, ein bestehendes Item darauf wird als Konflikt gemeldet. Keine API-Änderung. Nutzerentscheidung: nur GPIO 8, nicht 48 (der ist laut Nutzer herausgeführt). README-Abschnitt „Pin-Prüfung“ ergänzt; PLAN.md: der Punkt ist ersetzt durch „weitere nicht herausgeführte Pins eintragen“ für die übrigen Boards.
+- **Verifikation:** neuer Test `test_unwired_pin_is_reserved` (409 mit Hinweistext, Bus, `/api/pins`-Eintrag), alle 227 nativen Tests und der LilyGo-Compile grün. Am Gerät und in der UI nicht geprüft.
+
 ## 2026-11-13 — BJCP-Stilwerte freigegeben
 
 - **Anlass:** Die BJCP hat der Nutzung ihrer Stilwerte zugestimmt (Rückmeldung des Nutzers, 2026-11-13).

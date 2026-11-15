@@ -178,6 +178,25 @@ void test_reserved_is_409() {
   TEST_ASSERT_EQUAL(409, check(kEsp32Dev, {}, R"({"type":"DigitalInput","id":"a","pin":0})").status);
 }
 
+// A pin the chip has but the board does not bring out is listed as reserved, so
+// the pin manager and the add dialog do not offer it.
+void test_unwired_pin_is_reserved() {
+  auto r = check(kLilyGoAmoled, {}, R"({"type":"DigitalOutput","id":"a","pin":8})");
+  TEST_ASSERT_EQUAL(409, r.status);
+  TEST_ASSERT_TRUE(r.error.find("nicht herausgeführt") != std::string::npos);
+  TEST_ASSERT_TRUE(checkBus(kLilyGoAmoled, {}, R"({"type":"i2c","sda":8,"scl":2})").status == 409);
+
+  JsonDocument doc;
+  writePinsJson(kLilyGoAmoled, "lilygo", {}, doc.to<JsonObject>());
+  for (JsonObjectConst p : doc["pins"].as<JsonArrayConst>()) {
+    if (p["gpio"] != 8) continue;
+    TEST_ASSERT_EQUAL_STRING("reserved", p["class"] | "");
+    TEST_ASSERT_EQUAL_STRING("nicht herausgeführt", p["note"] | "");
+    return;
+  }
+  TEST_FAIL_MESSAGE("GPIO 8 missing from /api/pins");
+}
+
 void test_input_only_rejects_outputs_only() {
   TEST_ASSERT_EQUAL(400, check(kEsp32Dev, {}, R"({"type":"DigitalOutput","id":"a","pin":34})").status);
   TEST_ASSERT_TRUE(check(kEsp32Dev, {}, R"({"type":"AnalogInput","id":"a","pin":34})").ok);
@@ -728,6 +747,7 @@ int main(int, char**) {
   RUN_TEST(test_input_only_rejects_outputs_only);
   RUN_TEST(test_same_pin_twice_in_one_item);
   RUN_TEST(test_risky_pin_warns);
+  RUN_TEST(test_unwired_pin_is_reserved);
   RUN_TEST(test_dac);
   RUN_TEST(test_rmt_budget);
   RUN_TEST(test_replace_ignores_own_pins);

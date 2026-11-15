@@ -24,6 +24,7 @@ inline constexpr PinDef kLilyGoAmoledSpecial[] = {
     {4, PinClass::Risky, "Batteriespannungs-ADC"},
     {6, PinClass::Reserved, "I2C SCL (Touch, RTC, PMU)"},
     {7, PinClass::Reserved, "I2C SDA (Touch, RTC, PMU)"},
+    {8, PinClass::Reserved, "nicht herausgeführt"},
     {9, PinClass::Reserved, "Touch-/RTC-Interrupt"},
     {10, PinClass::Reserved, "Display"},
     {11, PinClass::Reserved, "Display"},

@@ -207,7 +207,8 @@ außerdem 0x51 (PCF85063) und 0x5D (GT911). Für eigene Items frei bleibt kein G
 `src/BoardPins.h` beschreibt je Board jeden GPIO: **frei**, **bedenklich**
 (funktioniert, hat aber eine Zweitaufgabe — Strapping-Pin, USB, UART0,
 Batterie-ADC), **reserviert** (vom Board selbst belegt — SD, Display, I²C,
-BOOT-Taste) oder **verboten** (Flash/PSRAM); dazu Input-only-Pins, DAC- und
+BOOT-Taste — oder vom Chip da, aber nicht auf die Platine herausgeführt, z. B.
+GPIO 8 am LilyGo; der Hinweistext sagt es) oder **verboten** (Flash/PSRAM); dazu Input-only-Pins, DAC- und
 ADC-Pins, Pins ohne internen Pull-up und die Zahl sendefähiger RMT-Kanäle. `src/PinMap.h` prüft damit jedes Anlegen
 (`POST`) und Ersetzen (`PUT`) von Sensoren und Aktoren:
 
