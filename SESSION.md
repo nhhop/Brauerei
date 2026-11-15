@@ -3203,6 +3203,12 @@ Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Co
 - **Umsetzung:** Keine neue Mechanik: ein Eintrag `{8, Reserved, "nicht herausgeführt"}` in `kLilyGoAmoledSpecial` (`BoardPins.h`). Damit erscheint der Pin als „vom Board belegt (nicht herausgeführt)“, Anlegen und Bus darauf liefert 409, ein bestehendes Item darauf wird als Konflikt gemeldet. Keine API-Änderung. Nutzerentscheidung: nur GPIO 8, nicht 48 (der ist laut Nutzer herausgeführt). README-Abschnitt „Pin-Prüfung“ ergänzt; PLAN.md: der Punkt ist ersetzt durch „weitere nicht herausgeführte Pins eintragen“ für die übrigen Boards.
 - **Verifikation:** neuer Test `test_unwired_pin_is_reserved` (409 mit Hinweistext, Bus, `/api/pins`-Eintrag), alle 227 nativen Tests und der LilyGo-Compile grün. Am Gerät und in der UI nicht geprüft.
 
+## 2026-11-15 — On-Chip-DAC wird in `end()` freigegeben
+
+- **Problem:** `AnalogOutputActuator::end()` schrieb im DAC-Modus das Minimum, gab den Kanal aber nicht frei; `dacWrite()` hält den DAC-Kanal an, der Pin blieb bis zur Neubelegung auf dem zuletzt geschriebenen Pegel (2026-10-09 beim S2-DAC-Test gefunden). Betrifft nur ESP32 und S2, also die Library standalone — kein BrewControl-Board hat einen DAC.
+- **Umsetzung:** `end()` ruft im Zweig ohne PWM und ohne externen DAC `dacDisable(pin)` auf (hinter `SENSACTCTRL_HAS_DAC`). Die Funktion gibt es in Core 2 (`void`) und Core 3 (`bool`, unter `SOC_DAC_SUPPORTED`); der Rückgabewert wird ignoriert. Nativer Stub mit Zähler und `analogOutputActuatorDacDisableCallCountForTest()`.
+- **Verifikation:** drei neue Tests (DAC-Modus gibt frei und schreibt vorher das Minimum; PWM-Modus und externer DAC rufen `dacDisable` nicht auf). `pio test -e native` (421 Tests) und `pio run -e esp32dev_core2` (übersetzt den echten `dacDisable`-Aufruf für den ESP32) grün. Der Core-3-Zweig mit `SOC_DAC_SUPPORTED` ist nicht übersetzt (kein S3-Board hat einen DAC). Am Gerät nicht geprüft.
+
 ## 2026-11-13 — BJCP-Stilwerte freigegeben
 
 - **Anlass:** Die BJCP hat der Nutzung ihrer Stilwerte zugestimmt (Rückmeldung des Nutzers, 2026-11-13).

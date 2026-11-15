@@ -104,6 +104,25 @@ void test_end_detaches_ledc_pin_in_pwm_mode() {
     TEST_ASSERT_EQUAL_UINT8(before + 1, analogOutputActuatorLedcDetachCallCountForTest());
 }
 
+// dacWrite() leaves the on-chip DAC channel on at the last level; end() must
+// release it, and only in DAC mode (a PWM pin is detached from LEDC instead).
+void test_end_disables_on_chip_dac() {
+    AnalogOutputActuator a("a", 1, AnalogOutputActuator::Mode::Dac);
+    a.begin();
+    uint8_t before = analogOutputActuatorDacDisableCallCountForTest();
+    a.end();
+    TEST_ASSERT_EQUAL_UINT8(before + 1, analogOutputActuatorDacDisableCallCountForTest());
+    TEST_ASSERT_EQUAL_UINT32(0, analogOutputActuatorLastRawForTest());  // at min first
+}
+
+void test_end_does_not_disable_dac_in_pwm_mode() {
+    uint8_t before = analogOutputActuatorDacDisableCallCountForTest();
+    AnalogOutputActuator p("p", 1, AnalogOutputActuator::Mode::Pwm);
+    p.begin();
+    p.end();
+    TEST_ASSERT_EQUAL_UINT8(before, analogOutputActuatorDacDisableCallCountForTest());
+}
+
 void test_end_does_not_detach_ledc_pin_in_dac_mode() {
     AnalogOutputActuator a("a", 1, AnalogOutputActuator::Mode::Dac);
     a.begin();
@@ -203,6 +222,15 @@ void test_ext_dac_end_writes_minimum() {
     a.write(1.0f);
     a.end();
     TEST_ASSERT_EQUAL_UINT16(0, d.last);
+}
+
+void test_ext_dac_end_does_not_disable_on_chip_dac() {
+    FakeDac d;
+    AnalogOutputActuator a("a", d);
+    a.begin();
+    uint8_t before = analogOutputActuatorDacDisableCallCountForTest();
+    a.end();
+    TEST_ASSERT_EQUAL_UINT8(before, analogOutputActuatorDacDisableCallCountForTest());
 }
 
 void test_ext_dac_does_not_touch_ledc() {
@@ -313,6 +341,8 @@ int main(int, char**) {
     RUN_TEST(test_state_clamped_below);
     RUN_TEST(test_state_clamped_above);
     RUN_TEST(test_end_detaches_ledc_pin_in_pwm_mode);
+    RUN_TEST(test_end_disables_on_chip_dac);
+    RUN_TEST(test_end_does_not_disable_dac_in_pwm_mode);
     RUN_TEST(test_end_does_not_detach_ledc_pin_in_dac_mode);
     RUN_TEST(test_disabled_drives_peripheral_to_min_but_keeps_target);
     RUN_TEST(test_write_while_disabled_updates_target_without_touching_peripheral);
@@ -321,6 +351,7 @@ int main(int, char**) {
     RUN_TEST(test_ext_dac_set_range);
     RUN_TEST(test_ext_dac_disabled_writes_minimum_and_resumes);
     RUN_TEST(test_ext_dac_end_writes_minimum);
+    RUN_TEST(test_ext_dac_end_does_not_disable_on_chip_dac);
     RUN_TEST(test_ext_dac_does_not_touch_ledc);
     RUN_TEST(test_ext_dac_fault_follows_write_result);
     RUN_TEST(test_ext_dac_tick_refreshes_every_second);

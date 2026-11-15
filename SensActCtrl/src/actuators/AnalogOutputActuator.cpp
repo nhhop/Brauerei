@@ -19,6 +19,8 @@
   static uint32_t lastRawWritten_ = 0;
   static void   ledcWrite(uint8_t, uint32_t raw) { lastRawWritten_ = raw; }
   static void   dacWrite(uint8_t, uint8_t raw)   { lastRawWritten_ = raw; }
+  static uint8_t dacDisableCallCount_ = 0;
+  static void   dacDisable(uint8_t)              { ++dacDisableCallCount_; }
   static uint32_t mockMillis_ = 0;
   static uint32_t millis() { return mockMillis_; }
   #define SENSACTCTRL_HAS_DAC 1  // stubs cover it in native builds
@@ -142,15 +144,25 @@ void AnalogOutputActuator::end() {
     write(valueMin_);
     if (ext_) return;
     // Dac mode drives the pin via the DAC peripheral directly (no GPIO
-    // matrix routing), so there's nothing to detach there.
+    // matrix routing), so there's no LEDC channel to detach. dacWrite() keeps
+    // the channel on at the last level, so release it explicitly.
     if (mode_ == Mode::Pwm) {
         pwmDetach(pin_);
     }
+#if defined(SENSACTCTRL_HAS_DAC)
+    else {
+        dacDisable(static_cast<uint8_t>(pin_));
+    }
+#endif
 }
 
 #ifndef ARDUINO
 uint8_t analogOutputActuatorLedcDetachCallCountForTest() {
     return ledcDetachPinCallCount_;
+}
+
+uint8_t analogOutputActuatorDacDisableCallCountForTest() {
+    return dacDisableCallCount_;
 }
 
 uint32_t analogOutputActuatorLastRawForTest() {

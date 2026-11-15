@@ -75,6 +75,7 @@ private:
 #ifndef ARDUINO
 // Test hooks: native builds have no real LEDC peripheral to inspect.
 uint8_t analogOutputActuatorLedcDetachCallCountForTest();
+uint8_t analogOutputActuatorDacDisableCallCountForTest();
 uint32_t analogOutputActuatorLastRawForTest();
 // Native builds have no wall clock — set the value millis() returns.
 void analogOutputActuatorSetMillisForTest(uint32_t ms);
