@@ -191,11 +191,13 @@ export function DisplayPage({ snap }: { path?: string; snap?: Snapshot | null })
               } />
           )}
 
-          <SettingsCard title="Pixel-Shift" icon={Move} desc="Verschiebt das Bild jede Minute um wenige Pixel"
-            control={
-              <ToggleSwitch checked={settings.pixelShift}
-                onChange={(v) => update({ pixelShift: v })} />
-            } />
+          {settings.pixelShiftSupported !== false && (
+            <SettingsCard title="Pixel-Shift" icon={Move} desc="Verschiebt das Bild jede Minute um wenige Pixel"
+              control={
+                <ToggleSwitch checked={settings.pixelShift}
+                  onChange={(v) => update({ pixelShift: v })} />
+              } />
+          )}
         </SettingsGroup>
       </div>
 

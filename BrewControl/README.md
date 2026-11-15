@@ -558,7 +558,7 @@ Neustart):
 | Dimmen nach | 2 min | Zeit ohne Berührung; „Nie“ = 0 |
 | Helligkeit gedimmt | 20 % | Anteil der eingestellten Helligkeit |
 | Ausschalten nach | 10 min | Zeit ohne Berührung; „Nie“ = 0 |
-| Pixel-Shift | aus | verschiebt das Bild jede Minute um 3 px, im Kreis über 8 Positionen |
+| Pixel-Shift | aus | verschiebt das Bild jede Minute um 3 px, im Kreis über 8 Positionen; nur AMOLED — auf dem LCD-5B (`pixelShiftSupported: false`) blendet die UI ihn aus |
 | Bei Bewegung wecken | an | nur mit Ausrichtungs-Sensor: geht dessen Kanal `motion` auf 1, wacht das Display wie bei einer Berührung |
 
 - **Aufwecken:** Ein Tipp weckt das Display. Dieser erste Druck erreicht LVGL

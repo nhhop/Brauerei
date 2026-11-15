@@ -3191,6 +3191,12 @@ Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Co
 - **Umsetzung:** Rein im Browser, keine Firmware- und keine Routenänderung (`openapi.yaml` unberührt): `web/src/libraryBackup.ts` schreibt eine Datei `brewcontrol-library` (je Sammlung ein Array, `brewery` als Objekt, Lager inklusive, Nutzerentscheidung). Gelesen und geschrieben wird roh über die vorhandenen Routen, ohne `normalize*` und ohne neues `updatedAt`; gleiche ID wird überschrieben, nichts gelöscht. Reihenfolge Sudhäuser → Brauerei → … → Zutaten → Lager. Auf „Backup & Restore“ eine vierte `DocBackup`-Karte (Lazy-Chunk, nur mit Rezept-Paket). README ergänzt.
 - **Verifikation:** `libraryBackup.test.ts` (13 Tests: Roundtrip, fehlende `brewery`, Überschreiben, Reihenfolge, Fehlerfälle, Fortschritt, Teilfehler), alle 836 Web-Tests, `pnpm typecheck`, `pnpm build` grün. Dabei fand der Teilfehler-Test einen Fehler: `onProgress?.(++done, …)` zählte ohne Fortschrittsfunktion nicht hoch (Rückgabe 0). Am Gerät und in der UI nicht geprüft (PLAN.md).
 
+## 2026-11-15 — LCD-5B: Pixel-Shift-Schalter ausgeblendet
+
+- **Problem:** Pixel-Shift ist ein AMOLED-Burn-in-Schutz und wirkt nur im runden Layout (`DisplayPages.cpp`). `DisplayWide.cpp` wertet ihn nie aus, die Einstellung „Gerätedisplay“ bot ihn aber auch auf dem LCD-5B an, wirkungslos.
+- **Umsetzung:** `display.pixelShiftSupported` (read-only wie `supported`) in `SettingsStore::serialize`: `false` mit `BREWCTL_BOARD_WAVESHARE_LCD5B`, sonst `true`. Die Karte in `DisplayPage.tsx` erscheint nur bei `!== false`, ältere Firmware ohne Feld zeigt sie also weiter. `openapi.yaml`, `types.ts` und die README-Tabelle nachgezogen; der Punkt ist aus dem LCD-5B-Eintrag in PLAN.md raus. Die gespeicherte Einstellung `pixelShift` bleibt unberührt (Backup und Restore unverändert).
+- **Verifikation:** `pnpm typecheck` und Redocly-Lint grün; in der gebauten UI gegen einen Mock: Feld `false` blendet die Karte aus (Dimmen/Ausschalten bleiben), Feld fehlt zeigt sie. Firmware-Compile für `waveshare_s3_lcd_5b` und die 226 nativen Tests grün; am Gerät nicht geprüft.
+
 ## 2026-11-13 — BJCP-Stilwerte freigegeben
 
 - **Anlass:** Die BJCP hat der Nutzung ihrer Stilwerte zugestimmt (Rückmeldung des Nutzers, 2026-11-13).

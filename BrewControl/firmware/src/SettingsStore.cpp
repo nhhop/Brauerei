@@ -190,6 +190,12 @@ String SettingsStore::serialize() const {
 #else
   display["supported"] = false;
 #endif
+  // Burn-in is an AMOLED problem, and only the round layout shifts (DisplayPages).
+#ifdef BREWCTL_BOARD_WAVESHARE_LCD5B
+  display["pixelShiftSupported"] = false;
+#else
+  display["pixelShiftSupported"] = true;
+#endif
   JsonObject energy = doc["energy"].to<JsonObject>();
   energy["batterySensor"] = energyBatterySensor_.c_str();
   energy["deepSleep"] = energyDeepSleep_;

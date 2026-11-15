@@ -6591,6 +6591,13 @@ components:
           type: boolean
           readOnly: true
           description: Compile-time capability of this firmware build (a display is driven).
+        pixelShiftSupported:
+          type: boolean
+          readOnly: true
+          description: |
+            `false` on a board whose panel does not burn in (the Waveshare
+            LCD-5B): `pixelShift` has no effect there and the UI hides it.
+            Absent on firmware from before this field, read as `true`.
 
     EnergySettings:
       type: object
