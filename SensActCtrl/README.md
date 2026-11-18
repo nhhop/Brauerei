@@ -315,6 +315,17 @@ ohne Hardware via `pio test -e native`).
   Reihenfolge auf. Reicht für Sekunden-Takt-Anwendungen wie Brauen;
   könnte bei Bedarf in einen eigenen FreeRTOS-Task wandern, ohne dass sich
   die öffentliche API ändert.
+- **Die `Registry` ist nicht threadsicher.** Sie hat keine eigene Sperre:
+  `tick()` läuft über die Listen, während ein anderer Task Items anlegen
+  oder löschen könnte, und ein gelöschtes Item wird dabei freigegeben. Wer
+  Items zur Laufzeit aus einem anderen Task ändert (z. B. aus einem
+  Webserver-Handler), muss `tick()` und jede strukturelle Änderung
+  (`add()`/`remove()`) mit einem eigenen rekursiven Mutex umklammern. Das gilt
+  auch für Schreibzugriffe auf Aktoren und Regler aus einem anderen Task
+  (`write()`, `setEnabled()`): sie ändern Zustände, die `tick()` gleichzeitig
+  liest. Reine Lesezugriffe auf einzelne Werte sind unkritisch, solange kein
+  Item verschwindet. BrewControl macht das mit `RegistryLock.h` um den
+  Item-Teil von `loop()` und um die Handler, die Items anlegen oder löschen.
 - **Keine C++-Exceptions/RTTI** — Arduino-Standard.
 
 ## Lizenz

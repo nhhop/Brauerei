@@ -3213,3 +3213,9 @@ Erstes stabiles Release unter Arduino Core 3: `dev` → `main` über PR #132 (Co
 
 - **Anlass:** Die BJCP hat der Nutzung ihrer Stilwerte zugestimmt (Rückmeldung des Nutzers, 2026-11-13).
 - **Umsetzung:** `bjcp-2021.json` ist eingecheckt und nicht mehr in `.gitignore`. `STYLE_COMPARISON` und `VITE_STYLE_COMPARISON` sind entfernt, ebenso das Vite-Plugin `drop-bjcp-data`, das die Datei aus `dist/` warf: Der Stilvergleich ist in jedem Build da, `webui-full.tar` enthält die Daten (das schlanke `webui.tar` hat kein `modules/`). Stil-Karte und Tab Profile › Bierstile zeigen den von der BJCP verlangten Hinweis „Style guidelines used with the permission of the BJCP, and are Copyright 2021, Beer Judge Certification Program, Inc.“ samt Verweis auf www.bjcp.org. README-Abschnitt „Lokaler Test mit den BJCP-Stilwerten“ entfällt.
+
+## 2026-11-18 — Threading-Hinweis im SensActCtrl-README, Programm-Button
+
+- **Threading:** `SensActCtrl/README.md` → Design-Entscheidungen sagt jetzt ausdrücklich, dass die `Registry` nicht threadsicher ist: `tick()` und jedes `add()`/`remove()` sowie Schreibzugriffe auf Aktoren und Regler aus einem anderen Task muss die Anwendung selbst mit einem rekursiven Mutex umklammern (BrewControl: `RegistryLock.h`). Eine Sperre in der Library bleibt offen (PLAN.md).
+- **Programm-Button:** Der PLAN-Punkt „anderen Button als Start hervorheben“ war schon umgesetzt: `ProgramCard.tsx` setzt `primary` für Start (idle/done), Fortsetzen (paused) und Weiter (awaiting, Freigabe); im Lauf bleibt Pause bewusst unauffällig. Der Eintrag ist entfernt, am Code hat sich nichts geändert.
+- **Webhook-Discovery zurückgestellt:** Der Punkt bleibt in PLAN.md, jetzt mit dem Vermerk, dass er an der Anbindung eines global gehosteten Rezept-/Sud-UI hängt (neuer Backlog-Eintrag „Rezept-/Sud-UI auf einem Server“, Nutzer-Gedanke vom selben Tag).
